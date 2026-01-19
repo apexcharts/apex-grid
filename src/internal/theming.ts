@@ -150,7 +150,7 @@ class ThemingController implements ReactiveController {
 
   /** @internal */
   public hostDisconnected(): void {
-    globalThis.addEventListener(CHANGE_THEME_EVENT, this);
+    globalThis.removeEventListener(CHANGE_THEME_EVENT, this);
   }
 
   /** @internal */
