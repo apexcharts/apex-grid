@@ -7,9 +7,26 @@ A Lit-based web component data grid with sorting, filtering, row virtualization,
 
 ---
 
-## Getting Started
+## Quick Start (one call)
 
-A working, styled grid needs **four** setup steps. Skipping any one of them produces a grid that "runs" but renders broken-looking (no borders, no filter UI, or only a few collapsed rows). Do them all.
+If you don't need fine-grained control, `setup()` handles registration, theme configuration, and host sizing in a single call. You still import the Ignite UI theme CSS file yourself (bundlers can't dynamically import CSS portably):
+
+```ts
+import { setup } from 'apex-grid';
+import 'igniteui-webcomponents/themes/light/bootstrap.css';
+
+setup({ theme: 'bootstrap' });
+```
+
+That's it — `<apex-grid>` is registered, the theme is active, and a default host stylesheet (`height: 100%; min-height: 240px`) is adopted. Render the element and bind `.data` / `.columns` as below.
+
+Prefer manual control? Use the four-step setup below instead — `setup()` is additive, not required.
+
+---
+
+## Getting Started (manual, four steps)
+
+If you'd rather not use `setup()`, the four steps below are what `setup()` does under the hood. Skipping any one of them produces a grid that "runs" but renders broken-looking (no borders, no filter UI, or only a few collapsed rows).
 
 ### 1. Install
 

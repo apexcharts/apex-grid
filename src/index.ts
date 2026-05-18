@@ -21,7 +21,6 @@ export type {
 export { BooleanOperands } from './operations/filter/operands/boolean.js';
 export { NumberOperands } from './operations/filter/operands/number.js';
 export { StringOperands } from './operations/filter/operands/string.js';
-
 export type {
   BaseFilterExpression,
   FilterCriteria,
@@ -38,3 +37,5 @@ export type {
   SortingDirection,
   SortState,
 } from './operations/sort/types.js';
+export type { ApexGridSetupOptions } from './setup.js';
+export { setup } from './setup.js';
