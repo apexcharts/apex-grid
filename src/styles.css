@@ -1,0 +1,17 @@
+/*
+ * apex-grid recommended host styles.
+ *
+ * Import once in your app:
+ *   import 'apex-grid/styles.css';
+ *
+ * This file gives <apex-grid> a sensible default size so the virtualizer can
+ * render. Override `height` (or wrap the grid in a sized container) to taste.
+ *
+ * Do NOT set `display` on <apex-grid> — the component declares
+ * `:host { display: grid }` internally. Overriding it collapses the grid.
+ */
+
+apex-grid {
+  height: 100%;
+  min-height: 240px;
+}

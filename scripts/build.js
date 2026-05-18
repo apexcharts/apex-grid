@@ -17,6 +17,7 @@ async function build() {
   await exec('tsc -p scripts/tsconfig.prod.json && tsc -p scripts/tsconfig.dts.prod.json');
   await Promise.all([
     copyFile('scripts/_package.json', DEST_DIR('package.json')),
+    copyFile('src/styles.css', DEST_DIR('styles.css')),
     ...RELEASE_FILES.map((file) => copyFile(file, DEST_DIR(file))),
   ]);
 }

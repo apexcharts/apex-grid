@@ -8,10 +8,11 @@
     "lit-element"
   ],
   "license": "SEE LICENSE IN LICENSE.md",
-  "author": "apex-grid",
+  "author": "ApexCharts",
   "exports": {
     ".": "./dist/src/index.js",
-    "./define": "./dist/src/define.js"
+    "./define": "./dist/src/define.js",
+    "./styles.css": "./dist/styles.css"
   },
   "type": "module",
   "engines": {

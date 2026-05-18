@@ -13,7 +13,8 @@
     "./define": {
       "types": "./define.d.ts",
       "default": "./define.js"
-    }
+    },
+    "./styles.css": "./styles.css"
   },
   "type": "module",
   "sideEffects": false,
