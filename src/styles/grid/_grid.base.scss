@@ -4,6 +4,11 @@ $content-background: var(--igx-content-background, var(--content-background));
 $content-text-color: var(--igx-content-text-color, var(--content-text-color));
 $grid-resize-line-color: var(--igx-grid-resize-line-color, var(--grid-resize-line-color));
 
+// REQUIRED for the grid's internal track layout: header-row, filter-row,
+// and the virtualized body live in named CSS grid rows below. Consumers must
+// NOT override `display` on <apex-grid>; doing so collapses the virtualizer
+// to its natural ~150px content height. A runtime `console.warn` in
+// `ApexGrid.firstUpdated` catches accidental overrides.
 :host {
     display: grid;
     height: 100%;

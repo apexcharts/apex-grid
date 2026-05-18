@@ -124,6 +124,20 @@ export interface ApexGridEventMap<T extends object> {
  * Out of the box it provides row virtualization, sort and filter operations (client and server side),
  * the ability to template cells and headers and column hiding.
  *
+ * @remarks
+ * A working, styled grid requires four setup steps:
+ *  1. Register the element: `import 'apex-grid/define'` (or `ApexGrid.register()`).
+ *  2. Configure an Ignite UI theme + import the matching CSS, e.g.
+ *     `import { configureTheme } from 'igniteui-webcomponents';`
+ *     `import 'igniteui-webcomponents/themes/light/bootstrap.css';`
+ *     `configureTheme('bootstrap');`
+ *  3. Give the host element a bounded height, e.g. `apex-grid { height: 480px }` —
+ *     the virtualizer collapses without one.
+ *  4. Do NOT set `display` on the host — the component declares `:host { display: grid }`
+ *     internally and any override breaks the track layout.
+ *
+ * See the README "Getting Started" section for the full example.
+ *
  * @element apex-grid
  *
  * @fires sorting - Emitted when sorting is initiated through the UI.
@@ -139,6 +153,16 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
   public static override styles = bootstrap;
 
+  /**
+   * Registers `<apex-grid>` and its internal dependencies with the custom-element
+   * registry. Idempotent — safe to call more than once.
+   *
+   * @remarks
+   * Registering the element is only step one of four required for a visible, styled
+   * grid. You must also configure an Ignite UI theme + CSS, give the host a bounded
+   * height, and avoid overriding `display` on the host. See the README
+   * "Getting Started" section for the full setup.
+   */
   public static register() {
     registerComponent(
       ApexGrid,
@@ -321,6 +345,22 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       light: { bootstrap, material, fluent, indigo },
       dark: { bootstrap, material, fluent, indigo },
     });
+  }
+
+  protected override firstUpdated(): void {
+    // The component declares `:host { display: grid }` for its internal track
+    // layout (header / filter / virtualized body). If a consumer rule overrides
+    // it, the virtualizer collapses and only a few rows render. Warn loudly so
+    // the failure mode isn't silent.
+    if (typeof getComputedStyle === 'function' && getComputedStyle(this).display !== 'grid') {
+      // biome-ignore lint/suspicious/noConsole: intentional one-shot user diagnostic
+      console.warn(
+        '[apex-grid] Host `display` has been overridden. The grid requires ' +
+          '`display: grid` for its internal track layout and will not render correctly. ' +
+          'Remove any CSS rule that sets `display` on <apex-grid>. ' +
+          'See: https://github.com/apexcharts/apexgrid#4-size-the-host'
+      );
+    }
   }
 
   /**
