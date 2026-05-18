@@ -170,3 +170,21 @@ Full type reference is generated via TypeDoc in `dist/`.
 2. `npm install`
 3. `npm start` — opens the demo at `demo/index.html` with Vite.
 4. `npm test` — runs the Web Test Runner suite.
+
+## Releasing
+
+Releases are automated by [.github/workflows/publish.yml](.github/workflows/publish.yml):
+
+1. Bump `"version"` in [package.json](package.json) (this is the single source of truth — the build injects it into `dist/package.json`).
+2. Commit with a message that starts with `release:` and contains the version, e.g. `release: 1.2.0` or `release: 1.2.0-rc.1`.
+3. Push to `master`.
+
+The workflow then:
+
+- Verifies `package.json` matches the commit message.
+- Runs `npm ci && npm run build`.
+- Publishes `dist/` to npm with `--provenance` (OIDC trusted publishing — no token in secrets).
+- Pre-release versions (containing `-`) publish under the `next` dist-tag; stable versions under `latest`.
+- Creates a `vX.Y.Z` git tag and a GitHub Release with auto-generated notes.
+
+Any push whose head commit does not start with `release:` is a no-op for this workflow.
