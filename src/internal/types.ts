@@ -26,8 +26,8 @@ export type PropertyType<T, K extends Keys<T> = Keys<T>> = K extends Keys<T>
   : never;
 
 /**
- * The data type — or, for the declarative built-ins (`'select'`), the
- * presentation type — for the current column.
+ * The data type — or, for the declarative built-ins (`'select'`, `'rating'`),
+ * the presentation type — for the current column.
  *
  * @remarks
  * - `'string'` / `'number'` / `'boolean'` are the primitive data types. They
@@ -39,8 +39,12 @@ export type PropertyType<T, K extends Keys<T> = Keys<T>> = K extends Keys<T>
  *   option's label in display mode and a native `<select>` in edit mode.
  *   For sorting / filtering, select columns behave as their underlying
  *   value type (typically string).
+ * - `'rating'` renders a numeric value (0..`max`) as filled stars in display
+ *   mode and as an interactive star picker in edit mode. Configure the star
+ *   count via {@link BaseColumnConfiguration.max} (defaults to `5`).
+ *   For sorting / filtering, rating columns behave as numbers.
  */
-export type DataType = 'number' | 'string' | 'boolean' | 'select';
+export type DataType = 'number' | 'string' | 'boolean' | 'select' | 'rating';
 
 /**
  * An entry in a `'select'` column's `options` list. Bare values use
@@ -211,6 +215,14 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    * with another `type`.
    */
   options?: ColumnSelectOption<BasePropertyType<T, K>>[];
+  /**
+   * Star count for columns with `type: 'rating'`.
+   *
+   * @remarks
+   * The displayed value is clamped to the range `[0, max]`. Defaults to `5`.
+   * Has no effect on columns with another `type`.
+   */
+  max?: number;
 }
 
 /**

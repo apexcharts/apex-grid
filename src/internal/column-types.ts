@@ -1,7 +1,23 @@
-import { html, type TemplateResult } from 'lit';
+import { html, nothing, type TemplateResult } from 'lit';
 import type ApexGridCell from '../components/cell.js';
 import type ApexGridRow from '../components/row.js';
+import { renderIcon } from './icons.js';
 import type { ColumnConfiguration } from './types.js';
+
+const RATING_DEFAULT_MAX = 5;
+
+function getRatingMax(column: { max?: number }): number {
+  const max = typeof column.max === 'number' ? Math.floor(column.max) : RATING_DEFAULT_MAX;
+  return max > 0 ? max : RATING_DEFAULT_MAX;
+}
+
+function clampRating(value: unknown, max: number): number {
+  const n = typeof value === 'number' ? value : Number(value ?? 0);
+  if (!Number.isFinite(n)) return 0;
+  if (n < 0) return 0;
+  if (n > max) return max;
+  return Math.round(n);
+}
 
 /**
  * An option entry for a `'select'` column. May be either a bare value (the
@@ -123,8 +139,74 @@ const selectType: ColumnTypeRenderer<object> = {
   },
 };
 
+const ratingType: ColumnTypeRenderer<object> = {
+  display(ctx) {
+    const max = getRatingMax(ctx.column as { max?: number });
+    const value = clampRating(ctx.value, max);
+    const stars = Array.from({ length: max }, (_, i) => i < value);
+    return html`<span part="rating" role="img" aria-label="${value} of ${max}">
+      ${stars.map(
+        (filled) =>
+          html`<span part=${filled ? 'rating-star filled' : 'rating-star'} aria-hidden="true">
+            ${renderIcon('star')}
+          </span>`
+      )}
+    </span>`;
+  },
+
+  editor(ctx) {
+    const max = getRatingMax(ctx.column as { max?: number });
+    const current = clampRating(ctx.value, max);
+    const focusRank = Math.max(current, 1);
+
+    const commitTo = (next: number) => ctx.commit(clampRating(next, max));
+
+    const handleKeydown = (event: KeyboardEvent) => {
+      event.stopPropagation();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        ctx.cancel();
+      }
+    };
+
+    const handleFocusOut = (event: FocusEvent) => {
+      const wrapper = event.currentTarget as Element;
+      const next = event.relatedTarget as Node | null;
+      // Cancel only when focus actually leaves the editor (not when it
+      // bounces between stars).
+      if (!next || !wrapper.contains(next)) {
+        ctx.cancel();
+      }
+    };
+
+    const stars = Array.from({ length: max }, (_, i) => i + 1);
+    return html`<span
+      part="rating-editor"
+      role="radiogroup"
+      aria-label="Rating"
+      @keydown=${handleKeydown}
+      @focusout=${handleFocusOut}
+    >
+      ${stars.map(
+        (rank) => html`<button
+          type="button"
+          part=${rank <= current ? 'rating-star filled selected' : 'rating-star'}
+          role="radio"
+          aria-checked=${rank === current}
+          data-rating-value=${rank}
+          data-apex-editor=${rank === focusRank ? '' : nothing}
+          @click=${() => commitTo(rank)}
+        >
+          ${renderIcon('star')}
+        </button>`
+      )}
+    </span>`;
+  },
+};
+
 const BUILTIN_TYPES: Record<string, ColumnTypeRenderer<object>> = {
   select: selectType,
+  rating: ratingType,
 };
 
 /**

@@ -155,16 +155,11 @@ const columns: ColumnConfiguration<User>[] = [
   },
   {
     key: 'satisfaction',
-    type: 'number',
+    type: 'rating',
+    max: 5,
     sort: true,
     filter: true,
     editable: true,
-    cellTemplate: params =>
-      html`<igc-rating
-        readonly
-        style="--ig-size: 1"
-        .value=${params.value}
-      ></igc-rating>`,
   },
   {
     key: 'priority',

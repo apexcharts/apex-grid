@@ -186,3 +186,144 @@ describe('Column type: select', () => {
     });
   });
 });
+
+class RatingFixture<T extends TestData> extends GridTestFixture<T> {
+  public editing: GridEditingConfiguration = {
+    enabled: true,
+    mode: 'cell',
+    trigger: 'doubleClick',
+  };
+
+  public records!: T[];
+
+  public override updateConfig() {
+    this.columnConfig = [
+      { key: 'id', type: 'rating', editable: true, max: 5 },
+      { key: 'name' },
+    ] as ColumnConfiguration<T>[];
+  }
+
+  public override async setUp() {
+    this.records = JSON.parse(JSON.stringify(data)) as T[];
+    this.data = this.records;
+    await super.setUp();
+  }
+
+  public override setupTemplate() {
+    return html`<apex-grid
+      .data=${this.data}
+      .columns=${this.columnConfig}
+      .editing=${this.editing}
+    ></apex-grid>`;
+  }
+
+  public ratingHost(rowIndex: number): HTMLElement | null {
+    const row = this.rows.get(rowIndex);
+    const cell = row.cells.get('id' as never).element;
+    return cell.shadowRoot!.querySelector<HTMLElement>('[part~="rating"]');
+  }
+
+  public ratingEditor(rowIndex: number): HTMLElement | null {
+    const row = this.rows.get(rowIndex);
+    const cell = row.cells.get('id' as never).element;
+    return cell.shadowRoot!.querySelector<HTMLElement>('[part="rating-editor"]');
+  }
+
+  public stars(rowIndex: number): HTMLElement[] {
+    const host = this.ratingHost(rowIndex) ?? this.ratingEditor(rowIndex);
+    return host ? Array.from(host.querySelectorAll<HTMLElement>('[part~="rating-star"]')) : [];
+  }
+}
+
+const RTDD = new RatingFixture(data);
+
+describe('Column type: rating', () => {
+  beforeEach(async () => await RTDD.setUp());
+  afterEach(() => RTDD.tearDown());
+
+  describe('display', () => {
+    it('renders `max` stars with `value` filled', () => {
+      // data[2].id === 3 → 3 filled, 2 empty
+      const stars = RTDD.stars(2);
+      expect(stars).to.have.length(5);
+      expect(stars.filter((s) => s.getAttribute('part')?.includes('filled'))).to.have.length(3);
+    });
+
+    it('clamps values outside [0, max]', async () => {
+      await RTDD.updateProperty('data', [
+        { ...RTDD.records[0], id: 99 as never },
+        { ...RTDD.records[1], id: -3 as never },
+        ...RTDD.records.slice(2),
+      ]);
+      const overflow = RTDD.stars(0).filter((s) => s.getAttribute('part')?.includes('filled'));
+      const underflow = RTDD.stars(1).filter((s) => s.getAttribute('part')?.includes('filled'));
+      expect(overflow).to.have.length(5);
+      expect(underflow).to.have.length(0);
+    });
+
+    it('honors a custom `max`', async () => {
+      await RTDD.updateColumns({ key: 'id', type: 'rating', editable: true, max: 10 });
+      expect(RTDD.stars(0)).to.have.length(10);
+    });
+
+    it('falls back to max=5 when max is missing or invalid', async () => {
+      await RTDD.updateColumns({ key: 'id', type: 'rating', editable: true });
+      expect(RTDD.stars(0)).to.have.length(5);
+    });
+  });
+
+  describe('editor', () => {
+    it('renders an interactive radiogroup of star buttons on edit-mode entry', async () => {
+      await RTDD.grid.editCell(0, 'id');
+      await RTDD.waitForUpdate();
+
+      const editor = RTDD.ratingEditor(0);
+      expect(editor).to.exist;
+      expect(editor!.getAttribute('role')).to.equal('radiogroup');
+      const buttons = RTDD.stars(0);
+      expect(buttons.every((b) => b.tagName === 'BUTTON')).to.be.true;
+    });
+
+    it('commits the clicked star value', async () => {
+      await RTDD.grid.editCell(2, 'id');
+      await RTDD.waitForUpdate();
+
+      const stars = RTDD.stars(2);
+      stars[3].click(); // 4th star → value 4
+      await RTDD.waitForUpdate();
+
+      expect(RTDD.grid.editingCell).to.be.null;
+      expect(RTDD.records[2].id).to.equal(4);
+    });
+
+    it('cancels on Escape without mutating the value', async () => {
+      const before = RTDD.records[2].id;
+      await RTDD.grid.editCell(2, 'id');
+      await RTDD.waitForUpdate();
+
+      const editor = RTDD.ratingEditor(2)!;
+      editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await RTDD.waitForUpdate();
+
+      expect(RTDD.grid.editingCell).to.be.null;
+      expect(RTDD.records[2].id).to.equal(before);
+    });
+
+    it('emits cellValueChanging + cellValueChanged for rating commits', async () => {
+      const seen: string[] = [];
+      RTDD.grid.addEventListener('cellValueChanging', (event) => {
+        seen.push(`changing:${event.detail.oldValue}->${event.detail.newValue}`);
+      });
+      RTDD.grid.addEventListener('cellValueChanged', (event) => {
+        seen.push(`changed:${event.detail.value}`);
+      });
+
+      await RTDD.grid.editCell(2, 'id'); // current = 3
+      await RTDD.waitForUpdate();
+      RTDD.stars(2)[0].click(); // → 1
+      await RTDD.waitForUpdate();
+
+      expect(seen).to.deep.equal(['changing:3->1', 'changed:1']);
+    });
+  });
+});
