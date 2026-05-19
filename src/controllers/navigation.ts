@@ -1,7 +1,9 @@
 import type { ReactiveController } from 'lit';
-import ApexGridRow from '../components/row.js';
+import type ApexGridRow from '../components/row.js';
 import { NAVIGATION_STATE, SENTINEL_NODE } from '../internal/constants.js';
+import { GRID_ROW_TAG } from '../internal/tags.js';
 import type { ActiveNode, GridHost, Keys } from '../internal/types.js';
+import { getDisplayColumns } from '../internal/utils.js';
 
 export class NavigationController<T extends object> implements ReactiveController {
   protected handlers = new Map(
@@ -30,27 +32,37 @@ export class NavigationController<T extends object> implements ReactiveControlle
       : ({ ...node } as ActiveNode<T>);
   }
 
-  protected get columns() {
-    return this.host.columns;
+  protected get columns(): Array<{ key: Keys<T>; hidden?: boolean }> {
+    return getDisplayColumns(this.host.columns) as unknown as Array<{
+      key: Keys<T>;
+      hidden?: boolean;
+    }>;
   }
 
-  protected get firstColumn() {
-    return this.host.getColumn(0)!.key ?? '';
+  protected get visibleColumns() {
+    return this.columns.filter((column) => !column.hidden);
   }
 
-  protected getPreviousColumn(key: Keys<T>) {
-    return this.columns[Math.max(this.columns.indexOf(this.host.getColumn(key)!) - 1, 0)].key;
+  protected get firstColumn(): Keys<T> {
+    const first = this.visibleColumns.at(0);
+    return (first?.key ?? (this.host.columns[0]?.key as Keys<T>)) as Keys<T>;
   }
 
-  protected getNextColumn(key: Keys<T>) {
-    return this.columns[
-      Math.min(this.columns.indexOf(this.host.getColumn(key)!) + 1, this.columns.length - 1)
-    ].key;
+  protected getPreviousColumn(key: Keys<T>): Keys<T> {
+    const columns = this.visibleColumns;
+    const idx = columns.findIndex((column) => column.key === key);
+    return columns[Math.max(idx - 1, 0)].key;
+  }
+
+  protected getNextColumn(key: Keys<T>): Keys<T> {
+    const columns = this.visibleColumns;
+    const idx = columns.findIndex((column) => column.key === key);
+    return columns[Math.min(idx + 1, columns.length - 1)].key;
   }
 
   protected scrollToCell(node: ActiveNode<T>) {
-    const row = Array.from(this.virtualizer.querySelectorAll(ApexGridRow.tagName)).find(
-      (row) => row.index === node.row
+    const row = Array.from(this.virtualizer.querySelectorAll(GRID_ROW_TAG)).find(
+      (row) => (row as unknown as ApexGridRow<T>).index === node.row
     ) as unknown as ApexGridRow<T>;
 
     if (row) {
@@ -81,7 +93,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
   }
 
   protected end() {
-    this.active = Object.assign(this.nextNode, { row: this.host.totalItems - 1 });
+    this.active = Object.assign(this.nextNode, { row: this.host.pageItems.length - 1 });
     this.virtualizer.element(this.active.row)?.scrollIntoView({ block: 'nearest' });
   }
 
@@ -89,7 +101,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
     const next = this.nextNode;
 
     this.active = Object.assign(next, {
-      row: Math.min(next.row + 1, this.host.totalItems - 1),
+      row: Math.min(next.row + 1, this.host.pageItems.length - 1),
     });
     this.virtualizer.element(next.row)?.scrollIntoView({ block: 'nearest' });
   }

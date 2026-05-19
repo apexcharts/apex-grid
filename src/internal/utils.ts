@@ -16,6 +16,58 @@ export function applyColumnWidths<T extends object>(
   };
 }
 
+/**
+ * Returns the visual render order of the columns: start-pinned columns first,
+ * then unpinned columns, then end-pinned columns. Within each group the
+ * original `columns` array order is preserved.
+ *
+ * @remarks
+ * The grid uses this order for rendering, navigation, and CSS grid track widths.
+ * The user-supplied `columns` array is never mutated; this returns a new array.
+ */
+export function getDisplayColumns<T extends object>(
+  columns: Array<ColumnConfiguration<T>>
+): Array<ColumnConfiguration<T>> {
+  const start: Array<ColumnConfiguration<T>> = [];
+  const middle: Array<ColumnConfiguration<T>> = [];
+  const end: Array<ColumnConfiguration<T>> = [];
+  for (const column of columns) {
+    if (column.pinned === 'start') start.push(column);
+    else if (column.pinned === 'end') end.push(column);
+    else middle.push(column);
+  }
+  return [...start, ...middle, ...end];
+}
+
+/**
+ * Returns `'start'` for the last visible start-pinned column, `'end'` for the
+ * first visible end-pinned column, or `null` otherwise. The edge column gets a
+ * subtle shadow / border to separate the pinned region from the scrolling one.
+ */
+export function getPinEdge<T extends object>(
+  displayColumns: Array<ColumnConfiguration<T>>,
+  index: number
+): 'start' | 'end' | null {
+  const column = displayColumns[index];
+  if (!column?.pinned) return null;
+
+  if (column.pinned === 'start') {
+    for (let i = index + 1; i < displayColumns.length; i++) {
+      const next = displayColumns[i];
+      if (next.hidden) continue;
+      return next.pinned === 'start' ? null : 'start';
+    }
+    return 'start';
+  }
+
+  for (let i = index - 1; i >= 0; i--) {
+    const prev = displayColumns[i];
+    if (prev.hidden) continue;
+    return prev.pinned === 'end' ? null : 'end';
+  }
+  return 'end';
+}
+
 export function autoGenerateColumns<T extends object>(grid: GridHost<T>) {
   if (grid.autoGenerate && grid.columns.length < 1) {
     const record = grid.data[0] ?? {};

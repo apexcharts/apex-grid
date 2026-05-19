@@ -1,0 +1,51 @@
+@use '../common' as *;
+
+$header-background: var(--igx-header-background, var(--header-background));
+$header-text-color: var(--igx-header-text-color, var(--header-text-color));
+$header-border-width: var(--igx-header-border-width, var(--header-border-width));
+$header-border-style: var(--igx-header-border-style, var(--header-border-style));
+$header-border-color: var(--igx-header-border-color, var(--header-border-color));
+
+:host {
+    --ig-size: 1;
+
+    grid-row: toolbar-row;
+    display: block;
+    background: $header-background;
+    color: $header-text-color;
+    border-block-end: $header-border-width $header-border-style $header-border-color;
+    z-index: calc(var(--z-index-base) + 4);
+
+    // Sticky in both axes so the toolbar stays anchored to the top-left of the
+    // viewport regardless of how the grid host is scrolled. `width` is clamped
+    // to the host's clientWidth (written by `GridDOMController.recomputeHostWidth`)
+    // so it doesn't extend across the scrollable area.
+    position: sticky;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    box-sizing: border-box;
+    width: var(--apex-host-width, 100%);
+    max-width: var(--apex-host-width, 100%);
+}
+
+[part='toolbar'] {
+    display: flex;
+    align-items: center;
+    gap: rem(8px);
+    padding: rem(4px) rem(12px);
+}
+
+[part='toolbar-search'] {
+    flex: 1;
+    max-width: rem(360px);
+}
+
+igc-input {
+    width: 100%;
+
+    &::part(container),
+    &::part(input) {
+        background: inherit;
+        color: inherit;
+    }
+}

@@ -32,7 +32,7 @@ export default class GridTestFixture<T extends object> {
     this.columnConfig = Object.keys(data.at(0)!).map((key) => ({ key }) as ColumnConfiguration<T>);
   }
 
-  protected async waitForUpdate() {
+  public async waitForUpdate() {
     await Promise.all([elementUpdated(this.grid), nextFrame]);
     await nextFrame();
   }

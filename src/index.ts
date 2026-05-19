@@ -1,9 +1,28 @@
-export type { ApexFilteredEvent, ApexFilteringEvent, ApexGridEventMap } from './components/grid.js';
+export type {
+  ApexCellValueChangedEvent,
+  ApexCellValueChangingEvent,
+  ApexColumnMovedEvent,
+  ApexColumnMovingEvent,
+  ApexColumnPinnedEvent,
+  ApexColumnPinningEvent,
+  ApexFilteredEvent,
+  ApexFilteringEvent,
+  ApexGridEventMap,
+  ApexPageChangedEvent,
+  ApexPageChangingEvent,
+  ApexQuickFilterChangedEvent,
+  ApexQuickFilterChangingEvent,
+  ApexRowEditEndedEvent,
+  ApexRowEditStartedEvent,
+  ColumnDropPosition,
+} from './components/grid.js';
 export { ApexGrid } from './components/grid.js';
 export type {
   ApexCellContext,
+  ApexEditorContext,
   ApexHeaderContext,
   BaseApexCellContext,
+  BaseApexEditorContext,
   BaseColumnConfiguration,
   BaseColumnSortConfiguration,
   BasePropertyType,
@@ -14,8 +33,15 @@ export type {
   DataPipelineHook,
   DataPipelineParams,
   DataType,
+  EditMode,
+  EditTrigger,
+  GridEditingConfiguration,
   GridSortConfiguration,
   Keys,
+  PaginationConfiguration,
+  PaginationMode,
+  PaginationState,
+  PinPosition,
   PropertyType,
 } from './internal/types.js';
 export { BooleanOperands } from './operations/filter/operands/boolean.js';

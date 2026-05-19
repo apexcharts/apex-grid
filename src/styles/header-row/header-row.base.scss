@@ -13,10 +13,14 @@ $filtering-header-background: var(--igx-filtering-header-background, var(--filte
     min-height: $ig-cells-min-height;
     background: $header-background;
     color: $header-text-color;
-    contain: content;
     border-block-end: $header-border-width $header-border-style $header-border-color;
-    z-index: var(--z-index-base);
-    padding-inline-end: var(--scrollbar-offset);
+    z-index: calc(var(--z-index-base) + 3);
+
+    // The grid host owns vertical scrolling, so the header row must stay anchored
+    // to the top of the viewport. `--apex-row-top-header` is the cumulative height
+    // of any rows above (e.g. toolbar), maintained by GridDOMController.
+    position: sticky;
+    inset-block-start: var(--apex-row-top-header, 0);
 }
 
 :host(:focus) {
@@ -25,4 +29,16 @@ $filtering-header-background: var(--igx-filtering-header-background, var(--filte
 
 [part='filtered'] {
     background: $filtering-header-background;
+}
+
+// Drop indicator rendered while a column is being dragged.
+$reorder-indicator-color: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
+
+[part='reorder-indicator'] {
+    position: absolute;
+    inset-block: 0;
+    inline-size: rem(2px);
+    background: $reorder-indicator-color;
+    z-index: calc(var(--z-index-base) + 5);
+    pointer-events: none;
 }

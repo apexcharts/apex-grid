@@ -16,8 +16,43 @@ $inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
     font-size: #{rem(12px)};
 }
 
+:host([draggable='true']) {
+    cursor: grab;
+}
+
+:host([data-dragging]) {
+    opacity: 0.4;
+    cursor: grabbing;
+}
+
 :host(:last-of-type) {
     border-inline-end: none;
+}
+
+:host([data-pinned='start']),
+:host([data-pinned='end']) {
+    position: sticky;
+    z-index: calc(var(--z-index-base) + 2);
+    background: inherit;
+}
+
+:host([data-pinned='start']) {
+    inset-inline-start: var(--apex-pin-offset, 0);
+}
+
+:host([data-pinned='end']) {
+    inset-inline-end: var(--apex-pin-offset, 0);
+}
+
+// Visual separator between the pinned region and the scrollable region.
+:host([data-pin-edge='start']) {
+    border-inline-end: $header-border-width $header-border-style $header-border-color;
+    box-shadow: rem(2px) 0 rem(4px) rgb(0 0 0 / 6%);
+}
+
+:host([data-pin-edge='end']) {
+    border-inline-start: $header-border-width $header-border-style $header-border-color;
+    box-shadow: rem(-2px) 0 rem(4px) rgb(0 0 0 / 6%);
 }
 
 [part~='content'] {

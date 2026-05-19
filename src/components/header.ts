@@ -40,6 +40,14 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     return this.state.resizing;
   }
 
+  protected get reorderController() {
+    return this.state.reordering;
+  }
+
+  protected get isDraggable() {
+    return Boolean(this.state?.reordering?.isDraggable(this.column));
+  }
+
   @consume({ context: gridStateContext, subscribe: true })
   @property({ attribute: false })
   public state!: StateController<T>;
@@ -94,6 +102,72 @@ export default class ApexGridHeader<T extends object> extends LitElement {
 
   #handleAutosize = () => this.resizeController.autosize(this.column, this);
 
+  #handleDragStart = (event: DragEvent) => {
+    if (!this.isDraggable) {
+      event.preventDefault();
+      return;
+    }
+    this.setAttribute('data-dragging', '');
+    event.dataTransfer?.setData('text/plain', String(this.column.key));
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+    this.reorderController.start(this.column.key);
+  };
+
+  #handleDragEnd = () => {
+    this.removeAttribute('data-dragging');
+    this.reorderController.end();
+  };
+
+  #handleDragOver = (event: DragEvent) => {
+    const state = this.reorderController.state;
+    if (!state) return;
+    const source = this.state.host.getColumn(state.sourceKey);
+    if (!source || !this.reorderController.canDrop(source, this.column)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    this.reorderController.over(this.column, event.clientX, this.getBoundingClientRect());
+  };
+
+  #handleDragLeave = () => {
+    this.reorderController.clearTarget();
+  };
+
+  #handleDrop = (event: DragEvent) => {
+    if (!this.reorderController.state) return;
+    event.preventDefault();
+    this.reorderController.drop();
+  };
+
+  protected override updated() {
+    // Sync the HTMLElement.draggable attribute every update so we react to
+    // both the grid-level `columnReordering` flag arriving via context AND
+    // per-column `reorderable: false` opt-outs at runtime.
+    const next = this.isDraggable;
+    if (this.draggable !== next) {
+      this.draggable = next;
+    }
+  }
+
+  public override connectedCallback(): void {
+    super.connectedCallback();
+    this.addEventListener('dragstart', this.#handleDragStart);
+    this.addEventListener('dragend', this.#handleDragEnd);
+    this.addEventListener('dragover', this.#handleDragOver);
+    this.addEventListener('dragleave', this.#handleDragLeave);
+    this.addEventListener('drop', this.#handleDrop);
+  }
+
+  public override disconnectedCallback(): void {
+    this.removeEventListener('dragstart', this.#handleDragStart);
+    this.removeEventListener('dragend', this.#handleDragEnd);
+    this.removeEventListener('dragover', this.#handleDragOver);
+    this.removeEventListener('dragleave', this.#handleDragLeave);
+    this.removeEventListener('drop', this.#handleDrop);
+    super.disconnectedCallback();
+  }
+
   protected renderSortPart() {
     const state = this.state.sorting.state.get(this.column.key);
     const idx = Array.from(this.state.sorting.state.values()).indexOf(state!);
@@ -111,6 +185,7 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     return state || this.isSortable
       ? html`<span
           part=${partNameMap({ action: true, sorted: !!state?.direction })}
+          draggable="false"
           @click=${this.isSortable ? this.#handleClick : nothing}
         >
           <igc-icon
@@ -138,6 +213,7 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     return this.column.resizable
       ? html`<span
           part="resizable"
+          draggable="false"
           @dblclick=${this.#handleAutosize}
           @pointerdown=${this.#handleResizeStart}
         ></span>`

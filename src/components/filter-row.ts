@@ -13,7 +13,7 @@ import { DEFAULT_COLUMN_CONFIG } from '../internal/constants.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_FILTER_ROW_TAG } from '../internal/tags.js';
 import type { ColumnConfiguration } from '../internal/types.js';
-import { getFilterOperandsFor } from '../internal/utils.js';
+import { getDisplayColumns, getFilterOperandsFor, getPinEdge } from '../internal/utils.js';
 import { watch } from '../internal/watch.js';
 import type { FilterExpressionTree } from '../operations/filter/tree.js';
 import type { FilterExpression, FilterOperation, OperandKeys } from '../operations/filter/types.js';
@@ -361,13 +361,24 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   }
 
   protected renderInactiveState() {
-    return this.state.host.columns.map((column) =>
-      column.hidden
-        ? nothing
-        : html`<div part="filter-row-preview">
-            ${column.filter ? this.renderFilterState(column) : nothing}
-          </div>`
-    );
+    const pinOffsets = this.state.pinOffsets;
+    const displayColumns = getDisplayColumns(this.state.host.columns);
+
+    return displayColumns.map((column, index) => {
+      if (column.hidden) return nothing;
+      const offset = pinOffsets.get(column.key);
+      const pinStyle =
+        column.pinned && typeof offset === 'number' ? `--apex-pin-offset:${offset}px` : '';
+      const edge = getPinEdge(displayColumns, index);
+      return html`<div
+        part="filter-row-preview"
+        data-pinned=${column.pinned ?? 'none'}
+        data-pin-edge=${edge ?? 'none'}
+        style=${pinStyle}
+      >
+        ${column.filter ? this.renderFilterState(column) : nothing}
+      </div>`;
+    });
   }
 
   protected override render() {

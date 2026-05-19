@@ -7,6 +7,7 @@ import { partNameMap } from '../internal/part-map.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_HEADER_ROW_TAG } from '../internal/tags.js';
 import type { ColumnConfiguration } from '../internal/types.js';
+import { getPinEdge } from '../internal/utils.js';
 import { styles } from '../styles/header-row/header-row.base.css.js';
 import ApexGridHeader from './header.js';
 
@@ -29,6 +30,10 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
 
   @property({ attribute: false })
   public columns: Array<ColumnConfiguration<T>> = [];
+
+  /** Cumulative pin offsets (px) keyed by column key. */
+  @property({ attribute: false })
+  public pinOffsets: Map<unknown, number> = new Map();
 
   public get headers() {
     return Array.from(this._headers);
@@ -61,19 +66,39 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
     return super.shouldUpdate(props);
   }
 
+  protected renderDropIndicator() {
+    const state = this.state.reordering.state;
+    if (!state || state.indicatorOffset === null) return nothing;
+    return html`<div
+      part="reorder-indicator"
+      style=${`inset-inline-start:${state.indicatorOffset}px`}
+    ></div>`;
+  }
+
   protected override render() {
     const filterRow = this.state.filtering.filterRow;
+    const reorderState = this.state.reordering.state;
 
-    return html`${map(this.columns, (column) =>
-      column.hidden
-        ? nothing
-        : html`<apex-grid-header
-            part=${partNameMap({
-              filtered: column === filterRow?.column,
-            })}
-            .column=${column}
-          ></apex-grid-header>`
-    )}`;
+    return html`${map(this.columns, (column, index) => {
+      if (column.hidden) return nothing;
+      const offset = this.pinOffsets.get(column.key);
+      const pinStyle =
+        column.pinned && typeof offset === 'number' ? `--apex-pin-offset:${offset}px` : '';
+      const edge = getPinEdge(this.columns, index);
+      const isDragSource = reorderState?.sourceKey === column.key;
+      return html`<apex-grid-header
+        part=${partNameMap({
+          filtered: column === filterRow?.column,
+          'pinned-start': column.pinned === 'start',
+          'pinned-end': column.pinned === 'end',
+          dragging: isDragSource,
+        })}
+        data-pinned=${column.pinned ?? 'none'}
+        data-pin-edge=${edge ?? 'none'}
+        style=${pinStyle}
+        .column=${column}
+      ></apex-grid-header>`;
+    })}${this.renderDropIndicator()}`;
   }
 }
 

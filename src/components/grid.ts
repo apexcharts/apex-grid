@@ -19,10 +19,19 @@ import { addThemingController } from '../internal/theming.js';
 import type {
   ColumnConfiguration,
   DataPipelineConfiguration,
+  GridEditingConfiguration,
   GridSortConfiguration,
   Keys,
+  PaginationConfiguration,
+  PaginationState,
+  PinPosition,
 } from '../internal/types.js';
-import { asArray, autoGenerateColumns, getFilterOperandsFor } from '../internal/utils.js';
+import {
+  asArray,
+  autoGenerateColumns,
+  getDisplayColumns,
+  getFilterOperandsFor,
+} from '../internal/utils.js';
 import { watch } from '../internal/watch.js';
 import type { FilterExpression } from '../operations/filter/types.js';
 import type { SortExpression } from '../operations/sort/types.js';
@@ -33,7 +42,9 @@ import { styles as material } from '../styles/grid/themes/light/grid.material.cs
 import ApexGridCell from './cell.js';
 import ApexFilterRow from './filter-row.js';
 import ApexGridHeaderRow from './header-row.js';
+import ApexGridPaginator from './paginator.js';
 import ApexGridRow from './row.js';
+import ApexGridToolbar from './toolbar.js';
 import ApexVirtualizer from './virtualizer.js';
 
 /**
@@ -78,6 +89,209 @@ export interface ApexFilteredEvent<T extends object> {
 }
 
 /**
+ * Event payload for the cancellable `pageChanging` event.
+ */
+export interface ApexPageChangingEvent {
+  /**
+   * The current page (zero-based) before the change.
+   */
+  page: number;
+  /**
+   * The current page size before the change.
+   */
+  pageSize: number;
+  /**
+   * The proposed page (zero-based) the grid will navigate to.
+   */
+  nextPage: number;
+  /**
+   * The proposed page size after the change.
+   */
+  nextPageSize: number;
+}
+
+/**
+ * Event payload for the `pageChanged` event. Mirrors {@link PaginationState}.
+ */
+export interface ApexPageChangedEvent extends PaginationState {}
+
+/**
+ * Event payload for the cancellable `quickFilterChanging` event.
+ */
+export interface ApexQuickFilterChangingEvent {
+  /**
+   * The current quick-filter value before the change.
+   */
+  value: string;
+  /**
+   * The proposed quick-filter value.
+   */
+  nextValue: string;
+}
+
+/**
+ * Event payload for the `quickFilterChanged` event.
+ */
+export interface ApexQuickFilterChangedEvent {
+  /**
+   * The resolved quick-filter value after the change.
+   */
+  value: string;
+}
+
+/**
+ * Drop position relative to a target column when reordering.
+ */
+export type ColumnDropPosition = 'before' | 'after';
+
+/**
+ * Event payload for the cancellable `cellValueChanging` event.
+ */
+export interface ApexCellValueChangingEvent<T extends object> {
+  /**
+   * The column key of the edited cell.
+   */
+  key: Keys<T>;
+  /**
+   * The view-relative row index (matches {@link ApexGrid.pageItems}).
+   */
+  rowIndex: number;
+  /**
+   * The data record being edited (a live reference to the row in
+   * {@link ApexGrid.data}).
+   */
+  data: T;
+  /**
+   * The value before the edit.
+   */
+  oldValue: unknown;
+  /**
+   * The candidate new value.
+   */
+  newValue: unknown;
+}
+
+/**
+ * Event payload for the `cellValueChanged` event.
+ */
+export interface ApexCellValueChangedEvent<T extends object> {
+  /**
+   * The column key of the edited cell.
+   */
+  key: Keys<T>;
+  /**
+   * The view-relative row index after the change.
+   */
+  rowIndex: number;
+  /**
+   * The data record after the change (a live reference to the row in
+   * {@link ApexGrid.data}).
+   */
+  data: T;
+  /**
+   * The applied value.
+   */
+  value: unknown;
+}
+
+/**
+ * Event payload for the `rowEditStarted` event.
+ */
+export interface ApexRowEditStartedEvent {
+  /**
+   * The view-relative row index entering edit mode.
+   */
+  rowIndex: number;
+}
+
+/**
+ * Event payload for the `rowEditEnded` event.
+ */
+export interface ApexRowEditEndedEvent {
+  /**
+   * The view-relative row index that left edit mode.
+   */
+  rowIndex: number;
+  /**
+   * `true` when pending edits were applied, `false` when discarded.
+   */
+  committed: boolean;
+}
+
+/**
+ * Event payload for the cancellable `columnMoving` event.
+ */
+export interface ApexColumnMovingEvent<T extends object> {
+  /**
+   * The column being moved.
+   */
+  key: Keys<T>;
+  /**
+   * The current index of the moving column in {@link ApexGrid.columns}.
+   */
+  fromIndex: number;
+  /**
+   * The target column key. The dragged column will be placed `position`
+   * (before/after) this column.
+   */
+  toKey: Keys<T>;
+  /**
+   * Whether the dragged column is being placed before or after `toKey`.
+   */
+  position: ColumnDropPosition;
+}
+
+/**
+ * Event payload for the `columnMoved` event.
+ */
+export interface ApexColumnMovedEvent<T extends object> {
+  /**
+   * The column that was moved.
+   */
+  key: Keys<T>;
+  /**
+   * The original index in {@link ApexGrid.columns}.
+   */
+  fromIndex: number;
+  /**
+   * The resolved index in {@link ApexGrid.columns} after the move.
+   */
+  toIndex: number;
+}
+
+/**
+ * Event payload for the cancellable `columnPinning` event.
+ */
+export interface ApexColumnPinningEvent<T extends object> {
+  /**
+   * The target column key.
+   */
+  key: Keys<T>;
+  /**
+   * The current pin position before the change (`null` if unpinned).
+   */
+  previous: PinPosition;
+  /**
+   * The proposed pin position (`null` to unpin).
+   */
+  next: PinPosition;
+}
+
+/**
+ * Event payload for the `columnPinned` event.
+ */
+export interface ApexColumnPinnedEvent<T extends object> {
+  /**
+   * The target column key.
+   */
+  key: Keys<T>;
+  /**
+   * The resolved pin position after the change.
+   */
+  pinned: PinPosition;
+}
+
+/**
  * Events for the apex-grid.
  */
 export interface ApexGridEventMap<T extends object> {
@@ -116,6 +330,99 @@ export interface ApexGridEventMap<T extends object> {
    * @event
    */
   filtered: CustomEvent<ApexFilteredEvent<T>>;
+  /**
+   * Emitted before the grid navigates to a new page or applies a new page size.
+   *
+   * @remarks
+   * Cancellable — calling `preventDefault()` (or returning a falsy result from
+   * `addEventListener` synchronously) aborts the page change.
+   *
+   * @event
+   */
+  pageChanging: CustomEvent<ApexPageChangingEvent>;
+  /**
+   * Emitted after a page or page-size change has been applied and the pipeline has run.
+   *
+   * @event
+   */
+  pageChanged: CustomEvent<ApexPageChangedEvent>;
+  /**
+   * Emitted before the quick-filter value is applied.
+   *
+   * @remarks
+   * Cancellable — calling `preventDefault()` aborts the change. The value can
+   * be replaced inside the listener by reassigning {@link ApexGrid.quickFilter}.
+   *
+   * @event
+   */
+  quickFilterChanging: CustomEvent<ApexQuickFilterChangingEvent>;
+  /**
+   * Emitted after a quick-filter change has been applied and the pipeline has run.
+   *
+   * @event
+   */
+  quickFilterChanged: CustomEvent<ApexQuickFilterChangedEvent>;
+  /**
+   * Emitted before a column's pin position changes.
+   *
+   * @remarks
+   * Cancellable — calling `preventDefault()` aborts the change.
+   *
+   * @event
+   */
+  columnPinning: CustomEvent<ApexColumnPinningEvent<T>>;
+  /**
+   * Emitted after a column's pin position change has been applied.
+   *
+   * @event
+   */
+  columnPinned: CustomEvent<ApexColumnPinnedEvent<T>>;
+  /**
+   * Emitted before a column is moved through the UI or {@link ApexGrid.moveColumn}.
+   *
+   * @remarks
+   * Cancellable — calling `preventDefault()` aborts the move. The event detail
+   * carries the source column key, its current array index, the target column
+   * key and the drop position.
+   *
+   * @event
+   */
+  columnMoving: CustomEvent<ApexColumnMovingEvent<T>>;
+  /**
+   * Emitted after a column has been moved.
+   *
+   * @event
+   */
+  columnMoved: CustomEvent<ApexColumnMovedEvent<T>>;
+  /**
+   * Emitted before a cell value is committed.
+   *
+   * @remarks
+   * Cancellable — `preventDefault()` rolls back the candidate value. In row
+   * edit mode the event still fires per-cell at commit time.
+   *
+   * @event
+   */
+  cellValueChanging: CustomEvent<ApexCellValueChangingEvent<T>>;
+  /**
+   * Emitted after a cell value has been committed.
+   *
+   * @event
+   */
+  cellValueChanged: CustomEvent<ApexCellValueChangedEvent<T>>;
+  /**
+   * Emitted when a row enters edit mode (row edit mode only).
+   *
+   * @event
+   */
+  rowEditStarted: CustomEvent<ApexRowEditStartedEvent>;
+  /**
+   * Emitted when a row leaves edit mode, with `committed` reporting whether
+   * pending edits were applied (row edit mode only).
+   *
+   * @event
+   */
+  rowEditEnded: CustomEvent<ApexRowEditEndedEvent>;
 }
 
 /**
@@ -144,6 +451,18 @@ export interface ApexGridEventMap<T extends object> {
  * @fires sorted - Emitted when a sort operation initiated through the UI has completed.
  * @fires filtering - Emitted when filtering is initiated through the UI.
  * @fires filtered - Emitted when a filter operation initiated through the UI has completed.
+ * @fires pageChanging - Cancellable. Emitted before page/page-size changes are applied.
+ * @fires pageChanged - Emitted after a page/page-size change has been applied.
+ * @fires quickFilterChanging - Cancellable. Emitted before a quick-filter value is applied.
+ * @fires quickFilterChanged - Emitted after a quick-filter change has been applied.
+ * @fires columnPinning - Cancellable. Emitted before a column's pin position changes.
+ * @fires columnPinned - Emitted after a column's pin position has changed.
+ * @fires columnMoving - Cancellable. Emitted before a column is moved.
+ * @fires columnMoved - Emitted after a column has been moved.
+ * @fires cellValueChanging - Cancellable. Emitted before a cell value is committed.
+ * @fires cellValueChanged - Emitted after a cell value has been committed.
+ * @fires rowEditStarted - Emitted when a row enters edit mode (row mode only).
+ * @fires rowEditEnded - Emitted when a row leaves edit mode (row mode only).
  *
  */
 export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMap<T>> {
@@ -170,6 +489,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       ApexGridRow,
       ApexGridHeaderRow,
       ApexFilterRow,
+      ApexGridPaginator,
+      ApexGridToolbar,
       IgcButtonComponent,
       IgcChipComponent,
       IgcInputComponent,
@@ -194,6 +515,12 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
   @query(ApexFilterRow.tagName)
   protected filterRow!: ApexFilterRow<T>;
+
+  @query(ApexGridPaginator.tagName)
+  protected paginator!: ApexGridPaginator<T>;
+
+  @query(ApexGridToolbar.tagName)
+  protected toolbar!: ApexGridToolbar<T>;
 
   @state()
   protected dataState: Array<T> = [];
@@ -248,6 +575,82 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   @property({ attribute: false })
   public dataPipelineConfiguration!: DataPipelineConfiguration<T>;
+
+  /**
+   * Pagination configuration for the grid.
+   *
+   * @remarks
+   * Pagination is disabled by default. Set `enabled: true` and (optionally) `pageSize`
+   * to render the built-in `<apex-grid-paginator>` and slice the dataView. For
+   * server-side pagination set `mode: 'remote'` and supply `totalItems`. The grid
+   * emits the cancellable `pageChanging` event before applying a change and the
+   * `pageChanged` event after the pipeline has run.
+   *
+   * @example
+   * ```ts
+   * grid.pagination = { enabled: true, pageSize: 25 };
+   * grid.addEventListener('pageChanged', (event) => {
+   *   console.log('Now on page', event.detail.page, 'of', event.detail.pageCount);
+   * });
+   * ```
+   */
+  @property({ attribute: false })
+  public pagination?: PaginationConfiguration;
+
+  /**
+   * The quick-filter (global search) value applied to the dataView.
+   *
+   * @remarks
+   * When non-empty, the grid filters records whose visible-column values contain
+   * the term (case-insensitive substring match). Customise by providing
+   * {@link DataPipelineConfiguration.quickFilter}.
+   *
+   * @attr quick-filter
+   */
+  @property({ type: String, attribute: 'quick-filter' })
+  public quickFilter = '';
+
+  /**
+   * Whether the built-in quick-filter input is rendered above the header row.
+   *
+   * @remarks
+   * The {@link ApexGrid.quickFilter} value can be controlled programmatically regardless
+   * of this flag; this only controls whether the toolbar UI is visible.
+   *
+   * @attr show-quick-filter
+   */
+  @property({ type: Boolean, attribute: 'show-quick-filter' })
+  public showQuickFilter = false;
+
+  /**
+   * Enables drag-and-drop column reordering on the column headers.
+   *
+   * @remarks
+   * Per-column opt-out is available through {@link BaseColumnConfiguration.reorderable}.
+   * Reordering is constrained to a column's own pinning group — start-pinned
+   * columns can only swap with start-pinned, unpinned with unpinned, and
+   * end-pinned with end-pinned.
+   *
+   * @attr column-reordering
+   */
+  @property({ type: Boolean, attribute: 'column-reordering' })
+  public columnReordering = false;
+
+  /**
+   * Inline editing configuration for the grid.
+   *
+   * @remarks
+   * Editing is disabled by default. Set `enabled: true` and (optionally) `mode`
+   * (`'cell' | 'row'`) and `trigger` (`'click' | 'doubleClick'`) to opt in.
+   * Per-column opt-in is required via {@link BaseColumnConfiguration.editable}.
+   *
+   * @example
+   * ```ts
+   * grid.editing = { enabled: true, mode: 'cell', trigger: 'doubleClick' };
+   * ```
+   */
+  @property({ attribute: false })
+  public editing?: GridEditingConfiguration;
 
   /**
    * Set the sort state for the grid.
@@ -309,10 +712,78 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
+   * The columns in visual render order: `'start'`-pinned columns first, then
+   * unpinned columns, then `'end'`-pinned columns.
+   *
+   * @remarks
+   * Use this when you need to iterate the columns in the same order the grid
+   * actually displays them (for example to build a column chooser). Public APIs
+   * like {@link ApexGrid.getColumn} continue to operate on the user-supplied
+   * {@link ApexGrid.columns} array.
+   */
+  public get displayColumns(): ReadonlyArray<ColumnConfiguration<T>> {
+    return getDisplayColumns(this.columns);
+  }
+
+  /**
    * The total number of items in the {@link ApexGrid.dataView} collection.
+   *
+   * @remarks
+   * This is always the post-filter, post-sort row count — pagination does not change it.
+   * Use {@link ApexGrid.pageItems} to read the rows currently rendered into the body.
    */
   public get totalItems() {
+    if (this.pagination?.mode === 'remote') {
+      return Math.max(0, this.pagination?.totalItems ?? 0);
+    }
     return this.dataState.length;
+  }
+
+  /**
+   * The records currently rendered into the virtualized body.
+   *
+   * @remarks
+   * Equal to {@link ApexGrid.dataView} when pagination is disabled. With pagination
+   * enabled (`'local'` mode) this is the active page slice.
+   */
+  public get pageItems(): ReadonlyArray<T> {
+    if (!this.stateController.pagination.enabled) return this.dataState;
+    if (this.pagination?.mode === 'remote') return this.dataState;
+    const { page, pageSize } = this.stateController.pagination;
+    if (!pageSize) return this.dataState;
+    const start = page * pageSize;
+    return this.dataState.slice(start, start + pageSize);
+  }
+
+  /**
+   * The current zero-based page index.
+   */
+  @property({ attribute: false })
+  public get page(): number {
+    return this.stateController.pagination.page;
+  }
+
+  public set page(value: number) {
+    this.stateController.pagination.gotoPage(value);
+  }
+
+  /**
+   * The current page size.
+   */
+  @property({ attribute: false })
+  public get pageSize(): number {
+    return this.stateController.pagination.pageSize;
+  }
+
+  public set pageSize(value: number) {
+    this.stateController.pagination.setPageSize(value);
+  }
+
+  /**
+   * The total number of pages computed from {@link ApexGrid.totalItems} and {@link ApexGrid.pageSize}.
+   */
+  public get pageCount(): number {
+    return this.stateController.pagination.pageCount;
   }
 
   @watch('columns')
@@ -322,7 +793,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
   @watch('data')
   protected dataChanged() {
-    this.dataState = structuredClone(this.data);
+    // Shallow copy of the array — items keep reference equality with
+    // `this.data` so cell edits can write through to the source record.
+    this.dataState = [...this.data];
     autoGenerateColumns(this);
 
     if (this.hasUpdated) {
@@ -332,10 +805,31 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
   @watch(PIPELINE)
   protected async pipeline() {
-    this.dataState = await this.dataController.apply(
-      structuredClone(this.data),
-      this.stateController
-    );
+    this.dataState = await this.dataController.apply([...this.data], this.stateController);
+    this.stateController.pagination.reclamp();
+  }
+
+  @watch('pagination')
+  protected paginationChanged() {
+    const ctrl = this.stateController?.pagination;
+    if (!ctrl) return;
+    const next = this.pagination ?? {};
+    if (typeof next.pageSize === 'number' && next.pageSize > 0) {
+      ctrl.pageSize = next.pageSize;
+    }
+    if (typeof next.page === 'number') {
+      ctrl.page = next.page;
+    }
+    if (this.hasUpdated) {
+      this.pipeline();
+    }
+  }
+
+  @watch('quickFilter')
+  protected quickFilterChanged() {
+    if (this.hasUpdated) {
+      this.pipeline();
+    }
   }
 
   constructor() {
@@ -403,6 +897,97 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
+   * Navigates the grid to the given zero-based `page` index.
+   *
+   * @remarks
+   * Emits the cancellable `pageChanging` event before applying the change and the
+   * `pageChanged` event after. Out-of-range values are clamped into `[0, pageCount - 1]`.
+   *
+   * @param page - The target zero-based page index.
+   * @returns `true` if the change was applied, `false` if cancelled or a no-op.
+   *
+   * @example
+   * ```ts
+   * await grid.gotoPage(2);
+   * ```
+   */
+  public gotoPage(page: number): Promise<boolean> {
+    return this.stateController.pagination.gotoPage(page);
+  }
+
+  /**
+   * Updates the grid's page size and returns to the first page.
+   *
+   * @remarks
+   * Emits the cancellable `pageChanging` event before applying the change and the
+   * `pageChanged` event after.
+   *
+   * @param size - The new page size (must be a positive integer).
+   * @returns `true` if the change was applied, `false` if cancelled or a no-op.
+   */
+  public setPageSize(size: number): Promise<boolean> {
+    return this.stateController.pagination.setPageSize(size);
+  }
+
+  /**
+   * Navigates to the next page. No-op if already on the last page.
+   */
+  public nextPage() {
+    return this.stateController.pagination.nextPage();
+  }
+
+  /**
+   * Navigates to the previous page. No-op if already on the first page.
+   */
+  public previousPage() {
+    return this.stateController.pagination.previousPage();
+  }
+
+  /**
+   * Navigates to the first page.
+   */
+  public firstPage() {
+    return this.stateController.pagination.firstPage();
+  }
+
+  /**
+   * Navigates to the last page.
+   */
+  public lastPage() {
+    return this.stateController.pagination.lastPage();
+  }
+
+  /**
+   * Applies a new quick-filter (global search) value, emitting the cancellable
+   * `quickFilterChanging` event first and the `quickFilterChanged` event after the
+   * pipeline has run.
+   *
+   * @param value - The new quick-filter value. Pass `''` to clear.
+   * @returns `true` if the change was applied, `false` if cancelled or a no-op.
+   *
+   * @example
+   * ```ts
+   * await grid.setQuickFilter('john');
+   * ```
+   */
+  public async setQuickFilter(value: string): Promise<boolean> {
+    const next = value ?? '';
+    if (next === this.quickFilter) return false;
+
+    const proceed = this.emitEvent('quickFilterChanging', {
+      detail: { value: this.quickFilter, nextValue: next },
+      cancelable: true,
+    });
+    if (!proceed) return false;
+
+    this.quickFilter = next;
+    this.stateController.pagination.page = 0;
+    await this.updateComplete;
+    this.emitEvent('quickFilterChanged', { detail: { value: this.quickFilter } });
+    return true;
+  }
+
+  /**
    * Returns a {@link ColumnConfiguration} for a given column.
    */
   public getColumn(id: Keys<T> | number) {
@@ -413,16 +998,199 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
   /**
    * Updates the column configuration of the grid.
+   *
+   * @remarks
+   * Each updated column is replaced with a fresh object reference so that cells
+   * and headers re-render with the new template / configuration. The
+   * user-supplied `columns` array is also reassigned for Lit reactivity.
    */
   public updateColumns(columns: ColumnConfiguration<T> | ColumnConfiguration<T>[]) {
-    for (const column of asArray(columns)) {
-      const instance = this.columns.find((curr) => curr.key === column.key);
-      if (instance) {
-        Object.assign(instance, column);
-      }
-    }
+    const updates = new Map(asArray(columns).map((c) => [c.key, c]));
+    if (updates.size === 0) return;
 
+    let touched = false;
+    const next = this.columns.map((column) => {
+      const patch = updates.get(column.key);
+      if (!patch) return column;
+      touched = true;
+      return { ...column, ...patch };
+    });
+
+    if (!touched) return;
+    this.columns = next;
     this.requestUpdate(PIPELINE);
+  }
+
+  /**
+   * Pins a column to one of the grid's edges, or unpins it when `position` is `null`.
+   *
+   * @remarks
+   * Emits the cancellable `columnPinning` event first and the `columnPinned`
+   * event after the update is applied. The user-supplied {@link ApexGrid.columns}
+   * array is not reordered — only the visual render order changes.
+   *
+   * @param key - The target column key.
+   * @param position - `'start'`, `'end'`, or `null` to unpin.
+   * @returns `true` if the change was applied, `false` if cancelled or a no-op.
+   *
+   * @example
+   * ```ts
+   * await grid.pinColumn('name', 'start');
+   * await grid.pinColumn('actions', 'end');
+   * ```
+   */
+  public async pinColumn(key: Keys<T>, position: PinPosition): Promise<boolean> {
+    const column = this.getColumn(key);
+    if (!column) return false;
+
+    const previous = column.pinned ?? null;
+    const next = position ?? null;
+    if (previous === next) return false;
+
+    const proceed = this.emitEvent('columnPinning', {
+      detail: { key, previous, next },
+      cancelable: true,
+    });
+    if (!proceed) return false;
+
+    column.pinned = next ?? undefined;
+    this.columns = [...this.columns];
+    await this.updateComplete;
+    this.emitEvent('columnPinned', { detail: { key, pinned: next } });
+    return true;
+  }
+
+  /**
+   * Unpins a column. Equivalent to {@link ApexGrid.pinColumn}(`key`, `null`).
+   *
+   * @param key - The target column key.
+   * @returns `true` if the change was applied, `false` if the column was already
+   * unpinned or the operation was cancelled.
+   */
+  public unpinColumn(key: Keys<T>): Promise<boolean> {
+    return this.pinColumn(key, null);
+  }
+
+  /**
+   * The cell currently in edit mode, or `null`.
+   */
+  public get editingCell(): { rowIndex: number; columnKey: Keys<T> } | null {
+    const active = this.stateController.editing.activeCell;
+    return active ? { rowIndex: active.rowIndex, columnKey: active.columnKey } : null;
+  }
+
+  /**
+   * The view-relative index of the row currently in edit mode (row edit mode
+   * only), or `null`.
+   */
+  public get editingRow(): number | null {
+    return this.stateController.editing.activeRow?.rowIndex ?? null;
+  }
+
+  /**
+   * Begins editing the cell at `(rowIndex, columnKey)`.
+   *
+   * @remarks
+   * `rowIndex` is the view-relative index (matches {@link ApexGrid.pageItems}).
+   * Returns `false` when the column isn't editable, the row index is out of
+   * range, or the request was rejected (for example in row mode with pending
+   * changes that couldn't be committed).
+   */
+  public editCell(rowIndex: number, columnKey: Keys<T>): Promise<boolean> {
+    return this.stateController.editing.editCell(rowIndex, columnKey);
+  }
+
+  /**
+   * Begins editing the entire row at `rowIndex` (row edit mode only).
+   *
+   * @returns `false` when editing is disabled, the grid is in cell mode, or
+   * the row index is out of range.
+   */
+  public editRow(rowIndex: number): Promise<boolean> {
+    return this.stateController.editing.editRow(rowIndex);
+  }
+
+  /**
+   * Commits the current edit.
+   *
+   * @remarks
+   * In cell mode this writes the active cell's pending value. In row mode it
+   * flushes all pending values for the active row. Emits `cellValueChanging`
+   * per changed cell (cancellable) and `cellValueChanged` after, followed by
+   * `rowEditEnded` in row mode.
+   */
+  public commitEdit(): Promise<boolean> {
+    const editing = this.stateController.editing;
+    return editing.mode === 'row' ? editing.commitRow() : editing.commitCell();
+  }
+
+  /**
+   * Discards the current edit without writing back to {@link ApexGrid.data}.
+   */
+  public cancelEdit(): void {
+    const editing = this.stateController.editing;
+    if (editing.mode === 'row') {
+      editing.cancelRow();
+    } else {
+      editing.cancelCell();
+    }
+  }
+
+  /**
+   * Moves a column relative to another column.
+   *
+   * @remarks
+   * Emits the cancellable `columnMoving` event first and `columnMoved` after.
+   * Reordering only succeeds when the source and target columns share the same
+   * pinning group (start / unpinned / end) — cross-group moves return `false`.
+   * Use {@link ApexGrid.pinColumn} to change a column's pinning group first.
+   *
+   * @param fromKey - The column to move.
+   * @param toKey - The reference column.
+   * @param position - Whether to place `fromKey` before or after `toKey`. Defaults to `'before'`.
+   * @returns `true` if the move was applied, `false` if cancelled or a no-op.
+   *
+   * @example
+   * ```ts
+   * await grid.moveColumn('email', 'name', 'after');
+   * ```
+   */
+  public async moveColumn(
+    fromKey: Keys<T>,
+    toKey: Keys<T>,
+    position: ColumnDropPosition = 'before'
+  ): Promise<boolean> {
+    if (fromKey === toKey) return false;
+    const fromIndex = this.columns.findIndex((column) => column.key === fromKey);
+    const toIndex = this.columns.findIndex((column) => column.key === toKey);
+    if (fromIndex < 0 || toIndex < 0) return false;
+
+    const source = this.columns[fromIndex];
+    const target = this.columns[toIndex];
+    if ((source.pinned ?? null) !== (target.pinned ?? null)) return false;
+
+    const proceed = this.emitEvent('columnMoving', {
+      detail: { key: fromKey, fromIndex, toKey, position },
+      cancelable: true,
+    });
+    if (!proceed) return false;
+
+    const next = this.columns.slice();
+    const [moved] = next.splice(fromIndex, 1);
+    let insertIndex = next.findIndex((column) => column.key === toKey);
+    if (insertIndex < 0) return false;
+    if (position === 'after') insertIndex += 1;
+    next.splice(insertIndex, 0, moved);
+
+    if (next.every((column, index) => column === this.columns[index])) return false;
+
+    this.columns = next;
+    await this.updateComplete;
+    const resolvedIndex = this.columns.findIndex((column) => column.key === fromKey);
+    this.emitEvent('columnMoved', {
+      detail: { key: fromKey, fromIndex, toIndex: resolvedIndex },
+    });
+    return true;
   }
 
   @eventOptions({ capture: true })
@@ -446,7 +1214,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     return html`
       <apex-grid-header-row
       style=${styleMap(this.DOM.columnSizes)}
-      .columns=${this.columns}
+      .columns=${this.DOM.displayColumns}
+      .pinOffsets=${this.DOM.pinOffsets}
       ></apex-grid-header-row>
     `;
   }
@@ -454,7 +1223,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   protected renderBody() {
     return html`
       <apex-virtualizer
-        .items=${this.dataState}
+        .items=${this.pageItems as T[]}
         .renderItem=${this.DOM.rowRenderer}
         @click=${this.bodyClickHandler}
         @keydown=${this.bodyKeydownHandler}
@@ -468,12 +1237,34 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       : nothing;
   }
 
+  protected renderToolbar() {
+    if (!this.showQuickFilter) return nothing;
+    return html`<apex-grid-toolbar
+      .value=${this.quickFilter}
+      @apex-quick-filter=${(event: CustomEvent<string>) => {
+        event.stopPropagation();
+        this.setQuickFilter(event.detail);
+      }}
+    ></apex-grid-toolbar>`;
+  }
+
+  protected renderPaginator() {
+    if (!this.stateController.pagination.enabled) return nothing;
+    const options =
+      this.pagination?.pageSizeOptions && this.pagination.pageSizeOptions.length > 0
+        ? this.pagination.pageSizeOptions
+        : [10, 25, 50, 100];
+    return html`<apex-grid-paginator .pageSizeOptions=${options}></apex-grid-paginator>`;
+  }
+
   protected override render() {
     return html`
       ${this.stateController.resizing.renderIndicator()}
+      ${this.renderToolbar()}
       ${this.renderHeaderRow()}
       ${this.renderFilterRow()}
       ${this.renderBody()}
+      ${this.renderPaginator()}
     `;
   }
 }

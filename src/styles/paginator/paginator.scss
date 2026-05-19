@@ -1,0 +1,134 @@
+@use '../common' as *;
+
+$header-background: var(--igx-header-background, var(--header-background));
+$header-text-color: var(--igx-header-text-color, var(--header-text-color));
+$header-border-width: var(--igx-header-border-width, var(--header-border-width));
+$header-border-style: var(--igx-header-border-style, var(--header-border-style));
+$header-border-color: var(--igx-header-border-color, var(--header-border-color));
+
+:host {
+    --ig-size: 1;
+
+    grid-row: paginator-row;
+    display: block;
+    background: $header-background;
+    color: $header-text-color;
+    border-block-start: $header-border-width $header-border-style $header-border-color;
+    font-size: rem(12px);
+    z-index: calc(var(--z-index-base) + 4);
+
+    // Sticky in both axes so the paginator stays anchored to the bottom-left of
+    // the viewport regardless of how the grid host is scrolled. `width` is clamped
+    // to the host's clientWidth (written by `GridDOMController.recomputeHostWidth`)
+    // so it doesn't extend across the scrollable area.
+    position: sticky;
+    inset-block-end: 0;
+    inset-inline-start: 0;
+    box-sizing: border-box;
+    width: var(--apex-host-width, 100%);
+    max-width: var(--apex-host-width, 100%);
+}
+
+[part='paginator'] {
+    display: flex;
+    align-items: center;
+    gap: rem(12px);
+    padding: rem(4px) rem(12px);
+    min-height: rem(32px);
+}
+
+[part='paginator-size'] {
+    display: inline-flex;
+    align-items: center;
+
+    select {
+        appearance: auto;
+        padding: rem(2px) rem(6px);
+        font: inherit;
+        font-size: rem(12px);
+        color: inherit;
+        background: transparent;
+        border: 1px solid $header-border-color;
+        border-radius: rem(3px);
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    select:focus-visible {
+        outline: rem(2px) solid var(--ig-primary-500, currentcolor);
+        outline-offset: rem(1px);
+    }
+}
+
+[part='paginator-info'] {
+    flex: 1;
+    text-align: center;
+    white-space: nowrap;
+    color: inherit;
+    opacity: 0.85;
+}
+
+[part='paginator-controls'] {
+    display: inline-flex;
+    align-items: center;
+    gap: rem(2px);
+}
+
+[part='paginator-page'] {
+    padding: 0 rem(6px);
+    min-width: rem(48px);
+    text-align: center;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+[part='paginator-button'] {
+    appearance: none;
+    background: transparent;
+    color: inherit;
+    border: 0;
+    padding: rem(2px);
+    margin: 0;
+    width: rem(24px);
+    height: rem(24px);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: rem(3px);
+    cursor: pointer;
+    line-height: 0;
+
+    igc-icon {
+        --ig-size: 1;
+        --size: #{rem(16px)};
+
+        width: rem(16px);
+        height: rem(16px);
+    }
+}
+
+[part='paginator-button']:hover:not(:disabled) {
+    background: var(--igx-hover-background, rgb(0 0 0 / 6%));
+}
+
+[part='paginator-button']:focus-visible {
+    outline: rem(2px) solid var(--ig-primary-500, currentcolor);
+    outline-offset: rem(-2px);
+}
+
+[part='paginator-button']:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}

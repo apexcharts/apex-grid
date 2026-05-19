@@ -73,6 +73,16 @@ export interface ColumnFilterConfiguration {
   caseSensitive?: boolean;
 }
 
+/**
+ * Pin position for a column.
+ *
+ * @remarks
+ * `'start'` pins the column to the leading edge of the grid (inline-start);
+ * `'end'` pins it to the trailing edge. `null` or `undefined` means the column
+ * is part of the scrollable region.
+ */
+export type PinPosition = 'start' | 'end' | null;
+
 /** Configuration object for grid columns. */
 export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = Keys<T>> {
   /**
@@ -110,6 +120,28 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    */
   hidden?: boolean;
   /**
+   * Pin the column to a side of the grid.
+   *
+   * @remarks
+   * Pinned columns stay fixed during horizontal scroll. Use `'start'` (left in LTR,
+   * right in RTL) for the leading edge or `'end'` for the trailing edge. The grid
+   * renders columns in the order: `'start'`-pinned, unpinned, `'end'`-pinned, while
+   * preserving the original array order inside each group. The `columns` array
+   * itself is not mutated.
+   */
+  pinned?: PinPosition;
+  /**
+   * Whether this column can be reordered via drag-and-drop or the
+   * {@link ApexGrid.moveColumn} API.
+   *
+   * @remarks
+   * Has no effect unless the grid's `columnReordering` flag is `true`. When
+   * unset, columns inherit the grid-wide flag. Reordering is constrained to the
+   * column's own pinning group — start-pinned columns can only swap with other
+   * start-pinned columns, and likewise for end-pinned and unpinned.
+   */
+  reorderable?: boolean;
+  /**
    * Whether the the column can be resized or not.
    */
   resizable?: boolean;
@@ -129,6 +161,25 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    * Cell template callback.
    */
   cellTemplate?: (params: ApexCellContext<T, K>) => TemplateResult | unknown;
+  /**
+   * Whether values in this column can be edited inline.
+   *
+   * @remarks
+   * Has no effect unless the grid's `editing.enabled` is `true`. The default
+   * editor is chosen from the column's `type` (`'string'` → text input,
+   * `'number'` → number input, `'boolean'` → checkbox). Supply
+   * {@link BaseColumnConfiguration.editorTemplate} for full control.
+   */
+  editable?: boolean;
+  /**
+   * Custom editor template invoked while this column's cell is in edit mode.
+   *
+   * @remarks
+   * The callback receives an {@link ApexEditorContext} that includes the cell
+   * value plus `commit` / `cancel` helpers. Returning a focusable element is
+   * recommended so keyboard handoff works.
+   */
+  editorTemplate?: (params: ApexEditorContext<T, K>) => TemplateResult | unknown;
 }
 
 /**
@@ -187,6 +238,76 @@ export type ApexCellContext<T extends object, K extends Keys<T> = Keys<T>> = K e
   : never;
 
 /**
+ * Context object handed to a custom editor template.
+ *
+ * @remarks
+ * Includes the cell's current `value` plus `commit` / `cancel` callbacks so
+ * the editor can hand its result back to the grid. The custom editor is also
+ * responsible for forwarding `Enter` / `Escape` to those callbacks.
+ */
+export interface BaseApexEditorContext<T extends object, K extends Keys<T> = Keys<T>>
+  extends BaseApexCellContext<T, K> {
+  /**
+   * Commits `value` as the new cell value, going through the cancellable
+   * `cellValueChanging` event and then `cellValueChanged`.
+   *
+   * @returns `true` if the value was applied, `false` if cancelled.
+   */
+  commit: (value: PropertyType<T, K>) => Promise<boolean>;
+  /**
+   * Discards the in-progress edit and exits edit mode.
+   */
+  cancel: () => void;
+}
+
+/**
+ * See {@link BaseApexEditorContext} for the full documentation.
+ */
+export type ApexEditorContext<T extends object, K extends Keys<T> = Keys<T>> = K extends Keys<T>
+  ? BaseApexEditorContext<T, K>
+  : never;
+
+/**
+ * The edit trigger used to enter cell edit mode.
+ *
+ * @remarks
+ * `'click'` enters edit on a single click on the cell; `'doubleClick'`
+ * requires a double click. Defaults to `'doubleClick'`.
+ */
+export type EditTrigger = 'click' | 'doubleClick';
+
+/**
+ * Edit mode for the grid.
+ *
+ * @remarks
+ * `'cell'` — each cell is committed independently on blur or `Enter`.
+ * `'row'` — all editable cells in the row enter edit mode together; changes
+ *  are batched and applied via {@link ApexGrid.commitEdit} or rolled back via
+ *  {@link ApexGrid.cancelEdit}.
+ */
+export type EditMode = 'cell' | 'row';
+
+/**
+ * Grid-level editing configuration.
+ */
+export interface GridEditingConfiguration {
+  /**
+   * Whether editing is enabled. Per-column opt-in still applies via
+   * {@link BaseColumnConfiguration.editable}.
+   */
+  enabled?: boolean;
+  /**
+   * Whether each cell commits independently or whether the whole row is edited
+   * as a batch. Defaults to `'cell'`.
+   */
+  mode?: EditMode;
+  /**
+   * The interaction that opens an editor. Defaults to `'doubleClick'`.
+   */
+  trigger?: EditTrigger;
+}
+
+/**
  * The parameters passed to a {@link DataPipelineHook} callback.
  */
 export type DataPipelineParams<T extends object> = {
@@ -201,7 +322,7 @@ export type DataPipelineParams<T extends object> = {
   /**
    * The type of data operation being performed.
    */
-  type: 'sort' | 'filter';
+  type: 'sort' | 'filter' | 'quickFilter' | 'pagination';
 };
 
 /**
@@ -223,4 +344,90 @@ export interface DataPipelineConfiguration<T extends object> {
    * Hook for customizing filter operations.
    */
   filter?: DataPipelineHook<T>;
+  /**
+   * Hook for customizing pagination operations.
+   *
+   * @remarks
+   * The hook receives the filtered + sorted data slice for the grid to render and the current
+   * pagination state. Return the page slice. For server-driven pagination, return the externally
+   * fetched page and report the row total via {@link ApexGrid.totalItems}.
+   */
+  pagination?: DataPipelineHook<T>;
+  /**
+   * Hook for customizing quick (global) filter operations.
+   *
+   * @remarks
+   * Called before column filtering. Return the records that match the {@link ApexGrid.quickFilter}
+   * value. If omitted, the default substring matcher is used.
+   */
+  quickFilter?: DataPipelineHook<T>;
+}
+
+/**
+ * The pagination mode for the grid.
+ *
+ * @remarks
+ * `'local'` — the grid slices the in-memory {@link ApexGrid.dataView} by `page` and `pageSize`.
+ * `'remote'` — the consumer drives data fetching; the grid emits paging events but does not
+ *  slice the data. Use together with {@link DataPipelineConfiguration.pagination} or by setting
+ *  `data` to the current page on `pageChanged`.
+ */
+export type PaginationMode = 'local' | 'remote';
+
+/**
+ * Pagination configuration for the grid.
+ */
+export interface PaginationConfiguration {
+  /**
+   * Whether pagination is enabled.
+   *
+   * @remarks
+   * When `false`, the grid renders no paginator and applies no slicing — the full
+   * {@link ApexGrid.dataView} is virtualized as usual.
+   */
+  enabled?: boolean;
+  /**
+   * The pagination mode. Defaults to `'local'`.
+   */
+  mode?: PaginationMode;
+  /**
+   * The current page (zero-based). Defaults to `0`.
+   */
+  page?: number;
+  /**
+   * The number of records per page. Defaults to `25`.
+   */
+  pageSize?: number;
+  /**
+   * The list of page sizes offered in the paginator's page-size dropdown.
+   * Defaults to `[10, 25, 50, 100]`.
+   */
+  pageSizeOptions?: number[];
+  /**
+   * In `'remote'` mode the consumer must supply the unfiltered row total so the paginator
+   * can compute the page count. Ignored in `'local'` mode.
+   */
+  totalItems?: number;
+}
+
+/**
+ * Resolved pagination state passed to controllers and event payloads.
+ */
+export interface PaginationState {
+  /**
+   * The current page (zero-based).
+   */
+  page: number;
+  /**
+   * The number of records per page.
+   */
+  pageSize: number;
+  /**
+   * The total number of pages.
+   */
+  pageCount: number;
+  /**
+   * The total number of records before pagination (after filter/sort).
+   */
+  totalItems: number;
 }

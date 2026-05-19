@@ -3,6 +3,7 @@ import {
   defineComponents,
   IgcAvatarComponent,
   IgcCheckboxComponent,
+  IgcInputComponent,
   IgcRatingComponent,
   IgcSelectComponent,
   IgcSwitchComponent,
@@ -14,6 +15,7 @@ import { ApexGrid } from '../src/index.js';
 defineComponents(
   IgcAvatarComponent,
   IgcCheckboxComponent,
+  IgcInputComponent,
   IgcRatingComponent,
   IgcSelectComponent,
   IgcSwitchComponent,
@@ -104,12 +106,44 @@ const themeChoose = html`
 `;
 
 const columns: ColumnConfiguration<User>[] = [
-  { key: 'id', headerText: 'User ID', resizable: true, type: 'number', filter: true, sort: true },
   {
-    key: 'name',
-    cellTemplate: params => html`<igc-input .value=${params.value}></igc-input>`,
+    key: 'id',
+    headerText: 'User ID',
+    resizable: true,
+    type: 'number',
     filter: true,
     sort: true,
+    width: '120px',
+    pinned: 'start',
+  },
+  {
+    key: 'name',
+    editable: true,
+    editorTemplate: ({ value, commit, cancel }) => {
+      let pending = value;
+      return html`<igc-input
+        data-apex-editor
+        style="--ig-size: 1; width: 100%;"
+        .value=${value}
+        @igcInput=${(e: CustomEvent<string>) => {
+          pending = e.detail;
+        }}
+        @igcChange=${(e: CustomEvent<string>) => commit(e.detail)}
+        @keydown=${(e: KeyboardEvent) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit(pending);
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancel();
+          }
+        }}
+      ></igc-input>`;
+    },
+    filter: true,
+    sort: true,
+    width: '200px',
+    pinned: 'start',
   },
   {
     key: 'avatar',
@@ -124,6 +158,7 @@ const columns: ColumnConfiguration<User>[] = [
     type: 'number',
     sort: true,
     filter: true,
+    editable: true,
     cellTemplate: params =>
       html`<igc-rating
         readonly
@@ -133,6 +168,8 @@ const columns: ColumnConfiguration<User>[] = [
   },
   {
     key: 'priority',
+        editable: true,
+
     cellTemplate: params =>
       html`<igc-select
         outlined
@@ -148,15 +185,20 @@ const columns: ColumnConfiguration<User>[] = [
   },
   {
     key: 'age',
+    type: 'number',
+    editable: true,
   },
   {
     key: 'email',
+    editable: true,
   },
   {
     key: 'subscribed',
     type: 'boolean',
     sort: true,
     filter: true,
+    width: '140px',
+    pinned: 'end',
     cellTemplate: params =>
       html`<igc-checkbox
         label-position="before"
@@ -170,8 +212,12 @@ ApexGrid.register();
 
 render(
   html`${themeChoose}<apex-grid
+      show-quick-filter
+      column-reordering
       .data=${data}
       .columns=${columns}
+      .pagination=${{ enabled: true, pageSize: 25, pageSizeOptions: [10, 25, 50, 100, 250] }}
+      .editing=${{ enabled: true, mode: 'cell', trigger: 'doubleClick' }}
     ></apex-grid>`,
   document.getElementById('demo')!,
 );

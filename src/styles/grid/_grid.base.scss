@@ -4,19 +4,28 @@ $content-background: var(--igx-content-background, var(--content-background));
 $content-text-color: var(--igx-content-text-color, var(--content-text-color));
 $grid-resize-line-color: var(--igx-grid-resize-line-color, var(--grid-resize-line-color));
 
-// REQUIRED for the grid's internal track layout: header-row, filter-row,
-// and the virtualized body live in named CSS grid rows below. Consumers must
+// REQUIRED for the grid's internal track layout: toolbar, header-row, filter-row,
+// virtualized body, and paginator live in named CSS grid rows below. Consumers must
 // NOT override `display` on <apex-grid>; doing so collapses the virtualizer
 // to its natural ~150px content height. A runtime `console.warn` in
 // `ApexGrid.firstUpdated` catches accidental overrides.
+// The grid host owns BOTH scroll axes so that header rows (sticky top) and pinned
+// body cells (sticky left) share a single CSS sticky containing block. The
+// virtualizer is intentionally NOT a scroll container — `ApexVirtualizer` sets
+// `scroller = false`, delegating scroll handling to this host.
 :host {
     display: grid;
     height: 100%;
     position: relative;
     font-family: var(--ig-font-family);
     box-shadow: elevation(2);
-    overflow: auto hidden;
-    grid-template-rows: [header-row] max-content [filter-row] max-content [virtualized-container] auto;
+    overflow: auto;
+    grid-template-rows:
+        [toolbar-row] max-content
+        [header-row] max-content
+        [filter-row] max-content
+        [virtualized-container] auto
+        [paginator-row] max-content;
 
     --scrollbar-offset: 0;
     --z-index-base: 1;
@@ -29,7 +38,6 @@ apex-virtualizer {
     flex: 1;
     background: $content-background;
     color: $content-text-color;
-    overflow: hidden auto !important;
 
     &:focus {
         outline: none;
