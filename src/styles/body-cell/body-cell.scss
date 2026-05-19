@@ -180,10 +180,11 @@ $star-size: #{rem(14px)};
     }
 }
 
-// Built-in select editor (column `type: 'select'`). Mirrors the chrome of the
+// Built-in <select> / <input type="date"> editors share the chrome of the
 // text/number editors so the cell visually behaves the same regardless of
 // which built-in editor is active.
-select[data-apex-editor] {
+select[data-apex-editor],
+input[type='date'][data-apex-editor] {
     box-sizing: border-box;
     position: absolute;
     inset: #{rem(2px)};

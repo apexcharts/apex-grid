@@ -139,6 +139,102 @@ const selectType: ColumnTypeRenderer<object> = {
   },
 };
 
+/**
+ * Parses a stored cell value into a `Date`, or `null` when the value can't be
+ * resolved to a real date.
+ *
+ * @remarks
+ * Accepts `Date` instances, ISO/parseable strings, and millisecond
+ * timestamps. `YYYY-MM-DD` strings are interpreted as **floating dates**
+ * (local midnight) rather than UTC midnight, so they render on the same
+ * calendar day in every timezone.
+ */
+export function parseDate(value: unknown): Date | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === 'number') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof value === 'string') {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (match) {
+      const [, y, m, d] = match;
+      const date = new Date(Number(y), Number(m) - 1, Number(d));
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  return null;
+}
+
+function toDateInputValue(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function formatDateValue(value: unknown, style: string): string {
+  const date = parseDate(value);
+  if (!date) return '';
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: style as Intl.DateTimeFormatOptions['dateStyle'],
+  }).format(date);
+}
+
+/**
+ * Returns a `next` value cast to the same shape as `original` (Date / number
+ * timestamp / ISO string). Empty inputs commit `null` regardless of the
+ * source shape, which is the simplest "clear" semantics.
+ */
+function commitDateInSameShape(original: unknown, next: Date | null): unknown {
+  if (next === null) return null;
+  if (original instanceof Date) return next;
+  if (typeof original === 'number') return next.getTime();
+  return toDateInputValue(next);
+}
+
+const dateType: ColumnTypeRenderer<object> = {
+  display(ctx) {
+    const style = (ctx.column as { format?: string }).format ?? 'medium';
+    return html`${formatDateValue(ctx.value, style)}`;
+  },
+
+  editor(ctx) {
+    const initial = parseDate(ctx.value);
+    const initialInput = initial ? toDateInputValue(initial) : '';
+
+    const handleChange = (event: Event) => {
+      const raw = (event.target as HTMLInputElement).value;
+      const next = raw ? parseDate(raw) : null;
+      ctx.commit(commitDateInSameShape(ctx.value, next));
+    };
+    const handleKeydown = (event: KeyboardEvent) => {
+      event.stopPropagation();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        ctx.cancel();
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        const raw = (event.target as HTMLInputElement).value;
+        const next = raw ? parseDate(raw) : null;
+        ctx.commit(commitDateInSameShape(ctx.value, next));
+      }
+    };
+    return html`<input
+      type="date"
+      part="editor"
+      data-apex-editor
+      .value=${initialInput}
+      @change=${handleChange}
+      @keydown=${handleKeydown}
+    />`;
+  },
+};
+
 const ratingType: ColumnTypeRenderer<object> = {
   display(ctx) {
     const max = getRatingMax(ctx.column as { max?: number });
@@ -207,6 +303,7 @@ const ratingType: ColumnTypeRenderer<object> = {
 const BUILTIN_TYPES: Record<string, ColumnTypeRenderer<object>> = {
   select: selectType,
   rating: ratingType,
+  date: dateType,
 };
 
 /**

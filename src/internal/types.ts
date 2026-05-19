@@ -26,8 +26,8 @@ export type PropertyType<T, K extends Keys<T> = Keys<T>> = K extends Keys<T>
   : never;
 
 /**
- * The data type — or, for the declarative built-ins (`'select'`, `'rating'`),
- * the presentation type — for the current column.
+ * The data type — or, for the declarative built-ins (`'select'`, `'rating'`,
+ * `'date'`), the presentation type — for the current column.
  *
  * @remarks
  * - `'string'` / `'number'` / `'boolean'` are the primitive data types. They
@@ -43,8 +43,20 @@ export type PropertyType<T, K extends Keys<T> = Keys<T>> = K extends Keys<T>
  *   mode and as an interactive star picker in edit mode. Configure the star
  *   count via {@link BaseColumnConfiguration.max} (defaults to `5`).
  *   For sorting / filtering, rating columns behave as numbers.
+ * - `'date'` renders values as locale-aware formatted dates in display mode
+ *   and a native `<input type="date">` in edit mode. Accepts `Date`
+ *   instances, ISO strings, or millisecond timestamps as input and commits
+ *   back in the same shape. Configure the display format via
+ *   {@link BaseColumnConfiguration.format} (`'short' | 'medium' | 'long' |
+ *   'full'`, default `'medium'`).
  */
-export type DataType = 'number' | 'string' | 'boolean' | 'select' | 'rating';
+export type DataType = 'number' | 'string' | 'boolean' | 'select' | 'rating' | 'date';
+
+/**
+ * Display format presets for `'date'` columns. Map to
+ * `Intl.DateTimeFormatOptions.dateStyle`.
+ */
+export type ColumnDateFormat = 'short' | 'medium' | 'long' | 'full';
 
 /**
  * An entry in a `'select'` column's `options` list. Bare values use
@@ -223,6 +235,14 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    * Has no effect on columns with another `type`.
    */
   max?: number;
+  /**
+   * Display format for columns with `type: 'date'`.
+   *
+   * @remarks
+   * Selects an `Intl.DateTimeFormatOptions.dateStyle` preset. Defaults to
+   * `'medium'`. Has no effect on columns with another `type`.
+   */
+  format?: ColumnDateFormat;
 }
 
 /**

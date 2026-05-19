@@ -327,3 +327,158 @@ describe('Column type: rating', () => {
     });
   });
 });
+
+interface DateData extends TestData {
+  joinedAt: string;
+}
+
+const dateData: DateData[] = data.map((row, idx) => ({
+  ...row,
+  joinedAt: `2025-0${idx + 1}-15`, // 2025-01-15 .. 2025-08-15
+}));
+
+class DateFixture<T extends DateData> extends GridTestFixture<T> {
+  public editing: GridEditingConfiguration = {
+    enabled: true,
+    mode: 'cell',
+    trigger: 'doubleClick',
+  };
+
+  public records!: T[];
+
+  public override updateConfig() {
+    this.columnConfig = [
+      { key: 'id', type: 'number' },
+      { key: 'joinedAt', type: 'date', editable: true, format: 'short' },
+    ] as ColumnConfiguration<T>[];
+  }
+
+  public override async setUp() {
+    this.records = JSON.parse(JSON.stringify(dateData)) as T[];
+    this.data = this.records;
+    await super.setUp();
+  }
+
+  public override setupTemplate() {
+    return html`<apex-grid
+      .data=${this.data}
+      .columns=${this.columnConfig}
+      .editing=${this.editing}
+    ></apex-grid>`;
+  }
+
+  public cellText(rowIndex: number): string {
+    const row = this.rows.get(rowIndex);
+    const cell = row.cells.get('joinedAt' as never).element;
+    return (cell.shadowRoot!.textContent ?? '').trim();
+  }
+
+  public dateInput(rowIndex: number): HTMLInputElement | null {
+    const row = this.rows.get(rowIndex);
+    const cell = row.cells.get('joinedAt' as never).element;
+    return cell.shadowRoot!.querySelector<HTMLInputElement>('input[type="date"][data-apex-editor]');
+  }
+}
+
+const DTDD = new DateFixture(dateData);
+
+describe('Column type: date', () => {
+  beforeEach(async () => await DTDD.setUp());
+  afterEach(() => DTDD.tearDown());
+
+  describe('display', () => {
+    it('formats stored ISO YYYY-MM-DD strings via Intl.DateTimeFormat', () => {
+      // Don't assert exact locale text (runner-dependent); just ensure we
+      // produced something non-empty that doesn't look like raw ISO.
+      const text = DTDD.cellText(0);
+      expect(text).to.not.equal('2025-01-15');
+      expect(text.length).to.be.greaterThan(0);
+    });
+
+    it('renders empty for null / invalid values without throwing', async () => {
+      await DTDD.updateProperty('data', [
+        { ...DTDD.records[0], joinedAt: null as never },
+        { ...DTDD.records[1], joinedAt: 'not a date' as never },
+        ...DTDD.records.slice(2),
+      ]);
+      expect(DTDD.cellText(0)).to.equal('');
+      expect(DTDD.cellText(1)).to.equal('');
+    });
+
+    it('changes format presets at runtime', async () => {
+      const short = DTDD.cellText(0);
+      await DTDD.updateColumns({ key: 'joinedAt', type: 'date', editable: true, format: 'long' });
+      const long = DTDD.cellText(0);
+      // 'long' is verbose-er than 'short'; assert they differ.
+      expect(long).to.not.equal(short);
+      expect(long.length).to.be.greaterThan(short.length);
+    });
+  });
+
+  describe('editor', () => {
+    it('renders a native <input type="date"> preset to the current value', async () => {
+      await DTDD.grid.editCell(0, 'joinedAt');
+      await DTDD.waitForUpdate();
+      const input = DTDD.dateInput(0)!;
+      expect(input).to.exist;
+      expect(input.value).to.equal('2025-01-15');
+    });
+
+    it('commits the chosen date in the same string shape as the source', async () => {
+      await DTDD.grid.editCell(0, 'joinedAt');
+      await DTDD.waitForUpdate();
+
+      const input = DTDD.dateInput(0)!;
+      input.value = '2025-12-25';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await DTDD.waitForUpdate();
+
+      expect(DTDD.grid.editingCell).to.be.null;
+      expect(DTDD.records[0].joinedAt).to.equal('2025-12-25');
+    });
+
+    it('cancels on Escape without mutating the value', async () => {
+      const before = DTDD.records[0].joinedAt;
+      await DTDD.grid.editCell(0, 'joinedAt');
+      await DTDD.waitForUpdate();
+
+      const input = DTDD.dateInput(0)!;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      await DTDD.waitForUpdate();
+
+      expect(DTDD.grid.editingCell).to.be.null;
+      expect(DTDD.records[0].joinedAt).to.equal(before);
+    });
+
+    it('emits cellValueChanging + cellValueChanged for date commits', async () => {
+      const seen: string[] = [];
+      DTDD.grid.addEventListener('cellValueChanging', (event) => {
+        seen.push(`changing:${event.detail.oldValue}->${event.detail.newValue}`);
+      });
+      DTDD.grid.addEventListener('cellValueChanged', (event) => {
+        seen.push(`changed:${event.detail.value}`);
+      });
+
+      await DTDD.grid.editCell(0, 'joinedAt');
+      await DTDD.waitForUpdate();
+      const input = DTDD.dateInput(0)!;
+      input.value = '2026-06-01';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await DTDD.waitForUpdate();
+
+      expect(seen).to.deep.equal(['changing:2025-01-15->2026-06-01', 'changed:2026-06-01']);
+    });
+
+    it('commits null when the input is cleared', async () => {
+      await DTDD.grid.editCell(0, 'joinedAt');
+      await DTDD.waitForUpdate();
+
+      const input = DTDD.dateInput(0)!;
+      input.value = '';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await DTDD.waitForUpdate();
+
+      expect(DTDD.records[0].joinedAt).to.equal(null);
+    });
+  });
+});
