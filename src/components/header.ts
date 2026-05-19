@@ -1,5 +1,4 @@
 import { consume } from '@lit/context';
-import { IgcIconComponent } from 'igniteui-webcomponents';
 import { html, LitElement, nothing } from 'lit';
 import { property } from 'lit/decorators.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
@@ -8,6 +7,7 @@ import {
   SORT_ICON_ASCENDING,
   SORT_ICON_DESCENDING,
 } from '../internal/constants.js';
+import { renderIcon } from '../internal/icons.js';
 import { partNameMap } from '../internal/part-map.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_HEADER_TAG } from '../internal/tags.js';
@@ -22,7 +22,7 @@ export default class ApexGridHeader<T extends object> extends LitElement {
   public static override styles = styles;
 
   public static register(): void {
-    registerComponent(ApexGridHeader, IgcIconComponent);
+    registerComponent(ApexGridHeader);
   }
 
   protected get context(): ApexHeaderContext<T> {
@@ -186,14 +186,12 @@ export default class ApexGridHeader<T extends object> extends LitElement {
       ? html`<span
           part=${partNameMap({ action: true, sorted: !!state?.direction })}
           draggable="false"
+          data-sort-index=${attr === nothing ? '' : (attr as number)}
           @click=${this.isSortable ? this.#handleClick : nothing}
         >
-          <igc-icon
-            part=${partNameMap({ 'sorting-action': !!state })}
-            data-sortIndex=${attr}
-            name=${icon}
-            collection="internal"
-          ></igc-icon>
+          ${renderIcon(icon, {
+            part: partNameMap({ 'sorting-action': !!state }),
+          })}
         </span>`
       : nothing;
   }

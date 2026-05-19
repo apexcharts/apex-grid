@@ -2,7 +2,6 @@ import { consume } from '@lit/context';
 import {
   IgcDropdownComponent,
   type IgcDropdownItemComponent,
-  type IgcIconComponent,
   IgcInputComponent,
 } from 'igniteui-webcomponents';
 import { html, LitElement, nothing } from 'lit';
@@ -10,6 +9,7 @@ import { property, query } from 'lit/decorators.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
 import { DEFAULT_COLUMN_CONFIG } from '../internal/constants.js';
+import { renderIcon } from '../internal/icons.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_FILTER_ROW_TAG } from '../internal/tags.js';
 import type { ColumnConfiguration } from '../internal/types.js';
@@ -27,11 +27,7 @@ type ExpressionChipProps<T> = {
 };
 
 function prefixedIcon(icon?: string) {
-  return html`<igc-icon
-    slot="prefix"
-    name=${ifDefined(icon)}
-    collection="internal"
-  ></igc-icon>`;
+  return icon ? renderIcon(icon, { slot: 'prefix' }) : nothing;
 }
 
 export default class ApexFilterRow<T extends object> extends LitElement {
@@ -68,7 +64,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   public input!: IgcInputComponent;
 
   @query('#condition')
-  public conditionElement!: IgcIconComponent;
+  public conditionElement!: HTMLElement;
 
   @query(IgcDropdownComponent.tagName)
   public dropdown!: IgcDropdownComponent;
@@ -288,14 +284,16 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   }
 
   protected renderDropdownTarget() {
-    return html`<igc-icon
+    return html`<button
       id="condition"
       slot="prefix"
-      collection="internal"
-      .name=${this.condition.name}
+      type="button"
+      part="condition-trigger"
+      aria-label="Change filter condition"
       @click=${this.#openDropdownList}
     >
-    </igc-icon>`;
+      ${renderIcon(this.condition.name)}
+    </button>`;
   }
 
   protected renderInputArea() {

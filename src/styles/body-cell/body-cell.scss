@@ -100,13 +100,13 @@ input[data-apex-editor] {
     font: inherit;
     font-size: #{rem(13px)};
     outline: none;
-    box-shadow: inset 0 0 0 #{rem(1px)} hsl(from #{$editor-accent} h s l / 0.25);
+    box-shadow: inset 0 0 0 #{rem(1px)} hsl(from #{$editor-accent} h s l / 25%);
     caret-color: $editor-accent;
 }
 
 input[data-apex-editor]:focus-visible {
     border-color: $editor-accent;
-    box-shadow: inset 0 0 0 #{rem(2px)} hsl(from #{$editor-accent} h s l / 0.35);
+    box-shadow: inset 0 0 0 #{rem(2px)} hsl(from #{$editor-accent} h s l / 35%);
 }
 
 input[type='number'][data-apex-editor] {

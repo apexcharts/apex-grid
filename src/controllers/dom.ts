@@ -1,7 +1,6 @@
 import type { RenderItemFunction } from '@lit-labs/virtualizer/virtualize.js';
 import { html, type ReactiveController } from 'lit';
 import { type StyleInfo, styleMap } from 'lit/directives/style-map.js';
-import { registerGridIcons } from '../internal/icon-registry.js';
 import type { ColumnConfiguration, GridHost, Keys } from '../internal/types.js';
 import { applyColumnWidths, getDisplayColumns } from '../internal/utils.js';
 import type { StateController } from './state.js';
@@ -68,7 +67,6 @@ export class GridDOMController<T extends object> implements ReactiveController {
   };
 
   public async hostConnected() {
-    registerGridIcons();
     this.setGridColumnSizes();
     // Wait for the initial paint of the virtualizer and recalculate the scrollbar offset
     // for the next one

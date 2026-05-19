@@ -1,8 +1,9 @@
 import { consume } from '@lit/context';
-import { IgcIconComponent, IgcInputComponent } from 'igniteui-webcomponents';
+import { IgcInputComponent } from 'igniteui-webcomponents';
 import { html, LitElement } from 'lit';
 import { property, query } from 'lit/decorators.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
+import { renderIcon } from '../internal/icons.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_TOOLBAR_TAG } from '../internal/tags.js';
 import { styles } from '../styles/toolbar/toolbar.css.js';
@@ -26,7 +27,7 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
    * Registers the `<apex-grid-toolbar>` element. Idempotent.
    */
   public static register() {
-    registerComponent(ApexGridToolbar, IgcIconComponent, IgcInputComponent);
+    registerComponent(ApexGridToolbar, IgcInputComponent);
   }
 
   @consume({ context: gridStateContext, subscribe: true })
@@ -118,12 +119,7 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
             @igcInput=${this.#handleInput}
             @keydown=${this.#handleKeydown}
           >
-            <igc-icon
-              slot="prefix"
-              name="search"
-              collection="internal"
-              aria-hidden="true"
-            ></igc-icon>
+            ${renderIcon('search', { slot: 'prefix' })}
           </igc-input>
         </div>
       </div>

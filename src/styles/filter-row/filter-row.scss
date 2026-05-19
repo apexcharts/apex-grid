@@ -100,3 +100,35 @@ igc-input {
         color: inherit;
     }
 }
+
+// Slotted SVG icons inside igc-input / igc-chip / igc-button prefix positions.
+// Light-DOM children that get slotted; we size them here since they no longer
+// come from a custom element with its own --size token.
+svg {
+    inline-size: rem(16px);
+    block-size: rem(16px);
+    display: inline-block;
+    vertical-align: middle;
+    color: currentcolor;
+    flex-shrink: 0;
+}
+
+[part='condition-trigger'] {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: inherit;
+    line-height: 0;
+
+    &:focus-visible {
+        outline: rem(2px) solid var(--ig-primary-500, currentcolor);
+        outline-offset: rem(1px);
+        border-radius: rem(2px);
+    }
+}

@@ -30,7 +30,9 @@ export default class HeaderTestFixture<T extends object> {
   }
 
   public get sortIcon() {
-    return this.sortPart.querySelector('igc-icon')!;
+    const svg = this.sortPart.querySelector('svg');
+    if (!svg) return null as unknown as { name: string };
+    return { name: svg.getAttribute('data-icon') ?? '' };
   }
 
   public get isSorted() {

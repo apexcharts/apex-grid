@@ -49,3 +49,12 @@ igc-input {
         color: inherit;
     }
 }
+
+svg {
+    inline-size: rem(16px);
+    block-size: rem(16px);
+    display: inline-block;
+    vertical-align: middle;
+    color: currentcolor;
+    opacity: 0.7;
+}

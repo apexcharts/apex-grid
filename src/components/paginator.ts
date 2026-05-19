@@ -1,8 +1,8 @@
 import { consume } from '@lit/context';
-import { IgcIconComponent } from 'igniteui-webcomponents';
 import { html, LitElement, nothing } from 'lit';
 import { property } from 'lit/decorators.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
+import { renderIcon } from '../internal/icons.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_PAGINATOR_TAG } from '../internal/tags.js';
 import { styles } from '../styles/paginator/paginator.css.js';
@@ -34,7 +34,7 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
    * Registers the `<apex-grid-paginator>` element and its dependencies. Idempotent.
    */
   public static register() {
-    registerComponent(ApexGridPaginator, IgcIconComponent);
+    registerComponent(ApexGridPaginator);
   }
 
   @consume({ context: gridStateContext, subscribe: true })
@@ -113,7 +113,7 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
       ?disabled=${opts.disabled}
       @click=${opts.onClick}
     >
-      <igc-icon name=${opts.icon} collection="internal" aria-hidden="true"></igc-icon>
+      ${renderIcon(opts.icon)}
     </button>`;
   }
 

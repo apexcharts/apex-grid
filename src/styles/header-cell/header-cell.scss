@@ -93,17 +93,20 @@ $inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
         opacity: 1;
     }
 
-    igc-icon {
-        --size: #{rem(15px)};
+    position: relative;
 
+    svg {
+        display: block;
+        inline-size: #{rem(15px)};
+        block-size: #{rem(15px)};
         color: $inactive-header-icon-color;
     }
 
-    igc-icon::after {
-        content: attr(data-sortIndex);
+    &[data-sort-index]:not([data-sort-index=''])::after {
+        content: attr(data-sort-index);
         position: absolute;
         top: -5px;
-        inset-inline-end: -1px;
+        inset-inline-end: -3px;
         font-size: rem(10px);
         text-align: end;
         font-family: sans-serif;
@@ -116,7 +119,7 @@ $inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
 [part~='filtered'] {
     color: $active-header-icon-color;
 
-    igc-icon {
+    svg {
         color: $active-header-icon-color;
     }
 }
