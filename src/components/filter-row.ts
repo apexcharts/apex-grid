@@ -1,9 +1,5 @@
 import { consume } from '@lit/context';
-import {
-  IgcDropdownComponent,
-  type IgcDropdownItemComponent,
-  IgcInputComponent,
-} from 'igniteui-webcomponents';
+import { IgcDropdownComponent, type IgcDropdownItemComponent } from 'igniteui-webcomponents';
 import { html, LitElement, nothing } from 'lit';
 import { property, query } from 'lit/decorators.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
@@ -60,8 +56,8 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   @property({ attribute: false })
   public active = false;
 
-  @query(IgcInputComponent.tagName)
-  public input!: IgcInputComponent;
+  @query('input')
+  public input!: HTMLInputElement;
 
   @query('#condition')
   public conditionElement!: HTMLElement;
@@ -106,10 +102,11 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     this.requestUpdate();
   }
 
-  #handleInput(event: CustomEvent<string>) {
+  #handleInput(event: Event) {
     event.stopPropagation();
 
-    const value = this.isNumeric ? Number.parseFloat(event.detail) : event.detail;
+    const raw = (event.target as HTMLInputElement).value ?? '';
+    const value = this.isNumeric ? Number.parseFloat(raw) : raw;
     const shouldUpdate = this.isNumeric ? !Number.isNaN(value as number) : !!value;
     const type = this.filterController.get(this.expression.key)?.has(this.expression)
       ? 'modify'
@@ -198,12 +195,13 @@ export default class ApexFilterRow<T extends object> extends LitElement {
 
   protected renderCriteriaButton(expr: FilterExpression<T>, index: number) {
     return index
-      ? html`<igc-button
-          variant="flat"
+      ? html`<button
+          type="button"
+          part="criteria"
           @click=${this.#chipCriteriaFor(expr)}
         >
           ${expr.criteria}
-        </igc-button>`
+        </button>`
       : nothing;
   }
 
@@ -245,22 +243,24 @@ export default class ApexFilterRow<T extends object> extends LitElement {
 
   protected renderFilterActions() {
     return html`
-      <igc-button
+      <button
         id="reset"
-        variant="flat"
+        type="button"
+        part="action"
         @click=${this.#handleResetClick}
       >
-        ${prefixedIcon('refresh')} Reset
-      </igc-button>
-      <igc-button
+        ${renderIcon('refresh')} Reset
+      </button>
+      <button
         id="close"
-        variant="flat"
+        type="button"
+        part="action"
         @click=${() => {
           this.active = false;
         }}
       >
-        ${prefixedIcon('close')} Close
-      </igc-button>
+        ${renderIcon('close')} Close
+      </button>
     `;
   }
 
@@ -286,7 +286,6 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   protected renderDropdownTarget() {
     return html`<button
       id="condition"
-      slot="prefix"
       type="button"
       part="condition-trigger"
       aria-label="Change filter condition"
@@ -297,16 +296,18 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   }
 
   protected renderInputArea() {
-    return html`<igc-input
-        outlined
-        value=${ifDefined(this.expression.searchTerm)}
-        placeholder="Add filter value"
-        ?readonly=${this.condition.unary}
-        @igcInput=${this.#handleInput}
-        @keydown=${this.#handleKeydown}
-      >
+    return html`<div part="filter-field">
         ${this.renderDropdownTarget()}
-      </igc-input>
+        <input
+          part="filter-input"
+          type="text"
+          .value=${ifDefined(this.expression.searchTerm as string | undefined) as string}
+          placeholder="Add filter value"
+          ?readonly=${this.condition.unary}
+          @input=${this.#handleInput}
+          @keydown=${this.#handleKeydown}
+        />
+      </div>
       ${this.renderDropdown()}`;
   }
 

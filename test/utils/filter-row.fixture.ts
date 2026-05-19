@@ -23,13 +23,17 @@ export default class FilterRowFixture<T extends object> {
 
   public get activeCriteriaButtons(): HTMLElement[] {
     return Array.from(
-      this.element.shadowRoot!.querySelectorAll('[part~="filter-row-filters"] igc-button')
+      this.element.shadowRoot!.querySelectorAll(
+        '[part~="filter-row-filters"] button[part~="criteria"]'
+      )
     );
   }
 
   public get inactiveCriteriaButtons(): HTMLElement[] {
     return Array.from(
-      this.element.shadowRoot!.querySelectorAll('[part~="filter-row-preview"] igc-button')
+      this.element.shadowRoot!.querySelectorAll(
+        '[part~="filter-row-preview"] button[part~="criteria"]'
+      )
     );
   }
 
@@ -79,7 +83,7 @@ export default class FilterRowFixture<T extends object> {
 
   public fireInputEvent(value: string) {
     this.input.value = value;
-    this.input.emitEvent('igcInput', { detail: value });
+    this.input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
   }
 
   public commitInput() {

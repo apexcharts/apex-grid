@@ -5,6 +5,7 @@ $header-text-color: var(--igx-header-text-color, var(--header-text-color));
 $header-border-width: var(--igx-header-border-width, var(--header-border-width));
 $header-border-style: var(--igx-header-border-style, var(--header-border-style));
 $header-border-color: var(--igx-header-border-color, var(--header-border-color));
+$accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
 
 :host {
     --ig-size: 1;
@@ -40,21 +41,56 @@ $header-border-color: var(--igx-header-border-color, var(--header-border-color))
     max-width: rem(360px);
 }
 
-igc-input {
-    width: 100%;
+[part='search-field'] {
+    display: inline-flex;
+    align-items: center;
+    inline-size: 100%;
+    block-size: rem(28px);
+    padding: 0 rem(8px);
+    gap: rem(6px);
+    background: transparent;
+    color: inherit;
+    border: rem(1px) solid $header-border-color;
+    border-radius: rem(4px);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    box-sizing: border-box;
 
-    &::part(container),
-    &::part(input) {
-        background: inherit;
-        color: inherit;
+    &:focus-within {
+        border-color: $accent;
+        box-shadow: 0 0 0 rem(2px) hsl(from #{$accent} h s l / 18%);
     }
 }
 
-svg {
+[part='search-icon'] {
     inline-size: rem(16px);
     block-size: rem(16px);
-    display: inline-block;
-    vertical-align: middle;
+    flex-shrink: 0;
+    opacity: 0.65;
     color: currentcolor;
-    opacity: 0.7;
+}
+
+[part='search-input'] {
+    flex: 1;
+    min-inline-size: 0;
+    appearance: none;
+    background: transparent;
+    color: inherit;
+    border: 0;
+    outline: 0;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    font-size: rem(13px);
+    line-height: 1;
+
+    &::placeholder {
+        color: inherit;
+        opacity: 0.55;
+    }
+
+    // Hide native search clear button — Escape already clears via #handleKeydown.
+    &::-webkit-search-cancel-button,
+    &::-webkit-search-decoration {
+        appearance: none;
+    }
 }

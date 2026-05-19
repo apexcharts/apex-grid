@@ -7,6 +7,7 @@ $header-text-color: var(--igx-header-text-color, var(--header-text-color));
 $header-border-width: var(--igx-header-border-width, var(--header-border-width));
 $header-border-style: var(--igx-header-border-style, var(--header-border-style));
 $header-border-color: var(--igx-header-border-color, var(--header-border-color));
+$accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
 
 :host {
     --ig-size: 1;
@@ -93,17 +94,8 @@ $header-border-color: var(--igx-header-border-color, var(--header-border-color))
     overflow: hidden;
 }
 
-igc-input {
-    &::part(container),
-    &::part(input) {
-        background: inherit;
-        color: inherit;
-    }
-}
-
-// Slotted SVG icons inside igc-input / igc-chip / igc-button prefix positions.
-// Light-DOM children that get slotted; we size them here since they no longer
-// come from a custom element with its own --size token.
+// Slotted SVG icons inside igc-chip prefix positions still rely on this default
+// sizing (kept until chips are also swapped to native primitives).
 svg {
     inline-size: rem(16px);
     block-size: rem(16px);
@@ -113,11 +105,54 @@ svg {
     flex-shrink: 0;
 }
 
+[part='filter-field'] {
+    display: inline-flex;
+    align-items: center;
+    block-size: rem(28px);
+    inline-size: 100%;
+    padding: 0 rem(6px);
+    gap: rem(4px);
+    background: transparent;
+    border: rem(1px) solid $header-border-color;
+    border-radius: rem(4px);
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+
+    &:focus-within {
+        border-color: $accent;
+        box-shadow: 0 0 0 rem(2px) hsl(from #{$accent} h s l / 18%);
+    }
+}
+
+[part='filter-input'] {
+    flex: 1;
+    min-inline-size: 0;
+    appearance: none;
+    background: transparent;
+    color: inherit;
+    border: 0;
+    outline: 0;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    font-size: rem(13px);
+    line-height: 1;
+
+    &::placeholder {
+        color: inherit;
+        opacity: 0.55;
+    }
+
+    &:read-only {
+        cursor: default;
+    }
+}
+
 [part='condition-trigger'] {
     appearance: none;
     background: transparent;
     border: 0;
-    padding: 0;
+    padding: rem(2px);
     margin: 0;
     display: inline-flex;
     align-items: center;
@@ -125,10 +160,48 @@ svg {
     cursor: pointer;
     color: inherit;
     line-height: 0;
+    border-radius: rem(3px);
+
+    &:hover {
+        background: hsl(from currentcolor h s l / 8%);
+    }
 
     &:focus-visible {
-        outline: rem(2px) solid var(--ig-primary-500, currentcolor);
-        outline-offset: rem(1px);
-        border-radius: rem(2px);
+        outline: rem(2px) solid $accent;
+        outline-offset: rem(-2px);
     }
+}
+
+[part='action'],
+[part='criteria'] {
+    appearance: none;
+    background: transparent;
+    color: inherit;
+    border: 0;
+    border-radius: rem(3px);
+    padding: rem(3px) rem(8px);
+    margin: 0;
+    font: inherit;
+    font-size: rem(12px);
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: rem(4px);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: rem(0.5px);
+
+    &:hover {
+        background: hsl(from currentcolor h s l / 8%);
+    }
+
+    &:focus-visible {
+        outline: rem(2px) solid $accent;
+        outline-offset: rem(1px);
+    }
+}
+
+[part='criteria'] {
+    color: $accent;
+    font-weight: 600;
 }

@@ -1,5 +1,4 @@
 import { consume } from '@lit/context';
-import { IgcInputComponent } from 'igniteui-webcomponents';
 import { html, LitElement } from 'lit';
 import { property, query } from 'lit/decorators.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
@@ -15,6 +14,9 @@ import { styles } from '../styles/toolbar/toolbar.css.js';
  *
  * @csspart toolbar - The toolbar's container element.
  * @csspart toolbar-search - The quick-filter input wrapper.
+ * @csspart search-field - The bordered field containing the icon + input.
+ * @csspart search-icon - The leading search icon.
+ * @csspart search-input - The text input itself.
  */
 export default class ApexGridToolbar<T extends object> extends LitElement {
   public static get tagName() {
@@ -27,7 +29,7 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
    * Registers the `<apex-grid-toolbar>` element. Idempotent.
    */
   public static register() {
-    registerComponent(ApexGridToolbar, IgcInputComponent);
+    registerComponent(ApexGridToolbar);
   }
 
   @consume({ context: gridStateContext, subscribe: true })
@@ -52,8 +54,8 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
   @property({ type: Number, attribute: 'debounce' })
   public debounce = 200;
 
-  @query(IgcInputComponent.tagName)
-  protected input!: IgcInputComponent;
+  @query('input')
+  protected input!: HTMLInputElement;
 
   #debounceHandle: ReturnType<typeof setTimeout> | null = null;
 
@@ -75,9 +77,9 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
     );
   }
 
-  #handleInput = (event: CustomEvent<string>) => {
+  #handleInput = (event: Event) => {
     event.stopPropagation();
-    const next = event.detail ?? '';
+    const next = (event.target as HTMLInputElement).value ?? '';
     if (this.#debounceHandle) clearTimeout(this.#debounceHandle);
 
     if (this.debounce <= 0) {
@@ -109,18 +111,19 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
     return html`
       <div part="toolbar" role="toolbar" aria-label="Grid toolbar">
         <div part="toolbar-search">
-          <igc-input
-            outlined
-            type="search"
-            role="searchbox"
-            aria-label=${this.placeholder}
-            placeholder=${this.placeholder}
-            .value=${this.value}
-            @igcInput=${this.#handleInput}
-            @keydown=${this.#handleKeydown}
-          >
-            ${renderIcon('search', { slot: 'prefix' })}
-          </igc-input>
+          <label part="search-field">
+            ${renderIcon('search', { part: 'search-icon' })}
+            <input
+              part="search-input"
+              type="search"
+              role="searchbox"
+              aria-label=${this.placeholder}
+              placeholder=${this.placeholder}
+              .value=${this.value}
+              @input=${this.#handleInput}
+              @keydown=${this.#handleKeydown}
+            />
+          </label>
         </div>
       </div>
     `;

@@ -1,10 +1,5 @@
 import { ContextProvider } from '@lit/context';
-import {
-  IgcButtonComponent,
-  IgcChipComponent,
-  IgcDropdownComponent,
-  IgcInputComponent,
-} from 'igniteui-webcomponents';
+import { IgcChipComponent, IgcDropdownComponent } from 'igniteui-webcomponents';
 import { html, nothing } from 'lit';
 import { eventOptions, property, query, queryAll, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -491,9 +486,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       ApexFilterRow,
       ApexGridPaginator,
       ApexGridToolbar,
-      IgcButtonComponent,
       IgcChipComponent,
-      IgcInputComponent,
       IgcDropdownComponent
     );
   }
