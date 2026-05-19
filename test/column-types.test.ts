@@ -482,3 +482,127 @@ describe('Column type: date', () => {
     });
   });
 });
+
+class BooleanFixture<T extends TestData> extends GridTestFixture<T> {
+  public records!: T[];
+
+  public override updateConfig() {
+    this.columnConfig = [
+      { key: 'id', type: 'number' },
+      { key: 'active', type: 'boolean' },
+    ] as ColumnConfiguration<T>[];
+  }
+
+  public override async setUp() {
+    this.records = JSON.parse(JSON.stringify(data)) as T[];
+    this.data = this.records;
+    await super.setUp();
+  }
+
+  public mark(rowIndex: number): HTMLElement | null {
+    const row = this.rows.get(rowIndex);
+    const cell = row.cells.get('active' as never).element;
+    return cell.shadowRoot!.querySelector<HTMLElement>('[part~="boolean-mark"]');
+  }
+}
+
+const BTDD = new BooleanFixture(data);
+
+describe('Column type: boolean (display polish)', () => {
+  beforeEach(async () => await BTDD.setUp());
+  afterEach(() => BTDD.tearDown());
+
+  it('renders a filled mark for true values', () => {
+    // data[2].active === true
+    const mark = BTDD.mark(2)!;
+    expect(mark).to.exist;
+    expect(mark.getAttribute('part')).to.contain('filled');
+    expect(mark.getAttribute('aria-label')).to.equal('true');
+  });
+
+  it('renders a dimmed mark for false values', () => {
+    // data[0].active === false
+    const mark = BTDD.mark(0)!;
+    expect(mark).to.exist;
+    expect(mark.getAttribute('part')).to.not.contain('filled');
+    expect(mark.getAttribute('aria-label')).to.equal('false');
+  });
+
+  it('uses different icons for true vs false', () => {
+    const trueIcon = BTDD.mark(2)!.querySelector('svg')!.getAttribute('data-icon');
+    const falseIcon = BTDD.mark(0)!.querySelector('svg')!.getAttribute('data-icon');
+    expect(trueIcon).to.equal('true');
+    expect(falseIcon).to.equal('false');
+  });
+});
+
+interface ImageData extends TestData {
+  avatar: string;
+}
+
+const imageData: ImageData[] = data.map((row, idx) => ({
+  ...row,
+  avatar: `https://example.test/avatar-${idx + 1}.png`,
+}));
+
+class ImageFixture<T extends ImageData> extends GridTestFixture<T> {
+  public records!: T[];
+
+  public override updateConfig() {
+    this.columnConfig = [
+      { key: 'id', type: 'number' },
+      { key: 'avatar', type: 'image', shape: 'circle', alt: 'User avatar' },
+    ] as ColumnConfiguration<T>[];
+  }
+
+  public override async setUp() {
+    this.records = JSON.parse(JSON.stringify(imageData)) as T[];
+    this.data = this.records;
+    await super.setUp();
+  }
+
+  public img(rowIndex: number): HTMLImageElement | null {
+    const row = this.rows.get(rowIndex);
+    const cell = row.cells.get('avatar' as never).element;
+    return cell.shadowRoot!.querySelector<HTMLImageElement>('img[part~="image"]');
+  }
+}
+
+const ITDD = new ImageFixture(imageData);
+
+describe('Column type: image', () => {
+  beforeEach(async () => await ITDD.setUp());
+  afterEach(() => ITDD.tearDown());
+
+  it('renders an <img> with the value as src', () => {
+    const img = ITDD.img(0)!;
+    expect(img).to.exist;
+    expect(img.getAttribute('src')).to.equal('https://example.test/avatar-1.png');
+  });
+
+  it('applies the circle shape via the part attribute', () => {
+    const img = ITDD.img(0)!;
+    expect(img.getAttribute('part')).to.contain('circle');
+  });
+
+  it('falls back to square shape (no circle part) when shape is unset', async () => {
+    await ITDD.updateColumns({ key: 'avatar', type: 'image', shape: undefined as never });
+    const img = ITDD.img(0)!;
+    expect(img.getAttribute('part')).to.contain('image');
+    expect(img.getAttribute('part')).to.not.contain('circle');
+  });
+
+  it('renders nothing for null / empty values', async () => {
+    await ITDD.updateProperty('data', [
+      { ...ITDD.records[0], avatar: '' as never },
+      { ...ITDD.records[1], avatar: null as never },
+      ...ITDD.records.slice(2),
+    ]);
+    expect(ITDD.img(0)).to.be.null;
+    expect(ITDD.img(1)).to.be.null;
+  });
+
+  it('uses the configured `alt` text', () => {
+    expect(ITDD.img(0)!.alt).to.equal('User avatar');
+  });
+});

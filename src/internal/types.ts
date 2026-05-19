@@ -27,12 +27,15 @@ export type PropertyType<T, K extends Keys<T> = Keys<T>> = K extends Keys<T>
 
 /**
  * The data type — or, for the declarative built-ins (`'select'`, `'rating'`,
- * `'date'`), the presentation type — for the current column.
+ * `'date'`, `'image'`), the presentation type — for the current column.
  *
  * @remarks
- * - `'string'` / `'number'` / `'boolean'` are the primitive data types. They
- *   drive the default filter operands, the default editor, and the default
- *   sort comparison.
+ * - `'string'` / `'number'` are the primitive data types. They drive the
+ *   default filter operands, the default editor, and the default sort
+ *   comparison.
+ * - `'boolean'` stores `true` / `false`. In display mode the grid renders
+ *   a check-mark icon for `true` and a dimmed mark for `false`. In edit
+ *   mode the default editor is a native checkbox.
  * - `'select'` is a presentation type for columns that store one of a fixed
  *   set of values. Supply the available options via
  *   {@link BaseColumnConfiguration.options}. The cell renders the matching
@@ -49,8 +52,12 @@ export type PropertyType<T, K extends Keys<T> = Keys<T>> = K extends Keys<T>
  *   back in the same shape. Configure the display format via
  *   {@link BaseColumnConfiguration.format} (`'short' | 'medium' | 'long' |
  *   'full'`, default `'medium'`).
+ * - `'image'` renders the value as an `<img>` source. Use
+ *   {@link BaseColumnConfiguration.shape} to pick between `'square'`
+ *   (default) and `'circle'`. The cell's default text editor is used for
+ *   editing the URL string when `editable: true` is set.
  */
-export type DataType = 'number' | 'string' | 'boolean' | 'select' | 'rating' | 'date';
+export type DataType = 'number' | 'string' | 'boolean' | 'select' | 'rating' | 'date' | 'image';
 
 /**
  * Display format presets for `'date'` columns. Map to
@@ -243,6 +250,23 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    * `'medium'`. Has no effect on columns with another `type`.
    */
   format?: ColumnDateFormat;
+  /**
+   * Cropping shape for columns with `type: 'image'`.
+   *
+   * @remarks
+   * `'square'` (default) renders the image at its native aspect. `'circle'`
+   * crops to a circle (useful for avatars). Has no effect on columns with
+   * another `type`.
+   */
+  shape?: 'square' | 'circle';
+  /**
+   * Alt text for `<img>` elements rendered by `type: 'image'` columns.
+   *
+   * @remarks
+   * Defaults to the column key. Has no effect on columns with another
+   * `type`.
+   */
+  alt?: string;
 }
 
 /**

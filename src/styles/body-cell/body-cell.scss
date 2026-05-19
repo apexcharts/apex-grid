@@ -180,6 +180,43 @@ $star-size: #{rem(14px)};
     }
 }
 
+// Built-in boolean display (column `type: 'boolean'`). Uses the existing
+// encircled check / X icons. False values are dimmed so the column has a
+// consistent visual height regardless of value.
+[part~='boolean-mark'] {
+    display: inline-flex;
+    align-items: center;
+    opacity: 0.25;
+    color: currentcolor;
+
+    svg {
+        inline-size: #{rem(16px)};
+        block-size: #{rem(16px)};
+    }
+}
+
+[part~='boolean-mark'][part~='filled'] {
+    opacity: 1;
+    color: var(--igx-boolean-true-color, var(--ig-success-500, currentcolor));
+}
+
+// Built-in image display (column `type: 'image'`). Sized to fit the cell
+// height; circle variant crops via border-radius.
+[part~='image'] {
+    block-size: calc(100% - #{rem(8px)});
+    max-block-size: #{rem(40px)};
+    inline-size: auto;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: #{rem(3px)};
+    display: block;
+    flex-shrink: 0;
+}
+
+[part~='image'][part~='circle'] {
+    border-radius: 50%;
+}
+
 // Built-in <select> / <input type="date"> editors share the chrome of the
 // text/number editors so the cell visually behaves the same regardless of
 // which built-in editor is active.

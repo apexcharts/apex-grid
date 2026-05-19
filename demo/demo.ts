@@ -1,10 +1,7 @@
 import {
   configureTheme,
   defineComponents,
-  IgcAvatarComponent,
-  IgcCheckboxComponent,
   IgcInputComponent,
-  IgcRatingComponent,
   IgcSelectComponent,
   IgcSwitchComponent,
 } from 'igniteui-webcomponents';
@@ -12,14 +9,7 @@ import { html, render } from 'lit';
 import { ColumnConfiguration } from '../src/index';
 import { ApexGrid } from '../src/index.js';
 
-defineComponents(
-  IgcAvatarComponent,
-  IgcCheckboxComponent,
-  IgcInputComponent,
-  IgcRatingComponent,
-  IgcSelectComponent,
-  IgcSwitchComponent,
-);
+defineComponents(IgcInputComponent, IgcSelectComponent, IgcSwitchComponent);
 
 type User = {
   id: number;
@@ -119,27 +109,6 @@ const columns: ColumnConfiguration<User>[] = [
   {
     key: 'name',
     editable: true,
-    editorTemplate: ({ value, commit, cancel }) => {
-      let pending = value;
-      return html`<igc-input
-        data-apex-editor
-        style="--ig-size: 1; width: 100%;"
-        .value=${value}
-        @igcInput=${(e: CustomEvent<string>) => {
-          pending = e.detail;
-        }}
-        @igcChange=${(e: CustomEvent<string>) => commit(e.detail)}
-        @keydown=${(e: KeyboardEvent) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            commit(pending);
-          } else if (e.key === 'Escape') {
-            e.preventDefault();
-            cancel();
-          }
-        }}
-      ></igc-input>`;
-    },
     filter: true,
     sort: true,
     width: '200px',
@@ -147,11 +116,9 @@ const columns: ColumnConfiguration<User>[] = [
   },
   {
     key: 'avatar',
-    cellTemplate: params =>
-      html`<igc-avatar
-        shape="circle"
-        .src=${params.value}
-      ></igc-avatar>`,
+    type: 'image',
+    shape: 'circle',
+    alt: 'User avatar',
   },
   {
     key: 'satisfaction',
@@ -185,15 +152,10 @@ const columns: ColumnConfiguration<User>[] = [
   {
     key: 'subscribed',
     type: 'boolean',
+    editable: true,
     sort: true,
     filter: true,
     width: '140px',
-    pinned: 'end',
-    cellTemplate: params =>
-      html`<igc-checkbox
-        label-position="before"
-        ?checked=${params.value}
-      ></igc-checkbox>`,
   },
 ];
 

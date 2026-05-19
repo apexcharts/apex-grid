@@ -300,10 +300,45 @@ const ratingType: ColumnTypeRenderer<object> = {
   },
 };
 
+const booleanType: ColumnTypeRenderer<object> = {
+  display(ctx) {
+    const truthy = ctx.value === true;
+    return html`<span
+      part=${truthy ? 'boolean-mark filled' : 'boolean-mark'}
+      role="img"
+      aria-label=${truthy ? 'true' : 'false'}
+    >
+      ${renderIcon(truthy ? 'true' : 'false')}
+    </span>`;
+  },
+  // No `editor` — falls through to cell.renderDefaultEditor() which already
+  // produces a native <input type="checkbox"> for boolean columns.
+};
+
+const imageType: ColumnTypeRenderer<object> = {
+  display(ctx) {
+    const value = ctx.value;
+    if (value == null || value === '') return html``;
+    const shape = (ctx.column as { shape?: 'square' | 'circle' }).shape ?? 'square';
+    const colAny = ctx.column as { alt?: string; key?: unknown };
+    const alt = colAny.alt ?? String(colAny.key ?? '');
+    return html`<img
+      part=${shape === 'circle' ? 'image circle' : 'image'}
+      src=${String(value)}
+      alt=${alt}
+      loading="lazy"
+    />`;
+  },
+  // Editing an image URL is just text editing — fall through to the default
+  // text editor for `editable: true` image columns.
+};
+
 const BUILTIN_TYPES: Record<string, ColumnTypeRenderer<object>> = {
   select: selectType,
   rating: ratingType,
   date: dateType,
+  boolean: booleanType,
+  image: imageType,
 };
 
 /**
