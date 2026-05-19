@@ -209,17 +209,27 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     const { name, unary } = props.expression.condition as FilterOperation<T>;
     const { searchTerm: term } = props.expression;
 
-    const prefix = html`<span slot="select"></span>${prefixedIcon(name)}`;
-
-    return html`<igc-chip
-      selectable
-      removable
+    return html`<div
+      part="expression-chip"
       ?selected=${props.selected}
-      @igcRemove=${props.onRemove}
-      @igcSelect=${props.onSelect}
     >
-      ${prefix}${unary ? name : term}
-    </igc-chip>`;
+      <button
+        part="chip-body"
+        type="button"
+        @click=${props.onSelect}
+      >
+        ${renderIcon(name)}
+        <span>${unary ? name : term}</span>
+      </button>
+      <button
+        part="chip-remove"
+        type="button"
+        aria-label="Remove filter"
+        @click=${props.onRemove}
+      >
+        ${renderIcon('close')}
+      </button>
+    </div>`;
   }
 
   protected renderActiveChips() {
@@ -349,12 +359,15 @@ export default class ApexFilterRow<T extends object> extends LitElement {
       this.#show();
     };
 
-    const count = hidden ? html`<span slot="suffix">${state.length}</span>` : nothing;
-    const chip = html`<igc-chip
+    const count = hidden ? html`<span part="filter-chip-count">${state.length}</span>` : nothing;
+    const chip = html`<button
+      part="filter-chip"
+      type="button"
       data-column=${column.key}
       @click=${open}
-      >${prefixedIcon('filter')}Filter${count}</igc-chip
-    >`;
+    >
+      ${renderIcon('filter')}<span>Filter</span>${count}
+    </button>`;
 
     return partial ? this.renderInactiveChips(column, state) : chip;
   }

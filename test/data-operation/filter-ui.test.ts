@@ -66,12 +66,12 @@ class FilterFixture<T extends object> extends GridTestFixture<T> {
   }
 
   public async selectChip(chip: HTMLElement) {
-    (chip.shadowRoot!.querySelector('[part="base"]') as HTMLElement).click();
+    (chip.querySelector('[part~="chip-body"]') as HTMLElement).click();
     await this.waitForUpdate();
   }
 
   public async removeChip(chip: HTMLElement) {
-    (chip.shadowRoot!.querySelector('slot[name="remove"]') as HTMLElement).click();
+    (chip.querySelector('[part~="chip-remove"]') as HTMLElement).click();
     await this.waitForUpdate();
   }
 

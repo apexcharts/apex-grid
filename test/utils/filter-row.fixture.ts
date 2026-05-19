@@ -11,13 +11,17 @@ export default class FilterRowFixture<T extends object> {
 
   public get inactiveStateChips(): HTMLElement[] {
     return Array.from(
-      this.element.shadowRoot!.querySelectorAll('[part~="filter-row-preview"] igc-chip')
+      this.element.shadowRoot!.querySelectorAll(
+        '[part~="filter-row-preview"] [part~="filter-chip"]'
+      )
     );
   }
 
   public get activeStateChips(): HTMLElement[] {
     return Array.from(
-      this.element.shadowRoot!.querySelectorAll('[part~="filter-row-filters"] igc-chip')
+      this.element.shadowRoot!.querySelectorAll(
+        '[part~="filter-row-filters"] [part~="expression-chip"]'
+      )
     );
   }
 

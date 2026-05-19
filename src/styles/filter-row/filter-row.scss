@@ -205,3 +205,129 @@ svg {
     color: $accent;
     font-weight: 600;
 }
+
+// The column-level "Filter" chip rendered in the inactive state for each column.
+// It's the entry point to opening the active filter row.
+[part='filter-chip'] {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: rem(4px);
+    background: hsl(from currentcolor h s l / 6%);
+    color: inherit;
+    border: 0;
+    border-radius: rem(12px);
+    padding: rem(2px) rem(10px) rem(2px) rem(8px);
+    font: inherit;
+    font-size: rem(12px);
+    line-height: 1.6;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+        background: hsl(from currentcolor h s l / 14%);
+    }
+
+    &:focus-visible {
+        outline: rem(2px) solid $accent;
+        outline-offset: rem(1px);
+    }
+
+    svg {
+        opacity: 0.8;
+    }
+}
+
+[part='filter-chip-count'] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: rem(16px);
+    block-size: rem(16px);
+    padding: 0 rem(4px);
+    border-radius: rem(8px);
+    background: $accent;
+    color: var(--igx-primary-500-contrast, white);
+    font-size: rem(10px);
+    font-weight: 600;
+    margin-inline-start: rem(2px);
+}
+
+// Selectable + removable chip rendered for each active filter expression in the
+// active row. Body is the select target; trailing button removes the expression.
+[part='expression-chip'] {
+    display: inline-flex;
+    align-items: stretch;
+    background: hsl(from currentcolor h s l / 6%);
+    color: inherit;
+    border-radius: rem(12px);
+    overflow: hidden;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+
+    &:hover {
+        background: hsl(from currentcolor h s l / 12%);
+    }
+
+    &[selected] {
+        background: hsl(from #{$accent} h s l / 14%);
+        box-shadow: inset 0 0 0 rem(1px) hsl(from #{$accent} h s l / 50%);
+    }
+}
+
+[part='chip-body'] {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    padding: rem(2px) rem(4px) rem(2px) rem(8px);
+    margin: 0;
+    font: inherit;
+    font-size: rem(12px);
+    line-height: 1.6;
+    display: inline-flex;
+    align-items: center;
+    gap: rem(4px);
+    cursor: pointer;
+
+    &:focus-visible {
+        outline: rem(2px) solid $accent;
+        outline-offset: rem(-2px);
+        border-radius: rem(10px) 0 0 rem(10px);
+    }
+
+    svg {
+        opacity: 0.8;
+    }
+}
+
+[part='chip-remove'] {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    padding: 0 rem(6px);
+    margin: 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.55;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+
+    &:hover {
+        opacity: 1;
+        background: hsl(from currentcolor h s l / 8%);
+    }
+
+    &:focus-visible {
+        outline: rem(2px) solid $accent;
+        outline-offset: rem(-2px);
+        border-radius: 0 rem(10px) rem(10px) 0;
+        opacity: 1;
+    }
+
+    svg {
+        inline-size: rem(12px);
+        block-size: rem(12px);
+    }
+}
