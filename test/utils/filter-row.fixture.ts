@@ -66,7 +66,7 @@ export default class FilterRowFixture<T extends object> {
   }
 
   public get dropdownItems() {
-    return Array.from(this.dropdown.querySelectorAll('igc-dropdown-item'));
+    return Array.from(this.dropdown.querySelectorAll<HTMLElement>('[part~="dropdown-item"]'));
   }
 
   public getInactiveChip(key: Keys<T>) {
@@ -82,7 +82,7 @@ export default class FilterRowFixture<T extends object> {
   }
 
   public selectDropdownCondition(name: OperandKeys<T[keyof T]>) {
-    this.dropdownItems.find((item) => item.value === name)?.click();
+    this.dropdownItems.find((item) => item.dataset.value === name)?.click();
   }
 
   public fireInputEvent(value: string) {

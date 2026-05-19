@@ -94,8 +94,7 @@ $accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
     overflow: hidden;
 }
 
-// Slotted SVG icons inside igc-chip prefix positions still rely on this default
-// sizing (kept until chips are also swapped to native primitives).
+// Default inline-SVG sizing for icons used across the filter row chrome.
 svg {
     inline-size: rem(16px);
     block-size: rem(16px);
@@ -106,6 +105,7 @@ svg {
 }
 
 [part='filter-field'] {
+    position: relative;
     display: inline-flex;
     align-items: center;
     block-size: rem(28px);
@@ -121,6 +121,54 @@ svg {
     &:focus-within {
         border-color: $accent;
         box-shadow: 0 0 0 rem(2px) hsl(from #{$accent} h s l / 18%);
+    }
+}
+
+[part~='dropdown'] {
+    position: absolute;
+    inset-block-start: calc(100% + #{rem(4px)});
+    inset-inline: 0;
+    margin: 0;
+    padding: rem(4px) 0;
+    list-style: none;
+    background: var(--igx-content-background, var(--content-background, white));
+    color: inherit;
+    border: rem(1px) solid $header-border-color;
+    border-radius: rem(4px);
+    box-shadow: 0 rem(4px) rem(12px) rgb(0 0 0 / 12%);
+    z-index: calc(var(--z-index-base) + 10);
+    max-block-size: rem(280px);
+    overflow-y: auto;
+    box-sizing: border-box;
+
+    &[hidden] {
+        display: none;
+    }
+}
+
+[part~='dropdown-item'] {
+    display: flex;
+    align-items: center;
+    gap: rem(6px);
+    padding: rem(6px) rem(10px);
+    cursor: pointer;
+    font-size: rem(12px);
+    line-height: 1.2;
+    user-select: none;
+
+    &:hover {
+        background: hsl(from currentcolor h s l / 8%);
+    }
+
+    &[selected] {
+        background: hsl(from #{$accent} h s l / 14%);
+        color: $accent;
+        font-weight: 600;
+    }
+
+    svg {
+        opacity: 0.7;
+        flex-shrink: 0;
     }
 }
 

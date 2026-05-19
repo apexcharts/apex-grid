@@ -66,20 +66,6 @@ $editor-background: var(--igx-cell-editor-background, var(--ig-surface-500, whit
     box-shadow: rem(-2px) 0 rem(4px) rgb(0 0 0 / 6%);
 }
 
-igc-input {
-    position: absolute;
-    left: 0;
-    height: calc(100% - ($inset-shadow-width * 2));
-    width: 100%;
-
-    &::part(container),
-    &::part(input) {
-        border-color: transparent;
-        box-shadow: none;
-        height: 100%;
-    }
-}
-
 // Inline editor — the default editor is a bare `<input>` rendered into the cell
 // when editing is active. Inset slightly so it reads as a distinct control,
 // but stay strictly within the cell so it cannot bleed into neighbouring
@@ -128,19 +114,3 @@ input[type='checkbox'][data-apex-editor] {
     accent-color: $editor-accent;
 }
 
-igc-input,
-igc-select {
-    &::part(container),
-    &::part(input) {
-        background: inherit;
-        color: inherit;
-        font-size: #{rem(13px)};
-    }
-
-    &::part(helper-text),
-    &::part(container) {
-        &::after {
-            display: none;
-        }
-    }
-}

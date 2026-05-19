@@ -1,7 +1,6 @@
 import { consume } from '@lit/context';
-import { IgcDropdownComponent, type IgcDropdownItemComponent } from 'igniteui-webcomponents';
 import { html, LitElement, nothing } from 'lit';
-import { property, query } from 'lit/decorators.js';
+import { property, query, state } from 'lit/decorators.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
 import { DEFAULT_COLUMN_CONFIG } from '../internal/constants.js';
@@ -21,10 +20,6 @@ type ExpressionChipProps<T> = {
   onRemove: (e: Event) => Promise<void>;
   onSelect: (e: Event) => Promise<void>;
 };
-
-function prefixedIcon(icon?: string) {
-  return icon ? renderIcon(icon, { slot: 'prefix' }) : nothing;
-}
 
 export default class ApexFilterRow<T extends object> extends LitElement {
   public static get tagName() {
@@ -62,8 +57,11 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   @query('#condition')
   public conditionElement!: HTMLElement;
 
-  @query(IgcDropdownComponent.tagName)
-  public dropdown!: IgcDropdownComponent;
+  @query('[part~="dropdown"]')
+  public dropdown!: HTMLElement;
+
+  @state()
+  protected dropdownOpen = false;
 
   @property({ attribute: false })
   public column: ColumnConfiguration<T> = DEFAULT_COLUMN_CONFIG as ColumnConfiguration<T>;
@@ -86,10 +84,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     this.input?.select();
   }
 
-  #handleConditionChanged(event: CustomEvent<IgcDropdownItemComponent>) {
-    event.stopPropagation();
-    const key = event.detail.value as OperandKeys<T[typeof this.column.key]>;
-
+  #applyCondition(key: OperandKeys<T[typeof this.column.key]>) {
     // XXX: Types
     this.expression.condition = (getFilterOperandsFor(this.column) as any)[key] as FilterOperation<
       T[keyof T]
@@ -101,6 +96,31 @@ export default class ApexFilterRow<T extends object> extends LitElement {
 
     this.requestUpdate();
   }
+
+  #handleDropdownItemClick = (event: Event) => {
+    event.stopPropagation();
+    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-value]');
+    if (!target) return;
+    const value = target.dataset.value as OperandKeys<T[typeof this.column.key]>;
+    this.#applyCondition(value);
+    this.dropdownOpen = false;
+    this.input?.focus();
+  };
+
+  #handleOutsidePointer = (event: PointerEvent) => {
+    if (!this.dropdownOpen) return;
+    const path = event.composedPath();
+    if (path.includes(this.dropdown) || path.includes(this.conditionElement)) return;
+    this.dropdownOpen = false;
+  };
+
+  #handleDocumentKey = (event: KeyboardEvent) => {
+    if (this.dropdownOpen && event.key === 'Escape') {
+      event.stopPropagation();
+      this.dropdownOpen = false;
+      this.conditionElement?.focus();
+    }
+  };
 
   #handleInput(event: Event) {
     event.stopPropagation();
@@ -144,8 +164,20 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     this.requestUpdate();
   }
 
-  #openDropdownList() {
-    this.dropdown.toggle(this.input);
+  #openDropdownList = () => {
+    this.dropdownOpen = !this.dropdownOpen;
+  };
+
+  public override connectedCallback(): void {
+    super.connectedCallback();
+    document.addEventListener('pointerdown', this.#handleOutsidePointer, true);
+    document.addEventListener('keydown', this.#handleDocumentKey, true);
+  }
+
+  public override disconnectedCallback(): void {
+    document.removeEventListener('pointerdown', this.#handleOutsidePointer, true);
+    document.removeEventListener('keydown', this.#handleDocumentKey, true);
+    super.disconnectedCallback();
   }
 
   @watch('active', { waitUntilFirstUpdate: true })
@@ -275,22 +307,28 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   }
 
   protected renderDropdown() {
-    return html`<igc-dropdown
-      flip
-      same-width
-      @igcChange=${this.#handleConditionChanged}
+    return html`<ul
+      part="dropdown"
+      role="listbox"
+      aria-label="Filter condition"
+      ?hidden=${!this.dropdownOpen}
+      @click=${this.#handleDropdownItemClick}
     >
       ${Object.entries(getFilterOperandsFor(this.column)).map(
         ([key, operand]) => html`
-          <igc-dropdown-item
-            .value=${key}
+          <li
+            part="dropdown-item"
+            role="option"
+            tabindex="-1"
+            data-value=${key}
+            aria-selected=${this.condition.name === key}
             ?selected=${this.condition.name === key}
           >
-            ${prefixedIcon(key)}${operand?.label ?? key}
-          </igc-dropdown-item>
+            ${renderIcon(key)}<span>${operand?.label ?? key}</span>
+          </li>
         `
       )}
-    </igc-dropdown>`;
+    </ul>`;
   }
 
   protected renderDropdownTarget() {
@@ -307,18 +345,18 @@ export default class ApexFilterRow<T extends object> extends LitElement {
 
   protected renderInputArea() {
     return html`<div part="filter-field">
-        ${this.renderDropdownTarget()}
-        <input
-          part="filter-input"
-          type="text"
-          .value=${ifDefined(this.expression.searchTerm as string | undefined) as string}
-          placeholder="Add filter value"
-          ?readonly=${this.condition.unary}
-          @input=${this.#handleInput}
-          @keydown=${this.#handleKeydown}
-        />
-      </div>
-      ${this.renderDropdown()}`;
+      ${this.renderDropdownTarget()}
+      <input
+        part="filter-input"
+        type="text"
+        .value=${ifDefined(this.expression.searchTerm as string | undefined) as string}
+        placeholder="Add filter value"
+        ?readonly=${this.condition.unary}
+        @input=${this.#handleInput}
+        @keydown=${this.#handleKeydown}
+      />
+      ${this.renderDropdown()}
+    </div>`;
   }
 
   protected renderActiveState() {
