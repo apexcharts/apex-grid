@@ -2,6 +2,7 @@ import { consume } from '@lit/context';
 import { html, LitElement } from 'lit';
 import { property, query } from 'lit/decorators.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
+import { getColumnTypeRenderer } from '../internal/column-types.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_CELL_TAG } from '../internal/tags.js';
 import type {
@@ -233,16 +234,20 @@ export default class ApexGridCell<T extends object> extends LitElement {
 
   protected renderEditor() {
     const template = this.column.editorTemplate;
+    const ctx = {
+      parent: this,
+      row: this.row,
+      column: this.column,
+      value: this.value,
+      commit: (next: unknown) => this.editingController.commitCell(next),
+      cancel: () => this.editingController.cancelCell(),
+    };
     if (template) {
-      const ctx: ApexEditorContext<T> = {
-        parent: this,
-        row: this.row,
-        column: this.column,
-        value: this.value,
-        commit: (next: unknown) => this.editingController.commitCell(next),
-        cancel: () => this.editingController.cancelCell(),
-      } as unknown as ApexEditorContext<T>;
-      return template(ctx as ApexEditorContext<T> as never);
+      return template(ctx as unknown as ApexEditorContext<T> as never);
+    }
+    const typeRenderer = getColumnTypeRenderer<T>(this.column.type);
+    if (typeRenderer?.editor) {
+      return typeRenderer.editor(ctx as never);
     }
     return this.renderDefaultEditor();
   }
@@ -251,9 +256,14 @@ export default class ApexGridCell<T extends object> extends LitElement {
     if (this.isEditing) {
       return this.renderEditor();
     }
-    return this.column.cellTemplate
-      ? this.column.cellTemplate(this.context as ApexCellContext<T> as never)
-      : html`${this.value}`;
+    if (this.column.cellTemplate) {
+      return this.column.cellTemplate(this.context as ApexCellContext<T> as never);
+    }
+    const typeRenderer = getColumnTypeRenderer<T>(this.column.type);
+    if (typeRenderer?.display) {
+      return typeRenderer.display(this.context as never);
+    }
+    return html`${this.value}`;
   }
 }
 

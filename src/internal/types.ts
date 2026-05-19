@@ -25,8 +25,29 @@ export type PropertyType<T, K extends Keys<T> = Keys<T>> = K extends Keys<T>
   ? BasePropertyType<T, K>
   : never;
 
-/** The data for the current column. */
-export type DataType = 'number' | 'string' | 'boolean';
+/**
+ * The data type — or, for the declarative built-ins (`'select'`), the
+ * presentation type — for the current column.
+ *
+ * @remarks
+ * - `'string'` / `'number'` / `'boolean'` are the primitive data types. They
+ *   drive the default filter operands, the default editor, and the default
+ *   sort comparison.
+ * - `'select'` is a presentation type for columns that store one of a fixed
+ *   set of values. Supply the available options via
+ *   {@link BaseColumnConfiguration.options}. The cell renders the matching
+ *   option's label in display mode and a native `<select>` in edit mode.
+ *   For sorting / filtering, select columns behave as their underlying
+ *   value type (typically string).
+ */
+export type DataType = 'number' | 'string' | 'boolean' | 'select';
+
+/**
+ * An entry in a `'select'` column's `options` list. Bare values use
+ * `String(value)` as their display label; the explicit form lets you give
+ * a value a separate display label.
+ */
+export type ColumnSelectOption<V = unknown> = V | { value: V; label?: string };
 
 /**
  * Configures the sort behavior for the grid.
@@ -180,6 +201,16 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    * recommended so keyboard handoff works.
    */
   editorTemplate?: (params: ApexEditorContext<T, K>) => TemplateResult | unknown;
+  /**
+   * Option list for columns with `type: 'select'`.
+   *
+   * @remarks
+   * Each entry is either a bare value or an explicit `{ value, label }` pair.
+   * The cell renders the matching option's `label` in display mode and a
+   * native `<select>` of all options in edit mode. Has no effect on columns
+   * with another `type`.
+   */
+  options?: ColumnSelectOption<BasePropertyType<T, K>>[];
 }
 
 /**

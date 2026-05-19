@@ -168,17 +168,12 @@ const columns: ColumnConfiguration<User>[] = [
   },
   {
     key: 'priority',
-        editable: true,
-
-    cellTemplate: params =>
-      html`<igc-select
-        outlined
-        .value=${params.value}
-        style="--ig-size: 1"
-        >${choices.map(
-          choice => html`<igc-select-item .value=${choice}>${choice}</igc-select-item>`,
-        )}</igc-select
-      >`,
+    type: 'select',
+    editable: true,
+    options: choices.map(choice => ({
+      value: choice,
+      label: choice.charAt(0).toUpperCase() + choice.slice(1),
+    })),
     sort: {
       comparer: (a, b) => choices.indexOf(a) - choices.indexOf(b),
     },
