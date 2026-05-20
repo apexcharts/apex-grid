@@ -111,6 +111,10 @@ const ICONS: Record<string, IconDef> = {
     viewBox: '0 0 24 24',
     paths: svg`<path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>`,
   },
+  'chevron-down': {
+    viewBox: '0 0 24 24',
+    paths: svg`<path d="M7.41 8.58 12 13.17l4.59-4.59L18 10l-6 6-6-6z"/>`,
+  },
 };
 
 export type GridIconName = keyof typeof ICONS;

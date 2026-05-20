@@ -180,24 +180,55 @@ $star-size: #{rem(14px)};
     }
 }
 
-// Built-in boolean display (column `type: 'boolean'`). Uses the existing
-// encircled check / X icons. False values are dimmed so the column has a
-// consistent visual height regardless of value.
-[part~='boolean-mark'] {
+// Built-in boolean display (column `type: 'boolean'`). A native, non-
+// interactive <input type="checkbox"> so the affordance matches every other
+// checkbox in the host page. tabindex=-1 + pointer-events: none in the
+// component keep it out of focus and click handling.
+input[part~='boolean-mark'] {
+    inline-size: #{rem(16px)};
+    block-size: #{rem(16px)};
+    margin: 0;
+    cursor: default;
+    accent-color: $editor-accent;
+    pointer-events: none;
+}
+
+// Built-in select display (column `type: 'select'`). Reads as a closed
+// dropdown — subtle border, a chevron indicator, hover affordance — so the
+// edit affordance is clear before the user enters edit mode.
+[part~='select-display'] {
     display: inline-flex;
     align-items: center;
-    opacity: 0.25;
-    color: currentcolor;
+    gap: #{rem(6px)};
+    padding: #{rem(2px)} #{rem(4px)} #{rem(2px)} #{rem(8px)};
+    border: #{rem(1px)} solid hsl(from currentcolor h s l / 18%);
+    border-radius: #{rem(3px)};
+    background: transparent;
+    cursor: pointer;
+    line-height: 1.2;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+    min-inline-size: 0;
+    max-inline-size: 100%;
 
-    svg {
-        inline-size: #{rem(16px)};
-        block-size: #{rem(16px)};
+    &:hover {
+        border-color: hsl(from currentcolor h s l / 32%);
+        background: hsl(from currentcolor h s l / 4%);
     }
 }
 
-[part~='boolean-mark'][part~='filled'] {
-    opacity: 1;
-    color: var(--igx-boolean-true-color, var(--ig-success-500, currentcolor));
+[part~='select-label'] {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-inline-size: 0;
+    flex: 1;
+}
+
+[part~='select-chevron'] {
+    inline-size: #{rem(14px)};
+    block-size: #{rem(14px)};
+    opacity: 0.6;
+    flex-shrink: 0;
 }
 
 // Built-in image display (column `type: 'image'`). Sized to fit the cell

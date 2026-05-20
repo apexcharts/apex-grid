@@ -125,7 +125,9 @@ describe('Column type: select', () => {
       await TDD.waitForUpdate();
 
       const select = TDD.cellSelect(0, 'importance')!;
-      select.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      select.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true })
+      );
       await TDD.waitForUpdate();
 
       expect(TDD.grid.editingCell).to.be.null;
@@ -183,6 +185,50 @@ describe('Column type: select', () => {
       const cell = row.cells.get('importance' as never).element;
       expect(cell.shadowRoot!.querySelector('textarea')).to.exist;
       expect(cell.shadowRoot!.querySelector('select')).to.be.null;
+    });
+  });
+
+  describe('cell-level editing flow', () => {
+    it('Tab key while editing exits the editor (cell-level handler)', async () => {
+      await TDD.grid.editCell(0, 'importance');
+      await TDD.waitForUpdate();
+
+      const select = TDD.cellSelect(0, 'importance')!;
+      select.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, composed: true })
+      );
+      await TDD.waitForUpdate();
+
+      expect(TDD.grid.editingCell).to.be.null;
+    });
+
+    it('focus-out to outside the cell exits the editor', async () => {
+      await TDD.grid.editCell(0, 'importance');
+      await TDD.waitForUpdate();
+
+      const cell = TDD.rows.get(0).cells.get('importance' as never).element;
+      // Simulate focus moving to <body>: emit focusout with no relatedTarget.
+      cell.dispatchEvent(
+        new FocusEvent('focusout', { bubbles: true, composed: true, relatedTarget: null })
+      );
+      await TDD.waitForUpdate();
+
+      expect(TDD.grid.editingCell).to.be.null;
+    });
+
+    it('focus-out within the same cell does NOT exit the editor', async () => {
+      await TDD.grid.editCell(0, 'importance');
+      await TDD.waitForUpdate();
+
+      const cell = TDD.rows.get(0).cells.get('importance' as never).element;
+      const select = TDD.cellSelect(0, 'importance')!;
+      // relatedTarget is still inside the cell — should NOT trigger commit/exit.
+      cell.dispatchEvent(
+        new FocusEvent('focusout', { bubbles: true, composed: true, relatedTarget: select })
+      );
+      await TDD.waitForUpdate();
+
+      expect(TDD.grid.editingCell).to.not.be.null;
     });
   });
 });
@@ -302,7 +348,9 @@ describe('Column type: rating', () => {
       await RTDD.waitForUpdate();
 
       const editor = RTDD.ratingEditor(2)!;
-      editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      editor.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true })
+      );
       await RTDD.waitForUpdate();
 
       expect(RTDD.grid.editingCell).to.be.null;
@@ -443,7 +491,9 @@ describe('Column type: date', () => {
       await DTDD.waitForUpdate();
 
       const input = DTDD.dateInput(0)!;
-      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true })
+      );
       await DTDD.waitForUpdate();
 
       expect(DTDD.grid.editingCell).to.be.null;
@@ -499,10 +549,10 @@ class BooleanFixture<T extends TestData> extends GridTestFixture<T> {
     await super.setUp();
   }
 
-  public mark(rowIndex: number): HTMLElement | null {
+  public mark(rowIndex: number): HTMLInputElement | null {
     const row = this.rows.get(rowIndex);
     const cell = row.cells.get('active' as never).element;
-    return cell.shadowRoot!.querySelector<HTMLElement>('[part~="boolean-mark"]');
+    return cell.shadowRoot!.querySelector<HTMLInputElement>('input[part~="boolean-mark"]');
   }
 }
 
@@ -512,27 +562,29 @@ describe('Column type: boolean (display polish)', () => {
   beforeEach(async () => await BTDD.setUp());
   afterEach(() => BTDD.tearDown());
 
-  it('renders a filled mark for true values', () => {
+  it('renders a checked checkbox for true values', () => {
     // data[2].active === true
     const mark = BTDD.mark(2)!;
     expect(mark).to.exist;
-    expect(mark.getAttribute('part')).to.contain('filled');
+    expect(mark.type).to.equal('checkbox');
+    expect(mark.checked).to.be.true;
+    expect(mark.getAttribute('part')).to.contain('checked');
     expect(mark.getAttribute('aria-label')).to.equal('true');
   });
 
-  it('renders a dimmed mark for false values', () => {
+  it('renders an unchecked checkbox for false values', () => {
     // data[0].active === false
     const mark = BTDD.mark(0)!;
     expect(mark).to.exist;
-    expect(mark.getAttribute('part')).to.not.contain('filled');
+    expect(mark.checked).to.be.false;
+    expect(mark.getAttribute('part')).to.not.contain('checked');
     expect(mark.getAttribute('aria-label')).to.equal('false');
   });
 
-  it('uses different icons for true vs false', () => {
-    const trueIcon = BTDD.mark(2)!.querySelector('svg')!.getAttribute('data-icon');
-    const falseIcon = BTDD.mark(0)!.querySelector('svg')!.getAttribute('data-icon');
-    expect(trueIcon).to.equal('true');
-    expect(falseIcon).to.equal('false');
+  it('marks the checkbox as non-interactive (tabindex=-1, aria-readonly)', () => {
+    const mark = BTDD.mark(0)!;
+    expect(mark.getAttribute('tabindex')).to.equal('-1');
+    expect(mark.getAttribute('aria-readonly')).to.equal('true');
   });
 });
 

@@ -100,7 +100,14 @@ const selectType: ColumnTypeRenderer<object> = {
   display(ctx) {
     const opts = getSelectOptions(ctx.column as { options?: SelectOption[] });
     const match = opts.find((o) => o.value === ctx.value);
-    return html`${match?.label ?? (ctx.value as unknown as string | number | null | undefined)}`;
+    const label = match?.label ?? (ctx.value == null ? '' : String(ctx.value));
+    // The display reads as a closed dropdown so users see the affordance
+    // before entering edit mode. Interaction itself is still governed by
+    // the cell's edit trigger (click / doubleClick).
+    return html`<span part="select-display">
+      <span part="select-label">${label}</span>
+      ${renderIcon('chevron-down', { part: 'select-chevron' })}
+    </span>`;
   },
 
   editor(ctx) {
@@ -111,13 +118,12 @@ const selectType: ColumnTypeRenderer<object> = {
       const next = opts[idx]?.value;
       ctx.commit(next);
     };
+    // Escape / Tab / focus-out are handled at the cell level; we only need
+    // Enter here to commit the focused option without waiting for `change`.
     const handleKeydown = (event: KeyboardEvent) => {
-      event.stopPropagation();
-      if (event.key === 'Escape') {
+      if (event.key === 'Enter') {
         event.preventDefault();
-        ctx.cancel();
-      } else if (event.key === 'Enter') {
-        event.preventDefault();
+        event.stopPropagation();
         const el = event.target as HTMLSelectElement;
         const next = opts[el.selectedIndex]?.value;
         ctx.commit(next);
@@ -212,13 +218,12 @@ const dateType: ColumnTypeRenderer<object> = {
       const next = raw ? parseDate(raw) : null;
       ctx.commit(commitDateInSameShape(ctx.value, next));
     };
+    // Escape / Tab / focus-out are handled at the cell level; we only need
+    // Enter here to commit the typed value without waiting for `change`.
     const handleKeydown = (event: KeyboardEvent) => {
-      event.stopPropagation();
-      if (event.key === 'Escape') {
+      if (event.key === 'Enter') {
         event.preventDefault();
-        ctx.cancel();
-      } else if (event.key === 'Enter') {
-        event.preventDefault();
+        event.stopPropagation();
         const raw = (event.target as HTMLInputElement).value;
         const next = raw ? parseDate(raw) : null;
         ctx.commit(commitDateInSameShape(ctx.value, next));
@@ -257,31 +262,13 @@ const ratingType: ColumnTypeRenderer<object> = {
 
     const commitTo = (next: number) => ctx.commit(clampRating(next, max));
 
-    const handleKeydown = (event: KeyboardEvent) => {
-      event.stopPropagation();
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        ctx.cancel();
-      }
-    };
-
-    const handleFocusOut = (event: FocusEvent) => {
-      const wrapper = event.currentTarget as Element;
-      const next = event.relatedTarget as Node | null;
-      // Cancel only when focus actually leaves the editor (not when it
-      // bounces between stars).
-      if (!next || !wrapper.contains(next)) {
-        ctx.cancel();
-      }
-    };
-
+    // Escape / Tab / focus-out are handled at the cell level — no per-editor
+    // handlers needed here. Clicking a star is the primary commit action.
     const stars = Array.from({ length: max }, (_, i) => i + 1);
     return html`<span
       part="rating-editor"
       role="radiogroup"
       aria-label="Rating"
-      @keydown=${handleKeydown}
-      @focusout=${handleFocusOut}
     >
       ${stars.map(
         (rank) => html`<button
@@ -303,13 +290,19 @@ const ratingType: ColumnTypeRenderer<object> = {
 const booleanType: ColumnTypeRenderer<object> = {
   display(ctx) {
     const truthy = ctx.value === true;
-    return html`<span
-      part=${truthy ? 'boolean-mark filled' : 'boolean-mark'}
-      role="img"
+    // A native (but non-interactive) checkbox so the cell visually matches
+    // every other checkbox in the host page — consistent affordance,
+    // accent-color via theme tokens. tabindex="-1" + pointer-events: none
+    // keep it out of focus/keyboard interaction; aria-readonly tells AT it
+    // reflects state rather than accepts input.
+    return html`<input
+      type="checkbox"
+      part=${truthy ? 'boolean-mark checked' : 'boolean-mark'}
+      .checked=${truthy}
+      tabindex="-1"
+      aria-readonly="true"
       aria-label=${truthy ? 'true' : 'false'}
-    >
-      ${renderIcon(truthy ? 'true' : 'false')}
-    </span>`;
+    />`;
   },
   // No `editor` — falls through to cell.renderDefaultEditor() which already
   // produces a native <input type="checkbox"> for boolean columns.

@@ -95,11 +95,15 @@ export default class ApexGridCell<T extends object> extends LitElement {
     super.connectedCallback();
     this.addEventListener('click', this.#handleClick);
     this.addEventListener('dblclick', this.#handleDoubleClick);
+    this.addEventListener('keydown', this.#handleCellKeydown);
+    this.addEventListener('focusout', this.#handleCellFocusOut);
   }
 
   public override disconnectedCallback(): void {
     this.removeEventListener('click', this.#handleClick);
     this.removeEventListener('dblclick', this.#handleDoubleClick);
+    this.removeEventListener('keydown', this.#handleCellKeydown);
+    this.removeEventListener('focusout', this.#handleCellFocusOut);
     super.disconnectedCallback();
   }
 
@@ -182,6 +186,53 @@ export default class ApexGridCell<T extends object> extends LitElement {
     }
   };
 
+  /**
+   * Cell-level keydown that catches keys bubbling out of registry-built
+   * editors (the default editor stops propagation on its own input).
+   *
+   * - Escape always cancels the edit.
+   * - Tab commits (or closes when there's no draft — `commitCell()` with
+   *   `undefined` value is treated as "no change" by the controller).
+   *
+   * Per-editor `keydown` handlers that need to consume Enter (e.g. the
+   * built-in `<select>` editor) still get the first crack — they call
+   * `event.stopPropagation()` and we never see those keys here.
+   */
+  #handleCellKeydown = (event: KeyboardEvent) => {
+    if (!this.isEditing) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.#cancel();
+      return;
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      this.#commitWith();
+    }
+  };
+
+  /**
+   * Cell-level focus-out: commits the active edit when focus truly leaves
+   * the cell (clicking another cell, tabbing past the editor, blurring to
+   * the document body). The default editor's input also has `@blur` which
+   * commits first; by that time `isEditing` is false and this is a no-op.
+   *
+   * For built-in registry editors `commitCell()` with no explicit value
+   * resolves to the current data value — same shape as "no change", so
+   * losing focus without picking discards the open editor without writing
+   * spurious data.
+   */
+  #handleCellFocusOut = (event: FocusEvent) => {
+    if (!this.isEditing) return;
+    const next = event.relatedTarget as Node | null;
+    if (next && (this.contains(next) || this.shadowRoot?.contains(next))) return;
+    if (this.editingController.mode === 'cell') {
+      this.#commitWith();
+    } else {
+      this.editingController.commitCell(this.#pendingValue);
+    }
+  };
+
   #handleTextInput = (event: Event) => {
     const target = event.target as HTMLInputElement;
     this.#pendingValue = this.column.type === 'number' ? target.valueAsNumber : target.value;
@@ -243,10 +294,14 @@ export default class ApexGridCell<T extends object> extends LitElement {
       cancel: () => this.editingController.cancelCell(),
     };
     if (template) {
+      // For custom editors we don't know the draft shape; reset pending so
+      // cell-level commit doesn't write a stale value from a previous edit.
+      this.#pendingValue = this.value;
       return template(ctx as unknown as ApexEditorContext<T> as never);
     }
     const typeRenderer = getColumnTypeRenderer<T>(this.column.type);
     if (typeRenderer?.editor) {
+      this.#pendingValue = this.value;
       return typeRenderer.editor(ctx as never);
     }
     return this.renderDefaultEditor();
