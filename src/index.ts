@@ -14,6 +14,8 @@ export type {
   ApexQuickFilterChangingEvent,
   ApexRowEditEndedEvent,
   ApexRowEditStartedEvent,
+  ApexRowExpandedEvent,
+  ApexRowExpandingEvent,
   ApexRowSelectedEvent,
   ApexRowSelectingEvent,
   ColumnDropPosition,
@@ -28,6 +30,7 @@ export type {
 } from './internal/export.js';
 export type {
   ApexCellContext,
+  ApexDetailContext,
   ApexEditorContext,
   ApexHeaderContext,
   BaseApexCellContext,
@@ -45,6 +48,7 @@ export type {
   EditMode,
   EditTrigger,
   GridEditingConfiguration,
+  GridExpansionConfiguration,
   GridSelectionConfiguration,
   GridSortConfiguration,
   Keys,

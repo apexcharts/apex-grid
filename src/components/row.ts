@@ -54,6 +54,10 @@ export default class ApexGridRow<T extends object> extends LitElement {
   @property({ type: Boolean, reflect: true })
   public selected = false;
 
+  /** Reflects current expansion state so SCSS can rotate the chevron. */
+  @property({ type: Boolean, reflect: true })
+  public expanded = false;
+
   /** The column key currently being edited in this row, or `null`. */
   @property({ attribute: false })
   public editingKey: Keys<T> | null = null;
@@ -65,6 +69,59 @@ export default class ApexGridRow<T extends object> extends LitElement {
 
   protected override willUpdate() {
     this.selected = Boolean(this.state?.selection.isSelected(this.data));
+    this.expanded = Boolean(this.state?.expansion.isExpanded(this.data));
+  }
+
+  protected renderExpansionToggle() {
+    const expansion = this.state?.expansion;
+    if (!expansion?.showToggleColumn) return nothing;
+    const canExpand = expansion.canExpand(this.data) || expansion.isExpanded(this.data);
+    const expanded = this.expanded;
+    const handleClick = (event: MouseEvent) => {
+      event.stopPropagation();
+      if (!canExpand) return;
+      void expansion.toggleRow(this.data);
+    };
+    return html`<div part="expansion-cell" data-pinned="start">
+      <button
+        type="button"
+        part="expansion-toggle"
+        aria-label=${expanded ? 'Collapse row' : 'Expand row'}
+        aria-expanded=${expanded ? 'true' : 'false'}
+        ?disabled=${!canExpand}
+        @click=${handleClick}
+      >
+        <svg
+          part="expansion-chevron"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          width="14"
+          height="14"
+        >
+          <path
+            d="M9 6l6 6-6 6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
+    </div>`;
+  }
+
+  protected renderDetailPanel() {
+    const expansion = this.state?.expansion;
+    if (!expansion?.isExpanded(this.data)) return nothing;
+    const template = this.state.host.expansion?.detailTemplate;
+    if (typeof template !== 'function') return nothing;
+    const content = template({
+      data: this.data,
+      rowIndex: this.index,
+      parent: this.state.host,
+    });
+    return html`<div part="detail-panel" role="region" aria-label="Row detail">${content}</div>`;
   }
 
   protected renderSelectionCell() {
@@ -121,6 +178,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
     // animation in ReorderController to track motion per cell.
     return html`
       ${this.renderSelectionCell()}
+      ${this.renderExpansionToggle()}
       ${repeat(
         this.columns,
         (column) => String(column.key),
@@ -145,6 +203,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
           ></apex-grid-cell>`;
         }
       )}
+      ${this.renderDetailPanel()}
     `;
   }
 }

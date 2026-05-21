@@ -24,6 +24,7 @@ import type {
   ColumnConfiguration,
   DataPipelineConfiguration,
   GridEditingConfiguration,
+  GridExpansionConfiguration,
   GridSelectionConfiguration,
   GridSortConfiguration,
   Keys,
@@ -307,6 +308,35 @@ export interface ApexRowSelectedEvent<T extends object> {
 }
 
 /**
+ * Event payload for the cancellable `rowExpanding` event.
+ */
+export interface ApexRowExpandingEvent<T extends object> {
+  /** The rows that will become expanded by this change. */
+  added: T[];
+  /** The rows that will become collapsed by this change. */
+  removed: T[];
+  /** The full current expansion set before this change is applied. */
+  current: T[];
+  /**
+   * The full expansion set after this change would be applied. Listeners can
+   * inspect this to decide whether to cancel.
+   */
+  next: T[];
+}
+
+/**
+ * Event payload for the `rowExpanded` event.
+ */
+export interface ApexRowExpandedEvent<T extends object> {
+  /** The rows that became expanded in this change. */
+  added: T[];
+  /** The rows that became collapsed in this change. */
+  removed: T[];
+  /** The full expansion set after the change has been applied. */
+  expanded: T[];
+}
+
+/**
  * Event payload for the cancellable `columnPinning` event.
  */
 export interface ApexColumnPinningEvent<T extends object> {
@@ -480,6 +510,23 @@ export interface ApexGridEventMap<T extends object> {
    *
    * @event
    */
+  /**
+   * Emitted before the row expansion set changes.
+   *
+   * @remarks
+   * Cancellable — calling `preventDefault()` aborts the change. Fires for
+   * every expansion-mutating call (toggle, expand-all, programmatic
+   * `expandedRows = ...`).
+   *
+   * @event
+   */
+  rowExpanding: CustomEvent<ApexRowExpandingEvent<T>>;
+  /**
+   * Emitted after a row-expansion change has been applied.
+   *
+   * @event
+   */
+  rowExpanded: CustomEvent<ApexRowExpandedEvent<T>>;
   rowSelecting: CustomEvent<ApexRowSelectingEvent<T>>;
   /**
    * Emitted after a row-selection change has been applied.
@@ -791,6 +838,87 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   public isRowSelected(row: T): boolean {
     return this.stateController.selection.isSelected(row);
+  }
+
+  /**
+   * Row-expansion (master-detail) configuration for the grid.
+   *
+   * @remarks
+   * Expansion is disabled by default. Set `enabled: true` and supply a
+   * `detailTemplate` to opt in. The default UX renders a chevron toggle in a
+   * dedicated leading column; set `showToggleColumn: false` to drive
+   * expansion entirely through the public API or a custom cell template.
+   *
+   * @example
+   * ```ts
+   * grid.expansion = {
+   *   enabled: true,
+   *   detailTemplate: ({ data }) => html`<order-summary .order=${data}></order-summary>`,
+   * };
+   * ```
+   */
+  @property({ attribute: false })
+  public expansion?: GridExpansionConfiguration<T>;
+
+  /**
+   * The currently expanded rows, in insertion order.
+   *
+   * @remarks
+   * Returned as a plain array snapshot — mutating the returned array does
+   * not change the grid's expansion state. Set this property to replace the
+   * expansion set programmatically (goes through the cancellable
+   * `rowExpanding` event).
+   */
+  public get expandedRows(): T[] {
+    return this.stateController.expansion.expandedRows();
+  }
+
+  public set expandedRows(rows: ReadonlyArray<T>) {
+    void this.stateController.expansion.replaceExpansion(rows);
+  }
+
+  /**
+   * Expands `row`. No-op when the row is already expanded, expansion is
+   * disabled, or the optional `isExpandable` predicate rejects it.
+   */
+  public expandRow(row: T): Promise<boolean> {
+    return this.stateController.expansion.expandRow(row);
+  }
+
+  /**
+   * Collapses `row`. No-op when the row is not currently expanded.
+   */
+  public collapseRow(row: T): Promise<boolean> {
+    return this.stateController.expansion.collapseRow(row);
+  }
+
+  /**
+   * Toggles expansion of `row`.
+   */
+  public toggleRowExpansion(row: T): Promise<boolean> {
+    return this.stateController.expansion.toggleRow(row);
+  }
+
+  /**
+   * Expands every row in {@link ApexGrid.dataView} that passes the optional
+   * `isExpandable` predicate.
+   */
+  public expandAllRows(): Promise<boolean> {
+    return this.stateController.expansion.expandAll();
+  }
+
+  /**
+   * Collapses every currently expanded row.
+   */
+  public collapseAllRows(): Promise<boolean> {
+    return this.stateController.expansion.collapseAll();
+  }
+
+  /**
+   * Whether `row` is currently expanded.
+   */
+  public isRowExpanded(row: T): boolean {
+    return this.stateController.expansion.isExpanded(row);
   }
 
   /**

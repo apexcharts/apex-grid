@@ -52,6 +52,49 @@ $filtering-header-background: var(--igx-filtering-header-background, var(--filte
     accent-color: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ig-primary-500)));
 }
 
+// Built-in expansion header cell — pinned start so it stays aligned with the
+// chevron toggle in the body rows. Renders an "expand all" / "collapse all"
+// button when at least one row is expandable.
+$expansion-accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ig-primary-500)));
+
+[part='expansion-header'] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: calc(var(--z-index-base) + 2);
+    background: inherit;
+    border-inline-end: $header-border-width $header-border-style $header-border-color;
+}
+
+[part='expansion-header'] [part='expansion-toggle'] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: #{rem(20px)};
+    block-size: #{rem(20px)};
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+
+    &:hover {
+        background: hsl(from currentcolor h s l / 8%);
+    }
+
+    &:focus-visible {
+        outline: 2px solid $expansion-accent;
+        outline-offset: 1px;
+    }
+}
+
+[part='expansion-header'] [part='expansion-chevron'] {
+    transition: transform 160ms ease;
+}
+
 // Floating "ghost" rendered while a column is being dragged. The ghost is
 // `position: fixed` (viewport-relative) so it follows the cursor across
 // the entire grid regardless of the header row's sticky positioning. A

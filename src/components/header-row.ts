@@ -69,6 +69,52 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
   }
 
   /**
+   * Header cell for the built-in expansion (chevron) column. Renders an
+   * "expand all" toggle that expands every row in the current view, or
+   * collapses every expanded row when at least one is open.
+   */
+  protected renderExpansionHeader() {
+    const expansion = this.state?.expansion;
+    if (!expansion?.showToggleColumn) return nothing;
+    const someExpanded = expansion.expanded.size > 0;
+    const handleClick = (event: MouseEvent) => {
+      event.stopPropagation();
+      if (someExpanded) {
+        void expansion.collapseAll();
+      } else {
+        void expansion.expandAll();
+      }
+    };
+    return html`<div part="expansion-header" data-pinned="start">
+      <button
+        type="button"
+        part="expansion-toggle"
+        aria-label=${someExpanded ? 'Collapse all rows' : 'Expand all rows'}
+        aria-expanded=${someExpanded ? 'true' : 'false'}
+        @click=${handleClick}
+      >
+        <svg
+          part="expansion-chevron"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          width="14"
+          height="14"
+          style=${someExpanded ? 'transform: rotate(90deg)' : ''}
+        >
+          <path
+            d="M9 6l6 6-6 6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
+    </div>`;
+  }
+
+  /**
    * Header cell for the built-in selection (checkbox) column. Renders a
    * "select all on this page" checkbox in multi-select mode; nothing in
    * single-select mode (selecting all rows isn't meaningful there).
@@ -136,7 +182,7 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
     // Keyed by column.key so the same `<apex-grid-header>` DOM element
     // follows its column across a live reorder swap — critical for pointer
     // capture to stay bound to the dragged column as it moves.
-    return html`${this.renderSelectionHeader()}${repeat(
+    return html`${this.renderSelectionHeader()}${this.renderExpansionHeader()}${repeat(
       this.columns,
       (column) => String(column.key),
       (column, index) => {

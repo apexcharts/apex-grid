@@ -2,6 +2,7 @@ import { createContext } from '@lit/context';
 import type { ReactiveController } from 'lit';
 import type { ActiveNode, GridHost } from '../internal/types.js';
 import { EditingController } from './editing.js';
+import { ExpansionController } from './expansion.js';
 import { FilterController } from './filter.js';
 import { NavigationController } from './navigation.js';
 import { PaginationController } from './pagination.js';
@@ -19,6 +20,7 @@ export class StateController<T extends object> implements ReactiveController {
   public reordering!: ReorderController<T>;
   public editing!: EditingController<T>;
   public selection!: SelectionController<T>;
+  public expansion!: ExpansionController<T>;
 
   public get active() {
     return this.navigation.active;
@@ -72,6 +74,7 @@ export class StateController<T extends object> implements ReactiveController {
     this.reordering = new ReorderController(this.host);
     this.editing = new EditingController(this.host);
     this.selection = new SelectionController(this.host);
+    this.expansion = new ExpansionController(this.host);
   }
 
   public hostConnected() {}

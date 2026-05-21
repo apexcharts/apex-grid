@@ -428,6 +428,45 @@ export interface GridSelectionConfiguration {
 }
 
 /**
+ * Context passed to {@link GridExpansionConfiguration.detailTemplate}.
+ */
+export interface ApexDetailContext<T extends object> {
+  /** The row data for the expanded row. */
+  data: T;
+  /** The view-relative row index of the master row. */
+  rowIndex: number;
+  /** The grid element. Useful for emitting events back from the detail. */
+  parent: ApexGrid<T>;
+}
+
+/**
+ * Grid-level row-expansion (master-detail) configuration.
+ */
+export interface GridExpansionConfiguration<T extends object> {
+  /**
+   * Whether row expansion is enabled. Disabled by default.
+   */
+  enabled?: boolean;
+  /**
+   * Callback that produces the detail panel content for an expanded row.
+   * Required when `enabled` is `true`.
+   */
+  detailTemplate?: (context: ApexDetailContext<T>) => TemplateResult | unknown;
+  /**
+   * Optional per-row predicate that gates which rows may be expanded. When
+   * omitted, every row is expandable.
+   */
+  isExpandable?: (row: T) => boolean;
+  /**
+   * Whether to render the built-in chevron toggle column at the start of
+   * every row (after the selection column, when present). Defaults to `true`.
+   * Set to `false` to drive expansion entirely through the public API or a
+   * custom cell template.
+   */
+  showToggleColumn?: boolean;
+}
+
+/**
  * Grid-level editing configuration.
  */
 export interface GridEditingConfiguration {

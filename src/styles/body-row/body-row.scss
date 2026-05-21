@@ -69,3 +69,70 @@ $selected-row-accent: var(--igx-cell-active-border-color, var(--cell-active-bord
     cursor: pointer;
     accent-color: $selected-row-accent;
 }
+
+// Built-in expansion (chevron) cell — sits at the start of the row, pinned
+// to the inline-start edge so it stays visible during horizontal scrolling.
+// When the selection column is also present it nests just to its right; the
+// CSS grid track order is enforced by the column-width generator.
+[part='expansion-cell'] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: calc(var(--z-index-base) + 1);
+    background: inherit;
+    border-inline-end: $row-border-width $row-border-style $row-border-color;
+}
+
+[part='expansion-toggle'] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: #{rem(20px)};
+    block-size: #{rem(20px)};
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    transition: background-color 120ms ease;
+
+    &:hover:not(:disabled) {
+        background: hsl(from currentcolor h s l / 8%);
+    }
+
+    &:focus-visible {
+        outline: 2px solid $selected-row-accent;
+        outline-offset: 1px;
+    }
+
+    &:disabled {
+        opacity: 0.35;
+        cursor: default;
+    }
+}
+
+[part='expansion-chevron'] {
+    transition: transform 160ms ease;
+}
+
+:host([expanded]) [part='expansion-chevron'] {
+    transform: rotate(90deg);
+}
+
+// Detail panel — sits below the cells, spans every track including the
+// pinned columns. We restart at grid-column: 1 so it begins at the inline
+// start, and stretch to -1 so it covers the full inline extent.
+[part='detail-panel'] {
+    grid-column: 1 / -1;
+    padding: #{rem(12px)} #{rem(16px)};
+    background: hsl(from #{$selected-row-accent} h s l / 4%);
+    border-block-start: $row-border-width $row-border-style $row-border-color;
+    position: sticky;
+    inset-inline-start: 0;
+    inline-size: var(--apex-host-width, 100%);
+    box-sizing: border-box;
+    overflow: hidden;
+}

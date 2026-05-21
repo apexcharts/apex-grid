@@ -182,6 +182,24 @@ render(
       .pagination=${{ enabled: true, pageSize: 25, pageSizeOptions: [10, 25, 50, 100, 250] }}
       .editing=${{ enabled: true, mode: 'cell', trigger: 'doubleClick' }}
       .selection=${{ enabled: true, mode: 'multiple', showCheckboxColumn: true }}
+      .expansion=${{
+        enabled: true,
+        detailTemplate: ({ data }: { data: User }) => html`
+          <div style="display: flex; gap: 24px; align-items: center; padding: 4px 0;">
+            <img
+              src=${data.avatar}
+              alt=""
+              style="inline-size: 56px; block-size: 56px; border-radius: 50%; object-fit: cover;"
+            />
+            <div>
+              <h4 style="margin: 0 0 4px 0;">${data.name}</h4>
+              <div style="opacity: 0.75; font-size: 13px;">
+                ${data.email} &middot; age ${data.age} &middot; satisfaction ${data.satisfaction}/5
+              </div>
+            </div>
+          </div>
+        `,
+      }}
     ></apex-grid>`,
   document.getElementById('demo')!,
 );

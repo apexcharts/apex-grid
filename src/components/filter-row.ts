@@ -417,22 +417,28 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     const selectionPlaceholder = this.state.selection.showCheckboxColumn
       ? html`<div part="filter-row-preview" data-pinned="start"></div>`
       : nothing;
+    // And another for the row's expansion chevron column.
+    const expansionPlaceholder = this.state.expansion.showToggleColumn
+      ? html`<div part="filter-row-preview" data-pinned="start"></div>`
+      : nothing;
 
-    return html`${selectionPlaceholder}${displayColumns.map((column, index) => {
-      if (column.hidden) return nothing;
-      const offset = pinOffsets.get(column.key);
-      const pinStyle =
-        column.pinned && typeof offset === 'number' ? `--apex-pin-offset:${offset}px` : '';
-      const edge = getPinEdge(displayColumns, index);
-      return html`<div
-        part="filter-row-preview"
-        data-pinned=${column.pinned ?? 'none'}
-        data-pin-edge=${edge ?? 'none'}
-        style=${pinStyle}
-      >
-        ${column.filter ? this.renderFilterState(column) : nothing}
-      </div>`;
-    })}`;
+    return html`${selectionPlaceholder}${expansionPlaceholder}${displayColumns.map(
+      (column, index) => {
+        if (column.hidden) return nothing;
+        const offset = pinOffsets.get(column.key);
+        const pinStyle =
+          column.pinned && typeof offset === 'number' ? `--apex-pin-offset:${offset}px` : '';
+        const edge = getPinEdge(displayColumns, index);
+        return html`<div
+          part="filter-row-preview"
+          data-pinned=${column.pinned ?? 'none'}
+          data-pin-edge=${edge ?? 'none'}
+          style=${pinStyle}
+        >
+          ${column.filter ? this.renderFilterState(column) : nothing}
+        </div>`;
+      }
+    )}`;
   }
 
   protected override render() {

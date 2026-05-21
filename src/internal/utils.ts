@@ -6,14 +6,19 @@ import type { ColumnConfiguration, DataType, GridHost } from './types.js';
 
 /** Width of the auto-rendered selection (checkbox) column in CSS pixels. */
 export const SELECTION_COLUMN_WIDTH = 44;
+/** Width of the auto-rendered expansion (chevron) column in CSS pixels. */
+export const EXPANSION_COLUMN_WIDTH = 40;
 
 export function applyColumnWidths<T extends object>(
   columns: Array<ColumnConfiguration<T>>,
-  options: { showSelectionColumn?: boolean } = {}
+  options: { showSelectionColumn?: boolean; showExpansionColumn?: boolean } = {}
 ): StyleInfo {
   const tracks = columns
     .filter((each) => !each.hidden)
     .map(({ width }) => width ?? 'minmax(136px, 1fr)');
+  if (options.showExpansionColumn) {
+    tracks.unshift(`${EXPANSION_COLUMN_WIDTH}px`);
+  }
   if (options.showSelectionColumn) {
     tracks.unshift(`${SELECTION_COLUMN_WIDTH}px`);
   }
