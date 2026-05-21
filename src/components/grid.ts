@@ -1183,16 +1183,21 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   protected dataChanged() {
     // Shallow copy of the array — items keep reference equality with
     // `this.data` so cell edits can write through to the source record.
-    this.dataState = [...this.data];
+    let next: T[] = [...this.data];
     autoGenerateColumns(this);
     // Tree controller needs to re-apply `defaultExpanded` against the new
     // record set when data is swapped wholesale.
     this.stateController?.tree?.resetForDataChange();
-    // Tree mode needs the pipeline to run on initial mount so the first
-    // render shows the tree-flattened shape instead of a flat dump of the
-    // raw data. The hasUpdated gate is otherwise preserved for non-tree
-    // mode to keep the existing pre-pipeline behaviour.
-    if (this.hasUpdated || this.stateController?.tree?.enabled) {
+    // Tree mode applies its flatten step synchronously here so the first
+    // paint shows the right shape. Sort/filter/quickFilter still run via
+    // the async pipeline on subsequent updates — they take this dataState
+    // as input and re-apply tree at the end. Running tree both here and
+    // inside the pipeline is idempotent because `process` is pure.
+    if (this.stateController?.tree?.enabled) {
+      next = this.stateController.tree.process(next);
+    }
+    this.dataState = next;
+    if (this.hasUpdated) {
       this.pipeline();
     }
   }

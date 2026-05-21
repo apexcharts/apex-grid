@@ -72,12 +72,21 @@ function renderShell() {
 const root = document.getElementById('demo')!;
 
 async function mountActivePage() {
-  // Reset the container so the previous page's lit-html part state doesn't
-  // leak — `render(html``, ...)` would still leave Lit's bookkeeping nodes;
-  // a hard reset gives each page a clean DOM to mount into.
-  root.replaceChildren();
+  // Each page renders into a fresh child element rather than re-using
+  // `#demo`. Lit's `render(template, container)` installs marker nodes on
+  // the container to track its parts; if we kept reusing `#demo`, calling
+  // `replaceChildren()` would eject those markers and the next render()
+  // would throw "ChildPart has no parentNode". A fresh child per page
+  // sidesteps that — the old mount node is discarded along with its part
+  // state when we replace it.
+  const mount = document.createElement('div');
+  // `display: contents` lets the apex-grid inside the mount remain a flex
+  // child of `#demo`, so the existing `apex-grid { flex: 1 }` rule still
+  // claims the available height.
+  mount.style.display = 'contents';
+  root.replaceChildren(mount);
   renderShell();
-  await resolvePage().mount(root);
+  await resolvePage().mount(mount);
 }
 
 window.addEventListener('hashchange', () => {
