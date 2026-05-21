@@ -18,6 +18,8 @@ export type {
   ApexRowExpandingEvent,
   ApexRowSelectedEvent,
   ApexRowSelectingEvent,
+  ApexTreeRowExpandedEvent,
+  ApexTreeRowExpandingEvent,
   ColumnDropPosition,
 } from './components/grid.js';
 export { ApexGrid } from './components/grid.js';
@@ -51,6 +53,7 @@ export type {
   GridExpansionConfiguration,
   GridSelectionConfiguration,
   GridSortConfiguration,
+  GridTreeConfiguration,
   Keys,
   PaginationConfiguration,
   PaginationMode,

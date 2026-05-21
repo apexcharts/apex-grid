@@ -139,6 +139,16 @@ export default class ApexGridCell<T extends object> extends LitElement {
     } else {
       this.removeAttribute('aria-current');
     }
+    // Reflect tree-expanded state on the group cell so the SCSS chevron
+    // rotation triggers from this attribute (cheaper than per-render style
+    // mutations and keeps the SVG transform purely declarative).
+    const tree = this.state?.tree;
+    const isGroup = tree?.enabled && this.row?.data && tree.isGroupColumn(this.column.key);
+    if (isGroup && tree.isExpanded(this.row.data)) {
+      this.setAttribute('data-tree-expanded', '');
+    } else {
+      this.removeAttribute('data-tree-expanded');
+    }
   }
 
   protected override updated() {
@@ -348,18 +358,102 @@ export default class ApexGridCell<T extends object> extends LitElement {
     return this.renderDefaultEditor();
   }
 
-  protected override render() {
-    if (this.isEditing) {
-      return this.renderEditor();
+  /**
+   * Renders the tree affordance — depth-based indent + a chevron toggle (or
+   * leaf spacer) — that prefixes the group cell when {@link ApexGrid.tree}
+   * is enabled. Returns `nothing` for every other cell.
+   */
+  protected renderTreeAffordance() {
+    const tree = this.state?.tree;
+    if (!tree?.enabled) return null;
+    if (!this.row?.data) return null;
+    if (!tree.isGroupColumn(this.column.key)) return null;
+
+    const data = this.row.data;
+    const meta = tree.getMeta(data);
+    if (!meta) return null;
+
+    const indent = meta.depth * tree.childIndent;
+    const expanded = tree.isExpanded(data);
+    const handleClick = (event: MouseEvent) => {
+      event.stopPropagation();
+      if (!meta.hasChildren) return;
+      void tree.toggleRow(data);
+    };
+
+    const chevron = meta.hasChildren
+      ? html`<button
+          type="button"
+          part="tree-toggle"
+          aria-label=${expanded ? 'Collapse row' : 'Expand row'}
+          aria-expanded=${expanded ? 'true' : 'false'}
+          @click=${handleClick}
+        >
+          <svg
+            part="tree-chevron"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            width="14"
+            height="14"
+          >
+            <path
+              d="M9 6l6 6-6 6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>`
+      : html`<span part="tree-spacer" aria-hidden="true"></span>`;
+
+    return html`<span
+        part="tree-indent"
+        aria-hidden="true"
+        style=${`inline-size: ${indent}px`}
+      ></span>${chevron}`;
+  }
+
+  /**
+   * Resolves the value to display for the cell. Synthesized tree parents
+   * (those that appear only as a path segment with no backing data) render
+   * their last path segment in the group column and nothing elsewhere.
+   */
+  protected resolveDisplayValue(): unknown {
+    const tree = this.state?.tree;
+    if (tree?.enabled && this.row?.data && tree.isSynthesized(this.row.data)) {
+      return tree.isGroupColumn(this.column.key) ? tree.getLabel(this.row.data) : '';
     }
+    return this.value;
+  }
+
+  protected renderCellBody() {
     if (this.column.cellTemplate) {
       return this.column.cellTemplate(this.context as ApexCellContext<T> as never);
     }
     const typeRenderer = getColumnTypeRenderer<T>(this.column.type);
     if (typeRenderer?.display) {
+      // Synthesized parents have no real backing data — route them through
+      // a plain text render instead of the typed renderer.
+      const tree = this.state?.tree;
+      if (tree?.enabled && this.row?.data && tree.isSynthesized(this.row.data)) {
+        return html`${this.resolveDisplayValue()}`;
+      }
       return typeRenderer.display(this.context as never);
     }
-    return html`${this.value}`;
+    return html`${this.resolveDisplayValue()}`;
+  }
+
+  protected override render() {
+    if (this.isEditing) {
+      return this.renderEditor();
+    }
+    const affordance = this.renderTreeAffordance();
+    if (affordance) {
+      return html`${affordance}<span part="tree-cell-content">${this.renderCellBody()}</span>`;
+    }
+    return this.renderCellBody();
   }
 }
 

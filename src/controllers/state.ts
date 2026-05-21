@@ -10,6 +10,7 @@ import { ReorderController } from './reorder.js';
 import { ResizeController } from './resize.js';
 import { SelectionController } from './selection.js';
 import { SortController } from './sort.js';
+import { TreeController } from './tree.js';
 
 export class StateController<T extends object> implements ReactiveController {
   public sorting!: SortController<T>;
@@ -21,6 +22,7 @@ export class StateController<T extends object> implements ReactiveController {
   public editing!: EditingController<T>;
   public selection!: SelectionController<T>;
   public expansion!: ExpansionController<T>;
+  public tree!: TreeController<T>;
 
   /**
    * Current message in the grid's polite live region. Bound by the host's
@@ -99,6 +101,7 @@ export class StateController<T extends object> implements ReactiveController {
     this.editing = new EditingController(this.host);
     this.selection = new SelectionController(this.host);
     this.expansion = new ExpansionController(this.host);
+    this.tree = new TreeController(this.host);
   }
 
   public hostConnected() {}

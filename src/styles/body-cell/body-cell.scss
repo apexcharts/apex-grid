@@ -325,3 +325,71 @@ input[part~='boolean-mark'][aria-readonly='true'] {
 // `<input type="date">` inherits the chromeless `input[data-apex-editor]`
 // styling; no additional rules needed.
 
+// --- Tree (nested-rows) affordance -----------------------------------------
+// Rendered as a prefix inside the "group column" cell: a depth-based indent
+// spacer, a chevron toggle (or leaf placeholder), and the cell body. The
+// spacer's `inline-size` is driven inline from cell.ts and matches the depth
+// times `childIndent`.
+
+$tree-accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ig-primary-500)));
+
+[part='tree-indent'] {
+    flex-shrink: 0;
+    display: inline-block;
+}
+
+[part='tree-toggle'] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    // Touch target floor (WCAG 2.5.8).
+    inline-size: #{rem(24px)};
+    block-size: #{rem(24px)};
+    margin-inline-end: #{rem(4px)};
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    transition: background-color 120ms ease;
+
+    &:hover {
+        background: hsl(from currentcolor h s l / 8%);
+    }
+
+    &:focus-visible {
+        outline: #{rem(2px)} solid #{$tree-accent};
+        outline-offset: #{rem(1px)};
+    }
+}
+
+[part='tree-chevron'] {
+    transition: transform 160ms ease;
+}
+
+// Rotate the chevron downward when the parent row is currently expanded.
+// The row element reflects the `data-tree-expanded` attribute when the
+// group cell is rendering for an expanded row.
+:host([data-tree-expanded]) [part='tree-chevron'] {
+    transform: rotate(90deg);
+}
+
+// Leaf placeholder — reserves the same width as the chevron toggle so that
+// leaf rows align with their siblings that do have a toggle.
+[part='tree-spacer'] {
+    display: inline-block;
+    flex-shrink: 0;
+    inline-size: #{rem(24px)};
+    block-size: #{rem(24px)};
+    margin-inline-end: #{rem(4px)};
+}
+
+[part='tree-cell-content'] {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+

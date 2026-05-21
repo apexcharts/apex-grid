@@ -440,6 +440,57 @@ export interface ApexDetailContext<T extends object> {
 }
 
 /**
+ * Grid-level tree-data (nested rows) configuration.
+ *
+ * @remarks
+ * Tree mode renders hierarchical data as nested rows that share the same
+ * column layout — collapsible parents with indented children, AG Grid's
+ * "tree data" pattern. The data array stays flat; the grid derives the
+ * hierarchy from {@link getDataPath} at runtime.
+ *
+ * This is distinct from {@link GridExpansionConfiguration} (master-detail),
+ * which expands a row to show an arbitrary detail panel. Tree mode and
+ * expansion mode can be enabled together, but the chevron column is
+ * reserved by whichever is currently rendering the chevron — typically the
+ * tree feature when both are enabled.
+ *
+ * @example
+ * ```ts
+ * grid.tree = {
+ *   enabled: true,
+ *   getDataPath: (row) => row.path,
+ * };
+ * ```
+ */
+export interface GridTreeConfiguration<T extends object> {
+  /** Whether tree mode is enabled. Disabled by default. */
+  enabled?: boolean;
+  /**
+   * Callback that returns the hierarchical path for a row. The path is a
+   * sequence of segments from root to the row's own position — for example
+   * `['Adrian']` for a CEO, `['Adrian', 'Bryan']` for a VP under Adrian,
+   * and so on. Required when `enabled` is `true`.
+   */
+  getDataPath: (row: T) => readonly string[];
+  /**
+   * Which column displays the chevron + indentation. Defaults to the first
+   * visible non-hidden data column.
+   */
+  groupColumnKey?: Keys<T>;
+  /**
+   * Initial expansion state:
+   * - `false` (default): all rows collapsed.
+   * - `true`: every row expanded.
+   * - `number`: expand all rows up to and including the given depth (0 = roots only).
+   */
+  defaultExpanded?: boolean | number;
+  /**
+   * Pixels of indentation per depth level. Defaults to `20`.
+   */
+  childIndent?: number;
+}
+
+/**
  * Grid-level row-expansion (master-detail) configuration.
  */
 export interface GridExpansionConfiguration<T extends object> {

@@ -27,6 +27,7 @@ import type {
   GridExpansionConfiguration,
   GridSelectionConfiguration,
   GridSortConfiguration,
+  GridTreeConfiguration,
   Keys,
   PaginationConfiguration,
   PaginationState,
@@ -308,6 +309,32 @@ export interface ApexRowSelectedEvent<T extends object> {
 }
 
 /**
+ * Event payload for the cancellable `treeRowExpanding` event.
+ */
+export interface ApexTreeRowExpandingEvent<T extends object> {
+  /** Rows that will become expanded by this change. */
+  added: T[];
+  /** Rows that will become collapsed by this change. */
+  removed: T[];
+  /** The full current tree-expansion set before this change is applied. */
+  current: T[];
+  /** The full set after this change would be applied. */
+  next: T[];
+}
+
+/**
+ * Event payload for the `treeRowExpanded` event.
+ */
+export interface ApexTreeRowExpandedEvent<T extends object> {
+  /** Rows that became expanded in this change. */
+  added: T[];
+  /** Rows that became collapsed in this change. */
+  removed: T[];
+  /** The full tree-expansion set after the change has been applied. */
+  expanded: T[];
+}
+
+/**
  * Event payload for the cancellable `rowExpanding` event.
  */
 export interface ApexRowExpandingEvent<T extends object> {
@@ -510,6 +537,23 @@ export interface ApexGridEventMap<T extends object> {
    *
    * @event
    */
+  /**
+   * Emitted before the tree-row expansion set changes.
+   *
+   * @remarks
+   * Fires only when {@link ApexGrid.tree} is enabled and a row's tree
+   * expansion is toggled (via the chevron, the public API, or
+   * `expand-all/collapse-all`). Cancellable.
+   *
+   * @event
+   */
+  treeRowExpanding: CustomEvent<ApexTreeRowExpandingEvent<T>>;
+  /**
+   * Emitted after a tree-row expansion change has been applied.
+   *
+   * @event
+   */
+  treeRowExpanded: CustomEvent<ApexTreeRowExpandedEvent<T>>;
   /**
    * Emitted before the row expansion set changes.
    *
@@ -937,6 +981,66 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
+   * Tree-data (nested rows) configuration for the grid.
+   *
+   * @remarks
+   * Tree mode keeps {@link ApexGrid.data} flat; the grid derives the
+   * hierarchy from a user-supplied `getDataPath(row)` callback (AG Grid's
+   * "tree data" pattern). When enabled, the first visible data column (or
+   * the column referenced by `groupColumnKey`) renders a chevron toggle
+   * and depth-based indentation.
+   *
+   * @example
+   * ```ts
+   * grid.tree = {
+   *   enabled: true,
+   *   getDataPath: (row) => row.path,    // e.g., ['Adrian'], ['Adrian', 'Bryan']
+   *   defaultExpanded: true,
+   * };
+   * ```
+   */
+  @property({ attribute: false })
+  public tree?: GridTreeConfiguration<T>;
+
+  /**
+   * Toggles tree-expansion of `row`. No-op when tree mode is disabled or
+   * the row has no children.
+   */
+  public toggleTreeRow(row: T): Promise<boolean> {
+    return this.stateController.tree.toggleRow(row);
+  }
+
+  /**
+   * Expands a tree row. No-op when the row is already expanded, has no
+   * children, or tree mode is disabled.
+   */
+  public expandTreeRow(row: T): Promise<boolean> {
+    return this.stateController.tree.expandRow(row);
+  }
+
+  /**
+   * Collapses a tree row. No-op when the row is not currently expanded.
+   */
+  public collapseTreeRow(row: T): Promise<boolean> {
+    return this.stateController.tree.collapseRow(row);
+  }
+
+  /** Expands every parent row in the current tree. */
+  public expandAllTreeRows(): Promise<boolean> {
+    return this.stateController.tree.expandAll();
+  }
+
+  /** Collapses every currently-expanded tree row. */
+  public collapseAllTreeRows(): Promise<boolean> {
+    return this.stateController.tree.collapseAll();
+  }
+
+  /** Whether `row` is currently expanded in the tree. */
+  public isTreeRowExpanded(row: T): boolean {
+    return this.stateController.tree.isExpanded(row);
+  }
+
+  /**
    * Set the sort state for the grid.
    */
   public set sortExpressions(expressions: SortExpression<T>[]) {
@@ -1081,8 +1185,14 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     // `this.data` so cell edits can write through to the source record.
     this.dataState = [...this.data];
     autoGenerateColumns(this);
-
-    if (this.hasUpdated) {
+    // Tree controller needs to re-apply `defaultExpanded` against the new
+    // record set when data is swapped wholesale.
+    this.stateController?.tree?.resetForDataChange();
+    // Tree mode needs the pipeline to run on initial mount so the first
+    // render shows the tree-flattened shape instead of a flat dump of the
+    // raw data. The hasUpdated gate is otherwise preserved for non-tree
+    // mode to keep the existing pre-pipeline behaviour.
+    if (this.hasUpdated || this.stateController?.tree?.enabled) {
       this.pipeline();
     }
   }
@@ -1131,7 +1241,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     // than `willUpdate()` because `@watch('data')` runs *after* the original
     // willUpdate via decorator wrapping — reading `pageItems` earlier would
     // see a stale (empty) `dataState`.
-    this.setAttribute('role', 'grid');
+    this.setAttribute('role', this.stateController.tree.enabled ? 'treegrid' : 'grid');
     const hasFilter = this.columns.some((column) => column.filter);
     const headerRows = hasFilter ? 2 : 1;
     this.setAttribute('aria-rowcount', String(headerRows + this.pageItems.length));

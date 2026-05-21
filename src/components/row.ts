@@ -84,10 +84,27 @@ export default class ApexGridRow<T extends object> extends LitElement {
     } else {
       this.removeAttribute('aria-selected');
     }
-    if (this.state?.expansion.enabled) {
-      this.setAttribute('aria-expanded', this.expanded ? 'true' : 'false');
+
+    // Tree mode reports aria-level (1-based depth) and aria-expanded for
+    // parent rows; expansion mode shares the same attribute on detail-panel
+    // rows. Tree wins when both are enabled since it's the more structural
+    // semantic (the row represents a tree node).
+    const tree = this.state?.tree;
+    const treeMeta = tree?.enabled ? tree.getMeta(this.data) : undefined;
+    if (treeMeta) {
+      this.setAttribute('aria-level', String(treeMeta.depth + 1));
+      if (treeMeta.hasChildren) {
+        this.setAttribute('aria-expanded', tree!.isExpanded(this.data) ? 'true' : 'false');
+      } else {
+        this.removeAttribute('aria-expanded');
+      }
     } else {
-      this.removeAttribute('aria-expanded');
+      this.removeAttribute('aria-level');
+      if (this.state?.expansion.enabled) {
+        this.setAttribute('aria-expanded', this.expanded ? 'true' : 'false');
+      } else {
+        this.removeAttribute('aria-expanded');
+      }
     }
   }
 

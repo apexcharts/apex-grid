@@ -70,6 +70,13 @@ export class DataOperationsController<T extends object> implements ReactiveContr
       ? await this.customSort({ data: transformed, grid: this.host, type: 'sort' })
       : this.sorting.apply(transformed, sorting.state);
 
+    // Tree mode flattens the post-sort rows according to the current
+    // expansion set. Disabled is a no-op pass-through, so flat tables keep
+    // their existing behaviour untouched.
+    if (state.tree.enabled) {
+      transformed = state.tree.process(transformed);
+    }
+
     return transformed;
   }
 }

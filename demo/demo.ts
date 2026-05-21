@@ -160,10 +160,36 @@ const columns: ColumnConfiguration<User>[] = [
 ];
 
 const data = generateData(1e4);
+
+// Small org-chart-style dataset to showcase tree (nested rows) mode.
+type OrgRow = {
+  name: string;
+  role: string;
+  department: string;
+  path: string[];
+};
+
+const orgData: OrgRow[] = [
+  { name: 'Adrian Conner', role: 'COO', department: 'Executive', path: ['Adrian Conner'] },
+  { name: 'Cheryl Browning', role: 'CTO', department: 'Engineering', path: ['Cheryl Browning'] },
+  { name: 'Bryan Hawkins', role: 'VP', department: 'Engineering', path: ['Cheryl Browning', 'Bryan Hawkins'] },
+  { name: 'Chris Bruce', role: 'Engineer', department: 'Engineering', path: ['Cheryl Browning', 'Bryan Hawkins', 'Chris Bruce'] },
+  { name: 'Gregory Walker', role: 'Engineer', department: 'Engineering', path: ['Cheryl Browning', 'Bryan Hawkins', 'Gregory Walker'] },
+  { name: 'Deborah Morales', role: 'VP', department: 'Engineering', path: ['Cheryl Browning', 'Deborah Morales'] },
+  { name: 'Amy Rojas', role: 'Engineer', department: 'Engineering', path: ['Cheryl Browning', 'Deborah Morales', 'Amy Rojas'] },
+];
+
+const orgColumns: ColumnConfiguration<OrgRow>[] = [
+  { key: 'name', headerText: 'Name', width: '320px' },
+  { key: 'role', headerText: 'Role', width: '160px' },
+  { key: 'department', headerText: 'Department' },
+];
+
 ApexGrid.register();
 
 render(
-  html`${themeChoose}<apex-grid
+  html`${themeChoose}
+    <apex-grid
       show-quick-filter
       show-export
       column-reordering
@@ -189,6 +215,17 @@ render(
             </div>
           </div>
         `,
+      }}
+    ></apex-grid>
+    <h3 style="margin: 24px 0 8px 0; font-weight: 500;">Tree data (nested rows)</h3>
+    <apex-grid
+      class="tree-demo"
+      .data=${orgData}
+      .columns=${orgColumns}
+      .tree=${{
+        enabled: true,
+        getDataPath: (row: OrgRow) => row.path,
+        defaultExpanded: true,
       }}
     ></apex-grid>`,
   document.getElementById('demo')!,
