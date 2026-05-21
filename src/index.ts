@@ -20,6 +20,13 @@ export type {
 } from './components/grid.js';
 export { ApexGrid } from './components/grid.js';
 export type {
+  CSVExportOptions,
+  ExportCellValue,
+  ExportOptions,
+  ExportSource,
+  XLSXExportOptions,
+} from './internal/export.js';
+export type {
   ApexCellContext,
   ApexEditorContext,
   ApexHeaderContext,

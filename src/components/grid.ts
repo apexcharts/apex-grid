@@ -6,6 +6,16 @@ import { DataOperationsController } from '../controllers/data-operation.js';
 import { GridDOMController } from '../controllers/dom.js';
 import { gridStateContext, StateController } from '../controllers/state.js';
 import { DEFAULT_COLUMN_CONFIG, PIPELINE } from '../internal/constants.js';
+import {
+  buildCSV,
+  type CSVExportOptions,
+  downloadBlob,
+  getColumnLabel,
+  resolveExportColumns,
+  resolveExportRows,
+  resolveExportValue,
+  type XLSXExportOptions,
+} from '../internal/export.js';
 import { EventEmitterBase } from '../internal/mixins/event-emitter.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_TAG } from '../internal/tags.js';
@@ -28,6 +38,7 @@ import {
   getFilterOperandsFor,
 } from '../internal/utils.js';
 import { watch } from '../internal/watch.js';
+import { buildXLSX } from '../internal/xlsx.js';
 import type { FilterExpression } from '../operations/filter/types.js';
 import type { SortExpression } from '../operations/sort/types.js';
 import { styles as bootstrap } from '../styles/grid/themes/light/grid.bootstrap.css.js';
@@ -1264,6 +1275,75 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     } else {
       editing.cancelCell();
     }
+  }
+
+  /**
+   * Exports the current grid contents as a CSV string and (in a browser
+   * context) triggers a download.
+   *
+   * @remarks
+   * By default the export uses the post-filter/post-sort `dataView`, includes
+   * every visible column with `exportable !== false`, and prepends a UTF-8 BOM
+   * so Excel opens the file with the right encoding. Pass `source: 'page'` to
+   * export only the current page, `source: 'selected'` to export the current
+   * row selection, or `source: 'all'` to export the raw `data` array. The
+   * returned string is the same content written to the file — useful for
+   * tests or routing the bytes elsewhere.
+   *
+   * @example
+   * ```ts
+   * grid.exportToCSV();                                  // download data.csv
+   * grid.exportToCSV({ filename: 'users', source: 'selected' });
+   * const text = grid.exportToCSV({ filename: '' });     // string only, no download
+   * ```
+   */
+  public exportToCSV(options: CSVExportOptions<T> = {}): string {
+    const csv = buildCSV(this, options);
+    const filename = options.filename;
+    if (filename) {
+      downloadBlob(`${filename}.csv`, csv, 'text/csv;charset=utf-8;');
+    } else if (filename === undefined) {
+      downloadBlob('data.csv', csv, 'text/csv;charset=utf-8;');
+    }
+    return csv;
+  }
+
+  /**
+   * Exports the current grid contents as an `.xlsx` workbook and (in a browser
+   * context) triggers a download.
+   *
+   * @remarks
+   * Produces a single-sheet workbook with a bold header row. Numbers, booleans
+   * and `Date` values keep their native cell type in Excel; everything else is
+   * written as inline strings. Sharing the same `source` / `columns` /
+   * `formatter` options as {@link ApexGrid.exportToCSV}, plus an optional
+   * `sheetName`. Pass `filename: ''` to skip the download and only receive
+   * the bytes back.
+   *
+   * @example
+   * ```ts
+   * grid.exportToXLSX();
+   * grid.exportToXLSX({ filename: 'users', sheetName: 'Users' });
+   * ```
+   */
+  public exportToXLSX(options: XLSXExportOptions<T> = {}): Uint8Array {
+    const columns = resolveExportColumns(this, options);
+    const rows = resolveExportRows(this, options.source);
+    const includeHeader = options.includeHeader ?? true;
+    const sheet = {
+      name: options.sheetName ?? 'Sheet1',
+      headers: includeHeader ? columns.map((column) => getColumnLabel(column)) : [],
+      rows: rows.map((row) => columns.map((column) => resolveExportValue(column, row, options))),
+    };
+    const bytes = buildXLSX(sheet);
+    const filename = options.filename;
+    const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if (filename) {
+      downloadBlob(`${filename}.xlsx`, bytes, mime);
+    } else if (filename === undefined) {
+      downloadBlob('data.xlsx', bytes, mime);
+    }
+    return bytes;
   }
 
   /**

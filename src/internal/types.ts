@@ -164,6 +164,17 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    */
   hidden?: boolean;
   /**
+   * Whether this column is included when exporting via
+   * {@link ApexGrid.exportToCSV} or {@link ApexGrid.exportToXLSX}.
+   *
+   * @remarks
+   * Defaults to `true`. Set to `false` to omit a column from generated files
+   * (useful for action columns, derived UI, or sensitive fields). The
+   * grid-rendered selection checkbox column is never exported regardless of
+   * this flag.
+   */
+  exportable?: boolean;
+  /**
    * Pin the column to a side of the grid.
    *
    * @remarks
