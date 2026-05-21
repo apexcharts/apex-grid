@@ -122,6 +122,7 @@ export class PaginationController<T extends object> implements ReactiveControlle
   }
 
   #emitChanged() {
+    this.host.announce(`Page ${this.page + 1} of ${this.pageCount}`);
     return this.host.emitEvent('pageChanged', { detail: this.state });
   }
 

@@ -59,6 +59,10 @@ export default class ApexGridHeader<T extends object> extends LitElement {
   @property({ attribute: false })
   public column!: ColumnConfiguration<T>;
 
+  /** 1-based column index passed in by the parent header row for `aria-colindex`. */
+  @property({ attribute: false, type: Number })
+  public colindex = 0;
+
   #addResizeEventHandlers() {
     const config: AddEventListenerOptions = { once: true };
 
@@ -188,10 +192,26 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     } else {
       this.removeAttribute('data-reorderable');
     }
+    // aria-colindex stays in sync with the parent header row's numbering.
+    if (this.colindex > 0) {
+      this.setAttribute('aria-colindex', String(this.colindex));
+    }
+    // aria-sort communicates current sort direction for this column to AT.
+    if (this.isSortable) {
+      const sort = this.state?.sorting.state.get(this.column.key);
+      const dir = sort?.direction;
+      this.setAttribute(
+        'aria-sort',
+        dir === 'ascending' ? 'ascending' : dir === 'descending' ? 'descending' : 'none'
+      );
+    } else {
+      this.removeAttribute('aria-sort');
+    }
   }
 
   public override connectedCallback(): void {
     super.connectedCallback();
+    this.setAttribute('role', 'columnheader');
     this.addEventListener('pointerdown', this.#handleReorderPointerDown);
   }
 
@@ -214,16 +234,35 @@ export default class ApexGridHeader<T extends object> extends LitElement {
         : SORT_ICON_DESCENDING
       : SORT_ICON_ASCENDING;
 
+    const label =
+      state?.direction === 'ascending'
+        ? 'Sorted ascending. Activate to sort descending.'
+        : state?.direction === 'descending'
+          ? 'Sorted descending. Activate to clear sort.'
+          : 'Not sorted. Activate to sort ascending.';
+
     return state || this.isSortable
-      ? html`<span
-          part=${partNameMap({ action: true, sorted: !!state?.direction })}
-          data-sort-index=${attr === nothing ? '' : (attr as number)}
-          @click=${this.isSortable ? this.#handleClick : nothing}
-        >
-          ${renderIcon(icon, {
-            part: partNameMap({ 'sorting-action': !!state }),
-          })}
-        </span>`
+      ? this.isSortable
+        ? html`<button
+            type="button"
+            part=${partNameMap({ action: true, sorted: !!state?.direction })}
+            data-sort-index=${attr === nothing ? '' : (attr as number)}
+            aria-label=${label}
+            @click=${this.#handleClick}
+          >
+            ${renderIcon(icon, {
+              part: partNameMap({ 'sorting-action': !!state }),
+            })}
+          </button>`
+        : html`<span
+            part=${partNameMap({ action: true, sorted: !!state?.direction })}
+            data-sort-index=${attr === nothing ? '' : (attr as number)}
+            aria-hidden="true"
+          >
+            ${renderIcon(icon, {
+              part: partNameMap({ 'sorting-action': !!state }),
+            })}
+          </span>`
       : nothing;
   }
 

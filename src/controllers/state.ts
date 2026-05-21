@@ -22,6 +22,30 @@ export class StateController<T extends object> implements ReactiveController {
   public selection!: SelectionController<T>;
   public expansion!: ExpansionController<T>;
 
+  /**
+   * Current message in the grid's polite live region. Bound by the host's
+   * `renderLiveRegion()` template; mutated through {@link setAnnouncement}
+   * so screen readers re-announce on every change.
+   */
+  public announcement = '';
+  #announceToken = 0;
+
+  /**
+   * Updates the polite live region's text. Repeats are forced to fire by
+   * appending a zero-width space — screen readers ignore unchanged content,
+   * so two identical sort announcements wouldn't otherwise be read aloud.
+   */
+  public setAnnouncement(message: string): void {
+    if (!message) {
+      this.announcement = '';
+      this.host.requestUpdate();
+      return;
+    }
+    this.#announceToken = (this.#announceToken + 1) % 2;
+    this.announcement = this.#announceToken ? message : `${message} `;
+    this.host.requestUpdate();
+  }
+
   public get active() {
     return this.navigation.active;
   }

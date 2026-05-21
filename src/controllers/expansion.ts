@@ -155,6 +155,16 @@ export class ExpansionController<T extends object> implements ReactiveController
     this.expanded = next;
     this.host.requestUpdate();
 
+    if (added.length === 1 && removed.length === 0) {
+      this.host.announce('Row expanded');
+    } else if (added.length === 0 && removed.length === 1) {
+      this.host.announce('Row collapsed');
+    } else if (added.length > 0 && next.size === added.length + this.expanded.size - added.length) {
+      this.host.announce(`${added.length} rows expanded`);
+    } else if (removed.length > 0 && next.size === 0) {
+      this.host.announce('All rows collapsed');
+    }
+
     this.host.emitEvent('rowExpanded', {
       detail: { added, removed, expanded: Array.from(this.expanded) },
     });

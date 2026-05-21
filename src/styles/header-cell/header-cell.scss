@@ -88,9 +88,31 @@ $inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
     opacity: .7;
     transition: opacity .25s ease-in-out;
 
+    // Strip native <button> chrome — the sort indicator is a real button for
+    // accessibility but should still look like the original icon affordance.
+    background: transparent;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    color: inherit;
+    font: inherit;
+    line-height: 0;
+    // Touch target: 24x24 minimum (WCAG 2.5.8) — the visible icon stays 15px.
+    inline-size: rem(24px);
+    block-size: rem(24px);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
     &:hover,
     &:focus {
         opacity: 1;
+    }
+
+    &:focus-visible {
+        outline: rem(2px) solid $active-header-icon-color;
+        outline-offset: rem(-2px);
+        border-radius: rem(2px);
     }
 
     position: relative;

@@ -51,6 +51,11 @@ export class GridDOMController<T extends object> implements ReactiveController {
   public rowRenderer: RenderItemFunction<T> = (data: T, index: number) => {
     const editingCell = this.state.editing.activeCell;
     const editingKey = editingCell?.rowIndex === index ? editingCell.columnKey : null;
+    // aria-rowindex offset: header row is always row 1; filter row (when
+    // any column has a filter configured) sits at row 2; body rows start
+    // immediately after.
+    const hasFilter = this.host.columns.some((column) => column.filter);
+    const ariaRowOffset = hasFilter ? 2 : 1;
     return html`
       <apex-grid-row
         part="row"
@@ -61,6 +66,7 @@ export class GridDOMController<T extends object> implements ReactiveController {
         .columns=${this.displayColumns}
         .pinOffsets=${this.pinOffsets}
         .editingKey=${editingKey}
+        .ariaRowOffset=${ariaRowOffset}
       >
       </apex-grid-row>
     `;

@@ -102,7 +102,17 @@ export class SortController<T extends object> implements ReactiveController {
     // before and measured-after rects match and the animation no-ops.
     await awaitChildUpdates(this.host.rows);
     this.#playRowFlip(beforeRects);
+    this.#announce(expression, column);
     this.#emitSortedEvent(expression);
+  }
+
+  #announce(expression: SortExpression<T>, column: ColumnConfiguration<T>) {
+    const label = column.headerText ?? String(column.key);
+    const message =
+      expression.direction === 'none'
+        ? `Sort cleared on ${label}`
+        : `Sorted by ${label} ${expression.direction}`;
+    this.host.announce(message);
   }
 
   #captureRowRects(): KeyedFlipEntry<T>[] {

@@ -170,6 +170,8 @@ export default class ApexFilterRow<T extends object> extends LitElement {
 
   public override connectedCallback(): void {
     super.connectedCallback();
+    this.setAttribute('role', 'row');
+    this.setAttribute('aria-rowindex', '2');
     document.addEventListener('pointerdown', this.#handleOutsidePointer, true);
     document.addEventListener('keydown', this.#handleDocumentKey, true);
   }
@@ -337,6 +339,8 @@ export default class ApexFilterRow<T extends object> extends LitElement {
       type="button"
       part="condition-trigger"
       aria-label="Change filter condition"
+      aria-haspopup="listbox"
+      aria-expanded=${this.dropdownOpen ? 'true' : 'false'}
       @click=${this.#openDropdownList}
     >
       ${renderIcon(this.condition.name)}

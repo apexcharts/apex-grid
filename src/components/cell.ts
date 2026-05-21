@@ -104,8 +104,16 @@ export default class ApexGridCell<T extends object> extends LitElement {
     return this.editingController.isEditable(this.column);
   }
 
+  /**
+   * 1-based column index used to populate `aria-colindex`. Accounts for the
+   * auto-rendered selection + expansion columns ahead of the data columns.
+   */
+  @property({ attribute: false, type: Number })
+  public colindex = 0;
+
   public override connectedCallback(): void {
     super.connectedCallback();
+    this.setAttribute('role', 'gridcell');
     this.addEventListener('click', this.#handleClick);
     this.addEventListener('dblclick', this.#handleDoubleClick);
     this.addEventListener('keydown', this.#handleCellKeydown);
@@ -118,6 +126,19 @@ export default class ApexGridCell<T extends object> extends LitElement {
     this.removeEventListener('keydown', this.#handleCellKeydown);
     this.removeEventListener('focusout', this.#handleCellFocusOut);
     super.disconnectedCallback();
+  }
+
+  protected override willUpdate() {
+    if (this.colindex > 0) {
+      this.setAttribute('aria-colindex', String(this.colindex));
+    } else {
+      this.removeAttribute('aria-colindex');
+    }
+    if (this.active) {
+      this.setAttribute('aria-current', 'true');
+    } else {
+      this.removeAttribute('aria-current');
+    }
   }
 
   protected override updated() {

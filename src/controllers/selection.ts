@@ -235,6 +235,15 @@ export class SelectionController<T extends object> implements ReactiveController
     this.selected = next;
     this.host.requestUpdate();
 
+    const total = this.selected.size;
+    if (total === 0) {
+      this.host.announce('Selection cleared');
+    } else if (added.length === 1 && removed.length === 0 && total === 1) {
+      this.host.announce('1 row selected');
+    } else {
+      this.host.announce(`${total} rows selected`);
+    }
+
     this.host.emitEvent('rowSelected', {
       detail: { added, removed, selected: Array.from(this.selected) },
     });

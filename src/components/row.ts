@@ -65,14 +65,33 @@ export default class ApexGridRow<T extends object> extends LitElement {
   public override connectedCallback(): void {
     super.connectedCallback();
     this.setAttribute('exportparts', 'cell');
+    this.setAttribute('role', 'row');
   }
+
+  /**
+   * The number of "chrome" rows (header + filter) above the body. Used to
+   * derive `aria-rowindex` from {@link index}. Set by the parent grid.
+   */
+  @property({ attribute: false, type: Number })
+  public ariaRowOffset = 1;
 
   protected override willUpdate() {
     this.selected = Boolean(this.state?.selection.isSelected(this.data));
     this.expanded = Boolean(this.state?.expansion.isExpanded(this.data));
+    this.setAttribute('aria-rowindex', String(this.index + this.ariaRowOffset + 1));
+    if (this.state?.selection.enabled) {
+      this.setAttribute('aria-selected', this.selected ? 'true' : 'false');
+    } else {
+      this.removeAttribute('aria-selected');
+    }
+    if (this.state?.expansion.enabled) {
+      this.setAttribute('aria-expanded', this.expanded ? 'true' : 'false');
+    } else {
+      this.removeAttribute('aria-expanded');
+    }
   }
 
-  protected renderExpansionToggle() {
+  protected renderExpansionToggle(colindex: number) {
     const expansion = this.state?.expansion;
     if (!expansion?.showToggleColumn) return nothing;
     const canExpand = expansion.canExpand(this.data) || expansion.isExpanded(this.data);
@@ -82,7 +101,12 @@ export default class ApexGridRow<T extends object> extends LitElement {
       if (!canExpand) return;
       void expansion.toggleRow(this.data);
     };
-    return html`<div part="expansion-cell" data-pinned="start">
+    return html`<div
+      part="expansion-cell"
+      role="gridcell"
+      aria-colindex=${colindex}
+      data-pinned="start"
+    >
       <button
         type="button"
         part="expansion-toggle"
@@ -124,7 +148,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
     return html`<div part="detail-panel" role="region" aria-label="Row detail">${content}</div>`;
   }
 
-  protected renderSelectionCell() {
+  protected renderSelectionCell(colindex: number) {
     if (!this.state?.selection.showCheckboxColumn) return nothing;
     const selected = this.selected;
     const handleChange = (event: Event) => {
@@ -158,7 +182,12 @@ export default class ApexGridRow<T extends object> extends LitElement {
       // Plain click: let the default checkbox toggle proceed; `change` will
       // commit the new state via `toggleRow`.
     };
-    return html`<div part="selection-cell" data-pinned="start">
+    return html`<div
+      part="selection-cell"
+      role="gridcell"
+      aria-colindex=${colindex}
+      data-pinned="start"
+    >
       <input
         type="checkbox"
         part="selection-checkbox"
@@ -173,12 +202,18 @@ export default class ApexGridRow<T extends object> extends LitElement {
   protected override render() {
     const { column: key, row: index } = this.activeNode;
 
+    // Track aria-colindex (1-based) across the auto chrome columns and the
+    // data columns. Selection comes first, then expansion, then data.
+    let colCursor = 0;
+    const selectionCol = this.state?.selection.showCheckboxColumn ? ++colCursor : 0;
+    const expansionCol = this.state?.expansion.showToggleColumn ? ++colCursor : 0;
+
     // Keyed by column.key so the same `<apex-grid-cell>` follows its
     // column through a reorder swap — required for the column-reorder FLIP
     // animation in ReorderController to track motion per cell.
     return html`
-      ${this.renderSelectionCell()}
-      ${this.renderExpansionToggle()}
+      ${this.renderSelectionCell(selectionCol)}
+      ${this.renderExpansionToggle(expansionCol)}
       ${repeat(
         this.columns,
         (column) => String(column.key),
@@ -189,6 +224,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
             column.pinned && typeof offset === 'number' ? `--apex-pin-offset:${offset}px` : '';
           const edge = getPinEdge(this.columns, colIndex);
           const editing = this.editingKey === column.key;
+          const ariaColindex = ++colCursor;
           return html`<apex-grid-cell
             part="cell"
             data-pinned=${column.pinned ?? 'none'}
@@ -200,6 +236,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
             .column=${column}
             .row=${this as ApexGridRow<T>}
             .value=${this.data[column.key]}
+            .colindex=${ariaColindex}
           ></apex-grid-cell>`;
         }
       )}

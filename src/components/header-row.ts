@@ -49,6 +49,8 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
   public override connectedCallback() {
     super.connectedCallback();
     this.setAttribute('tabindex', '0');
+    this.setAttribute('role', 'row');
+    this.setAttribute('aria-rowindex', '1');
   }
 
   #activeFilterColumn(event: MouseEvent) {
@@ -85,7 +87,14 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
         void expansion.expandAll();
       }
     };
-    return html`<div part="expansion-header" data-pinned="start">
+    const selection = this.state?.selection;
+    const colindex = selection?.showCheckboxColumn ? 2 : 1;
+    return html`<div
+      part="expansion-header"
+      role="columnheader"
+      aria-colindex=${colindex}
+      data-pinned="start"
+    >
       <button
         type="button"
         part="expansion-toggle"
@@ -142,7 +151,12 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
         void selection.clear();
       }
     };
-    return html`<div part="selection-header" data-pinned="start">
+    return html`<div
+      part="selection-header"
+      role="columnheader"
+      aria-colindex="1"
+      data-pinned="start"
+    >
       <input
         type="checkbox"
         part="selection-checkbox"
@@ -179,6 +193,12 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
     const filterRow = this.state.filtering.filterRow;
     const reorderState = this.state.reordering.state;
 
+    // Track aria-colindex across the auto chrome columns (selection + expansion)
+    // and the data columns so the same numbering is consistent across rows.
+    let colCursor = 0;
+    if (this.state?.selection.showCheckboxColumn) colCursor++;
+    if (this.state?.expansion.showToggleColumn) colCursor++;
+
     // Keyed by column.key so the same `<apex-grid-header>` DOM element
     // follows its column across a live reorder swap — critical for pointer
     // capture to stay bound to the dragged column as it moves.
@@ -192,6 +212,7 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
           column.pinned && typeof offset === 'number' ? `--apex-pin-offset:${offset}px` : '';
         const edge = getPinEdge(this.columns, index);
         const isDragSource = reorderState?.sourceKey === column.key;
+        const ariaColindex = ++colCursor;
         return html`<apex-grid-header
           part=${partNameMap({
             filtered: column === filterRow?.column,
@@ -203,6 +224,7 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
           data-pin-edge=${edge ?? 'none'}
           style=${pinStyle}
           .column=${column}
+          .colindex=${ariaColindex}
         ></apex-grid-header>`;
       }
     )}${this.renderDragGhost()}`;

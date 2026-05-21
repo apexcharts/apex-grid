@@ -1110,6 +1110,23 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     });
   }
 
+  protected override updated(): void {
+    // Expose ARIA grid semantics on the host so screen readers announce the
+    // structure correctly. We do this in `updated()` (post-render) rather
+    // than `willUpdate()` because `@watch('data')` runs *after* the original
+    // willUpdate via decorator wrapping — reading `pageItems` earlier would
+    // see a stale (empty) `dataState`.
+    this.setAttribute('role', 'grid');
+    const hasFilter = this.columns.some((column) => column.filter);
+    const headerRows = hasFilter ? 2 : 1;
+    this.setAttribute('aria-rowcount', String(headerRows + this.pageItems.length));
+    const visibleColumns = this.columns.filter((column) => !column.hidden).length;
+    const extras =
+      (this.stateController.selection.showCheckboxColumn ? 1 : 0) +
+      (this.stateController.expansion.showToggleColumn ? 1 : 0);
+    this.setAttribute('aria-colcount', String(visibleColumns + extras));
+  }
+
   protected override firstUpdated(): void {
     // The component declares `:host { display: grid }` for its internal track
     // layout (header / filter / virtualized body). If a consumer rule overrides
@@ -1595,6 +1612,24 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     return html`<apex-grid-paginator .pageSizeOptions=${options}></apex-grid-paginator>`;
   }
 
+  /**
+   * Renders a visually-hidden polite live region. Status messages set via
+   * {@link announce} land here; screen readers will read them aloud without
+   * stealing focus. We intentionally keep this in the shadow root so we
+   * don't have to coordinate consumer DOM placement.
+   */
+  protected renderLiveRegion() {
+    return html`<div
+      part="live-region"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;"
+    >
+      ${this.stateController.announcement}
+    </div>`;
+  }
+
   protected override render() {
     return html`
       ${this.stateController.resizing.renderIndicator()}
@@ -1603,7 +1638,21 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       ${this.renderFilterRow()}
       ${this.renderBody()}
       ${this.renderPaginator()}
+      ${this.renderLiveRegion()}
     `;
+  }
+
+  /**
+   * Sets the live region's announcement text. Screen readers configured to
+   * read polite live updates will read the new value aloud.
+   *
+   * @remarks
+   * Use this from custom UI affordances (e.g. an "Apply filter" button) so
+   * the change is announced. Built-in operations (sort / filter / page /
+   * select / expand) call this internally already.
+   */
+  public announce(message: string): void {
+    this.stateController.setAnnouncement(message);
   }
 }
 
