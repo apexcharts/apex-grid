@@ -1,7 +1,6 @@
 import {
   configureTheme,
   defineComponents,
-  IgcButtonComponent,
   IgcInputComponent,
   IgcSelectComponent,
   IgcSwitchComponent,
@@ -10,7 +9,7 @@ import { html, render } from 'lit';
 import { ColumnConfiguration } from '../src/index';
 import { ApexGrid } from '../src/index.js';
 
-defineComponents(IgcButtonComponent, IgcInputComponent, IgcSelectComponent, IgcSwitchComponent);
+defineComponents(IgcInputComponent, IgcSelectComponent, IgcSwitchComponent);
 
 type User = {
   id: number;
@@ -78,10 +77,6 @@ async function setTheme(theme?: string) {
   configureTheme(theme as any);
 }
 
-function getGrid() {
-  return document.querySelector<ApexGrid<User>>('apex-grid')!;
-}
-
 const themeChoose = html`
   <div class="sample-drop-down">
     <igc-select
@@ -97,12 +92,6 @@ const themeChoose = html`
       @igcChange=${() => setTheme()}
       >Dark variant</igc-switch
     >
-    <igc-button variant="outlined" @click=${() => getGrid().exportToCSV({ filename: 'users' })}>
-      Export CSV
-    </igc-button>
-    <igc-button variant="outlined" @click=${() => getGrid().exportToXLSX({ filename: 'users', sheetName: 'Users' })}>
-      Export XLSX
-    </igc-button>
   </div>
 `;
 
@@ -176,6 +165,7 @@ ApexGrid.register();
 render(
   html`${themeChoose}<apex-grid
       show-quick-filter
+      show-export
       column-reordering
       .data=${data}
       .columns=${columns}

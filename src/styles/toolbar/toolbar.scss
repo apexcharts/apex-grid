@@ -94,3 +94,107 @@ $accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
         appearance: none;
     }
 }
+
+// Trailing actions area — pushes to the end of the toolbar via margin-inline-start.
+[part='toolbar-actions'] {
+    display: inline-flex;
+    align-items: center;
+    gap: rem(4px);
+    margin-inline-start: auto;
+}
+
+// Export menu trigger + dropdown.
+[part='export'] {
+    position: relative;
+}
+
+[part='export-trigger'] {
+    appearance: none;
+    background: transparent;
+    border: rem(1px) solid transparent;
+    color: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: rem(2px);
+    // Touch target floor (WCAG 2.5.8).
+    min-inline-size: rem(28px);
+    min-block-size: rem(28px);
+    padding: 0 rem(6px);
+    border-radius: rem(4px);
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+
+    &:hover {
+        background: hsl(from currentcolor h s l / 8%);
+    }
+
+    &:focus-visible {
+        outline: 0;
+        border-color: $accent;
+        box-shadow: 0 0 0 rem(2px) hsl(from #{$accent} h s l / 18%);
+    }
+}
+
+[part='export-icon'] {
+    inline-size: rem(16px);
+    block-size: rem(16px);
+}
+
+[part='export-caret'] {
+    inline-size: rem(12px);
+    block-size: rem(12px);
+    opacity: 0.65;
+}
+
+[part='export-menu'] {
+    position: absolute;
+    inset-block-start: calc(100% + #{rem(4px)});
+    inset-inline-end: 0;
+    margin: 0;
+    padding: rem(4px) 0;
+    min-inline-size: rem(180px);
+    background: var(--igx-cell-editor-background, var(--ig-surface-500, white));
+    color: inherit;
+    border: rem(1px) solid hsl(from currentcolor h s l / 20%);
+    border-radius: rem(4px);
+    box-shadow: 0 rem(2px) rem(4px) rgb(0 0 0 / 6%), 0 rem(6px) rem(16px) rgb(0 0 0 / 12%);
+    list-style: none;
+    z-index: calc(var(--z-index-base) + 10);
+
+    &[hidden] {
+        display: none;
+    }
+
+    li {
+        margin: 0;
+        padding: 0;
+    }
+}
+
+[part='export-menu-item'] {
+    display: block;
+    inline-size: 100%;
+    text-align: start;
+    appearance: none;
+    background: transparent;
+    color: inherit;
+    border: 0;
+    margin: 0;
+    padding: rem(8px) rem(12px);
+    font: inherit;
+    font-size: rem(13px);
+    cursor: pointer;
+    // Touch target floor (WCAG 2.5.8).
+    min-block-size: rem(24px);
+
+    &:hover {
+        background: hsl(from #{$accent} h s l / 8%);
+    }
+
+    &:focus-visible {
+        outline: 0;
+        background: hsl(from #{$accent} h s l / 14%);
+        box-shadow: inset 0 0 0 rem(2px) $accent;
+    }
+}

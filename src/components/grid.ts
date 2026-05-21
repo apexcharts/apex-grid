@@ -720,16 +720,31 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   public quickFilter = '';
 
   /**
-   * Whether the built-in quick-filter input is rendered above the header row.
+   * Whether the built-in quick-filter input is rendered in the toolbar.
    *
    * @remarks
-   * The {@link ApexGrid.quickFilter} value can be controlled programmatically regardless
-   * of this flag; this only controls whether the toolbar UI is visible.
+   * The {@link ApexGrid.quickFilter} value can be controlled programmatically
+   * regardless of this flag; this only controls the toolbar input UI.
    *
    * @attr show-quick-filter
    */
   @property({ type: Boolean, attribute: 'show-quick-filter' })
   public showQuickFilter = false;
+
+  /**
+   * Whether the built-in export menu is rendered in the toolbar.
+   *
+   * @remarks
+   * When `true`, the toolbar shows a download button on the trailing side;
+   * clicking it opens a menu with "Export CSV" and "Export XLSX" entries
+   * that call {@link ApexGrid.exportToCSV} and {@link ApexGrid.exportToXLSX}
+   * respectively. Both methods remain callable programmatically regardless
+   * of this flag.
+   *
+   * @attr show-export
+   */
+  @property({ type: Boolean, attribute: 'show-export' })
+  public showExport = false;
 
   /**
    * Enables drag-and-drop column reordering on the column headers.
@@ -1593,9 +1608,13 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   protected renderToolbar() {
-    if (!this.showQuickFilter) return nothing;
+    // Toolbar is shared by all toolbar-housed features. Render it whenever
+    // any one of them is enabled.
+    if (!this.showQuickFilter && !this.showExport) return nothing;
     return html`<apex-grid-toolbar
       .value=${this.quickFilter}
+      .showQuickFilter=${this.showQuickFilter}
+      .showExport=${this.showExport}
       @apex-quick-filter=${(event: CustomEvent<string>) => {
         event.stopPropagation();
         this.setQuickFilter(event.detail);
