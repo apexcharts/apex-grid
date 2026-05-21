@@ -16,7 +16,7 @@ $inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
     font-size: #{rem(12px)};
 }
 
-:host([draggable='true']) {
+:host([data-reorderable]) {
     cursor: grab;
 }
 

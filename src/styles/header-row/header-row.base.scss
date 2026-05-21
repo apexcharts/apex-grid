@@ -31,14 +31,55 @@ $filtering-header-background: var(--igx-filtering-header-background, var(--filte
     background: $filtering-header-background;
 }
 
-// Drop indicator rendered while a column is being dragged.
-$reorder-indicator-color: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
+// Built-in selection header cell — pinned start so it stays aligned with the
+// selection checkbox column in the body rows.
+[part='selection-header'] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: calc(var(--z-index-base) + 2);
+    background: inherit;
+    border-inline-end: $header-border-width $header-border-style $header-border-color;
+}
 
-[part='reorder-indicator'] {
-    position: absolute;
-    inset-block: 0;
-    inline-size: rem(2px);
-    background: $reorder-indicator-color;
-    z-index: calc(var(--z-index-base) + 5);
+[part='selection-header'] input[type='checkbox'] {
+    inline-size: #{rem(16px)};
+    block-size: #{rem(16px)};
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ig-primary-500)));
+}
+
+// Floating "ghost" rendered while a column is being dragged. The ghost is
+// `position: fixed` (viewport-relative) so it follows the cursor across
+// the entire grid regardless of the header row's sticky positioning. A
+// subtle tilt gives the user a "lifted" cue.
+$drag-ghost-accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ig-primary-500, currentcolor)));
+$drag-ghost-bg: var(--igx-cell-editor-background, var(--ig-surface-500, white));
+
+[part='drag-ghost'] {
+    position: fixed;
+    display: flex;
+    align-items: center;
+    padding: 0 $ig-cells-padding;
+    background: $drag-ghost-bg;
+    color: inherit;
+    border: #{rem(1px)} solid $drag-ghost-accent;
+    border-radius: #{rem(4px)};
+    box-shadow:
+        0 #{rem(2px)} #{rem(6px)} rgb(0 0 0 / 10%),
+        0 #{rem(10px)} #{rem(28px)} rgb(0 0 0 / 18%);
+    font-weight: 600;
+    font-size: #{rem(12px)};
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
     pointer-events: none;
+    user-select: none;
+    cursor: grabbing;
+    z-index: 99999;
+    transform: rotate(-1deg);
 }

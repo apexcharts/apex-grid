@@ -14,6 +14,10 @@ import { GRID_HEADER_TAG } from '../internal/tags.js';
 import type { ApexHeaderContext, ColumnConfiguration } from '../internal/types.js';
 import { styles } from '../styles/header-cell/header-cell.css.js';
 
+/** Pixels of pointer travel before a hold turns into a drag — avoids
+ * accidental drags on click. */
+const DRAG_THRESHOLD_PX = 4;
+
 export default class ApexGridHeader<T extends object> extends LitElement {
   public static get tagName() {
     return GRID_HEADER_TAG;
@@ -87,6 +91,9 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     const { target, pointerId } = ev;
 
     ev.preventDefault();
+    // Resize takes priority over reorder — stop the event so the header's
+    // pointerdown listener doesn't also start arming a drag.
+    ev.stopPropagation();
 
     this.#addResizeEventHandlers();
     this.resizeController.start(this);
@@ -102,69 +109,94 @@ export default class ApexGridHeader<T extends object> extends LitElement {
 
   #handleAutosize = () => this.resizeController.autosize(this.column, this);
 
-  #handleDragStart = (event: DragEvent) => {
-    if (!this.isDraggable) {
-      event.preventDefault();
+  // --- Reorder (pointer-driven) ------------------------------------------
+
+  #dragStartX = 0;
+  #dragStartY = 0;
+  #dragPointerId = -1;
+  #isDragging = false;
+
+  #handleReorderPointerDown = (event: PointerEvent) => {
+    if (!this.isDraggable) return;
+    if (event.button !== 0) return;
+    // Skip if the user grabbed an interactive sub-part of the header — the
+    // resize handle or the sort/action icons. Those have their own handlers
+    // and should not arm a drag.
+    const path = event.composedPath();
+    const target = path[0];
+    if (target instanceof Element && target.closest?.('[part~="resizable"], [part~="action"]')) {
       return;
     }
-    this.setAttribute('data-dragging', '');
-    event.dataTransfer?.setData('text/plain', String(this.column.key));
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move';
+    this.#dragStartX = event.clientX;
+    this.#dragStartY = event.clientY;
+    this.#dragPointerId = event.pointerId;
+    this.addEventListener('pointermove', this.#handleReorderPointerMove);
+    this.addEventListener('pointerup', this.#handleReorderPointerUp);
+    this.addEventListener('pointercancel', this.#handleReorderPointerUp);
+  };
+
+  #handleReorderPointerMove = (event: PointerEvent) => {
+    if (event.pointerId !== this.#dragPointerId) return;
+    if (!this.#isDragging) {
+      const dx = event.clientX - this.#dragStartX;
+      const dy = event.clientY - this.#dragStartY;
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+      // Threshold crossed — start the drag in earnest.
+      this.#isDragging = true;
+      this.setPointerCapture(event.pointerId);
+      this.setAttribute('data-dragging', '');
+      const rect = this.getBoundingClientRect();
+      const label = this.column.headerText ?? String(this.column.key);
+      this.reorderController.start(
+        this.column.key,
+        rect,
+        this.#dragStartX,
+        this.#dragStartY,
+        label
+      );
     }
-    this.reorderController.start(this.column.key);
+    this.reorderController.move(event.clientX, event.clientY);
   };
 
-  #handleDragEnd = () => {
-    this.removeAttribute('data-dragging');
-    this.reorderController.end();
-  };
-
-  #handleDragOver = (event: DragEvent) => {
-    const state = this.reorderController.state;
-    if (!state) return;
-    const source = this.state.host.getColumn(state.sourceKey);
-    if (!source || !this.reorderController.canDrop(source, this.column)) return;
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-    this.reorderController.over(this.column, event.clientX, this.getBoundingClientRect());
-  };
-
-  #handleDragLeave = () => {
-    this.reorderController.clearTarget();
-  };
-
-  #handleDrop = (event: DragEvent) => {
-    if (!this.reorderController.state) return;
-    event.preventDefault();
-    this.reorderController.drop();
+  #handleReorderPointerUp = (event: PointerEvent) => {
+    if (event.pointerId !== this.#dragPointerId) return;
+    this.removeEventListener('pointermove', this.#handleReorderPointerMove);
+    this.removeEventListener('pointerup', this.#handleReorderPointerUp);
+    this.removeEventListener('pointercancel', this.#handleReorderPointerUp);
+    try {
+      if (this.hasPointerCapture(event.pointerId)) {
+        this.releasePointerCapture(event.pointerId);
+      }
+    } catch {
+      /* capture was already released */
+    }
+    if (this.#isDragging) {
+      this.#isDragging = false;
+      this.removeAttribute('data-dragging');
+      this.reorderController.end();
+    }
+    this.#dragPointerId = -1;
   };
 
   protected override updated() {
-    // Sync the HTMLElement.draggable attribute every update so we react to
-    // both the grid-level `columnReordering` flag arriving via context AND
-    // per-column `reorderable: false` opt-outs at runtime.
-    const next = this.isDraggable;
-    if (this.draggable !== next) {
-      this.draggable = next;
+    // Reflect reorderability as an attribute so SCSS can show the grab
+    // cursor only on columns that can actually be dragged. Tracks both the
+    // grid-level `columnReordering` flag (arriving via context) and the
+    // per-column `reorderable: false` opt-out at runtime.
+    if (this.isDraggable) {
+      this.setAttribute('data-reorderable', '');
+    } else {
+      this.removeAttribute('data-reorderable');
     }
   }
 
   public override connectedCallback(): void {
     super.connectedCallback();
-    this.addEventListener('dragstart', this.#handleDragStart);
-    this.addEventListener('dragend', this.#handleDragEnd);
-    this.addEventListener('dragover', this.#handleDragOver);
-    this.addEventListener('dragleave', this.#handleDragLeave);
-    this.addEventListener('drop', this.#handleDrop);
+    this.addEventListener('pointerdown', this.#handleReorderPointerDown);
   }
 
   public override disconnectedCallback(): void {
-    this.removeEventListener('dragstart', this.#handleDragStart);
-    this.removeEventListener('dragend', this.#handleDragEnd);
-    this.removeEventListener('dragover', this.#handleDragOver);
-    this.removeEventListener('dragleave', this.#handleDragLeave);
-    this.removeEventListener('drop', this.#handleDrop);
+    this.removeEventListener('pointerdown', this.#handleReorderPointerDown);
     super.disconnectedCallback();
   }
 
@@ -185,7 +217,6 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     return state || this.isSortable
       ? html`<span
           part=${partNameMap({ action: true, sorted: !!state?.direction })}
-          draggable="false"
           data-sort-index=${attr === nothing ? '' : (attr as number)}
           @click=${this.isSortable ? this.#handleClick : nothing}
         >
@@ -211,7 +242,6 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     return this.column.resizable
       ? html`<span
           part="resizable"
-          draggable="false"
           @dblclick=${this.#handleAutosize}
           @pointerdown=${this.#handleResizeStart}
         ></span>`

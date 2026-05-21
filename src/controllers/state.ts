@@ -7,6 +7,7 @@ import { NavigationController } from './navigation.js';
 import { PaginationController } from './pagination.js';
 import { ReorderController } from './reorder.js';
 import { ResizeController } from './resize.js';
+import { SelectionController } from './selection.js';
 import { SortController } from './sort.js';
 
 export class StateController<T extends object> implements ReactiveController {
@@ -17,6 +18,7 @@ export class StateController<T extends object> implements ReactiveController {
   public pagination!: PaginationController<T>;
   public reordering!: ReorderController<T>;
   public editing!: EditingController<T>;
+  public selection!: SelectionController<T>;
 
   public get active() {
     return this.navigation.active;
@@ -69,6 +71,7 @@ export class StateController<T extends object> implements ReactiveController {
     this.pagination = new PaginationController(this.host);
     this.reordering = new ReorderController(this.host);
     this.editing = new EditingController(this.host);
+    this.selection = new SelectionController(this.host);
   }
 
   public hostConnected() {}

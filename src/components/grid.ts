@@ -14,6 +14,7 @@ import type {
   ColumnConfiguration,
   DataPipelineConfiguration,
   GridEditingConfiguration,
+  GridSelectionConfiguration,
   GridSortConfiguration,
   Keys,
   PaginationConfiguration,
@@ -254,6 +255,47 @@ export interface ApexColumnMovedEvent<T extends object> {
 }
 
 /**
+ * Event payload for the cancellable `rowSelecting` event.
+ */
+export interface ApexRowSelectingEvent<T extends object> {
+  /**
+   * The rows that will become selected by this change.
+   */
+  added: T[];
+  /**
+   * The rows that will become deselected by this change.
+   */
+  removed: T[];
+  /**
+   * The full current selection before this change is applied.
+   */
+  current: T[];
+  /**
+   * The full selection after this change would be applied. Listeners can
+   * inspect this to decide whether to cancel.
+   */
+  next: T[];
+}
+
+/**
+ * Event payload for the `rowSelected` event.
+ */
+export interface ApexRowSelectedEvent<T extends object> {
+  /**
+   * The rows that became selected in this change.
+   */
+  added: T[];
+  /**
+   * The rows that became deselected in this change.
+   */
+  removed: T[];
+  /**
+   * The full current selection after the change has been applied.
+   */
+  selected: T[];
+}
+
+/**
  * Event payload for the cancellable `columnPinning` event.
  */
 export interface ApexColumnPinningEvent<T extends object> {
@@ -417,6 +459,23 @@ export interface ApexGridEventMap<T extends object> {
    * @event
    */
   rowEditEnded: CustomEvent<ApexRowEditEndedEvent>;
+  /**
+   * Emitted before the row selection set changes.
+   *
+   * @remarks
+   * Cancellable — calling `preventDefault()` aborts the selection change.
+   * Fires for every selection-mutating call (toggle, range select, select-all,
+   * programmatic `selectedRows = ...`).
+   *
+   * @event
+   */
+  rowSelecting: CustomEvent<ApexRowSelectingEvent<T>>;
+  /**
+   * Emitted after a row-selection change has been applied.
+   *
+   * @event
+   */
+  rowSelected: CustomEvent<ApexRowSelectedEvent<T>>;
 }
 
 /**
@@ -457,6 +516,8 @@ export interface ApexGridEventMap<T extends object> {
  * @fires cellValueChanged - Emitted after a cell value has been committed.
  * @fires rowEditStarted - Emitted when a row enters edit mode (row mode only).
  * @fires rowEditEnded - Emitted when a row leaves edit mode (row mode only).
+ * @fires rowSelecting - Cancellable. Emitted before a selection-set change is applied.
+ * @fires rowSelected - Emitted after a selection-set change has been applied.
  *
  */
 export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMap<T>> {
@@ -641,6 +702,85 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   @property({ attribute: false })
   public editing?: GridEditingConfiguration;
+
+  /**
+   * Row selection configuration for the grid.
+   *
+   * @remarks
+   * Selection is disabled by default. Set `enabled: true` and (optionally)
+   * `mode` (`'single' | 'multiple'`) and `showCheckboxColumn` to opt in.
+   *
+   * @example
+   * ```ts
+   * grid.selection = { enabled: true, mode: 'multiple', showCheckboxColumn: true };
+   * ```
+   */
+  @property({ attribute: false })
+  public selection?: GridSelectionConfiguration;
+
+  /**
+   * The currently selected rows, in insertion order.
+   *
+   * @remarks
+   * Returned as a plain array snapshot — mutating the returned array does
+   * not change the grid's selection. Set this property to replace the
+   * selection programmatically (goes through the cancellable
+   * `rowSelecting` event).
+   */
+  public get selectedRows(): T[] {
+    return this.stateController.selection.selectedRows();
+  }
+
+  public set selectedRows(rows: ReadonlyArray<T>) {
+    void this.stateController.selection.replaceSelection(rows);
+  }
+
+  /**
+   * Selects `row`, replacing the existing selection in `'single'` mode or
+   * adding to it in `'multiple'` mode.
+   *
+   * @returns `true` if the selection changed, `false` if the change was
+   * rejected by a `rowSelecting` listener or selection is disabled.
+   */
+  public selectRow(row: T): Promise<boolean> {
+    return this.stateController.selection.selectRow(row);
+  }
+
+  /**
+   * Deselects `row`. No-op if `row` is not currently selected.
+   */
+  public deselectRow(row: T): Promise<boolean> {
+    return this.stateController.selection.deselectRow(row);
+  }
+
+  /**
+   * Toggles selection of `row`.
+   */
+  public toggleRowSelection(row: T): Promise<boolean> {
+    return this.stateController.selection.toggleRow(row);
+  }
+
+  /**
+   * Selects every row in the current view ({@link dataView}). No-op in
+   * `'single'` selection mode.
+   */
+  public selectAllRows(): Promise<boolean> {
+    return this.stateController.selection.selectAll();
+  }
+
+  /**
+   * Clears the row selection.
+   */
+  public clearSelection(): Promise<boolean> {
+    return this.stateController.selection.clear();
+  }
+
+  /**
+   * Whether `row` is currently selected.
+   */
+  public isRowSelected(row: T): boolean {
+    return this.stateController.selection.isSelected(row);
+  }
 
   /**
    * Set the sort state for the grid.

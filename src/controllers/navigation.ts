@@ -14,6 +14,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
       ArrowRight: this.arrowRight,
       Home: this.home,
       End: this.end,
+      ' ': this.toggleSelection,
     })
   );
 
@@ -122,6 +123,14 @@ export class NavigationController<T extends object> implements ReactiveControlle
     const next = this.nextNode;
     this.active = Object.assign(next, { column: this.getNextColumn(next.column) });
     this.scrollToCell(this.active);
+  }
+
+  protected toggleSelection() {
+    // Space on the focused grid toggles selection of the active row.
+    // No-op when selection is disabled or there's no active row.
+    const data = this.host.pageItems[this.active.row] as T | undefined;
+    if (!data) return;
+    void this.host.toggleRowSelection(data);
   }
 
   public hostConnected() {}

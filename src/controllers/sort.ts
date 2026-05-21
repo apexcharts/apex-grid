@@ -1,5 +1,6 @@
 import type { ReactiveController } from 'lit';
 import { PIPELINE } from '../internal/constants.js';
+import { awaitChildUpdates, type KeyedFlipEntry, playKeyedFlip } from '../internal/flip.js';
 import type {
   ColumnConfiguration,
   ColumnSortConfiguration,
@@ -87,10 +88,41 @@ export class SortController<T extends object> implements ReactiveController {
       this.reset();
     }
 
+    // Capture visible-row rects keyed by data identity BEFORE the pipeline
+    // runs. After the new render the virtualizer will have repositioned
+    // rows; we use those captured rects as the "First" of a FLIP and
+    // animate each row from its old viewport position back to identity.
+    const beforeRects = this.#captureRowRects();
+
     this._sort(expression);
 
     await this.host.updateComplete;
+    // Wait for body row updates so the new data is committed to each row
+    // element before measuring the "Last" rect — otherwise the captured-
+    // before and measured-after rects match and the animation no-ops.
+    await awaitChildUpdates(this.host.rows);
+    this.#playRowFlip(beforeRects);
     this.#emitSortedEvent(expression);
+  }
+
+  #captureRowRects(): KeyedFlipEntry<T>[] {
+    const entries: KeyedFlipEntry<T>[] = [];
+    for (const row of this.host.rows) {
+      const el = row as unknown as HTMLElement;
+      entries.push({ key: row.data, rect: el.getBoundingClientRect() });
+    }
+    return entries;
+  }
+
+  #playRowFlip(before: ReadonlyArray<KeyedFlipEntry<T>>) {
+    // After sort, the same data may be rendered by a different `<apex-grid-row>`
+    // DOM element (virtualizer recycles rows). Resolve by data identity.
+    const rows = this.host.rows;
+    const byData = new Map<T, HTMLElement>();
+    for (const row of rows) {
+      byData.set(row.data, row as unknown as HTMLElement);
+    }
+    playKeyedFlip(before, (data) => byData.get(data) ?? null, 'y');
   }
 
   public prepareExpression({ key, sort: options }: ColumnConfiguration<T>): SortExpression<T> {

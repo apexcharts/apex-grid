@@ -1,4 +1,5 @@
 import { html, nothing, type TemplateResult } from 'lit';
+import { ref } from 'lit/directives/ref.js';
 import type ApexGridCell from '../components/cell.js';
 import type ApexGridRow from '../components/row.js';
 import { renderIcon } from './icons.js';
@@ -36,6 +37,12 @@ export interface ColumnTypeCellContext<T extends object> {
   row: ApexGridRow<T>;
   column: ColumnConfiguration<T>;
   value: unknown;
+  /**
+   * Commits a new value for this cell without entering edit mode. Only
+   * present when the column is editable. Used by interactive display
+   * widgets like the boolean checkbox.
+   */
+  commit?(value: unknown): Promise<boolean>;
 }
 
 /**
@@ -101,47 +108,90 @@ const selectType: ColumnTypeRenderer<object> = {
     const opts = getSelectOptions(ctx.column as { options?: SelectOption[] });
     const match = opts.find((o) => o.value === ctx.value);
     const label = match?.label ?? (ctx.value == null ? '' : String(ctx.value));
-    // The display reads as a closed dropdown so users see the affordance
-    // before entering edit mode. Interaction itself is still governed by
-    // the cell's edit trigger (click / doubleClick).
-    return html`<span part="select-display">
-      <span part="select-label">${label}</span>
-      ${renderIcon('chevron-down', { part: 'select-chevron' })}
-    </span>`;
+    // Closed-state display is intentionally plain text — the cell reads as
+    // a normal value cell until the user double-clicks to edit. The
+    // dropdown affordance appears only in edit mode (the listbox popover).
+    return html`<span part="select-label">${label}</span>`;
   },
 
   editor(ctx) {
     const opts = getSelectOptions(ctx.column as { options?: SelectOption[] });
     const current = ctx.value;
-    const handleChange = (event: Event) => {
-      const idx = (event.target as HTMLSelectElement).selectedIndex;
-      const next = opts[idx]?.value;
-      ctx.commit(next);
+    const match = opts.find((o) => o.value === current);
+    const label = match?.label ?? (current == null ? '' : String(current));
+    const selectedIdx = Math.max(
+      0,
+      opts.findIndex((o) => o.value === current)
+    );
+
+    // The popover is rendered as a `position: absolute` child of the cell
+    // (the cell host is `position: relative`). That positions it relative
+    // to the cell regardless of how the row is laid out — important
+    // because the virtualizer applies `transform: translate` to each row,
+    // which would re-anchor a `position: fixed` descendant onto the row.
+    // The cell-level SCSS lifts `overflow: hidden` for select-type editing
+    // cells so the popover can extend below the cell's box.
+    const mountPopover = (el: Element | undefined) => {
+      if (!el) return;
+      const popover = el as HTMLElement;
+      if (popover.dataset.apexFocused) return;
+      popover.dataset.apexFocused = '1';
+      const items = Array.from(popover.querySelectorAll<HTMLElement>('[part~="select-option"]'));
+      items[selectedIdx]?.focus();
     };
-    // Escape / Tab / focus-out are handled at the cell level; we only need
-    // Enter here to commit the focused option without waiting for `change`.
+
     const handleKeydown = (event: KeyboardEvent) => {
-      if (event.key === 'Enter') {
+      const target = event.target as HTMLElement;
+      const list = target.closest('[part~="select-popover"]') as HTMLElement | null;
+      if (!list) return;
+      const items = Array.from(list.querySelectorAll<HTMLElement>('[part~="select-option"]'));
+      const idx = items.indexOf(target);
+      if (idx < 0) return;
+      if (event.key === 'ArrowDown') {
         event.preventDefault();
         event.stopPropagation();
-        const el = event.target as HTMLSelectElement;
-        const next = opts[el.selectedIndex]?.value;
-        ctx.commit(next);
+        items[Math.min(idx + 1, items.length - 1)]?.focus();
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        event.stopPropagation();
+        items[Math.max(idx - 1, 0)]?.focus();
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        event.stopPropagation();
+        items[0]?.focus();
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        event.stopPropagation();
+        items[items.length - 1]?.focus();
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        event.stopPropagation();
+        ctx.commit(opts[idx].value);
       }
+      // Escape / Tab fall through to the cell-level handler which cancels /
+      // exits — we don't consume them here so the standard exit flow applies.
     };
-    return html`<select
-      part="editor"
-      data-apex-editor
-      @change=${handleChange}
-      @keydown=${handleKeydown}
-    >
-      ${opts.map(
-        (o) =>
-          html`<option .value=${String(o.value)} ?selected=${o.value === current}>
+
+    return html`<span part="select-label">${label}</span>
+      <div
+        part="select-popover"
+        role="listbox"
+        @keydown=${handleKeydown}
+        ${ref(mountPopover)}
+      >
+        ${opts.map(
+          (o, i) => html`<div
+            part=${o.value === current ? 'select-option selected' : 'select-option'}
+            role="option"
+            aria-selected=${o.value === current ? 'true' : 'false'}
+            tabindex=${i === selectedIdx ? '0' : '-1'}
+            data-apex-editor=${i === selectedIdx ? '' : nothing}
+            @click=${() => ctx.commit(o.value)}
+          >
             ${o.label}
-          </option>`
-      )}
-    </select>`;
+          </div>`
+        )}
+      </div>`;
   },
 };
 
@@ -263,7 +313,9 @@ const ratingType: ColumnTypeRenderer<object> = {
     const commitTo = (next: number) => ctx.commit(clampRating(next, max));
 
     // Escape / Tab / focus-out are handled at the cell level — no per-editor
-    // handlers needed here. Clicking a star is the primary commit action.
+    // handlers needed here. Clicking a star is the primary commit action;
+    // clicking the currently-rated star clears the rating back to 0, which
+    // is the only way to get below 1 once any star is set.
     const stars = Array.from({ length: max }, (_, i) => i + 1);
     return html`<span
       part="rating-editor"
@@ -276,9 +328,10 @@ const ratingType: ColumnTypeRenderer<object> = {
           part=${rank <= current ? 'rating-star filled selected' : 'rating-star'}
           role="radio"
           aria-checked=${rank === current}
+          aria-label=${`${rank} of ${max}`}
           data-rating-value=${rank}
           data-apex-editor=${rank === focusRank ? '' : nothing}
-          @click=${() => commitTo(rank)}
+          @click=${() => commitTo(rank === current ? 0 : rank)}
         >
           ${renderIcon('star')}
         </button>`
@@ -290,22 +343,37 @@ const ratingType: ColumnTypeRenderer<object> = {
 const booleanType: ColumnTypeRenderer<object> = {
   display(ctx) {
     const truthy = ctx.value === true;
-    // A native (but non-interactive) checkbox so the cell visually matches
-    // every other checkbox in the host page — consistent affordance,
-    // accent-color via theme tokens. tabindex="-1" + pointer-events: none
-    // keep it out of focus/keyboard interaction; aria-readonly tells AT it
-    // reflects state rather than accepts input.
+    const editable = typeof ctx.commit === 'function';
+    // For editable boolean cells the display IS the interactive control —
+    // a single click toggles and commits via `ctx.commit`, no edit mode
+    // dance and no visual reflow. For non-editable cells the checkbox
+    // reads as a state indicator (tabindex=-1, aria-readonly, pointer-
+    // events disabled via SCSS).
     return html`<input
       type="checkbox"
       part=${truthy ? 'boolean-mark checked' : 'boolean-mark'}
       .checked=${truthy}
-      tabindex="-1"
-      aria-readonly="true"
+      tabindex=${editable ? '0' : '-1'}
+      aria-readonly=${editable ? 'false' : 'true'}
       aria-label=${truthy ? 'true' : 'false'}
+      @click=${(event: Event) => {
+        // Keep the click inside the cell — we don't want it to bubble into
+        // the grid body-click handler twice or trigger edit-mode logic.
+        event.stopPropagation();
+      }}
+      @change=${
+        editable
+          ? (event: Event) => {
+              const next = (event.target as HTMLInputElement).checked;
+              ctx.commit?.(next);
+            }
+          : undefined
+      }
     />`;
   },
-  // No `editor` — falls through to cell.renderDefaultEditor() which already
-  // produces a native <input type="checkbox"> for boolean columns.
+  // No `editor` — boolean cells never enter edit mode (the display widget
+  // commits directly). Programmatic `editCell` on a boolean column is a
+  // no-op as far as the user can see.
 };
 
 const imageType: ColumnTypeRenderer<object> = {

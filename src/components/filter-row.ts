@@ -413,8 +413,12 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   protected renderInactiveState() {
     const pinOffsets = this.state.pinOffsets;
     const displayColumns = getDisplayColumns(this.state.host.columns);
+    // Reserve a track to align with the row's selection checkbox column.
+    const selectionPlaceholder = this.state.selection.showCheckboxColumn
+      ? html`<div part="filter-row-preview" data-pinned="start"></div>`
+      : nothing;
 
-    return displayColumns.map((column, index) => {
+    return html`${selectionPlaceholder}${displayColumns.map((column, index) => {
       if (column.hidden) return nothing;
       const offset = pinOffsets.get(column.key);
       const pinStyle =
@@ -428,7 +432,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
       >
         ${column.filter ? this.renderFilterState(column) : nothing}
       </div>`;
-    });
+    })}`;
   }
 
   protected override render() {

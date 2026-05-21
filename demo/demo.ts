@@ -170,6 +170,7 @@ render(
       .columns=${columns}
       .pagination=${{ enabled: true, pageSize: 25, pageSizeOptions: [10, 25, 50, 100, 250] }}
       .editing=${{ enabled: true, mode: 'cell', trigger: 'doubleClick' }}
+      .selection=${{ enabled: true, mode: 'multiple', showCheckboxColumn: true }}
     ></apex-grid>`,
   document.getElementById('demo')!,
 );

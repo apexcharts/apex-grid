@@ -49,10 +49,15 @@ class SelectFixture<T extends TestData> extends GridTestFixture<T> {
     return (cell.shadowRoot!.textContent ?? '').trim();
   }
 
-  public cellSelect(rowIndex: number, columnKey: string): HTMLSelectElement | null {
+  public popover(rowIndex: number, columnKey: string): HTMLElement | null {
     const row = this.rows.get(rowIndex);
     const cell = row.cells.get(columnKey as never).element;
-    return cell.shadowRoot!.querySelector<HTMLSelectElement>('select[data-apex-editor]');
+    return cell.shadowRoot!.querySelector<HTMLElement>('[part~="select-popover"]');
+  }
+
+  public options(rowIndex: number, columnKey: string): HTMLElement[] {
+    const pop = this.popover(rowIndex, columnKey);
+    return pop ? Array.from(pop.querySelectorAll<HTMLElement>('[part~="select-option"]')) : [];
   }
 }
 
@@ -86,32 +91,39 @@ describe('Column type: select', () => {
       });
       expect(TDD.cellText(0, 'importance')).to.equal('medium');
     });
+
+    it('does not render the listbox popover until edit mode is entered', () => {
+      expect(TDD.popover(0, 'importance')).to.be.null;
+    });
   });
 
   describe('editor', () => {
-    it('renders a native <select> with all options on edit-mode entry', async () => {
+    it('renders a listbox popover with all options on edit-mode entry', async () => {
       await TDD.grid.editCell(0, 'importance');
       await TDD.waitForUpdate();
-      const select = TDD.cellSelect(0, 'importance');
-      expect(select).to.exist;
-      expect(select!.options.length).to.equal(3);
-      expect(select!.options[1].textContent?.trim()).to.equal('Medium');
+      const popover = TDD.popover(0, 'importance');
+      expect(popover).to.exist;
+      expect(popover!.getAttribute('role')).to.equal('listbox');
+      const options = TDD.options(0, 'importance');
+      expect(options).to.have.length(3);
+      expect(options[1].textContent?.trim()).to.equal('Medium');
     });
 
-    it('preselects the current value', async () => {
+    it('marks the current value as aria-selected', async () => {
       await TDD.grid.editCell(0, 'importance');
       await TDD.waitForUpdate();
-      const select = TDD.cellSelect(0, 'importance')!;
-      expect(select.options[select.selectedIndex].textContent?.trim()).to.equal('Medium');
+      const options = TDD.options(0, 'importance');
+      expect(options[1].getAttribute('aria-selected')).to.equal('true');
+      expect(options[0].getAttribute('aria-selected')).to.equal('false');
+      expect(options[2].getAttribute('aria-selected')).to.equal('false');
     });
 
-    it('commits the chosen value on change', async () => {
+    it('commits the clicked option value', async () => {
       await TDD.grid.editCell(0, 'importance');
       await TDD.waitForUpdate();
 
-      const select = TDD.cellSelect(0, 'importance')!;
-      select.selectedIndex = 2; // 'high'
-      select.dispatchEvent(new Event('change', { bubbles: true }));
+      const options = TDD.options(0, 'importance');
+      options[2].click(); // 'high'
       await TDD.waitForUpdate();
 
       expect(TDD.grid.editingCell).to.be.null;
@@ -119,13 +131,28 @@ describe('Column type: select', () => {
       expect(TDD.cellText(0, 'importance')).to.equal('High');
     });
 
+    it('commits the focused option on Enter', async () => {
+      await TDD.grid.editCell(0, 'importance');
+      await TDD.waitForUpdate();
+
+      const options = TDD.options(0, 'importance');
+      // Simulate keyboard nav landing on the third option then pressing Enter.
+      options[2].dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true })
+      );
+      await TDD.waitForUpdate();
+
+      expect(TDD.records[0].importance).to.equal('high');
+      expect(TDD.grid.editingCell).to.be.null;
+    });
+
     it('cancels on Escape without mutating the value', async () => {
       const before = TDD.records[0].importance;
       await TDD.grid.editCell(0, 'importance');
       await TDD.waitForUpdate();
 
-      const select = TDD.cellSelect(0, 'importance')!;
-      select.dispatchEvent(
+      const popover = TDD.popover(0, 'importance')!;
+      popover.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true })
       );
       await TDD.waitForUpdate();
@@ -145,9 +172,7 @@ describe('Column type: select', () => {
 
       await TDD.grid.editCell(0, 'importance');
       await TDD.waitForUpdate();
-      const select = TDD.cellSelect(0, 'importance')!;
-      select.selectedIndex = 2;
-      select.dispatchEvent(new Event('change', { bubbles: true }));
+      TDD.options(0, 'importance')[2].click();
       await TDD.waitForUpdate();
 
       expect(seen).to.deep.equal(['changing:medium->high', 'changed:high']);
@@ -184,7 +209,7 @@ describe('Column type: select', () => {
       const row = TDD.rows.get(0);
       const cell = row.cells.get('importance' as never).element;
       expect(cell.shadowRoot!.querySelector('textarea')).to.exist;
-      expect(cell.shadowRoot!.querySelector('select')).to.be.null;
+      expect(cell.shadowRoot!.querySelector('[part~="select-popover"]')).to.be.null;
     });
   });
 
@@ -193,8 +218,8 @@ describe('Column type: select', () => {
       await TDD.grid.editCell(0, 'importance');
       await TDD.waitForUpdate();
 
-      const select = TDD.cellSelect(0, 'importance')!;
-      select.dispatchEvent(
+      const popover = TDD.popover(0, 'importance')!;
+      popover.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, composed: true })
       );
       await TDD.waitForUpdate();
@@ -207,7 +232,6 @@ describe('Column type: select', () => {
       await TDD.waitForUpdate();
 
       const cell = TDD.rows.get(0).cells.get('importance' as never).element;
-      // Simulate focus moving to <body>: emit focusout with no relatedTarget.
       cell.dispatchEvent(
         new FocusEvent('focusout', { bubbles: true, composed: true, relatedTarget: null })
       );
@@ -221,10 +245,9 @@ describe('Column type: select', () => {
       await TDD.waitForUpdate();
 
       const cell = TDD.rows.get(0).cells.get('importance' as never).element;
-      const select = TDD.cellSelect(0, 'importance')!;
-      // relatedTarget is still inside the cell — should NOT trigger commit/exit.
+      const option = TDD.options(0, 'importance')[1];
       cell.dispatchEvent(
-        new FocusEvent('focusout', { bubbles: true, composed: true, relatedTarget: select })
+        new FocusEvent('focusout', { bubbles: true, composed: true, relatedTarget: option })
       );
       await TDD.waitForUpdate();
 
@@ -340,6 +363,18 @@ describe('Column type: rating', () => {
 
       expect(RTDD.grid.editingCell).to.be.null;
       expect(RTDD.records[2].id).to.equal(4);
+    });
+
+    it('clicking the currently-rated star clears the rating to 0', async () => {
+      // data[2].id === 3 → clicking the third star clears to 0.
+      await RTDD.grid.editCell(2, 'id');
+      await RTDD.waitForUpdate();
+
+      const stars = RTDD.stars(2);
+      stars[2].click(); // rank 3 === current → clear
+      await RTDD.waitForUpdate();
+
+      expect(RTDD.records[2].id).to.equal(0);
     });
 
     it('cancels on Escape without mutating the value', async () => {
@@ -534,12 +569,19 @@ describe('Column type: date', () => {
 });
 
 class BooleanFixture<T extends TestData> extends GridTestFixture<T> {
+  public editing: GridEditingConfiguration = {
+    enabled: true,
+    mode: 'cell',
+    trigger: 'doubleClick',
+  };
+
   public records!: T[];
+  public editable = false;
 
   public override updateConfig() {
     this.columnConfig = [
       { key: 'id', type: 'number' },
-      { key: 'active', type: 'boolean' },
+      { key: 'active', type: 'boolean', editable: this.editable },
     ] as ColumnConfiguration<T>[];
   }
 
@@ -547,6 +589,14 @@ class BooleanFixture<T extends TestData> extends GridTestFixture<T> {
     this.records = JSON.parse(JSON.stringify(data)) as T[];
     this.data = this.records;
     await super.setUp();
+  }
+
+  public override setupTemplate() {
+    return html`<apex-grid
+      .data=${this.data}
+      .columns=${this.columnConfig}
+      .editing=${this.editing}
+    ></apex-grid>`;
   }
 
   public mark(rowIndex: number): HTMLInputElement | null {
@@ -558,7 +608,10 @@ class BooleanFixture<T extends TestData> extends GridTestFixture<T> {
 
 const BTDD = new BooleanFixture(data);
 
-describe('Column type: boolean (display polish)', () => {
+describe('Column type: boolean (read-only)', () => {
+  before(() => {
+    BTDD.editable = false;
+  });
   beforeEach(async () => await BTDD.setUp());
   afterEach(() => BTDD.tearDown());
 
@@ -585,6 +638,53 @@ describe('Column type: boolean (display polish)', () => {
     const mark = BTDD.mark(0)!;
     expect(mark.getAttribute('tabindex')).to.equal('-1');
     expect(mark.getAttribute('aria-readonly')).to.equal('true');
+  });
+});
+
+describe('Column type: boolean (editable)', () => {
+  before(() => {
+    BTDD.editable = true;
+  });
+  beforeEach(async () => await BTDD.setUp());
+  afterEach(() => BTDD.tearDown());
+  after(() => {
+    BTDD.editable = false;
+  });
+
+  it('marks the checkbox as interactive (tabindex=0, aria-readonly=false)', () => {
+    const mark = BTDD.mark(0)!;
+    expect(mark.getAttribute('tabindex')).to.equal('0');
+    expect(mark.getAttribute('aria-readonly')).to.equal('false');
+  });
+
+  it('toggles the underlying value when the checkbox is clicked', async () => {
+    // data[0].active === false → click → true
+    const mark = BTDD.mark(0)!;
+    mark.click();
+    await BTDD.waitForUpdate();
+    expect(BTDD.records[0].active).to.equal(true);
+  });
+
+  it('does not enter edit mode when toggling (no editor reflow)', async () => {
+    const mark = BTDD.mark(0)!;
+    mark.click();
+    await BTDD.waitForUpdate();
+    expect(BTDD.grid.editingCell).to.be.null;
+  });
+
+  it('emits cellValueChanging + cellValueChanged on toggle', async () => {
+    const seen: string[] = [];
+    BTDD.grid.addEventListener('cellValueChanging', (event) => {
+      seen.push(`changing:${event.detail.oldValue}->${event.detail.newValue}`);
+    });
+    BTDD.grid.addEventListener('cellValueChanged', (event) => {
+      seen.push(`changed:${event.detail.value}`);
+    });
+
+    BTDD.mark(0)!.click();
+    await BTDD.waitForUpdate();
+
+    expect(seen).to.deep.equal(['changing:false->true', 'changed:true']);
   });
 });
 

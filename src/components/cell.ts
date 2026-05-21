@@ -70,12 +70,25 @@ export default class ApexGridCell<T extends object> extends LitElement {
   protected editorElement!: HTMLElement | null;
 
   protected get context(): ApexCellContext<T> {
-    return {
+    const ctx = {
       parent: this,
       row: this.row,
       column: this.column,
       value: this.value,
-    } as unknown as ApexCellContext<T>;
+    } as unknown as {
+      parent: ApexGridCell<T>;
+      row: ApexGridRow<T>;
+      column: ColumnConfiguration<T>;
+      value: PropertyType<T>;
+      commit?: (value: unknown) => Promise<boolean>;
+    };
+    // Only expose `commit` when the column is editable — non-editable
+    // interactive widgets should render as read-only.
+    if (this.isEditable) {
+      ctx.commit = (next: unknown) =>
+        this.editingController.commitImmediate(this.row.index, this.column.key, next);
+    }
+    return ctx as unknown as ApexCellContext<T>;
   }
 
   protected get editingController() {
@@ -109,10 +122,11 @@ export default class ApexGridCell<T extends object> extends LitElement {
 
   protected override updated() {
     if (this.isEditing) {
-      this.editorElement?.focus();
-      if (this.editorElement instanceof HTMLInputElement) {
-        if (this.editorElement.type === 'text' || this.editorElement.type === 'number') {
-          this.editorElement.select();
+      const editor = this.editorElement;
+      editor?.focus();
+      if (editor instanceof HTMLInputElement) {
+        if (editor.type === 'text' || editor.type === 'number') {
+          editor.select();
         }
       }
     }
@@ -125,6 +139,11 @@ export default class ApexGridCell<T extends object> extends LitElement {
       return;
     }
     if (!this.isEditable) return;
+    // Boolean cells handle interaction in their display widget — clicking the
+    // checkbox commits inline via `ctx.commit`. We never enter edit mode for
+    // booleans, which avoids the visual reflow between display/editor markup
+    // and lets a single click toggle the value.
+    if (this.column.type === 'boolean') return;
     if (this.editingController.trigger !== 'click') return;
     this.#startEdit();
   };
@@ -135,6 +154,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
       return;
     }
     if (!this.isEditable) return;
+    if (this.column.type === 'boolean') return;
     if (this.editingController.trigger !== 'doubleClick') return;
     this.#startEdit();
   };

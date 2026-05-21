@@ -125,7 +125,9 @@ export class GridDOMController<T extends object> implements ReactiveController {
   }
 
   protected setGridColumnSizes() {
-    this.columnSizes = applyColumnWidths(this.displayColumns);
+    this.columnSizes = applyColumnWidths(this.displayColumns, {
+      showSelectionColumn: this.state.selection.showCheckboxColumn,
+    });
   }
 
   public getActiveRowStyles(index: number): StyleInfo {

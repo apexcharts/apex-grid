@@ -4,16 +4,20 @@ import { NumberOperands } from '../operations/filter/operands/number.js';
 import { StringOperands } from '../operations/filter/operands/string.js';
 import type { ColumnConfiguration, DataType, GridHost } from './types.js';
 
-// TODO: Revise if this is needed
+/** Width of the auto-rendered selection (checkbox) column in CSS pixels. */
+export const SELECTION_COLUMN_WIDTH = 44;
+
 export function applyColumnWidths<T extends object>(
-  columns: Array<ColumnConfiguration<T>>
+  columns: Array<ColumnConfiguration<T>>,
+  options: { showSelectionColumn?: boolean } = {}
 ): StyleInfo {
-  return {
-    'grid-template-columns': columns
-      .filter((each) => !each.hidden)
-      .map(({ width }) => width ?? 'minmax(136px, 1fr)')
-      .join(' '),
-  };
+  const tracks = columns
+    .filter((each) => !each.hidden)
+    .map(({ width }) => width ?? 'minmax(136px, 1fr)');
+  if (options.showSelectionColumn) {
+    tracks.unshift(`${SELECTION_COLUMN_WIDTH}px`);
+  }
+  return { 'grid-template-columns': tracks.join(' ') };
 }
 
 /**

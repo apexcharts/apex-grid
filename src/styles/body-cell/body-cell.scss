@@ -3,7 +3,14 @@
 $row-border-width: var(--igx-row-border-width, var(--row-border-width));
 $cell-active-border-color: var(--igx-cell-active-border-color, var(--cell-active-border-color));
 $inset-shadow-width: #{rem(1px)};
-$editor-accent: var(--igx-cell-editor-accent-color, var(--ig-primary-500, var(--cell-active-border-color)));
+
+// Anchor the editor accent to the theme's --cell-active-border-color so the
+// caret, focus outline, and highlighted-option color in the editor all
+// match the cell's active outline. Each grid theme sets that token to its
+// own accent (Material → secondary, Bootstrap/Fluent/Indigo → primary), so
+// the editor visuals follow the same theme-specific accent as the rest of
+// the grid instead of defaulting to a generic --ig-primary-500.
+$editor-accent: var(--igx-cell-editor-accent-color, var(--cell-active-border-color, var(--ig-primary-500)));
 $editor-tint: hsl(from #{$editor-accent} h s 95%);
 $editor-background: var(--igx-cell-editor-background, var(--ig-surface-500, white));
 
@@ -18,6 +25,13 @@ $editor-background: var(--igx-cell-editor-background, var(--ig-surface-500, whit
     font-size: #{rem(13px)};
     overflow-wrap: anywhere;
 
+    // Cells are inline-flex siblings, so the browser's word/paragraph
+    // selection on a double-click can bleed across cell boundaries —
+    // grabbing the neighbouring column's text. Suppress that here; native
+    // editors below opt back in so the user can still select text inside
+    // a text/number/date input.
+    user-select: none;
+
     &:last-of-type {
         border-right: 0;
     }
@@ -28,15 +42,33 @@ $editor-background: var(--igx-cell-editor-background, var(--ig-surface-500, whit
     box-shadow: inset 0 0 0 $inset-shadow-width $cell-active-border-color;
 }
 
-// Cell host gets a tinted background while in edit mode so the editing target
-// is unmistakable even if the user is looking at a row away from the input.
-// `overflow: hidden` clips the editor + its focus ring strictly to the column
-// width so neighbouring cells never get covered.
+// While editing, the cell host IS the editor surface — solid white
+// background, the cell-level active outline serves as the editor border.
+// The inline `<input>` below renders chromeless on top of this, so there
+// are never two competing borders to look at.
+// `overflow: hidden` clips the inline editor strictly to the column width
+// so neighbouring cells never get covered.
 :host([editing]) {
-    background: $editor-tint;
+    background: $editor-background;
     z-index: calc(var(--z-index-base) + 2);
     overflow: hidden;
     cursor: text;
+}
+
+// Pinned cells use `background: inherit` from the data-pinned rule below,
+// which would otherwise outweigh the editing background. Restore the
+// editor surface explicitly for pinned editing cells.
+:host([editing][data-pinned='start']),
+:host([editing][data-pinned='end']) {
+    background: $editor-background;
+}
+
+// Select-type editing cells render a listbox popover anchored to the cell
+// that extends below the cell's box. Allow that to escape the cell's clip
+// region — the popover has its own background + shadow so it reads as a
+// distinct surface.
+:host([editing][data-cell-type='select']) {
+    overflow: visible;
 }
 
 :host(:last-child) {
@@ -66,33 +98,44 @@ $editor-background: var(--igx-cell-editor-background, var(--ig-surface-500, whit
     box-shadow: rem(-2px) 0 rem(4px) rgb(0 0 0 / 6%);
 }
 
-// Inline editor — the default editor is a bare `<input>` rendered into the cell
-// when editing is active. Inset slightly so it reads as a distinct control,
-// but stay strictly within the cell so it cannot bleed into neighbouring
-// columns. Focus emphasis comes from an INSET shadow (never an outset ring)
-// because outset shadows would otherwise paint over adjacent cells.
+// Pin-edge cells get a directional shadow; an active cell at the pin edge has
+// to layer the inset active border on top of that shadow so single-clicking
+// the last pinned column still shows the active outline.
+:host([active][data-pin-edge='start']) {
+    box-shadow:
+        inset 0 0 0 $inset-shadow-width $cell-active-border-color,
+        rem(2px) 0 rem(4px) rgb(0 0 0 / 6%);
+}
+
+:host([active][data-pin-edge='end']) {
+    box-shadow:
+        inset 0 0 0 $inset-shadow-width $cell-active-border-color,
+        rem(-2px) 0 rem(4px) rgb(0 0 0 / 6%);
+}
+
+// Inline editor — chromeless `<input>` painted across the cell. The cell
+// host already provides the editor surface (white background) and the
+// active outline; the input itself contributes only the caret + text
+// selection, so the user sees a single clean border around the cell.
 input[data-apex-editor] {
     box-sizing: border-box;
     position: absolute;
-    inset: #{rem(2px)};
+    inset: 0;
     width: auto;
     height: auto;
-    padding: 0 calc(#{$ig-cells-padding} - #{rem(2px)});
+    padding: 0 $ig-cells-padding;
     margin: 0;
-    border: #{rem(1px)} solid $editor-accent;
-    border-radius: #{rem(3px)};
-    background: $editor-background;
+    border: 0;
+    background: transparent;
     color: inherit;
     font: inherit;
     font-size: #{rem(13px)};
     outline: none;
-    box-shadow: inset 0 0 0 #{rem(1px)} hsl(from #{$editor-accent} h s l / 25%);
     caret-color: $editor-accent;
-}
 
-input[data-apex-editor]:focus-visible {
-    border-color: $editor-accent;
-    box-shadow: inset 0 0 0 #{rem(2px)} hsl(from #{$editor-accent} h s l / 35%);
+    // Re-enable text selection inside active editors so users can mark
+    // and replace portions of the value while editing.
+    user-select: text;
 }
 
 input[type='number'][data-apex-editor] {
@@ -103,9 +146,9 @@ input[type='number'][data-apex-editor] {
 input[type='checkbox'][data-apex-editor] {
     position: relative;
     inset: auto;
-    width: auto;
-    height: auto;
-    margin-inline-start: $ig-cells-padding;
+    inline-size: #{rem(16px)};
+    block-size: #{rem(16px)};
+    margin: 0;
     border: 0;
     border-radius: 0;
     background: none;
@@ -180,55 +223,86 @@ $star-size: #{rem(14px)};
     }
 }
 
-// Built-in boolean display (column `type: 'boolean'`). A native, non-
-// interactive <input type="checkbox"> so the affordance matches every other
-// checkbox in the host page. tabindex=-1 + pointer-events: none in the
-// component keep it out of focus and click handling.
+// Built-in boolean display (column `type: 'boolean'`). For editable columns
+// the checkbox is the interactive control — a single click toggles and
+// commits via `ctx.commit`. Non-editable boolean cells get the read-only
+// fallback (pointer-events disabled, cursor default) so the checkbox reads
+// as a state indicator rather than a toggle.
 input[part~='boolean-mark'] {
     inline-size: #{rem(16px)};
     block-size: #{rem(16px)};
     margin: 0;
-    cursor: default;
+    cursor: pointer;
     accent-color: $editor-accent;
+}
+
+input[part~='boolean-mark'][aria-readonly='true'] {
+    cursor: default;
     pointer-events: none;
 }
 
-// Built-in select display (column `type: 'select'`). Reads as a closed
-// dropdown — subtle border, a chevron indicator, hover affordance — so the
-// edit affordance is clear before the user enters edit mode.
-[part~='select-display'] {
-    display: inline-flex;
-    align-items: center;
-    gap: #{rem(6px)};
-    padding: #{rem(2px)} #{rem(4px)} #{rem(2px)} #{rem(8px)};
-    border: #{rem(1px)} solid hsl(from currentcolor h s l / 18%);
-    border-radius: #{rem(3px)};
-    background: transparent;
-    cursor: pointer;
-    line-height: 1.2;
-    transition: border-color 0.15s ease, background-color 0.15s ease;
-    min-inline-size: 0;
-    max-inline-size: 100%;
-
-    &:hover {
-        border-color: hsl(from currentcolor h s l / 32%);
-        background: hsl(from currentcolor h s l / 4%);
-    }
-}
-
+// Built-in select display (column `type: 'select'`). Closed state is just
+// the value's label as plain text — no chrome, no chevron. The dropdown
+// affordance lives in the listbox popover that appears on edit.
 [part~='select-label'] {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-inline-size: 0;
-    flex: 1;
+    inline-size: 100%;
 }
 
-[part~='select-chevron'] {
-    inline-size: #{rem(14px)};
-    block-size: #{rem(14px)};
-    opacity: 0.6;
-    flex-shrink: 0;
+// Built-in select editor — a custom listbox anchored to the cell. The cell
+// host is `position: relative`, so the popover positions itself directly
+// below the cell. We use `position: absolute` (not fixed) so a transformed
+// ancestor — the virtualizer applies `transform: translate` to each row —
+// doesn't re-parent the popover off-screen.
+[part~='select-popover'] {
+    position: absolute;
+    inset-block-start: 100%;
+    inset-inline-start: 0;
+    margin: #{rem(2px)} 0 0;
+    padding: #{rem(4px)} 0;
+    min-inline-size: 100%;
+    background: $editor-background;
+    border: #{rem(1px)} solid hsl(from currentcolor h s l / 22%);
+    border-radius: #{rem(4px)};
+    box-shadow:
+        0 #{rem(2px)} #{rem(4px)} rgb(0 0 0 / 6%),
+        0 #{rem(6px)} #{rem(16px)} rgb(0 0 0 / 12%);
+    max-block-size: #{rem(240px)};
+    overflow-y: auto;
+    outline: none;
+    z-index: calc(var(--z-index-base) + 10);
+    color: inherit;
+    font: inherit;
+}
+
+[part~='select-option'] {
+    display: block;
+    padding: #{rem(6px)} #{rem(12px)};
+    cursor: pointer;
+    color: inherit;
+    outline: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &:hover {
+        background: hsl(from #{$editor-accent} h s l / 8%);
+    }
+
+    &[part~='selected'] {
+        background: hsl(from #{$editor-accent} h s l / 14%);
+        color: $editor-accent;
+        font-weight: 500;
+    }
+
+    &:focus-visible {
+        background: hsl(from #{$editor-accent} h s l / 14%);
+        outline: #{rem(2px)} solid $editor-accent;
+        outline-offset: #{rem(-2px)};
+    }
 }
 
 // Built-in image display (column `type: 'image'`). Sized to fit the cell
@@ -248,30 +322,6 @@ input[part~='boolean-mark'] {
     border-radius: 50%;
 }
 
-// Built-in <select> / <input type="date"> editors share the chrome of the
-// text/number editors so the cell visually behaves the same regardless of
-// which built-in editor is active.
-select[data-apex-editor],
-input[type='date'][data-apex-editor] {
-    box-sizing: border-box;
-    position: absolute;
-    inset: #{rem(2px)};
-    width: auto;
-    height: auto;
-    padding: 0 calc(#{$ig-cells-padding} - #{rem(2px)});
-    margin: 0;
-    border: #{rem(1px)} solid $editor-accent;
-    border-radius: #{rem(3px)};
-    background: $editor-background;
-    color: inherit;
-    font: inherit;
-    font-size: #{rem(13px)};
-    outline: none;
-    box-shadow: inset 0 0 0 #{rem(1px)} hsl(from #{$editor-accent} h s l / 25%);
-
-    &:focus-visible {
-        border-color: $editor-accent;
-        box-shadow: inset 0 0 0 #{rem(2px)} hsl(from #{$editor-accent} h s l / 35%);
-    }
-}
+// `<input type="date">` inherits the chromeless `input[data-apex-editor]`
+// styling; no additional rules needed.
 

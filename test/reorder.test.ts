@@ -131,15 +131,16 @@ describe('Column reordering — opt-out', () => {
     expect(applied).to.be.true;
   });
 
-  it('headers are not draggable when columnReordering is false', () => {
-    const header = offTDD.grid.renderRoot
-      .querySelector('apex-grid-header-row')!
-      .shadowRoot!.querySelector('apex-grid-header') as HTMLElement;
-    expect(header.draggable).to.be.false;
+  it('isDraggable() reports false for all columns when columnReordering is off', () => {
+    // @ts-expect-error - protected access for the test
+    const reorder = offTDD.grid.stateController.reordering;
+    for (const column of offTDD.grid.columns) {
+      expect(reorder.isDraggable(column)).to.be.false;
+    }
   });
 });
 
-describe('Column reordering — drag UX wiring', () => {
+describe('Column reordering — pointer drag UX', () => {
   beforeEach(async () => await TDD.setUp());
   afterEach(() => TDD.tearDown());
 
@@ -147,73 +148,101 @@ describe('Column reordering — drag UX wiring', () => {
     return new Map(TDD.headerRow.headers.map((h) => [h.column.key, h as unknown as HTMLElement]));
   }
 
-  it('headers are draggable when columnReordering is true', async () => {
-    await TDD.waitForUpdate();
-    const headers = headersByKey();
-    for (const header of headers.values()) {
-      expect(header.draggable).to.be.true;
-    }
-  });
+  function pointerEvent(
+    type: 'pointerdown' | 'pointermove' | 'pointerup',
+    init: { clientX: number; clientY: number; pointerId?: number; button?: number }
+  ) {
+    return new PointerEvent(type, {
+      bubbles: true,
+      composed: true,
+      pointerId: init.pointerId ?? 1,
+      button: init.button ?? 0,
+      clientX: init.clientX,
+      clientY: init.clientY,
+    });
+  }
 
-  it('dragstart on a header marks it data-dragging and primes the reorder controller', async () => {
+  it('pointerdown alone does not start a drag (waits for movement threshold)', async () => {
     await TDD.waitForUpdate();
     const header = headersByKey().get('name')!;
-    const dt = new DataTransfer();
-    header.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+    const rect = header.getBoundingClientRect();
+    header.dispatchEvent(
+      pointerEvent('pointerdown', { clientX: rect.left + 10, clientY: rect.top + 8 })
+    );
+    await TDD.waitForUpdate();
+
+    expect(header.hasAttribute('data-dragging')).to.be.false;
+    // @ts-expect-error - protected access for the test
+    expect(TDD.grid.stateController.reordering.state).to.be.null;
+  });
+
+  it('moving past the drag threshold starts the drag and exposes ghost state', async () => {
+    await TDD.waitForUpdate();
+    const header = headersByKey().get('name')!;
+    const rect = header.getBoundingClientRect();
+    header.dispatchEvent(
+      pointerEvent('pointerdown', { clientX: rect.left + 10, clientY: rect.top + 8 })
+    );
+    header.dispatchEvent(
+      pointerEvent('pointermove', { clientX: rect.left + 40, clientY: rect.top + 8 })
+    );
     await TDD.waitForUpdate();
 
     expect(header.hasAttribute('data-dragging')).to.be.true;
     // @ts-expect-error - protected access for the test
-    const state = TDD.grid.stateController.reordering.state;
-    expect(state?.sourceKey).to.equal('name');
+    const state = TDD.grid.stateController.reordering.state!;
+    expect(state.sourceKey).to.equal('name');
+    expect(state.ghostWidth).to.be.greaterThan(0);
+    expect(state.label).to.equal('name');
   });
 
-  it('dragover updates the drop indicator position and direction', async () => {
+  it('live-swaps with the target column when the cursor crosses its midpoint', async () => {
     await TDD.waitForUpdate();
     const headers = headersByKey();
     const source = headers.get('name')!;
     const target = headers.get('active')!;
-    const sourceDt = new DataTransfer();
-    source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: sourceDt }));
-    await TDD.waitForUpdate();
+    const sourceRect = source.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
 
-    const rect = target.getBoundingClientRect();
-    target.dispatchEvent(
-      new DragEvent('dragover', {
-        bubbles: true,
-        cancelable: true,
-        clientX: rect.left + rect.width * 0.75,
+    source.dispatchEvent(
+      pointerEvent('pointerdown', { clientX: sourceRect.left + 10, clientY: sourceRect.top + 8 })
+    );
+    source.dispatchEvent(
+      pointerEvent('pointermove', {
+        clientX: targetRect.left + targetRect.width * 0.75,
+        clientY: targetRect.top + 8,
       })
     );
     await TDD.waitForUpdate();
 
-    // @ts-expect-error - protected access for the test
-    const state = TDD.grid.stateController.reordering.state!;
-    expect(state.targetKey).to.equal('active');
-    expect(state.position).to.equal('after');
+    expect(TDD.keys()).to.deep.equal(['id', 'active', 'name', 'importance']);
   });
 
-  it('drop commits the move via moveColumn', async () => {
+  it('pointerup ends the drag and leaves columns in their current order', async () => {
     await TDD.waitForUpdate();
     const headers = headersByKey();
     const source = headers.get('importance')!;
     const target = headers.get('id')!;
-    const sourceDt = new DataTransfer();
-    source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: sourceDt }));
-    await TDD.waitForUpdate();
+    const sourceRect = source.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
 
-    const rect = target.getBoundingClientRect();
-    target.dispatchEvent(
-      new DragEvent('dragover', {
-        bubbles: true,
-        cancelable: true,
-        clientX: rect.left + rect.width * 0.25,
+    source.dispatchEvent(
+      pointerEvent('pointerdown', { clientX: sourceRect.left + 10, clientY: sourceRect.top + 8 })
+    );
+    source.dispatchEvent(
+      pointerEvent('pointermove', {
+        clientX: targetRect.left + targetRect.width * 0.25,
+        clientY: targetRect.top + 8,
       })
     );
-    target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }));
-    source.dispatchEvent(new DragEvent('dragend', { bubbles: true }));
+    source.dispatchEvent(
+      pointerEvent('pointerup', { clientX: targetRect.left, clientY: targetRect.top + 8 })
+    );
     await TDD.waitForUpdate();
 
     expect(TDD.keys()).to.deep.equal(['importance', 'id', 'name', 'active']);
+    expect(source.hasAttribute('data-dragging')).to.be.false;
+    // @ts-expect-error - protected access for the test
+    expect(TDD.grid.stateController.reordering.state).to.be.null;
   });
 });

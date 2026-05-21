@@ -33,3 +33,39 @@ $row-hover-text-color: var(--igx-row-hover-text-color, var(--row-hover-text-colo
     background: $row-hover-background;
     color: $row-hover-text-color;
 }
+
+// Row selection — tint the row with the cell active accent at low opacity so
+// the highlight survives even-row striping + hover, and increase emphasis on
+// hover. The accent token comes from the loaded grid theme (Material →
+// secondary, others → primary) so the highlight matches the rest of the
+// theme.
+$selected-row-accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ig-primary-500)));
+
+:host([selected]) {
+    background: hsl(from #{$selected-row-accent} h s l / 12%);
+}
+
+:host([selected]:hover) {
+    background: hsl(from #{$selected-row-accent} h s l / 18%);
+}
+
+// Built-in selection (checkbox) cell — always sits at the start of the row,
+// pinned so it stays put during horizontal scrolling.
+[part='selection-cell'] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: calc(var(--z-index-base) + 1);
+    background: inherit;
+    border-inline-end: $row-border-width $row-border-style $row-border-color;
+}
+
+[part='selection-checkbox'] {
+    inline-size: #{rem(16px)};
+    block-size: #{rem(16px)};
+    margin: 0;
+    cursor: pointer;
+    accent-color: $selected-row-accent;
+}

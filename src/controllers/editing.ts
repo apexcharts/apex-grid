@@ -201,6 +201,41 @@ export class EditingController<T extends object> implements ReactiveController {
   }
 
   /**
+   * Writes `value` directly to the cell at `(rowIndex, columnKey)` without
+   * entering edit mode. Used by interactive display widgets (e.g. the boolean
+   * checkbox) that handle their own input. Goes through the same
+   * `cellValueChanging` / `cellValueChanged` event path as a normal commit.
+   *
+   * @returns `true` if the value was applied, `false` if rejected by
+   * `cellValueChanging.preventDefault()` or the column is not editable.
+   */
+  public async commitImmediate(
+    rowIndex: number,
+    columnKey: Keys<T>,
+    value: unknown
+  ): Promise<boolean> {
+    if (!this.enabled) return false;
+    const column = this.host.getColumn(columnKey);
+    if (!column || !this.isEditable(column)) return false;
+    const data = this.host.pageItems[rowIndex] as T | undefined;
+    if (!data) return false;
+    const oldValue = (data as Record<string, unknown>)[columnKey as string];
+    if (Object.is(value, oldValue)) return true;
+    const proceed = this.host.emitEvent('cellValueChanging', {
+      detail: { key: columnKey, rowIndex, data, oldValue, newValue: value },
+      cancelable: true,
+    });
+    if (!proceed) return false;
+    (data as Record<string, unknown>)[columnKey as string] = value;
+    this.host.requestUpdate(PIPELINE);
+    await this.host.updateComplete;
+    this.host.emitEvent('cellValueChanged', {
+      detail: { key: columnKey, rowIndex, data, value },
+    });
+    return true;
+  }
+
+  /**
    * Discards the current cell edit without writing. In row mode the row edit
    * stays open.
    */

@@ -14,6 +14,8 @@ export type {
   ApexQuickFilterChangingEvent,
   ApexRowEditEndedEvent,
   ApexRowEditStartedEvent,
+  ApexRowSelectedEvent,
+  ApexRowSelectingEvent,
   ColumnDropPosition,
 } from './components/grid.js';
 export { ApexGrid } from './components/grid.js';
@@ -36,6 +38,7 @@ export type {
   EditMode,
   EditTrigger,
   GridEditingConfiguration,
+  GridSelectionConfiguration,
   GridSortConfiguration,
   Keys,
   PaginationConfiguration,
@@ -43,6 +46,7 @@ export type {
   PaginationState,
   PinPosition,
   PropertyType,
+  SelectionMode,
 } from './internal/types.js';
 export { BooleanOperands } from './operations/filter/operands/boolean.js';
 export { NumberOperands } from './operations/filter/operands/number.js';

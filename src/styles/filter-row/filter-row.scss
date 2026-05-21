@@ -43,6 +43,10 @@ $accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
     gap: rem(8px);
     position: relative;
     inset-block-start: rem(-1px);
+
+    // Span every grid track in the host so an enabled selection column
+    // doesn't squeeze the active filter editor into a narrow 44px slot.
+    grid-column: 1 / -1;
 }
 
 [part='filter-row-preview']:last-of-type {

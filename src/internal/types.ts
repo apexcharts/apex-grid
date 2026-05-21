@@ -315,6 +315,15 @@ export interface BaseApexCellContext<T extends object, K extends Keys<T> = Keys<
    * The value from the data source for this cell.
    */
   value: PropertyType<T, K>;
+  /**
+   * Commits a new value for this cell without entering edit mode. Available
+   * when the column is editable. Used by interactive display widgets
+   * (e.g. the built-in boolean checkbox) so they can toggle inline.
+   *
+   * Goes through the cancellable `cellValueChanging` event and follow-up
+   * `cellValueChanged` event — same write path as an edit-mode commit.
+   */
+  commit?: (value: PropertyType<T, K>) => Promise<boolean>;
 }
 
 /**
@@ -373,6 +382,39 @@ export type EditTrigger = 'click' | 'doubleClick';
  *  {@link ApexGrid.cancelEdit}.
  */
 export type EditMode = 'cell' | 'row';
+
+/**
+ * Selection mode for the grid.
+ *
+ * @remarks
+ * `'single'` — at most one row may be selected at any time. New clicks
+ * replace the existing selection.
+ * `'multiple'` — multiple rows can be selected. Plain clicks replace the
+ * selection, Ctrl/Cmd+click toggles a row additively, and Shift+click
+ * selects a range from the previous anchor.
+ */
+export type SelectionMode = 'single' | 'multiple';
+
+/**
+ * Grid-level row-selection configuration.
+ */
+export interface GridSelectionConfiguration {
+  /**
+   * Whether row selection is enabled. Disabled by default.
+   */
+  enabled?: boolean;
+  /**
+   * Single-row vs multi-row selection. Defaults to `'multiple'`.
+   */
+  mode?: SelectionMode;
+  /**
+   * Whether to render the built-in checkbox column at the start of every
+   * row. When `false`, selection is still available via the public API
+   * (`selectRow`, `selectedRows = ...`) and via Space on the active row.
+   * Defaults to `false`.
+   */
+  showCheckboxColumn?: boolean;
+}
 
 /**
  * Grid-level editing configuration.
