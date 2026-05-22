@@ -72,6 +72,7 @@ $expansion-accent: var(--igx-cell-active-border-color, var(--cell-active-border-
     display: inline-flex;
     align-items: center;
     justify-content: center;
+
     // Touch target: 24x24 minimum (WCAG 2.5.8).
     inline-size: #{rem(24px)};
     block-size: #{rem(24px)};

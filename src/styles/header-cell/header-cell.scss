@@ -97,6 +97,7 @@ $inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
     color: inherit;
     font: inherit;
     line-height: 0;
+
     // Touch target: 24x24 minimum (WCAG 2.5.8) — the visible icon stays 15px.
     inline-size: rem(24px);
     block-size: rem(24px);

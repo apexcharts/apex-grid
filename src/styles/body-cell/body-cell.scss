@@ -343,6 +343,7 @@ $tree-accent: var(--igx-cell-active-border-color, var(--cell-active-border-color
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+
     // Touch target floor (WCAG 2.5.8).
     inline-size: #{rem(24px)};
     block-size: #{rem(24px)};

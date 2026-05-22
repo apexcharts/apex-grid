@@ -118,6 +118,7 @@ $accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
     align-items: center;
     justify-content: center;
     gap: rem(2px);
+
     // Touch target floor (WCAG 2.5.8).
     min-inline-size: rem(28px);
     min-block-size: rem(28px);
@@ -185,6 +186,7 @@ $accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
     font: inherit;
     font-size: rem(13px);
     cursor: pointer;
+
     // Touch target floor (WCAG 2.5.8).
     min-block-size: rem(24px);
 
