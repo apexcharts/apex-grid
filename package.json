@@ -30,6 +30,7 @@
     "preview:vite": "vite preview",
     "sass:watch": "node scripts/watch-styles.js",
     "start": "concurrently -k -r \"npm:sass:watch\" \"npm:vite\"",
+    "pretest": "node -e \"import('./scripts/sass.js').then(m => m.buildComponents())\"",
     "test": "wtr --coverage",
     "test:watch": "wtr --watch",
     "typedoc": "typedoc",
