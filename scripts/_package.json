@@ -2,8 +2,12 @@
   "name": "apex-grid",
   "version": "0.0.0",
   "description": "Web component data grid following open-wc recommendations",
-  "keywords": ["lit", "web-component", "lit-element"],
-  "license": "SEE LICENSE IN LICENSE.mds",
+  "keywords": [
+    "lit",
+    "web-component",
+    "lit-element"
+  ],
+  "license": "SEE LICENSE IN LICENSE.md",
   "author": "apex-grid",
   "exports": {
     ".": {
@@ -20,10 +24,10 @@
   "sideEffects": false,
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/apexcharts/apexgrid.git"
+    "url": "git+https://github.com/apexcharts/apex-grid.git"
   },
   "bugs": {
-    "url": "https://github.com/apexcharts/apexgrid/issues"
+    "url": "https://github.com/apexcharts/apex-grid/issues"
   },
   "engines": {
     "node": ">=20"
