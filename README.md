@@ -523,4 +523,4 @@ Any push whose head commit does not start with `release:` is a no-op for the wor
 
 ## License
 
-See [LICENSE.md](LICENSE.md).
+See [LICENSE](LICENSE).
