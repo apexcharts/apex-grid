@@ -1,15 +1,36 @@
 # Apex Grid
 
-[![Node.js CI](https://github.com/apexcharts/apexgrid/actions/workflows/node.js.yml/badge.svg)](https://github.com/apexcharts/apexgrid/actions/workflows/node.js.yml)
-[![Coverage Status](https://coveralls.io/repos/github/apexcharts/apexgrid/badge.svg?branch=master)](https://coveralls.io/github/apexcharts/apexgrid?branch=master)
+[![Node.js CI](https://github.com/apexcharts/apex-grid/actions/workflows/node.js.yml/badge.svg?branch=main)](https://github.com/apexcharts/apex-grid/actions/workflows/node.js.yml)
+[![Coverage Status](https://coveralls.io/repos/github/apexcharts/apex-grid/badge.svg?branch=main)](https://coveralls.io/github/apexcharts/apex-grid?branch=main)
+[![npm](https://img.shields.io/npm/v/apex-grid.svg)](https://www.npmjs.com/package/apex-grid)
 
-A Lit-based web component data grid with sorting, filtering, row virtualization, column resizing, and a templating API. Ships as a single custom element: `<apex-grid>`.
+A Lit-based, framework-agnostic web component data grid. Ships as a single custom element `<apex-grid>` with a rich, opt-in feature set and full TypeScript types.
+
+## Features
+
+- **Row virtualization** via `@lit-labs/virtualizer` — only ~20 rows in the DOM at any time, regardless of dataset size.
+- **Sorting** — single or multi-column, tri-state (asc / desc / none), per-column comparers.
+- **Filtering** — per-column filter chips with string / number / boolean / date operands, plus a quick-filter (global search) input.
+- **Pagination** — local slicing or remote mode with a `pageChanging` / `pageChanged` event pair; built-in `<apex-grid-paginator>`.
+- **Column pinning** — pin to start or end; visual reordering only, source `columns` array is preserved.
+- **Column reordering** — drag-and-drop with per-column opt-out, constrained to the column's pinning group.
+- **Column resizing** — pointer-driven, with a min-width safeguard.
+- **Inline editing** — cell or row mode, click or double-click trigger, per-column opt-in.
+- **Row selection** — single or multiple, optional checkbox column, full programmatic API.
+- **Row expansion (master-detail)** — opt-in chevron column with a `detailTemplate`.
+- **Tree data (nested rows)** — AG Grid–style `getDataPath` pattern over a flat array.
+- **CSV / XLSX export** — programmatic methods plus an optional toolbar dropdown.
+- **Toolbar** — opt-in `<apex-grid-toolbar>` with debounced quick filter and export menu.
+- **Templating** — slot-based templates for cells, headers, editors, and detail panels.
+- **Theming** — Bootstrap / Fluent / Indigo / Material themes via `igniteui-webcomponents`, with light and dark variants.
+- **Accessibility** — WCAG 2.2 AA semantics (`role="grid"` / `role="treegrid"`, `aria-rowcount`, `aria-colcount`, focus + keyboard navigation).
+- **Provenance-signed npm releases** with OIDC trusted publishing.
 
 ---
 
-## Quick Start (one call)
+## Quick Start
 
-If you don't need fine-grained control, `setup()` handles registration, theme configuration, and host sizing in a single call. You still import the Ignite UI theme CSS file yourself (bundlers can't dynamically import CSS portably):
+### One-call setup
 
 ```ts
 import { setup } from 'apex-grid';
@@ -18,91 +39,20 @@ import 'igniteui-webcomponents/themes/light/bootstrap.css';
 setup({ theme: 'bootstrap' });
 ```
 
-That's it — `<apex-grid>` is registered, the theme is active, and a default host stylesheet (`height: 100%; min-height: 240px`) is adopted. Render the element and bind `.data` / `.columns` as below.
+That single call registers `<apex-grid>`, calls `configureTheme('bootstrap')`, and adopts a default host stylesheet (`height: 100%; min-height: 240px`). The Ignite UI theme CSS still has to be imported by you — bundlers can't dynamically import CSS portably.
 
-Prefer manual control? Use the four-step setup below instead — `setup()` is additive, not required.
-
----
-
-## Getting Started (manual, four steps)
-
-If you'd rather not use `setup()`, the four steps below are what `setup()` does under the hood. Skipping any one of them produces a grid that "runs" but renders broken-looking (no borders, no filter UI, or only a few collapsed rows).
-
-### 1. Install
-
-```bash
-npm install apex-grid lit
-```
-
-`igniteui-webcomponents` ships as a transitive dependency — no separate install.
-
-### 2. Register the custom element
-
-Once, anywhere at app startup:
-
-```ts
-import 'apex-grid/define';
-```
-
-Equivalent long form:
-
-```ts
-import { ApexGrid } from 'apex-grid';
-ApexGrid.register();
-```
-
-Without this, `<apex-grid>` is an inert unknown element.
-
-### 3. Load a theme — required for styled UI
-
-The grid's filter dropdowns and sort indicators come from `igniteui-webcomponents`. You must both **import the theme CSS** and **call `configureTheme()`**:
-
-```ts
-import { configureTheme } from 'igniteui-webcomponents';
-import 'igniteui-webcomponents/themes/light/bootstrap.css';
-
-configureTheme('bootstrap'); // 'bootstrap' | 'material' | 'fluent' | 'indigo'
-```
-
-For dark mode, swap `light` → `dark` in the import path. The name passed to `configureTheme()` must match the CSS file you imported.
-
-### 4. Size the host
-
-The grid uses `@lit-labs/virtualizer`, which requires a **bounded height** on the host. Without it, the virtualizer collapses to its natural content height (~150px) and only a few rows are visible regardless of how much data you pass.
-
-```css
-apex-grid {
-  height: 480px;   /* any explicit pixel height; % works if the parent has a height */
-}
-```
-
-> [!TIP]
-> If you'd rather not write this rule yourself, `import 'apex-grid/styles.css'`
-> ships a default that sets `height: 100%` with a `min-height: 240px` fallback.
-
-> [!IMPORTANT]
-> **Do not set `display` on `<apex-grid>`.** The component declares
-> `:host { display: grid }` internally for its track layout (header / filter / body).
-> Any consumer rule that sets `display` (including `display: block`, `display: flex`)
-> overrides this and collapses the grid. If you accidentally do this, the grid emits
-> a `console.warn` at startup pointing you here.
-
-### 5. Render the grid
+### Render the grid
 
 ```ts
 import { html, render } from 'lit';
 import 'apex-grid/define';
-import { configureTheme } from 'igniteui-webcomponents';
-import 'igniteui-webcomponents/themes/light/bootstrap.css';
 import type { ColumnConfiguration } from 'apex-grid';
-
-configureTheme('bootstrap');
 
 type User = { id: number; name: string; age: number; subscribed: boolean };
 
 const data: User[] = [
   { id: 1, name: 'Ada Lovelace', age: 36, subscribed: true },
-  { id: 2, name: 'Carl Sagan', age: 62, subscribed: false },
+  { id: 2, name: 'Carl Sagan',   age: 62, subscribed: false },
   { id: 3, name: 'Grace Hopper', age: 85, subscribed: true },
 ];
 
@@ -126,65 +76,451 @@ render(
 <div id="app"></div>
 ```
 
+---
+
+## Manual setup (four steps)
+
+If you'd rather not use `setup()`, this is what it does under the hood. Skipping any step produces a grid that "runs" but renders broken (no borders, no filter UI, or only a few collapsed rows).
+
+### 1. Install
+
+```bash
+npm install apex-grid lit
+```
+
+`igniteui-webcomponents` ships as a transitive dependency — no separate install.
+
+### 2. Register the custom element
+
+```ts
+import 'apex-grid/define';
+```
+
+Equivalent long form:
+
+```ts
+import { ApexGrid } from 'apex-grid';
+ApexGrid.register();
+```
+
+Without this, `<apex-grid>` is an inert unknown element.
+
+### 3. Load a theme
+
+The grid's filter dropdowns and sort indicators come from `igniteui-webcomponents`. Both the CSS import **and** the `configureTheme()` call are required:
+
+```ts
+import { configureTheme } from 'igniteui-webcomponents';
+import 'igniteui-webcomponents/themes/light/bootstrap.css';
+
+configureTheme('bootstrap'); // 'bootstrap' | 'material' | 'fluent' | 'indigo'
+```
+
+For dark mode, swap `light` → `dark` in the import path. The name passed to `configureTheme()` must match the imported CSS file.
+
+### 4. Size the host
+
+`@lit-labs/virtualizer` requires a **bounded height**. Without one, the virtualizer collapses to its natural content height (~150px) and only a few rows ever render.
+
+```css
+apex-grid {
+  height: 480px;   /* any explicit pixel height; % works if the parent has a height */
+}
+```
+
+> [!TIP]
+> `import 'apex-grid/styles.css'` ships a default rule that sets `height: 100%` with a `min-height: 240px` fallback.
+
+> [!IMPORTANT]
+> **Do not set `display` on `<apex-grid>`.** The component declares `:host { display: grid }` internally for its track layout (header / filter / body). Any consumer rule that sets `display` (including `block`, `flex`, `inline-block`) collapses the grid. If you accidentally do this, the grid emits a one-shot `console.warn` at startup pointing here.
+
 ### What success looks like
 
 When all four steps are in place you should see:
 
-- **Visible borders** between rows and columns
-- **Sort arrows** (↕) next to each header (because `sort: true`)
-- A **filter row** below the headers with a "Filter" chip per column (because `filter: true`)
-- **Hover state** on rows
-- **Smooth scrolling** — DevTools shows only ~20 `<apex-grid-row>` elements at any time, no matter how many rows are in `data` (virtualization)
+- **Visible borders** between rows and columns.
+- **Sort arrows** (↕) next to each header when `sort: true`.
+- A **filter row** below the headers with a "Filter" chip per column when `filter: true`.
+- **Hover state** on rows.
+- **Smooth scrolling** — DevTools shows only ~20 `<apex-grid-row>` elements at any time.
 
 ### Troubleshooting
 
 | What you see | Likely cause |
 |---|---|
 | Bare table, no borders, no filter UI | Step 3 — theme CSS not imported or `configureTheme()` not called |
-| Only ~3 rows visible regardless of data size | Step 4 — host has no bounded height, **or** consumer CSS sets `display` on `<apex-grid>` (check console for the warning) |
-| `<apex-grid>` is empty / blank tag in DOM | Step 2 — element not registered |
-| `columns` shown as literal `[object Object]` | `columns=` used as an attribute; must be a property — use `.columns=${...}` in Lit, `[columns]=` in Angular, `:columns.prop=` in Vue, `el.columns = ...` in vanilla JS |
+| Only ~3 rows visible regardless of data size | Step 4 — no bounded height, **or** consumer CSS sets `display` on `<apex-grid>` (check console for the warning) |
+| `<apex-grid>` blank tag in DOM | Step 2 — element not registered |
+| Columns shown as literal `[object Object]` | `columns=` used as an attribute — must be a **property** (`.columns=${...}` in Lit, `[columns]=` in Angular, `:columns.prop=` in Vue, `el.columns = ...` in vanilla JS) |
 
 ---
 
-## API Surface (quick reference)
+## Features in depth
 
-- `<apex-grid>` — custom element tag.
-- `ApexGrid<T>` — exported class. Use for `ApexGrid.register()` and for types.
-- Properties (set via property binding, not attributes):
-  - `data: T[]`
-  - `columns: ColumnConfiguration<T>[]`
-  - `autoGenerate` (attr `auto-generate`)
-  - `sortConfiguration`, `dataPipelineConfiguration`
-  - `sortExpressions`, `filterExpressions` (get/set)
-- Methods: `sort()`, `filter()`, `clearSort()`, `clearFilter()`, `getColumn()`, `updateColumns()`.
-- Events (UI-initiated only — programmatic `sort()` / `filter()` are silent): `sorting`, `sorted`, `filtering`, `filtered`.
+Each feature below is fully opt-in — you only pay for what you turn on. Snippets assume `const grid = document.querySelector('apex-grid')!`.
 
-Full type reference is generated via TypeDoc in `dist/`.
+### Sorting
+
+```ts
+const columns = [
+  { key: 'name', sort: true },                            // UI sort + tri-state
+  { key: 'age',  sort: { direction: 'desc' } },           // initial state
+];
+
+grid.sortConfiguration = { multiple: true, triState: true };
+grid.sort({ key: 'age', direction: 'asc' });
+grid.clearSort();                                          // or grid.clearSort('age')
+```
+
+Events: `sorting` (cancellable), `sorted`.
+
+### Filtering
+
+```ts
+const columns = [
+  { key: 'name', filter: true },                          // UI filter chip
+  { key: 'age',  filter: true, type: 'number' },          // operands by type
+];
+
+import { StringOperands } from 'apex-grid';
+grid.filter({ key: 'name', condition: StringOperands.contains, searchTerm: 'Ada' });
+grid.clearFilter();
+```
+
+Operand classes: `StringOperands`, `NumberOperands`, `BooleanOperands`. Events: `filtering` (cancellable), `filtered`.
+
+### Quick filter (global search)
+
+```ts
+grid.showQuickFilter = true;       // renders the toolbar input
+grid.quickFilter = 'ada';          // or: await grid.setQuickFilter('ada')
+```
+
+Custom matcher via `dataPipelineConfiguration.quickFilter`. Events: `quickFilterChanging` (cancellable), `quickFilterChanged`. Attribute: `show-quick-filter`, `quick-filter`.
+
+### Pagination
+
+```ts
+grid.pagination = {
+  enabled: true,
+  pageSize: 25,
+  pageSizeOptions: [10, 25, 50, 100],
+};
+
+await grid.gotoPage(2);
+await grid.setPageSize(50);
+grid.nextPage(); grid.previousPage(); grid.firstPage(); grid.lastPage();
+```
+
+Remote mode:
+
+```ts
+grid.pagination = { enabled: true, mode: 'remote', pageSize: 25, totalItems: 1280 };
+grid.addEventListener('pageChanged', async (e) => {
+  grid.data = await fetchPage(e.detail.page, e.detail.pageSize);
+});
+```
+
+Properties: `page`, `pageSize`, `pageCount`, `totalItems`, `pageItems`. Events: `pageChanging` (cancellable), `pageChanged`.
+
+### Column pinning
+
+```ts
+const columns = [
+  { key: 'id',   pinned: 'start' },
+  { key: 'name' },
+  { key: 'actions', pinned: 'end' },
+];
+
+await grid.pinColumn('name', 'start');
+await grid.unpinColumn('name');                 // or pinColumn('name', null)
+```
+
+The source `columns` array is **not** reordered — only the visual render order changes. Read `grid.displayColumns` for the render order. Events: `columnPinning` (cancellable), `columnPinned`.
+
+### Column reordering
+
+```html
+<apex-grid column-reordering></apex-grid>
+```
+
+Or programmatic:
+
+```ts
+await grid.moveColumn('email', 'name', 'after');
+```
+
+Per-column opt-out: `{ key: 'id', reorderable: false }`. Reordering is constrained to the column's own pinning group (start / unpinned / end). Events: `columnMoving` (cancellable), `columnMoved`. Attribute: `column-reordering`.
+
+### Inline editing
+
+```ts
+const columns = [
+  { key: 'name', editable: true },
+  { key: 'age',  editable: true, type: 'number' },
+];
+
+grid.editing = { enabled: true, mode: 'cell', trigger: 'doubleClick' };
+
+await grid.editCell(0, 'name');
+await grid.commitEdit();
+grid.cancelEdit();
+```
+
+`mode: 'row'` puts all editable cells in the row into edit together. Properties: `editingCell`, `editingRow`. Events: `cellValueChanging` (cancellable), `cellValueChanged`, plus `rowEditStarted` / `rowEditEnded` in row mode.
+
+### Row selection
+
+```ts
+grid.selection = { enabled: true, mode: 'multiple', showCheckboxColumn: true };
+
+await grid.selectRow(data[0]);
+await grid.toggleRowSelection(data[1]);
+await grid.selectAllRows();
+await grid.clearSelection();
+grid.selectedRows;                  // snapshot
+grid.selectedRows = [data[2]];      // replace selection (goes through `rowSelecting`)
+```
+
+Events: `rowSelecting` (cancellable), `rowSelected`.
+
+### Row expansion (master-detail)
+
+```ts
+grid.expansion = {
+  enabled: true,
+  detailTemplate: ({ data }) => html`<order-summary .order=${data}></order-summary>`,
+  isExpandable: (row) => row.hasDetails,
+};
+
+await grid.expandRow(data[0]);
+await grid.toggleRowExpansion(data[0]);
+await grid.expandAllRows();
+await grid.collapseAllRows();
+grid.expandedRows;                  // snapshot
+```
+
+Events: `rowExpanding` (cancellable), `rowExpanded`.
+
+### Tree data (nested rows)
+
+The data array stays **flat**. The grid derives the hierarchy from a `getDataPath(row)` callback that returns the path from root to that row — AG Grid's "tree data" pattern.
+
+```ts
+type Person = { id: number; name: string; title: string; path: string[] };
+
+const data: Person[] = [
+  { id: 1, name: 'Adrian',  title: 'CEO',     path: ['Adrian'] },
+  { id: 2, name: 'Bryan',   title: 'VP Eng',  path: ['Adrian', 'Bryan'] },
+  { id: 3, name: 'Cara',    title: 'Manager', path: ['Adrian', 'Bryan', 'Cara'] },
+];
+
+grid.tree = {
+  enabled: true,
+  getDataPath: (row) => row.path,
+  defaultExpanded: 1,              // boolean | number — depth to expand
+  groupColumnKey: 'name',          // which column shows the chevron + indent
+  childIndent: 20,                 // px per depth level
+};
+
+await grid.toggleTreeRow(data[0]);
+await grid.expandAllTreeRows();
+```
+
+Methods: `toggleTreeRow`, `expandTreeRow`, `collapseTreeRow`, `expandAllTreeRows`, `collapseAllTreeRows`, `isTreeRowExpanded`. Events: `treeRowExpanding` (cancellable), `treeRowExpanded`. When tree mode is active, the host element advertises `role="treegrid"`.
+
+### CSV / XLSX export
+
+Programmatic:
+
+```ts
+grid.exportToCSV();                                            // downloads data.csv
+grid.exportToCSV({ filename: 'users', source: 'selected' });
+const text = grid.exportToCSV({ filename: '' });               // no download, returns the string
+
+grid.exportToXLSX({ filename: 'users', sheetName: 'Users' });
+```
+
+`source` can be `'view'` (default — post-filter/post-sort), `'page'`, `'selected'`, or `'all'`. Per-column opt-out: `{ key: 'secret', exportable: false }`. XLSX preserves native cell types for numbers, booleans, and `Date` values.
+
+Toolbar dropdown:
+
+```html
+<apex-grid show-export></apex-grid>
+```
+
+Renders a download icon in the toolbar's trailing actions area; the menu has "Export CSV" and "Export XLSX" entries. Toolbar `exportFilename` overrides the default `data` filename. Attribute: `show-export`.
+
+### Toolbar
+
+Rendered automatically above the header row when at least one of `show-quick-filter` or `show-export` is on. CSS parts:
+
+| Part | What |
+|---|---|
+| `toolbar` | Root container |
+| `toolbar-search` | Quick-filter input wrapper |
+| `search-field` | The bordered input field |
+| `search-icon`, `search-input` | Leading icon, input element |
+| `toolbar-actions` | Trailing actions area |
+| `export-trigger` | Export menu button |
+| `export-menu` | Dropdown panel |
+| `export-menu-item` | Menu item |
+
+Search input has a `debounce` attribute (default `200`ms).
+
+### Theming
+
+Built-in themes: `bootstrap`, `material`, `fluent`, `indigo` — each with `light` and `dark` variants. Switch at runtime via `configureTheme(name)`.
+
+Style with CSS parts on the grid, paginator, and toolbar:
+
+```css
+apex-grid::part(paginator) { background: var(--surface-2); }
+apex-grid-toolbar::part(search-input) { font-family: var(--font-mono); }
+```
 
 ---
 
-## Local Development
+## API Reference
 
-1. Clone the repository.
-2. `npm install`
-3. `npm start` — opens the demo at `demo/index.html` with Vite.
-4. `npm test` — runs the Web Test Runner suite.
+### Properties
+
+| Property | Type | Default | Notes |
+|---|---|---|---|
+| `data` | `T[]` | `[]` | Source records (property only) |
+| `columns` | `ColumnConfiguration<T>[]` | `[]` | Column configuration (property only) |
+| `autoGenerate` | `boolean` | `false` | Infer columns from `data[0]` keys. Attr `auto-generate` |
+| `sortConfiguration` | `GridSortConfiguration` | `{ multiple, triState }` | |
+| `dataPipelineConfiguration` | `DataPipelineConfiguration<T>` | — | Custom sort/filter/pagination hooks |
+| `pagination` | `PaginationConfiguration` | — | |
+| `quickFilter` | `string` | `''` | Attr `quick-filter` |
+| `showQuickFilter` | `boolean` | `false` | Attr `show-quick-filter` |
+| `showExport` | `boolean` | `false` | Attr `show-export` |
+| `columnReordering` | `boolean` | `false` | Attr `column-reordering` |
+| `editing` | `GridEditingConfiguration` | — | |
+| `selection` | `GridSelectionConfiguration` | — | |
+| `expansion` | `GridExpansionConfiguration<T>` | — | |
+| `tree` | `GridTreeConfiguration<T>` | — | |
+| `sortExpressions` | `SortExpression<T>[]` | — | Get/set |
+| `filterExpressions` | `FilterExpression<T>[]` | — | Get/set |
+| `selectedRows` | `T[]` | — | Get/set |
+| `expandedRows` | `T[]` | — | Get/set |
+| `page`, `pageSize`, `pageCount`, `totalItems` | `number` | — | |
+| `pageItems` | `readonly T[]` | — | Currently rendered slice |
+| `dataView` | `readonly T[]` | — | Post-filter, post-sort |
+| `displayColumns` | `readonly ColumnConfiguration<T>[]` | — | Render order (pinned start → unpinned → pinned end) |
+| `editingCell` | `{ rowIndex, columnKey } \| null` | — | |
+| `editingRow` | `number \| null` | — | Row-mode only |
+
+### Methods
+
+```ts
+sort(expr): void
+filter(expr): void
+clearSort(key?): void
+clearFilter(key?): void
+setQuickFilter(value): Promise<boolean>
+
+getColumn(keyOrIndex): ColumnConfiguration<T> | undefined
+updateColumns(columns): void
+pinColumn(key, 'start' | 'end' | null): Promise<boolean>
+unpinColumn(key): Promise<boolean>
+moveColumn(fromKey, toKey, 'before' | 'after'): Promise<boolean>
+
+gotoPage(page): Promise<boolean>
+setPageSize(size): Promise<boolean>
+nextPage(); previousPage(); firstPage(); lastPage()
+
+editCell(rowIndex, columnKey): Promise<boolean>
+editRow(rowIndex): Promise<boolean>
+commitEdit(): Promise<boolean>
+cancelEdit(): void
+
+selectRow(row); deselectRow(row); toggleRowSelection(row)
+selectAllRows(); clearSelection(); isRowSelected(row)
+
+expandRow(row); collapseRow(row); toggleRowExpansion(row)
+expandAllRows(); collapseAllRows(); isRowExpanded(row)
+
+toggleTreeRow(row); expandTreeRow(row); collapseTreeRow(row)
+expandAllTreeRows(); collapseAllTreeRows(); isTreeRowExpanded(row)
+
+exportToCSV(options?): string
+exportToXLSX(options?): Uint8Array
+```
+
+### Events
+
+All events bubble and are composed across shadow boundaries. Names ending in `-ing` are cancellable.
+
+| Event | Cancellable | Detail |
+|---|---|---|
+| `sorting` / `sorted` | yes / no | `SortExpression<T>[]` |
+| `filtering` / `filtered` | yes / no | `FilterExpression<T>[]` |
+| `quickFilterChanging` / `quickFilterChanged` | yes / no | `{ value, nextValue? }` |
+| `pageChanging` / `pageChanged` | yes / no | `{ page, pageSize, pageCount, totalItems }` |
+| `columnPinning` / `columnPinned` | yes / no | `{ key, previous, next }` / `{ key, pinned }` |
+| `columnMoving` / `columnMoved` | yes / no | `{ key, fromIndex, toKey, position }` / `{ key, fromIndex, toIndex }` |
+| `cellValueChanging` / `cellValueChanged` | yes / no | `{ row, column, value, newValue }` |
+| `rowEditStarted` / `rowEditEnded` | no / no | row context |
+| `rowSelecting` / `rowSelected` | yes / no | `{ added, removed }` |
+| `rowExpanding` / `rowExpanded` | yes / no | row context |
+| `treeRowExpanding` / `treeRowExpanded` | yes / no | row context |
+
+Programmatic `sort()` / `filter()` calls are silent — only UI-initiated changes emit `sorting` / `filtering`.
+
+### Attributes
+
+`auto-generate`, `quick-filter`, `show-quick-filter`, `show-export`, `column-reordering`.
+
+### CSS parts
+
+| Component | Parts |
+|---|---|
+| `<apex-grid-toolbar>` | `toolbar`, `toolbar-search`, `search-field`, `search-icon`, `search-input`, `toolbar-actions`, `export-trigger`, `export-menu`, `export-menu-item` |
+| `<apex-grid-paginator>` | `paginator`, `paginator-size`, `paginator-info`, `paginator-controls`, `paginator-page` |
+| `<apex-grid-cell>` | `cell`, `editor` |
+
+---
+
+## Framework integration
+
+`<apex-grid>` is a standard custom element. Bind properties (not attributes) for `data` / `columns`:
+
+| Framework | Syntax |
+|---|---|
+| Lit | `<apex-grid .data=${data} .columns=${columns}>` |
+| Angular | `<apex-grid [data]="data" [columns]="columns">` (use `CUSTOM_ELEMENTS_SCHEMA`) |
+| Vue | `<apex-grid :data.prop="data" :columns.prop="columns">` |
+| React (19+) | `<apex-grid data={data} columns={columns}>` |
+| Vanilla | `el.data = data; el.columns = columns;` |
+
+---
+
+## Local development
+
+```bash
+git clone https://github.com/apexcharts/apex-grid.git
+cd apex-grid
+npm install
+npm start             # demo at http://localhost:5173
+npm test              # web-test-runner
+npm run lint
+npm run build         # builds dist/ + custom-elements.json + typedoc
+```
 
 ## Releasing
 
 Releases are automated by [.github/workflows/publish.yml](.github/workflows/publish.yml):
 
-1. Bump `"version"` in [package.json](package.json) (this is the single source of truth — the build injects it into `dist/package.json`).
-2. Commit with a message that starts with `release:` and contains the version, e.g. `release: 1.2.0` or `release: 1.2.0-rc.1`.
-3. Push to `master`.
+1. Bump `"version"` in [package.json](package.json) — the single source of truth. The build injects it into `dist/package.json`.
+2. Commit with a message starting with `release:` and the same version, e.g. `release: 2.0.0` or `release: 2.0.0-rc.1`.
+3. Push to `main`.
 
-The workflow then:
+The workflow then verifies the version triple-match, runs lint + tests + build, publishes `dist/` to npm with `--provenance` (OIDC trusted publishing — no token in secrets), and creates a `vX.Y.Z` git tag and GitHub Release with auto-generated notes. Pre-release versions (containing `-`) publish under the `next` dist-tag; stable versions under `latest`.
 
-- Verifies `package.json` matches the commit message.
-- Runs `npm ci && npm run build`.
-- Publishes `dist/` to npm with `--provenance` (OIDC trusted publishing — no token in secrets).
-- Pre-release versions (containing `-`) publish under the `next` dist-tag; stable versions under `latest`.
-- Creates a `vX.Y.Z` git tag and a GitHub Release with auto-generated notes.
+Any push whose head commit does not start with `release:` is a no-op for the workflow.
 
-Any push whose head commit does not start with `release:` is a no-op for this workflow.
+## License
+
+See [LICENSE.md](LICENSE.md).
