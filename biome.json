@@ -6,7 +6,11 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.js"],
+    "includes": [
+      "packages/*/src/**/*.ts",
+      "packages/*/test/**/*.ts",
+      "packages/*/scripts/**/*.js"
+    ],
     "ignoreUnknown": true
   },
   "formatter": {

@@ -41,7 +41,7 @@ jobs:
         env:
           MSG_VERSION: ${{ steps.check.outputs.version }}
         run: |
-          PKG_VERSION=$(node -p "require('./package.json').version")
+          PKG_VERSION=$(node -p "require('./packages/core/package.json').version")
           if [ "$PKG_VERSION" != "$MSG_VERSION" ]; then
             echo "❌ package.json version ($PKG_VERSION) does not match commit message version ($MSG_VERSION)"
             exit 1
@@ -70,7 +70,7 @@ jobs:
         env:
           MSG_VERSION: ${{ steps.check.outputs.version }}
         run: |
-          DIST_VERSION=$(node -p "require('./dist/package.json').version")
+          DIST_VERSION=$(node -p "require('./packages/core/dist/package.json').version")
           if [ "$DIST_VERSION" != "$MSG_VERSION" ]; then
             echo "❌ dist/package.json version ($DIST_VERSION) does not match expected ($MSG_VERSION). Build did not inject the version correctly."
             exit 1
@@ -79,7 +79,7 @@ jobs:
 
       - name: Publish to npm
         run: npm publish --provenance --tag ${{ steps.check.outputs.tag }}
-        working-directory: dist
+        working-directory: packages/core/dist
 
       - name: Create git tag
         run: |
