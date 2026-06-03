@@ -1,0 +1,37 @@
+{
+  "name": "apex-grid-enterprise",
+  "version": "0.1.0",
+  "description": "Enterprise (pro-licensed) features for apex-grid.",
+  "keywords": [
+    "lit",
+    "web-component",
+    "data-grid",
+    "apex-grid",
+    "enterprise"
+  ],
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "ApexCharts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./define": "./dist/define.js"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.js",
+    "build:tsc": "tsc",
+    "lint": "biome lint",
+    "test": "wtr --coverage",
+    "test:watch": "wtr --watch"
+  },
+  "dependencies": {
+    "apex-grid": "^2.0.0"
+  },
+  "peerDependencies": {
+    "@lit/context": "^1.1.5",
+    "igniteui-webcomponents": "~6.1.0",
+    "lit": "^3.3.0"
+  }
+}

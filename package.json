@@ -13,9 +13,11 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w packages/core",
-    "test": "npm test -w packages/core",
-    "lint": "npm run lint -w packages/core",
+    "build": "npm run build -w packages/core && npm run build -w packages/enterprise",
+    "build:core": "npm run build -w packages/core",
+    "build:enterprise": "npm run build -w packages/enterprise",
+    "test": "npm run test -w packages/core && npm run test -w packages/enterprise",
+    "lint": "npm run lint -w packages/core && npm run lint -w packages/enterprise",
     "format": "npm run format -w packages/core",
     "prepare": "husky"
   },
