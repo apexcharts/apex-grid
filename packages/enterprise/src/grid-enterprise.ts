@@ -1,3 +1,4 @@
+import { LicenseManager } from 'apex-commons';
 import {
   ApexGrid,
   type GridFeatureModule,
@@ -12,7 +13,6 @@ import {
   type AggregationResults,
   aggregationModule,
 } from './features/aggregation.js';
-import { LicenseManager } from './licensing/license-manager.js';
 
 /** Custom-element tag for the enterprise grid. */
 export const ENTERPRISE_TAG = 'apex-grid-enterprise';

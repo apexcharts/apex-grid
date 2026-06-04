@@ -29,6 +29,7 @@
     "test:watch": "wtr --watch"
   },
   "dependencies": {
+    "apex-commons": "^0.1.0",
     "apex-grid": "^2.0.0"
   },
   "peerDependencies": {
