@@ -1,5 +1,5 @@
 import { exec as _exec } from 'node:child_process';
-import { copyFile, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -24,7 +24,14 @@ async function writeDistPackageJson() {
   await writeFile(DEST_DIR('package.json'), `${JSON.stringify(template, null, 2)}\n`);
 }
 
+async function cleanDist() {
+  // Wipe dist so files removed from src never linger in the published bundle.
+  await rm(DEST_DIR(), { recursive: true, force: true });
+  await mkdir(DEST_DIR(), { recursive: true });
+}
+
 async function build() {
+  await cleanDist();
   await buildComponents();
   await exec('tsc -p scripts/tsconfig.prod.json && tsc -p scripts/tsconfig.dts.prod.json');
   await Promise.all([
