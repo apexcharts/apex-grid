@@ -57,11 +57,13 @@ describe('ApexGridEnterprise', () => {
     expect(grid.rows.length).to.equal(data.length);
   });
 
-  it('registers zero feature modules (no enterprise features yet)', async () => {
+  it('registers its enterprise feature modules via the seam', async () => {
     const grid = await fixture<ApexGridEnterprise<Row>>(
       html`<apex-grid-enterprise .data=${data} .columns=${columns}></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    expect(stateOf(grid).modules.size).to.equal(0);
+    const { modules } = stateOf(grid);
+    expect(modules.size).to.equal(1);
+    expect(modules.has('aggregation')).to.be.true;
   });
 });

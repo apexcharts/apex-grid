@@ -23,6 +23,8 @@
     "build": "node scripts/build.js",
     "build:tsc": "tsc",
     "lint": "biome lint",
+    "start": "vite",
+    "vite": "vite",
     "test": "wtr --coverage",
     "test:watch": "wtr --watch"
   },

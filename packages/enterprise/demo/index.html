@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>apex-grid-enterprise demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        --ig-size: 1;
+        background: hsla(var(--ig-surface-100));
+        margin: 0;
+        padding: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        box-sizing: border-box;
+      }
+      apex-grid-enterprise {
+        flex: 1;
+        min-height: 0;
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .toolbar input {
+        flex: 1;
+        min-width: 280px;
+        padding: 0.4rem 0.6rem;
+        font: inherit;
+      }
+      .toolbar button {
+        padding: 0.4rem 0.8rem;
+        font: inherit;
+        cursor: pointer;
+      }
+      #status {
+        font-size: 0.85rem;
+      }
+      #aggregations {
+        font-size: 0.85rem;
+        color: #444;
+      }
+      code {
+        background: #f1f1f1;
+        padding: 0 0.25rem;
+        border-radius: 3px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2 style="margin: 0">apex-grid-enterprise</h2>
+    <div class="toolbar">
+      <input
+        id="key"
+        type="text"
+        placeholder="Paste an APEX- license key (leave empty for unlicensed)"
+      />
+      <button id="apply">Apply license</button>
+      <button id="clear">Clear (unlicensed)</button>
+      <button id="trial">Generate trial key</button>
+    </div>
+    <div id="status"></div>
+    <div id="aggregations"></div>
+    <apex-grid-enterprise></apex-grid-enterprise>
+    <script type="module" src="./demo.ts"></script>
+  </body>
+</html>
