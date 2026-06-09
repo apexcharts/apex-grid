@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sorting - Basic</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      apex-grid {
+        min-height: 400px;
+        --ig-size: 2;
+      }
+    </style>
+    <script type="module">
+      // Auto-apply Bootstrap Light theme
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic, grid works without it */ }
+    </script>
+  </head>
+  <body>
+    <h2>Basic Sorting</h2>
+    <p class="subtitle">
+      Click column headers to sort. The "Name" column uses a custom comparator that sorts by string length instead of alphabetically.
+    </p>
+    <apex-grid id="grid"></apex-grid>
+    <script type="module">
+      const data = [
+        { id: '1', name: 'Wireless Headphones', price: 129.99, sold: 82, rating: 4.5, total: 10659.18 },
+        { id: '2', name: 'USB-C Hub', price: 49.99, sold: 35, rating: 3.8, total: 1749.65 },
+        { id: '3', name: 'Mechanical Keyboard', price: 189.00, sold: 64, rating: 4.7, total: 12096.00 },
+        { id: '4', name: 'Ergonomic Mouse', price: 79.95, sold: 91, rating: 4.2, total: 7275.45 },
+        { id: '5', name: 'Monitor Stand', price: 59.99, sold: 47, rating: 3.5, total: 2819.53 },
+        { id: '6', name: '4K Webcam', price: 149.00, sold: 28, rating: 4.0, total: 4172.00 },
+        { id: '7', name: 'Laptop Sleeve', price: 34.99, sold: 110, rating: 4.3, total: 3848.90 },
+        { id: '8', name: 'Desk Lamp', price: 44.50, sold: 73, rating: 3.9, total: 3248.50 },
+        { id: '9', name: 'Cable Organizer', price: 19.99, sold: 156, rating: 4.1, total: 3118.44 },
+        { id: '10', name: 'Bluetooth Speaker', price: 89.99, sold: 58, rating: 4.6, total: 5219.42 },
+        { id: '11', name: 'Screen Protector', price: 14.99, sold: 203, rating: 3.2, total: 3042.97 },
+        { id: '12', name: 'Power Bank', price: 39.99, sold: 88, rating: 4.4, total: 3519.12 },
+        { id: '13', name: 'USB Flash Drive', price: 24.99, sold: 134, rating: 3.7, total: 3348.66 },
+        { id: '14', name: 'Wireless Charger', price: 29.99, sold: 97, rating: 4.0, total: 2909.03 },
+        { id: '15', name: 'Noise Cancelling Earbuds', price: 199.99, sold: 42, rating: 4.8, total: 8399.58 },
+        { id: '16', name: 'Docking Station', price: 249.99, sold: 19, rating: 4.1, total: 4749.81 },
+        { id: '17', name: 'Webcam Cover', price: 9.99, sold: 312, rating: 3.6, total: 3116.88 },
+        { id: '18', name: 'Portable SSD', price: 119.99, sold: 53, rating: 4.6, total: 6359.47 },
+        { id: '19', name: 'HDMI Cable', price: 12.99, sold: 278, rating: 4.0, total: 3611.22 },
+        { id: '20', name: 'Tablet Stand', price: 32.99, sold: 67, rating: 3.9, total: 2210.33 },
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'name', headerText: 'Name', sort: { comparer: (a, b) => a.length - b.length } },
+        { key: 'price', type: 'number', headerText: 'Price', sort: true },
+        { key: 'rating', type: 'number', headerText: 'Rating', sort: true },
+        { key: 'sold', type: 'number', headerText: 'Sold', sort: true },
+        { key: 'total', type: 'number', headerText: 'Total', sort: true },
+      ];
+      grid.data = data;
+    </script>
+  </body>
+</html>

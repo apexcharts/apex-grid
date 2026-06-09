@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Column Reordering - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .order-display {
+        margin-top: 12px;
+        padding: 10px 14px;
+        background: #f7f9fc;
+        border-left: 3px solid #4f6ee0;
+        font-size: 12px;
+        font-family: monospace;
+        color: #1a1a2e;
+      }
+      apex-grid {
+        min-height: 420px;
+        --ig-size: 2;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Column Reordering (Drag and Drop)</h2>
+    <p class="subtitle">
+      Drag any column header to reorder. The Actions column has <code>reorderable: false</code> and stays put. The current render order is shown below.
+    </p>
+    <apex-grid id="grid" column-reordering></apex-grid>
+    <div class="order-display" id="order"></div>
+    <script type="module">
+      const data = [
+        { id: '1', name: 'Wireless Headphones', price: 129.99, sold: 82,  rating: 4.5 },
+        { id: '2', name: 'USB-C Hub',           price: 49.99,  sold: 35,  rating: 3.8 },
+        { id: '3', name: 'Mechanical Keyboard', price: 189.00, sold: 64,  rating: 4.7 },
+        { id: '4', name: 'Ergonomic Mouse',     price: 79.95,  sold: 91,  rating: 4.2 },
+        { id: '5', name: 'Monitor Stand',       price: 59.99,  sold: 47,  rating: 3.5 },
+        { id: '6', name: '4K Webcam',           price: 149.00, sold: 28,  rating: 4.0 },
+        { id: '7', name: 'Laptop Sleeve',       price: 34.99,  sold: 110, rating: 4.3 },
+        { id: '8', name: 'Desk Lamp',           price: 44.50,  sold: 73,  rating: 3.9 },
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'id',      headerText: 'ID',      reorderable: false },
+        { key: 'name',    headerText: 'Name'    },
+        { key: 'price',   headerText: 'Price',   type: 'number' },
+        { key: 'rating',  headerText: 'Rating',  type: 'number' },
+        { key: 'sold',    headerText: 'Sold',    type: 'number' },
+      ];
+      grid.data = data;
+
+      const orderEl = document.getElementById('order');
+      const renderOrder = () => {
+        const keys = (grid.displayColumns ?? grid.columns).map((c) => c.key);
+        orderEl.textContent = 'Render order: [' + keys.join(', ') + ']';
+      };
+      renderOrder();
+      grid.addEventListener('columnMoved', renderOrder);
+    </script>
+  </body>
+</html>

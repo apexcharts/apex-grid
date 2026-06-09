@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Data Binding - Dynamic Data Sources</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      apex-grid {
+        min-height: 400px;
+        --ig-size: 2;
+      }
+      button {
+        padding: 8px 20px;
+        border: 1px solid #3b82f6;
+        background: #3b82f6;
+        color: #fff;
+        border-radius: 6px;
+        font-size: 13px;
+        font-family: inherit;
+        font-weight: 500;
+        cursor: pointer;
+        margin-bottom: 12px;
+        transition: background 0.15s;
+      }
+      button:hover {
+        background: #2563eb;
+      }
+      .current {
+        font-size: 13px;
+        color: #64748b;
+        margin-bottom: 12px;
+      }
+      .current strong {
+        color: #1e293b;
+      }
+    </style>
+    <script type="module">
+      // Auto-apply Bootstrap Light theme
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic, grid works without it */ }
+    </script>
+  </head>
+  <body>
+    <h2>Dynamic Data Binding</h2>
+    <p class="subtitle">
+      Switch between two entirely different data sources at runtime with auto-generated columns
+    </p>
+    <button id="switchBtn">Switch Data Source</button>
+    <p class="current">Showing: <strong id="dsLabel">IoT Sensors</strong></p>
+    <apex-grid id="grid" auto-generate></apex-grid>
+    <script type="module">
+      const sensors = [
+        { id: 'TS-01', location: 'Warehouse · Bay A',  tempC: 4.2,  humidity: 62, status: 'normal'  },
+        { id: 'TS-02', location: 'Warehouse · Bay B',  tempC: 5.1,  humidity: 58, status: 'normal'  },
+        { id: 'TS-03', location: 'Cold room · West',   tempC: -18.4,humidity: 71, status: 'normal'  },
+        { id: 'TS-04', location: 'Cold room · East',   tempC: -17.9,humidity: 68, status: 'warning' },
+        { id: 'TS-05', location: 'Loading dock',       tempC: 14.6, humidity: 49, status: 'normal'  },
+        { id: 'TS-06', location: 'Server closet',      tempC: 23.8, humidity: 41, status: 'normal'  },
+        { id: 'TS-07', location: 'Greenhouse · North', tempC: 27.1, humidity: 83, status: 'warning' },
+        { id: 'TS-08', location: 'Greenhouse · South', tempC: 28.4, humidity: 81, status: 'critical'},
+        { id: 'TS-09', location: 'Outdoor sensor',     tempC: 12.3, humidity: 55, status: 'normal'  },
+        { id: 'TS-10', location: 'Pump house',         tempC: 18.7, humidity: 64, status: 'normal'  },
+      ];
+
+      const services = [
+        { service: 'api-gateway',   region: 'us-east-1', cpu: 42, memory: 61, uptime: '99.98%' },
+        { service: 'auth-service',  region: 'us-east-1', cpu: 18, memory: 33, uptime: '99.99%' },
+        { service: 'billing-worker',region: 'eu-west-1', cpu: 71, memory: 78, uptime: '99.91%' },
+        { service: 'search-index',  region: 'us-west-2', cpu: 55, memory: 82, uptime: '99.95%' },
+        { service: 'image-cdn',     region: 'global',    cpu: 24, memory: 47, uptime: '99.99%' },
+        { service: 'webhooks',      region: 'eu-west-1', cpu: 39, memory: 52, uptime: '99.97%' },
+        { service: 'notifications', region: 'us-east-1', cpu: 12, memory: 28, uptime: '99.99%' },
+        { service: 'analytics-etl', region: 'us-west-2', cpu: 88, memory: 91, uptime: '99.88%' },
+      ];
+
+      const grid = document.getElementById('grid');
+      const dsLabel = document.getElementById('dsLabel');
+      let current = 'sensors';
+
+      grid.data = sensors;
+
+      document.getElementById('switchBtn').addEventListener('click', () => {
+        current = current === 'sensors' ? 'services' : 'sensors';
+        grid.columns = [];
+        grid.data = current === 'sensors' ? sensors : services;
+        dsLabel.textContent = current === 'sensors' ? 'IoT Sensors' : 'Service Health';
+      });
+    </script>
+  </body>
+</html>

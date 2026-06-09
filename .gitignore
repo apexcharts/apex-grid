@@ -34,3 +34,10 @@ custom-elements.json
 *.css.ts
 
 plans
+
+## Local demo bundles — self-contained build of /define, rebuilt via `npm run demo:bundle`.
+## The demos under demo/ reference these by relative path; the website's gulp "samples"
+## task rewrites that path to the CDN URL on copy, so the file is never published or
+## consumed by the website — it exists only for local testing against local changes.
+/apex-grid.min.js
+/apex-grid-enterprise.min.js

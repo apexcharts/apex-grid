@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Header Template - Dynamic Headers</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      apex-grid {
+        min-height: 400px;
+        --ig-size: 2;
+      }
+      .panel {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 16px;
+        align-items: flex-end;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .field label {
+        font-size: 12px;
+        color: #64748b;
+        font-weight: 500;
+      }
+      .field select, .field input {
+        padding: 6px 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        font-size: 13px;
+        font-family: inherit;
+      }
+      .field input {
+        width: 260px;
+      }
+      .pos {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+        background: #eef2ff;
+        color: #4338ca;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic, grid works without it */ }
+    </script>
+  </head>
+  <body>
+    <h2>Dynamic Header Templates</h2>
+    <p class="subtitle">
+      NBA season averages. Pick a column to rename its header at runtime — the "PTS" header uses a custom emoji template.
+    </p>
+    <div class="panel">
+      <div class="field">
+        <label>Select a column:</label>
+        <select id="colSelect">
+          <option value="">-- choose --</option>
+          <option value="player">Player</option>
+          <option value="position">Position</option>
+          <option value="gp">Games Played</option>
+          <option value="pts">Points per Game</option>
+          <option value="ast">Assists per Game</option>
+          <option value="reb">Rebounds per Game</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>New header text:</label>
+        <input type="text" id="headerInput" placeholder="Type a new header..." disabled />
+      </div>
+    </div>
+    <apex-grid id="grid"></apex-grid>
+    <script type="module">
+      import { html } from 'https://cdn.jsdelivr.net/npm/lit@3/+esm';
+
+      const data = [
+        { id: '1',  team: 'DEN', player: 'Nikola Jokić',        position: 'C',  gp: 79, pts: 24.5, ast: 9.8, reb: 12.4 },
+        { id: '2',  team: 'DAL', player: 'Luka Dončić',         position: 'PG', gp: 70, pts: 32.4, ast: 8.0, reb: 8.6  },
+        { id: '3',  team: 'MIL', player: 'Giannis Antetokounmpo',position:'PF', gp: 73, pts: 30.4, ast: 6.5, reb: 11.5 },
+        { id: '4',  team: 'PHX', player: 'Kevin Durant',        position: 'SF', gp: 75, pts: 27.1, ast: 5.0, reb: 6.6  },
+        { id: '5',  team: 'GSW', player: 'Stephen Curry',       position: 'PG', gp: 74, pts: 26.4, ast: 5.1, reb: 4.5  },
+        { id: '6',  team: 'BOS', player: 'Jayson Tatum',        position: 'SF', gp: 74, pts: 26.9, ast: 4.9, reb: 8.1  },
+        { id: '7',  team: 'OKC', player: 'Shai Gilgeous-Alexander', position:'PG', gp: 75, pts: 30.1, ast: 6.2, reb: 5.5  },
+        { id: '8',  team: 'PHI', player: 'Joel Embiid',         position: 'C',  gp: 39, pts: 34.7, ast: 5.6, reb: 11.0 },
+        { id: '9',  team: 'LAL', player: 'LeBron James',        position: 'SF', gp: 71, pts: 25.7, ast: 8.3, reb: 7.3  },
+        { id: '10', team: 'MIA', player: 'Jimmy Butler',        position: 'SF', gp: 60, pts: 20.8, ast: 5.0, reb: 5.3  },
+        { id: '11', team: 'MIN', player: 'Anthony Edwards',     position: 'SG', gp: 79, pts: 25.9, ast: 5.1, reb: 5.4  },
+        { id: '12', team: 'NYK', player: 'Jalen Brunson',       position: 'PG', gp: 77, pts: 28.7, ast: 6.7, reb: 3.6  },
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'team',     headerText: 'Team'   },
+        { key: 'player',   headerText: 'Player' },
+        {
+          key: 'position', headerText: 'Pos',
+          cellTemplate: ({ value }) =>
+            html`<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:#eef2ff;color:#4338ca">${value}</span>`,
+        },
+        { key: 'gp',  headerText: 'GP',  type: 'number' },
+        {
+          key: 'pts', headerText: 'PTS', type: 'number',
+          headerTemplate: () => html`<span style="font-weight:700">🏀 PTS</span>`,
+          cellTemplate: ({ value }) => html`<span style="color:#dc2626;font-weight:600">${value.toFixed(1)}</span>`,
+        },
+        { key: 'ast', headerText: 'AST', type: 'number' },
+        { key: 'reb', headerText: 'REB', type: 'number' },
+      ];
+      grid.data = data;
+
+      const colSelect = document.getElementById('colSelect');
+      const headerInput = document.getElementById('headerInput');
+
+      colSelect.addEventListener('change', () => {
+        const key = colSelect.value;
+        if (!key) { headerInput.disabled = true; headerInput.value = ''; return; }
+        const col = grid.getColumn(key);
+        headerInput.disabled = false;
+        headerInput.value = col?.headerText ?? key;
+      });
+
+      headerInput.addEventListener('input', () => {
+        const key = colSelect.value;
+        if (!key) return;
+        grid.updateColumns({ key, headerText: headerInput.value || undefined });
+      });
+    </script>
+  </body>
+</html>

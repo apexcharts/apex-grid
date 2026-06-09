@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CSV Export - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .toolbar button {
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 13px;
+        border: 1px solid #d0d5dd;
+        background: #fff;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .toolbar button:hover {
+        background: #f7f9fc;
+      }
+      .preview {
+        margin-top: 12px;
+        padding: 10px 14px;
+        background: #f7f9fc;
+        border-left: 3px solid #4f6ee0;
+        font-size: 12px;
+        font-family: monospace;
+        color: #1a1a2e;
+        white-space: pre;
+        overflow-x: auto;
+        max-height: 220px;
+      }
+      apex-grid {
+        min-height: 380px;
+        --ig-size: 2;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>CSV Export</h2>
+    <p class="subtitle">
+      Zero-dependency CSV writer with a UTF-8 BOM so Excel opens with the right encoding. The "Preview" buttons render the CSV inline instead of downloading.
+    </p>
+    <div class="toolbar">
+      <button id="dl-view">Download view (data.csv)</button>
+      <button id="dl-selected">Download selected (selected.csv)</button>
+      <button id="dl-all">Download all (all.csv)</button>
+      <button id="prev-view">Preview (view)</button>
+      <button id="prev-selected">Preview (selected)</button>
+    </div>
+    <apex-grid id="grid"></apex-grid>
+    <pre class="preview" id="preview">Click a Preview button to render the CSV here.</pre>
+    <script type="module">
+      const data = [
+        { id: '1', name: 'Wireless Headphones', price: 129.99, sold: 82,  rating: 4.5 },
+        { id: '2', name: 'USB-C Hub',           price: 49.99,  sold: 35,  rating: 3.8 },
+        { id: '3', name: 'Mechanical Keyboard', price: 189.00, sold: 64,  rating: 4.7 },
+        { id: '4', name: 'Ergonomic Mouse',     price: 79.95,  sold: 91,  rating: 4.2 },
+        { id: '5', name: 'Monitor Stand',       price: 59.99,  sold: 47,  rating: 3.5 },
+        { id: '6', name: '4K Webcam',           price: 149.00, sold: 28,  rating: 4.0 },
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'name',   headerText: 'Name'   },
+        { key: 'price',  headerText: 'Price',  type: 'number' },
+        { key: 'rating', headerText: 'Rating', type: 'number' },
+        { key: 'sold',   headerText: 'Sold',   type: 'number' },
+      ];
+      grid.data = data;
+      grid.selection = { enabled: true, mode: 'multiple', showCheckboxColumn: true };
+
+      const preview = document.getElementById('preview');
+      const showPreview = (text) => { preview.textContent = text || '(empty)'; };
+
+      document.getElementById('dl-view').addEventListener('click',     () => grid.exportToCSV({ filename: 'data.csv' }));
+      document.getElementById('dl-selected').addEventListener('click', () => grid.exportToCSV({ filename: 'selected.csv', source: 'selected' }));
+      document.getElementById('dl-all').addEventListener('click',      () => grid.exportToCSV({ filename: 'all.csv',      source: 'all' }));
+      document.getElementById('prev-view').addEventListener('click',     () => showPreview(grid.exportToCSV({ filename: '' })));
+      document.getElementById('prev-selected').addEventListener('click', () => showPreview(grid.exportToCSV({ filename: '', source: 'selected' })));
+    </script>
+  </body>
+</html>

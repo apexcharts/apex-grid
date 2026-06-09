@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Column Types (Built-in) - Support Tickets</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      apex-grid {
+        min-height: 480px;
+        --ig-size: 2;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Built-in Column Types — Support Tickets</h2>
+    <p class="subtitle">
+      Every built-in type in one grid: <code>string</code>, <code>number</code>, <code>boolean</code>, <code>select</code>, <code>rating</code>, <code>date</code>, and <code>image</code>. Double-click any cell to see its type-specific editor.
+    </p>
+    <apex-grid id="grid"></apex-grid>
+    <script type="module">
+      const data = [
+        { id: 'T-2041', subject: 'Login fails with 403 after SSO refresh',         priority: 'high',     csat: 4.5, opened: '2026-05-12', resolved: false, assignee: 'https://api.dicebear.com/9.x/personas/svg?seed=Mira',   ageHours: 8  },
+        { id: 'T-2042', subject: 'Mobile app crashes when uploading > 2 photos',   priority: 'high',     csat: 3.8, opened: '2026-05-12', resolved: false, assignee: 'https://api.dicebear.com/9.x/personas/svg?seed=Otis',   ageHours: 6  },
+        { id: 'T-2043', subject: 'Invoice PDF missing tax line for EU customers',  priority: 'medium',   csat: 4.7, opened: '2026-05-11', resolved: true,  assignee: 'https://api.dicebear.com/9.x/personas/svg?seed=Priya',  ageHours: 22 },
+        { id: 'T-2044', subject: 'Webhook retries duplicate billing events',       priority: 'critical', csat: 3.2, opened: '2026-05-10', resolved: false, assignee: 'https://api.dicebear.com/9.x/personas/svg?seed=Diego',  ageHours: 38 },
+        { id: 'T-2045', subject: 'Search results pagination resets on filter',    priority: 'low',      csat: 4.2, opened: '2026-05-09', resolved: false, assignee: 'https://api.dicebear.com/9.x/personas/svg?seed=Ana',    ageHours: 52 },
+        { id: 'T-2046', subject: 'Dark mode contrast on settings tab',             priority: 'low',      csat: 4.6, opened: '2026-05-08', resolved: true,  assignee: 'https://api.dicebear.com/9.x/personas/svg?seed=Sven',   ageHours: 71 },
+        { id: 'T-2047', subject: 'CSV export drops Unicode product names',         priority: 'medium',   csat: 4.0, opened: '2026-05-07', resolved: false, assignee: 'https://api.dicebear.com/9.x/personas/svg?seed=Yuki',   ageHours: 96 },
+        { id: 'T-2048', subject: 'Two-factor backup codes don\'t copy on Safari',  priority: 'high',     csat: 3.5, opened: '2026-05-06', resolved: false, assignee: 'https://api.dicebear.com/9.x/personas/svg?seed=Kofi',   ageHours: 118},
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'assignee', headerText: '',           type: 'image' },
+        { key: 'id',       headerText: 'Ticket' },
+        { key: 'subject',  headerText: 'Subject',    editable: true },
+        { key: 'priority', headerText: 'Priority',   type: 'select', editable: true, options: [
+          { value: 'low',      label: 'Low'      },
+          { value: 'medium',   label: 'Medium'   },
+          { value: 'high',     label: 'High'     },
+          { value: 'critical', label: 'Critical' },
+        ]},
+        { key: 'csat',     headerText: 'CSAT',       type: 'rating',  editable: true, max: 5 },
+        { key: 'opened',   headerText: 'Opened',     type: 'date',    editable: true },
+        { key: 'resolved', headerText: 'Resolved',   type: 'boolean', editable: true },
+        { key: 'ageHours', headerText: 'Age (h)',    type: 'number',  editable: true },
+      ];
+      grid.data = data;
+      grid.editing = { enabled: true, mode: 'cell', trigger: 'doubleClick' };
+    </script>
+  </body>
+</html>

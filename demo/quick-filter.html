@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quick Filter - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      apex-grid {
+        min-height: 440px;
+        --ig-size: 2;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Quick Filter (Global Search)</h2>
+    <p class="subtitle">
+      The <code>show-quick-filter</code> attribute renders a debounced (200ms) search input in the toolbar. Matches across every visible column.
+    </p>
+    <apex-grid id="grid" show-quick-filter></apex-grid>
+    <script type="module">
+      const data = [
+        { id: '1',  name: 'Wireless Headphones',  category: 'Audio',        vendor: 'Sony',     price: 299.00, sold: 82  },
+        { id: '2',  name: 'USB-C Hub',            category: 'Connectivity', vendor: 'Anker',    price: 49.99,  sold: 35  },
+        { id: '3',  name: 'Mechanical Keyboard',  category: 'Input',        vendor: 'Keychron', price: 189.00, sold: 64  },
+        { id: '4',  name: 'Ergonomic Mouse',      category: 'Input',        vendor: 'Logitech', price: 79.95,  sold: 91  },
+        { id: '5',  name: 'Monitor Stand',        category: 'Furniture',    vendor: 'Vivo',     price: 59.99,  sold: 47  },
+        { id: '6',  name: '4K Webcam',            category: 'Video',        vendor: 'Logitech', price: 149.00, sold: 28  },
+        { id: '7',  name: 'Laptop Sleeve',        category: 'Accessories',  vendor: 'tomtoc',   price: 34.99,  sold: 110 },
+        { id: '8',  name: 'Desk Lamp',            category: 'Furniture',    vendor: 'BenQ',     price: 44.50,  sold: 73  },
+        { id: '9',  name: 'Cable Organizer',      category: 'Accessories',  vendor: 'Baseus',   price: 19.99,  sold: 156 },
+        { id: '10', name: 'Bluetooth Speaker',    category: 'Audio',        vendor: 'JBL',      price: 89.99,  sold: 58  },
+        { id: '11', name: 'Screen Protector',     category: 'Accessories',  vendor: 'Spigen',   price: 14.99,  sold: 203 },
+        { id: '12', name: 'Power Bank',           category: 'Power',        vendor: 'Anker',    price: 39.99,  sold: 88  },
+        { id: '13', name: 'USB Flash Drive',      category: 'Storage',      vendor: 'Samsung',  price: 24.99,  sold: 134 },
+        { id: '14', name: 'Wireless Charger',     category: 'Power',        vendor: 'Belkin',   price: 29.99,  sold: 97  },
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'name',     headerText: 'Name'      },
+        { key: 'category', headerText: 'Category'  },
+        { key: 'vendor',   headerText: 'Vendor'    },
+        { key: 'price',    headerText: 'Price',    type: 'number' },
+        { key: 'sold',     headerText: 'Sold',     type: 'number' },
+      ];
+      grid.data = data;
+    </script>
+  </body>
+</html>

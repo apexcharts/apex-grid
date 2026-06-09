@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Master-Detail Grid (Nested Apex Grid) - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      apex-grid#grid {
+        min-height: 520px;
+        --ig-size: 2;
+      }
+      apex-grid#grid::part(row) {
+        grid-template-rows: minmax(2.125rem, auto) auto;
+      }
+      .detail-wrap {
+        padding: 12px 16px;
+        background: #f7f9fc;
+        border-left: 3px solid #4f6ee0;
+      }
+      .detail-wrap apex-grid {
+        --ig-size: 1;
+        min-height: 180px;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Master-Detail (Nested Apex Grid)</h2>
+    <p class="subtitle">
+      Row expansion renders an inner <code>&lt;apex-grid&gt;</code> in the detail panel showing each order's line items. The inner grid uses a smaller <code>--ig-size</code> for visual contrast.
+    </p>
+    <apex-grid id="grid"></apex-grid>
+    <script type="module">
+      import { html } from 'https://esm.sh/lit@3/html.js';
+
+      const orders = [
+        { id: 'ORD-1001', customer: 'Sora Tanaka',    placed: '2026-04-12', total: 348.50, items: [
+          { sku: 'WH-1000XM5', name: 'Wireless Headphones',  qty: 1, price: 299.00 },
+          { sku: 'USB-C-HUB',  name: 'USB-C Hub',            qty: 1, price: 49.50  },
+        ]},
+        { id: 'ORD-1003', customer: 'Lena Müller',    placed: '2026-04-14', total: 537.00, items: [
+          { sku: 'KB-MEC',     name: 'Mechanical Keyboard',  qty: 2, price: 189.00 },
+          { sku: 'MNT-STAND',  name: 'Monitor Stand',        qty: 1, price: 59.99  },
+          { sku: 'LAMP-DESK',  name: 'Desk Lamp',            qty: 2, price: 44.50  },
+        ]},
+        { id: 'ORD-1005', customer: 'Marco Esposito', placed: '2026-04-15', total: 264.00, items: [
+          { sku: 'CAM-4K',     name: '4K Webcam',            qty: 1, price: 149.00 },
+          { sku: 'PWR-BANK',   name: 'Power Bank',           qty: 2, price: 39.99  },
+          { sku: 'CABLE-ORG',  name: 'Cable Organizer',      qty: 1, price: 19.99  },
+        ]},
+        { id: 'ORD-1006', customer: 'Yara Haddad',    placed: '2026-04-16', total: 199.99, items: [
+          { sku: 'EAR-NC',     name: 'Noise Cancelling Earbuds', qty: 1, price: 199.99 },
+        ]},
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'id',       headerText: 'Order #'  },
+        { key: 'customer', headerText: 'Customer' },
+        { key: 'placed',   headerText: 'Placed'   },
+        { key: 'total',    headerText: 'Total',   type: 'number' },
+      ];
+      grid.data = orders;
+      const innerGridByRow = new WeakMap();
+      grid.expansion = {
+        enabled: true,
+        detailTemplate: ({ data }) => {
+          let inner = innerGridByRow.get(data);
+          if (!inner) {
+            inner = document.createElement('apex-grid');
+            inner.columns = [
+              { key: 'sku',   headerText: 'SKU'   },
+              { key: 'name',  headerText: 'Item'  },
+              { key: 'qty',   headerText: 'Qty',   type: 'number' },
+              { key: 'price', headerText: 'Price', type: 'number' },
+            ];
+            inner.data = data.items;
+            innerGridByRow.set(data, inner);
+          }
+          return html`<div class="detail-wrap">${inner}</div>`;
+        },
+      };
+
+      // Apex Grid 2.0 flips the header chevron when ANY row is expanded.
+      // Override so it only shows expanded when ALL rows are expanded.
+      await customElements.whenDefined('apex-grid');
+      const syncHeaderChevron = () => {
+        const root = grid.shadowRoot;
+        if (!root) return;
+        const toggle  = root.querySelector('[part="expansion-header"] [part="expansion-toggle"]');
+        const chevron = root.querySelector('[part="expansion-header"] [part="expansion-chevron"]');
+        if (!toggle || !chevron) return;
+        const total = grid.data?.length ?? 0;
+        const allExpanded = total > 0 && grid.expandedRows().length === total;
+        chevron.style.transform = allExpanded ? 'rotate(90deg)' : 'rotate(0deg)';
+        toggle.setAttribute('aria-expanded', allExpanded ? 'true' : 'false');
+        toggle.setAttribute('aria-label', allExpanded ? 'Collapse all rows' : 'Expand all rows');
+      };
+      grid.addEventListener('rowExpanded', () => requestAnimationFrame(syncHeaderChevron));
+      requestAnimationFrame(syncHeaderChevron);
+    </script>
+  </body>
+</html>

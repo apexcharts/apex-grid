@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Styling - Themes</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      apex-grid {
+        min-height: 400px;
+        --ig-size: 2;
+      }
+      .panel {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 16px;
+        align-items: center;
+      }
+      .panel label {
+        font-size: 13px;
+        color: #475569;
+        font-weight: 500;
+      }
+      .panel select {
+        padding: 6px 10px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        font-size: 13px;
+        font-family: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Built-in Themes — Watchlist</h2>
+    <p class="subtitle">
+      Switch between 8 pre-built themes (Bootstrap, Fluent, Material, Indigo — each in light and dark variants)
+    </p>
+    <div class="panel">
+      <label for="themeSelect">Select a theme:</label>
+      <select id="themeSelect">
+        <option value="bootstrap-light" selected>Bootstrap</option>
+        <option value="bootstrap-dark">Bootstrap Dark</option>
+        <option value="fluent-light">Fluent</option>
+        <option value="fluent-dark">Fluent Dark</option>
+        <option value="material-light">Material</option>
+        <option value="material-dark">Material Dark</option>
+        <option value="indigo-light">Indigo</option>
+        <option value="indigo-dark">Indigo Dark</option>
+      </select>
+    </div>
+    <apex-grid id="grid"></apex-grid>
+    <script type="module">
+      import { html } from 'https://cdn.jsdelivr.net/npm/lit@3/+esm';
+
+      const themeBaseUrl = 'https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes';
+
+      const themeMap = {
+        'bootstrap-light': `${themeBaseUrl}/light/bootstrap.css`,
+        'bootstrap-dark': `${themeBaseUrl}/dark/bootstrap.css`,
+        'fluent-light': `${themeBaseUrl}/light/fluent.css`,
+        'fluent-dark': `${themeBaseUrl}/dark/fluent.css`,
+        'material-light': `${themeBaseUrl}/light/material.css`,
+        'material-dark': `${themeBaseUrl}/dark/material.css`,
+        'indigo-light': `${themeBaseUrl}/light/indigo.css`,
+        'indigo-dark': `${themeBaseUrl}/dark/indigo.css`,
+      };
+
+      const data = [
+        { id: '1',  ticker: 'AAPL',  name: 'Apple Inc.',           price: 217.42, changePct:  1.34, marketCap: 3320 },
+        { id: '2',  ticker: 'MSFT',  name: 'Microsoft Corp.',      price: 428.91, changePct:  0.72, marketCap: 3190 },
+        { id: '3',  ticker: 'NVDA',  name: 'NVIDIA Corp.',         price: 124.85, changePct:  3.41, marketCap: 3070 },
+        { id: '4',  ticker: 'GOOGL', name: 'Alphabet Inc.',        price: 182.36, changePct: -0.41, marketCap: 2270 },
+        { id: '5',  ticker: 'AMZN',  name: 'Amazon.com Inc.',      price: 186.55, changePct:  0.88, marketCap: 1950 },
+        { id: '6',  ticker: 'META',  name: 'Meta Platforms',       price: 503.28, changePct: -1.12, marketCap: 1280 },
+        { id: '7',  ticker: 'TSLA',  name: 'Tesla Inc.',           price: 218.04, changePct:  2.65, marketCap:  697 },
+        { id: '8',  ticker: 'BRK.B', name: 'Berkshire Hathaway',   price: 446.71, changePct:  0.21, marketCap:  962 },
+        { id: '9',  ticker: 'JPM',   name: 'JPMorgan Chase',       price: 206.32, changePct: -0.58, marketCap:  595 },
+        { id: '10', ticker: 'V',     name: 'Visa Inc.',            price: 275.89, changePct:  0.34, marketCap:  543 },
+        { id: '11', ticker: 'UNH',   name: 'UnitedHealth Group',   price: 506.13, changePct: -2.17, marketCap:  466 },
+        { id: '12', ticker: 'XOM',   name: 'Exxon Mobil',          price: 114.27, changePct:  1.08, marketCap:  502 },
+        { id: '13', ticker: 'AVGO',  name: 'Broadcom Inc.',        price: 167.41, changePct:  4.22, marketCap:  778 },
+        { id: '14', ticker: 'COST',  name: 'Costco Wholesale',     price: 851.74, changePct: -0.34, marketCap:  378 },
+        { id: '15', ticker: 'NFLX',  name: 'Netflix Inc.',         price: 671.55, changePct:  1.61, marketCap:  289 },
+      ];
+
+      const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+      const fmtPrice = ({ value }) => usd.format(value);
+      const fmtChange = ({ value }) => html`<span style="color:${value >= 0 ? '#16a34a' : '#dc2626'};font-weight:600">${value >= 0 ? '+' : ''}${value.toFixed(2)}%</span>`;
+      const fmtCap = ({ value }) => `$${value.toFixed(0)}B`;
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'ticker',    headerText: 'Ticker',     sort: true, filter: true },
+        { key: 'name',      headerText: 'Name',       sort: true, filter: true },
+        { key: 'price',     headerText: 'Price',      sort: true, filter: true, type: 'number', cellTemplate: fmtPrice },
+        { key: 'changePct', headerText: 'Change %',   sort: true, filter: true, type: 'number', cellTemplate: fmtChange },
+        { key: 'marketCap', headerText: 'Market Cap', sort: true, filter: true, type: 'number', cellTemplate: fmtCap },
+      ];
+      grid.data = data;
+
+      async function applyTheme(themeKey) {
+        const url = themeMap[themeKey];
+        if (!url) return;
+
+        try {
+          const resp = await fetch(url);
+          const css = await resp.text();
+          const scoped = css.replaceAll(':root', 'apex-grid');
+
+          let styleEl = document.getElementById('theme-style');
+          if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'theme-style';
+            document.head.appendChild(styleEl);
+          }
+          styleEl.textContent = scoped;
+
+          if (themeKey.includes('dark')) {
+            document.body.style.background = '#1e1e2e';
+            document.body.style.color = '#e2e8f0';
+          } else {
+            document.body.style.background = '#fff';
+            document.body.style.color = '#1a1a2e';
+          }
+        } catch (e) {
+          console.warn('Failed to load theme:', e);
+        }
+      }
+
+      document.getElementById('themeSelect').addEventListener('change', (e) => {
+        applyTheme(e.target.value);
+      });
+
+      applyTheme('bootstrap-light');
+    </script>
+  </body>
+</html>

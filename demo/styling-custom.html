@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Styling - Custom Theme</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        padding: 20px;
+        transition: background 0.3s, color 0.3s;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      apex-grid {
+        min-height: 400px;
+        --ig-size: 2;
+      }
+      .panel {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 16px;
+        align-items: center;
+      }
+      .toggle-btn {
+        padding: 8px 20px;
+        border: 1px solid #64748b;
+        border-radius: 6px;
+        font-size: 13px;
+        font-family: inherit;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      /* Light theme */
+      body.light {
+        background: #fff;
+        color: #1a1a2e;
+      }
+      body.light .toggle-btn {
+        background: #1e293b;
+        color: #f1f5f9;
+        border-color: #1e293b;
+      }
+      body.light apex-grid {
+        --apexgrid-header-bg: #f1f5f9;
+        --apexgrid-header-color: #1e293b;
+        --apexgrid-row-bg: #ffffff;
+        --apexgrid-row-alt-bg: #f8fafc;
+        --apexgrid-row-hover-bg: #e2e8f0;
+        --apexgrid-border-color: #e2e8f0;
+        --apexgrid-color: #334155;
+      }
+
+      /* Dark theme */
+      body.dark {
+        background: #0f172a;
+        color: #e2e8f0;
+      }
+      body.dark .toggle-btn {
+        background: #f1f5f9;
+        color: #0f172a;
+        border-color: #f1f5f9;
+      }
+      body.dark .subtitle {
+        color: #64748b;
+      }
+      body.dark apex-grid {
+        --apexgrid-header-bg: #1e293b;
+        --apexgrid-header-color: #e2e8f0;
+        --apexgrid-row-bg: #0f172a;
+        --apexgrid-row-alt-bg: #1e293b;
+        --apexgrid-row-hover-bg: #334155;
+        --apexgrid-border-color: #334155;
+        --apexgrid-color: #cbd5e1;
+      }
+    </style>
+  </head>
+  <body class="light">
+    <h2>Custom Theme</h2>
+    <p class="subtitle">
+      Toggle between custom light and dark themes using CSS custom properties
+    </p>
+    <div class="panel">
+      <button class="toggle-btn" id="toggleBtn">Switch to dark theme</button>
+    </div>
+    <apex-grid id="grid"></apex-grid>
+    <script type="module">
+      const data = [
+        { id: '1', name: 'Wireless Headphones', price: 129.99, sold: 82, rating: 4.5, total: 10659.18 },
+        { id: '2', name: 'USB-C Hub', price: 49.99, sold: 35, rating: 3.8, total: 1749.65 },
+        { id: '3', name: 'Mechanical Keyboard', price: 189.00, sold: 64, rating: 4.7, total: 12096.00 },
+        { id: '4', name: 'Ergonomic Mouse', price: 79.95, sold: 91, rating: 4.2, total: 7275.45 },
+        { id: '5', name: 'Monitor Stand', price: 59.99, sold: 47, rating: 3.5, total: 2819.53 },
+        { id: '6', name: '4K Webcam', price: 149.00, sold: 28, rating: 4.0, total: 4172.00 },
+        { id: '7', name: 'Laptop Sleeve', price: 34.99, sold: 110, rating: 4.3, total: 3848.90 },
+        { id: '8', name: 'Desk Lamp', price: 44.50, sold: 73, rating: 3.9, total: 3248.50 },
+        { id: '9', name: 'Cable Organizer', price: 19.99, sold: 156, rating: 4.1, total: 3118.44 },
+        { id: '10', name: 'Bluetooth Speaker', price: 89.99, sold: 58, rating: 4.6, total: 5219.42 },
+        { id: '11', name: 'Screen Protector', price: 14.99, sold: 203, rating: 3.2, total: 3042.97 },
+        { id: '12', name: 'Power Bank', price: 39.99, sold: 88, rating: 4.4, total: 3519.12 },
+        { id: '13', name: 'USB Flash Drive', price: 24.99, sold: 134, rating: 3.7, total: 3348.66 },
+        { id: '14', name: 'Wireless Charger', price: 29.99, sold: 97, rating: 4.0, total: 2909.03 },
+        { id: '15', name: 'Noise Cancelling Earbuds', price: 199.99, sold: 42, rating: 4.8, total: 8399.58 },
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'name', headerText: 'Product', sort: true, filter: true },
+        { key: 'price', headerText: 'Price', sort: true, filter: true, type: 'number' },
+        { key: 'sold', headerText: 'Items Sold', sort: true, filter: true, type: 'number' },
+        { key: 'total', headerText: 'Total', sort: true, filter: true, type: 'number' },
+        { key: 'rating', headerText: 'Rating', sort: true, filter: true, type: 'number' },
+      ];
+      grid.data = data;
+
+      let theme = 'light';
+      const btn = document.getElementById('toggleBtn');
+
+      btn.addEventListener('click', () => {
+        theme = theme === 'dark' ? 'light' : 'dark';
+        document.body.className = theme;
+        btn.textContent = `Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`;
+      });
+    </script>
+  </body>
+</html>

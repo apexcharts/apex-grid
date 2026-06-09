@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Column Pinning - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .toolbar button {
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 13px;
+        border: 1px solid #d0d5dd;
+        background: #fff;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .toolbar button:hover {
+        background: #f7f9fc;
+      }
+      apex-grid {
+        min-height: 420px;
+        --ig-size: 2;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Column Pinning</h2>
+    <p class="subtitle">
+      Pin columns to either side of the grid. The source <code>columns</code> array stays untouched — only the render order changes (see <code>grid.displayColumns</code>).
+    </p>
+    <div class="toolbar">
+      <button data-key="name" data-pos="start">Pin Name → start</button>
+      <button data-key="price" data-pos="end">Pin Price → end</button>
+      <button data-key="stock" data-pos="end">Pin Stock → end</button>
+      <button data-key="name" data-pos="unpin">Unpin Name</button>
+      <button data-key="price" data-pos="unpin">Unpin Price</button>
+      <button data-key="stock" data-pos="unpin">Unpin Stock</button>
+    </div>
+    <apex-grid id="grid"></apex-grid>
+    <script type="module">
+      const data = [
+        { id: '1',  name: 'Wireless Headphones',  category: 'Audio',     vendor: 'Sony',    sku: 'WH-1000XM5', price: 299.00, sold: 82,  rating: 4.5, stock: 14 },
+        { id: '2',  name: 'USB-C Hub',            category: 'Connectivity', vendor: 'Anker', sku: 'USB-C-HUB',  price: 49.99,  sold: 35,  rating: 3.8, stock: 28 },
+        { id: '3',  name: 'Mechanical Keyboard',  category: 'Input',     vendor: 'Keychron', sku: 'KB-MEC',    price: 189.00, sold: 64,  rating: 4.7, stock: 5  },
+        { id: '4',  name: 'Ergonomic Mouse',      category: 'Input',     vendor: 'Logitech', sku: 'MOUSE-ERG', price: 79.95,  sold: 91,  rating: 4.2, stock: 22 },
+        { id: '5',  name: 'Monitor Stand',        category: 'Furniture', vendor: 'Vivo',    sku: 'MNT-STAND',  price: 59.99,  sold: 47,  rating: 3.5, stock: 17 },
+        { id: '6',  name: '4K Webcam',            category: 'Video',     vendor: 'Logitech', sku: 'CAM-4K',    price: 149.00, sold: 28,  rating: 4.0, stock: 9  },
+        { id: '7',  name: 'Laptop Sleeve',        category: 'Accessories', vendor: 'tomtoc', sku: 'LP-SLV',    price: 34.99,  sold: 110, rating: 4.3, stock: 31 },
+        { id: '8',  name: 'Desk Lamp',            category: 'Furniture', vendor: 'BenQ',    sku: 'LAMP-DESK',  price: 44.50,  sold: 73,  rating: 3.9, stock: 12 },
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'id',       headerText: 'ID'       },
+        { key: 'name',     headerText: 'Name'     },
+        { key: 'category', headerText: 'Category' },
+        { key: 'vendor',   headerText: 'Vendor'   },
+        { key: 'sku',      headerText: 'SKU'      },
+        { key: 'price',    headerText: 'Price',    type: 'number' },
+        { key: 'sold',     headerText: 'Sold',     type: 'number' },
+        { key: 'rating',   headerText: 'Rating',   type: 'number' },
+        { key: 'stock',    headerText: 'Stock',    type: 'number' },
+      ];
+      grid.data = data;
+
+      // Pin Name to start by default
+      await customElements.whenDefined('apex-grid');
+      requestAnimationFrame(async () => {
+        await grid.pinColumn('name', 'start');
+      });
+
+      document.querySelectorAll('.toolbar button').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const key = btn.dataset.key;
+          const pos = btn.dataset.pos;
+          if (pos === 'unpin') {
+            await grid.unpinColumn(key);
+          } else {
+            await grid.pinColumn(key, pos);
+          }
+        });
+      });
+    </script>
+  </body>
+</html>

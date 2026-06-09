@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tree Data (Nested Rows) - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      apex-grid {
+        min-height: 450px;
+        --ig-size: 2;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Tree Data (Nested Rows)</h2>
+    <p class="subtitle">
+      Hierarchy is derived from a flat array via <code>getDataPath</code>. The first visible data column renders the chevron and depth-based indentation.
+    </p>
+    <apex-grid id="grid"></apex-grid>
+    <script type="module">
+      const data = [
+        { path: ['Engineering'],                              name: 'Engineering',       headcount: 42, budget: 2400000 },
+        { path: ['Engineering', 'Platform'],                  name: 'Platform',          headcount: 14, budget: 800000  },
+        { path: ['Engineering', 'Platform', 'Adrian'],        name: 'Adrian Hoffman',    headcount: 1,  budget: 165000  },
+        { path: ['Engineering', 'Platform', 'Bryan'],         name: 'Bryan Liu',         headcount: 1,  budget: 142000  },
+        { path: ['Engineering', 'Platform', 'Camille'],       name: 'Camille Rousseau',  headcount: 1,  budget: 158000  },
+        { path: ['Engineering', 'Frontend'],                  name: 'Frontend',          headcount: 18, budget: 1020000 },
+        { path: ['Engineering', 'Frontend', 'Diana'],         name: 'Diana Park',        headcount: 1,  budget: 145000  },
+        { path: ['Engineering', 'Frontend', 'Ezra'],          name: 'Ezra Patel',        headcount: 1,  budget: 138000  },
+        { path: ['Engineering', 'Data'],                      name: 'Data',              headcount: 10, budget: 580000  },
+        { path: ['Engineering', 'Data', 'Farrah'],            name: 'Farrah Ali',        headcount: 1,  budget: 152000  },
+        { path: ['Design'],                                   name: 'Design',            headcount: 11, budget: 720000  },
+        { path: ['Design', 'Product'],                        name: 'Product Design',    headcount: 7,  budget: 460000  },
+        { path: ['Design', 'Product', 'Gianna'],              name: 'Gianna Costa',      headcount: 1,  budget: 132000  },
+        { path: ['Design', 'Research'],                       name: 'Research',          headcount: 4,  budget: 260000  },
+        { path: ['Sales'],                                    name: 'Sales',             headcount: 28, budget: 1900000 },
+        { path: ['Sales', 'Enterprise'],                      name: 'Enterprise',        headcount: 12, budget: 980000  },
+        { path: ['Sales', 'SMB'],                             name: 'SMB',               headcount: 16, budget: 920000  },
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'name',      headerText: 'Name'       },
+        { key: 'headcount', headerText: 'Headcount', type: 'number' },
+        { key: 'budget',    headerText: 'Budget',    type: 'number' },
+      ];
+      grid.data = data;
+      grid.tree = {
+        enabled: true,
+        getDataPath: (row) => row.path,
+        defaultExpanded: 1,
+        groupColumnKey: 'name',
+        childIndent: 22,
+      };
+    </script>
+  </body>
+</html>
