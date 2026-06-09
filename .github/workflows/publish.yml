@@ -95,11 +95,14 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Test
-        run: npm test
-
+      # Build before Test: the enterprise unit tests import `apex-grid/internal`,
+      # which resolves to core's built dist/ (gitignored, so absent in a fresh
+      # checkout). Building first ensures that artifact exists.
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm test
 
       - name: Publish, tag, and release each package
         env:
