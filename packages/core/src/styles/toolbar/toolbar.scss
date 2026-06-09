@@ -1,11 +1,10 @@
 @use '../common' as *;
 
-$header-background: var(--igx-header-background, var(--header-background));
-$header-text-color: var(--igx-header-text-color, var(--header-text-color));
-$header-border-width: var(--igx-header-border-width, var(--header-border-width));
-$header-border-style: var(--igx-header-border-style, var(--header-border-style));
-$header-border-color: var(--igx-header-border-color, var(--header-border-color));
-$accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
+// Resolution chain: igniteui override → current semantic var → premium default.
+$header-background: var(--igx-header-background, var(--header-background, var(--ag-surface-elevated)));
+$header-text-color: var(--igx-header-text-color, var(--header-text-color, var(--ag-text-muted)));
+$header-border-color: var(--igx-header-border-color, var(--header-border-color, var(--ag-hairline)));
+$accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ag-brand)));
 
 :host {
     --ig-size: 1;
@@ -14,7 +13,7 @@ $accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
     display: block;
     background: $header-background;
     color: $header-text-color;
-    border-block-end: $header-border-width $header-border-style $header-border-color;
+    border-block-end: 1px solid $header-border-color;
     z-index: calc(var(--z-index-base) + 4);
 
     // Sticky in both axes so the toolbar stays anchored to the top-left of the
@@ -33,7 +32,7 @@ $accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
     display: flex;
     align-items: center;
     gap: rem(8px);
-    padding: rem(4px) rem(12px);
+    padding: var(--ag-toolbar-pad);
 }
 
 [part='toolbar-search'] {
@@ -41,23 +40,27 @@ $accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
     max-width: rem(360px);
 }
 
+// Search: a 30px pill with a soft brand focus ring (no outline) and the
+// border tightening to the brand at 50% opacity on focus.
 [part='search-field'] {
     display: inline-flex;
     align-items: center;
     inline-size: 100%;
-    block-size: rem(28px);
-    padding: 0 rem(8px);
+    block-size: rem(30px);
+    padding: 0 rem(10px);
     gap: rem(6px);
-    background: transparent;
-    color: inherit;
-    border: rem(1px) solid $header-border-color;
-    border-radius: rem(4px);
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    background: var(--ag-surface);
+    color: var(--ag-text-body);
+    border: rem(1px) solid var(--ag-brand-line);
+    border-radius: 8px;
+    transition:
+        border-color var(--ag-dur-fast) var(--ag-ease),
+        box-shadow var(--ag-dur-fast) var(--ag-ease);
     box-sizing: border-box;
 
     &:focus-within {
-        border-color: $accent;
-        box-shadow: 0 0 0 rem(2px) hsl(from #{$accent} h s l / 18%);
+        border-color: color-mix(in srgb, var(--ag-brand) 50%, transparent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--ag-brand) 14%, transparent);
     }
 }
 
@@ -80,12 +83,12 @@ $accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
     padding: 0;
     margin: 0;
     font: inherit;
-    font-size: rem(13px);
+    font-size: var(--ag-fs-cell);
     line-height: 1;
 
     &::placeholder {
-        color: inherit;
-        opacity: 0.55;
+        color: var(--ag-text-subtle);
+        opacity: 1;
     }
 
     // Hide native search clear button — Escape already clears via #handleKeydown.
@@ -123,17 +126,21 @@ $accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
     min-inline-size: rem(28px);
     min-block-size: rem(28px);
     padding: 0 rem(6px);
-    border-radius: rem(4px);
-    transition: background-color 0.15s ease, border-color 0.15s ease;
+    border-radius: var(--ag-radius-sm);
+    transition:
+        background-color var(--ag-dur-fast) var(--ag-ease),
+        border-color var(--ag-dur-fast) var(--ag-ease),
+        color var(--ag-dur-fast) var(--ag-ease);
 
     &:hover {
-        background: hsl(from currentcolor h s l / 8%);
+        background: var(--ag-brand-softer);
+        color: var(--ag-brand-strong);
     }
 
     &:focus-visible {
         outline: 0;
-        border-color: $accent;
-        box-shadow: 0 0 0 rem(2px) hsl(from #{$accent} h s l / 18%);
+        border-color: color-mix(in srgb, var(--ag-brand) 50%, transparent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--ag-brand) 14%, transparent);
     }
 }
 
@@ -155,10 +162,10 @@ $accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
     margin: 0;
     padding: rem(4px) 0;
     min-inline-size: rem(180px);
-    background: var(--igx-cell-editor-background, var(--ig-surface-500, white));
-    color: inherit;
-    border: rem(1px) solid hsl(from currentcolor h s l / 20%);
-    border-radius: rem(4px);
+    background: var(--igx-cell-editor-background, var(--ag-surface));
+    color: var(--ag-text-body);
+    border: rem(1px) solid var(--ag-brand-line);
+    border-radius: var(--ag-radius-sm);
     box-shadow: 0 rem(2px) rem(4px) rgb(0 0 0 / 6%), 0 rem(6px) rem(16px) rgb(0 0 0 / 12%);
     list-style: none;
     z-index: calc(var(--z-index-base) + 10);
@@ -191,12 +198,13 @@ $accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
     min-block-size: rem(24px);
 
     &:hover {
-        background: hsl(from #{$accent} h s l / 8%);
+        background: var(--ag-brand-softer);
+        color: var(--ag-brand-strong);
     }
 
     &:focus-visible {
         outline: 0;
-        background: hsl(from #{$accent} h s l / 14%);
-        box-shadow: inset 0 0 0 rem(2px) $accent;
+        background: var(--ag-brand-soft);
+        box-shadow: inset 0 0 0 rem(2px) var(--ag-brand);
     }
 }

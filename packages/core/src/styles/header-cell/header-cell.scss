@@ -1,19 +1,25 @@
 @use '../common' as *;
 
-$filtering-header-background: var(--igx-filtering-header-background, var(--filtering-header-background));
-$header-border-width: var(--igx-header-border-width, var(--header-border-width));
-$header-border-style: var(--igx-header-border-style, var(--header-border-style));
-$header-border-color: var(--igx-header-border-color, var(--header-border-color));
-$active-header-icon-color: var(--igx-sorted-header-icon-color, var(--sorted-header-icon-color));
-$inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
+// Resolution chain: igniteui override → current semantic var → premium default.
+$filtering-header-background: var(--igx-filtering-header-background, var(--filtering-header-background, transparent));
+$header-border-color: var(--igx-header-border-color, var(--header-border-color, var(--ag-hairline)));
+$header-text-color: var(--igx-header-text-color, var(--header-text-color, var(--ag-text-muted)));
+$active-header-icon-color: var(--igx-sorted-header-icon-color, var(--sorted-header-icon-color, var(--ag-brand)));
+$header-hover: color-mix(in srgb, var(--ag-brand) 4%, transparent);
 
 :host {
     display: flex;
     align-items: center;
     position: relative;
-    border-inline-end: $header-border-width $header-border-style $header-border-color;
-    font-weight: 600;
-    font-size: #{rem(12px)};
+    color: $header-text-color;
+    font-weight: var(--ag-fw-semibold);
+    font-size: var(--ag-fs-cell-secondary);
+    transition: background-color var(--ag-dur-fast) var(--ag-ease);
+}
+
+// The whole header cell reads as "tappable" but not loud.
+:host(:hover) {
+    background: $header-hover;
 }
 
 :host([data-reorderable]) {
@@ -23,10 +29,6 @@ $inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
 :host([data-dragging]) {
     opacity: 0.4;
     cursor: grabbing;
-}
-
-:host(:last-of-type) {
-    border-inline-end: none;
 }
 
 :host([data-pinned='start']),
@@ -44,15 +46,33 @@ $inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
     inset-inline-end: var(--apex-pin-offset, 0);
 }
 
-// Visual separator between the pinned region and the scrollable region.
-:host([data-pin-edge='start']) {
-    border-inline-end: $header-border-width $header-border-style $header-border-color;
-    box-shadow: rem(2px) 0 rem(4px) rgb(0 0 0 / 6%);
+// Frozen-column edge: a soft brand fade (not a hard 1px separator). The fade
+// sits just outside the pinned cell and dissipates into the scroll region.
+:host([data-pin-edge='start'])::after,
+:host([data-pin-edge='end'])::after {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    width: 14px;
+    pointer-events: none;
 }
 
-:host([data-pin-edge='end']) {
-    border-inline-start: $header-border-width $header-border-style $header-border-color;
-    box-shadow: rem(-2px) 0 rem(4px) rgb(0 0 0 / 6%);
+:host([data-pin-edge='start'])::after {
+    inset-inline-end: -14px;
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--ag-brand) 6%, transparent) 0%,
+        color-mix(in srgb, var(--ag-brand) 0%, transparent) 100%
+    );
+}
+
+:host([data-pin-edge='end'])::after {
+    inset-inline-start: -14px;
+    background: linear-gradient(
+        270deg,
+        color-mix(in srgb, var(--ag-brand) 6%, transparent) 0%,
+        color-mix(in srgb, var(--ag-brand) 0%, transparent) 100%
+    );
 }
 
 [part~='content'] {
@@ -61,8 +81,7 @@ $inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
     justify-content: space-between;
     width: 100%;
     height: 100%;
-    padding: 0 $ig-cells-padding;
-    font-weight: 500;
+    padding: 0 var(--ag-cell-pad-x);
     overflow: hidden;
     user-select: none;
 }
@@ -75,6 +94,17 @@ $inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
     text-overflow: ellipsis;
     overflow: hidden;
     min-width: 3ch;
+    text-transform: uppercase;
+    font-size: var(--ag-fs-cell-secondary);
+    font-weight: var(--ag-fw-semibold);
+    letter-spacing: var(--ag-tracking-header);
+    color: $header-text-color;
+}
+
+// Active sort column: the label lifts to the strong brand color.
+:host([aria-sort='ascending']) [part~='title'],
+:host([aria-sort='descending']) [part~='title'] {
+    color: var(--ag-brand-strong);
 }
 
 [part~='actions'] {
@@ -85,11 +115,9 @@ $inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
 
 [part~='action'] {
     cursor: pointer;
-    opacity: .7;
-    transition: opacity .25s ease-in-out;
 
     // Strip native <button> chrome — the sort indicator is a real button for
-    // accessibility but should still look like the original icon affordance.
+    // accessibility but should look like a plain affordance.
     background: transparent;
     border: 0;
     padding: 0;
@@ -98,17 +126,13 @@ $inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
     font: inherit;
     line-height: 0;
 
-    // Touch target: 24x24 minimum (WCAG 2.5.8) — the visible icon stays 15px.
+    // Touch target: 24x24 minimum (WCAG 2.5.8) — the visible glyph is 6×9.
     inline-size: rem(24px);
     block-size: rem(24px);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-
-    &:hover,
-    &:focus {
-        opacity: 1;
-    }
+    position: relative;
 
     &:focus-visible {
         outline: rem(2px) solid $active-header-icon-color;
@@ -116,52 +140,72 @@ $inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
         border-radius: rem(2px);
     }
 
-    position: relative;
-
-    svg {
-        display: block;
-        inline-size: #{rem(15px)};
-        block-size: #{rem(15px)};
-        color: $inactive-header-icon-color;
-    }
-
+    // Multi-sort order badge.
     &[data-sort-index]:not([data-sort-index=''])::after {
         content: attr(data-sort-index);
         position: absolute;
-        top: -5px;
-        inset-inline-end: -3px;
-        font-size: rem(10px);
-        text-align: end;
-        font-family: sans-serif;
-        line-height: rem(10px);
+        top: -2px;
+        inset-inline-end: 0;
+        font-size: var(--ag-fs-tiny);
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
         color: $active-header-icon-color;
     }
 }
 
-[part~='sorted'],
-[part~='filtered'] {
-    color: $active-header-icon-color;
+// Stacked sort chevrons. Both dim at 0.45 by default; hovering the header lifts
+// the inactive direction to 0.65; the active direction is full-opacity brand.
+[part~='sort-arrows'] {
+    display: block;
+    inline-size: 6px;
+    block-size: 9px;
+}
 
-    svg {
-        color: $active-header-icon-color;
-    }
+[part~='sort-up'],
+[part~='sort-down'] {
+    fill: currentcolor;
+    opacity: 0.45;
+    transition:
+        opacity var(--ag-dur-fast) var(--ag-ease),
+        fill var(--ag-dur-fast) var(--ag-ease);
+}
+
+:host(:hover) [part~='sort-up'],
+:host(:hover) [part~='sort-down'] {
+    opacity: 0.65;
+}
+
+[part~='action'][data-sort-active='ascending'] [part~='sort-up'],
+[part~='action'][data-sort-active='descending'] [part~='sort-down'] {
+    opacity: 1;
+    fill: var(--ag-brand);
 }
 
 [part~='filtered'] {
     background: $filtering-header-background;
+    color: var(--ag-brand-strong);
 }
 
 [part~='action']:empty {
     display: none;
 }
 
+// Resize handle: a 3px vertical bar inset 6px top/bottom, transparent until
+// the header cell is hovered, then brand-tinted. `col-resize` cursor.
 [part~='resizable'] {
-    width: rem(4px);
-    height: 100%;
+    width: 3px;
     position: absolute;
-    inset-inline-end: rem(-2px);
-    z-index: var(--z-index-base);
+    inset-block: 6px;
+    inset-inline-end: 0;
+    border-radius: 2px;
+    background: transparent;
     cursor: col-resize;
+    z-index: var(--z-index-base);
+    transition: background-color var(--ag-dur-fast) var(--ag-ease);
+}
+
+:host(:hover) [part~='resizable'] {
+    background: color-mix(in srgb, var(--ag-brand) 28%, transparent);
 }
 
 [part~='filter'] {
@@ -172,9 +216,9 @@ $inactive-header-icon-color: var(--igx-icon-color, var(--icon-color));
     position: absolute;
     top: -5px;
     inset-inline-end: -1px;
-    font-size: .625rem;
+    font-size: var(--ag-fs-tiny);
     text-align: end;
-    font-family: sans-serif;
-    line-height: .625rem;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
     color: currentcolor;
 }

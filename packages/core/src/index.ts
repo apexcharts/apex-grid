@@ -26,9 +26,9 @@ export { ApexGrid } from './components/grid.js';
 export type {
   CSVExportOptions,
   ExportCellValue,
+  ExportFormat,
   ExportOptions,
   ExportSource,
-  XLSXExportOptions,
 } from './internal/export.js';
 export type {
   ApexCellContext,

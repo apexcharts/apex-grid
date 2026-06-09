@@ -1,9 +1,9 @@
-import { html, nothing, type TemplateResult } from 'lit';
+import { html, nothing, svg, type TemplateResult } from 'lit';
 import { ref } from 'lit/directives/ref.js';
 import type ApexGridCell from '../components/cell.js';
 import type ApexGridRow from '../components/row.js';
 import { renderIcon } from './icons.js';
-import type { ColumnConfiguration } from './types.js';
+import type { BadgeVariant, ColumnConfiguration, StatusVariant } from './types.js';
 
 const RATING_DEFAULT_MAX = 5;
 
@@ -394,12 +394,193 @@ const imageType: ColumnTypeRenderer<object> = {
   // text editor for `editable: true` image columns.
 };
 
+// ── Premium presentation renderers ─────────────────────────────────────────
+// currency / avatar / badge / progress / sparkline / status. These are display
+// presentations over primitive values; for sorting / filtering they behave as
+// their underlying value type. Styling lives in `styles/body-cell/cell-renderers.scss`.
+
+function toFiniteNumber(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getPositiveMax(column: { max?: number }, fallback: number): number {
+  const m = typeof column.max === 'number' ? column.max : fallback;
+  return m > 0 ? m : fallback;
+}
+
+/** Stable 0–359 hue derived from a string, for per-row avatar tinting. */
+function hashHue(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) % 360;
+  }
+  return hash;
+}
+
+/** Heuristic fallback mapping a free-text status to a known state. */
+function inferStatus(value: unknown): StatusVariant {
+  const s = String(value ?? '').toLowerCase();
+  if (/churn|cancel|expired|inactive|lost|risk|fail|off|overdue/.test(s)) return 'churn';
+  if (/trial|trialing|pending|new|invited|watch|paused/.test(s)) return 'trial';
+  return 'active';
+}
+
+const currencyType: ColumnTypeRenderer<object> = {
+  display(ctx) {
+    const col = ctx.column as { currency?: string; locale?: string };
+    const n = toFiniteNumber(ctx.value);
+    if (n === null) return html``;
+    return html`${new Intl.NumberFormat(col.locale, {
+      style: 'currency',
+      currency: col.currency ?? 'USD',
+    }).format(n)}`;
+  },
+
+  editor(ctx) {
+    const commit = (event: Event) => {
+      const raw = (event.target as HTMLInputElement).value;
+      ctx.commit(raw === '' ? null : Number(raw));
+    };
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+        commit(event);
+      }
+    };
+    return html`<input
+      type="number"
+      part="editor"
+      data-apex-editor
+      .value=${ctx.value == null ? '' : String(ctx.value)}
+      @change=${commit}
+      @keydown=${handleKeydown}
+    />`;
+  },
+};
+
+const avatarType: ColumnTypeRenderer<object> = {
+  display(ctx) {
+    const label = ctx.value == null ? '' : String(ctx.value);
+    const initial = label.trim().charAt(0).toUpperCase();
+    if (!initial) return html``;
+    return html`<span part="avatar" role="img" aria-label=${label} style="--ag-avatar-hue: ${hashHue(label)}"
+      >${initial}</span
+    >`;
+  },
+};
+
+const badgeType: ColumnTypeRenderer<object> = {
+  display(ctx) {
+    const value = ctx.value;
+    if (value == null || value === '') return html``;
+    const col = ctx.column as {
+      badgeVariant?: BadgeVariant | ((value: unknown) => BadgeVariant);
+    };
+    const variant =
+      typeof col.badgeVariant === 'function'
+        ? col.badgeVariant(value)
+        : (col.badgeVariant ?? 'neutral');
+    return html`<span part="pill pill--${variant}">${String(value)}</span>`;
+  },
+};
+
+const progressType: ColumnTypeRenderer<object> = {
+  display(ctx) {
+    const n = toFiniteNumber(ctx.value);
+    if (n === null) return html``;
+    const max = getPositiveMax(ctx.column as { max?: number }, 100);
+    const pct = Math.max(0, Math.min(100, (n / max) * 100));
+    const tier = pct >= 80 ? 'good' : pct >= 65 ? 'watch' : 'risk';
+    return html`<span part="progress">
+      <span part="progress-track">
+        <span part="progress-fill progress-fill--${tier}" style="width: ${pct}%"></span>
+      </span>
+      <span part="progress-label">${Math.round(pct)}</span>
+    </span>`;
+  },
+};
+
+const sparklineType: ColumnTypeRenderer<object> = {
+  display(ctx) {
+    const series = Array.isArray(ctx.value)
+      ? (ctx.value.filter((v) => typeof v === 'number' && Number.isFinite(v)) as number[])
+      : [];
+    if (series.length < 2) return html``;
+
+    const width = 64;
+    const height = 22;
+    const pad = 2;
+    const min = Math.min(...series);
+    const max = Math.max(...series);
+    const range = max - min || 1;
+    const stepX = width / (series.length - 1);
+    const points = series.map((value, i) => {
+      const x = i * stepX;
+      const y = pad + (height - 2 * pad) * (1 - (value - min) / range);
+      return `${x.toFixed(1)} ${y.toFixed(1)}`;
+    });
+    const line = `M${points.join(' L')}`;
+    const area = `${line} L${width} ${height} L0 ${height} Z`;
+
+    const first = series[0];
+    const last = series[series.length - 1];
+    const trend = last > first ? 'up' : last < first ? 'down' : 'flat';
+    const delta = first === 0 ? 0 : ((last - first) / Math.abs(first)) * 100;
+    const showDelta = (ctx.column as { showDelta?: boolean }).showDelta !== false;
+
+    return html`<span part="spark-cell">
+      <svg
+        part="sparkline sparkline--${trend}"
+        viewBox="0 0 ${width} ${height}"
+        width=${width}
+        height=${height}
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        ${svg`<path part="spark-area" d=${area} /><path part="spark-line" d=${line} />`}
+      </svg>
+      ${
+        showDelta
+          ? html`<span part="spark-delta spark-delta--${trend}"
+            >${delta > 0 ? '+' : ''}${delta.toFixed(0)}%</span
+          >`
+          : nothing
+      }
+    </span>`;
+  },
+};
+
+const statusType: ColumnTypeRenderer<object> = {
+  display(ctx) {
+    const value = ctx.value;
+    if (value == null || value === '') return html``;
+    const col = ctx.column as {
+      statusVariant?: StatusVariant | ((value: unknown) => StatusVariant);
+    };
+    const variant =
+      typeof col.statusVariant === 'function'
+        ? col.statusVariant(value)
+        : (col.statusVariant ?? inferStatus(value));
+    return html`<span part="status status--${variant}">
+      <span part="status-dot"></span>${String(value)}
+    </span>`;
+  },
+};
+
 const BUILTIN_TYPES: Record<string, ColumnTypeRenderer<object>> = {
   select: selectType,
   rating: ratingType,
   date: dateType,
   boolean: booleanType,
   image: imageType,
+  currency: currencyType,
+  avatar: avatarType,
+  badge: badgeType,
+  progress: progressType,
+  sparkline: sparklineType,
+  status: statusType,
 };
 
 /**

@@ -1,0 +1,9 @@
+// Canonical host stylesheet for `<apex-grid>`.
+//
+// Pulls in the premium design tokens (`_tokens.scss`) and the host layout
+// (`_grid.base.scss`). This replaces the former per-framework theme files
+// (bootstrap / fluent / material / indigo), which had collapsed into thin
+// re-tint shims. The grid now styles itself entirely through `--ag-*` CSS
+// variables; consumers customize by overriding those, and igniteui host apps
+// are auto-matched via the `--ig-*` fallbacks baked into `_tokens.scss`.
+@use 'grid.base';

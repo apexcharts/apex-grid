@@ -170,15 +170,11 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
     }
   };
 
-  #handleExport = (format: 'csv' | 'xlsx') => {
+  #handleExport = (formatId: string) => {
     this.#closeExportMenu();
     const grid = this.state?.host;
     if (!grid) return;
-    if (format === 'csv') {
-      grid.exportToCSV({ filename: this.exportFilename });
-    } else {
-      grid.exportToXLSX({ filename: this.exportFilename });
-    }
+    grid.exportAs(formatId, { filename: this.exportFilename });
   };
 
   /** Lets keyboard users land in the menu when it opens via arrow-down. */
@@ -258,28 +254,19 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
         ?hidden=${!open}
         @keydown=${this.#handleMenuKeydown}
       >
-        <li role="none">
-          <button
-            type="button"
-            role="menuitem"
-            part="export-menu-item"
-            tabindex="-1"
-            @click=${() => this.#handleExport('csv')}
-          >
-            Export CSV
-          </button>
-        </li>
-        <li role="none">
-          <button
-            type="button"
-            role="menuitem"
-            part="export-menu-item"
-            tabindex="-1"
-            @click=${() => this.#handleExport('xlsx')}
-          >
-            Export XLSX
-          </button>
-        </li>
+        ${(this.state?.host?.exportFormats ?? []).map(
+          (format) => html`<li role="none">
+            <button
+              type="button"
+              role="menuitem"
+              part="export-menu-item"
+              tabindex="-1"
+              @click=${() => this.#handleExport(format.id)}
+            >
+              ${format.label}
+            </button>
+          </li>`
+        )}
       </ul>
     </div>`;
   }

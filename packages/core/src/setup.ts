@@ -5,10 +5,14 @@ type ApexGridTheme = 'bootstrap' | 'material' | 'fluent' | 'indigo';
 
 export interface ApexGridSetupOptions {
   /**
-   * Ignite UI theme to activate. The matching theme CSS file
-   * (`igniteui-webcomponents/themes/<variant>/<theme>.css`) must still be
-   * imported by the consumer — there is no portable way to dynamically
-   * import a CSS file across bundlers.
+   * @deprecated The grid no longer ships per-framework themes — it styles
+   * itself entirely through `--ag-*` CSS custom properties (see the README's
+   * theming section). This option does **not** affect the grid's appearance;
+   * it only forwards to igniteui-webcomponents' `configureTheme()` for apps
+   * that embed the grid alongside igniteui components. When set, the grid
+   * still auto-tints from the igniteui palette via its `--ig-*` fallbacks.
+   * Omit it and customize via CSS variables instead. Will be removed in a
+   * future major version.
    *
    * @defaultValue 'bootstrap'
    */
@@ -45,46 +49,40 @@ function adoptHostStyles(): void {
 }
 
 /**
- * One-call convenience: registers `<apex-grid>`, configures the Ignite UI
- * theme, and adopts a default host stylesheet so the virtualizer has a
- * bounded height.
+ * One-call convenience: registers `<apex-grid>` and adopts a default host
+ * stylesheet so the virtualizer has a bounded height. The grid is styled
+ * out-of-the-box via `--ag-*` CSS custom properties — no theme import needed.
  *
  * @remarks
- * This is an **additive** alternative to the manual three-import setup
- * (`apex-grid/define` + `configureTheme()` + host CSS). It does NOT
- * import the Ignite theme CSS file for you — that import is consumer
- * responsibility because dynamic CSS imports are not portable across
- * bundlers. So the full setup with `setup()` is:
+ * This is an **additive** alternative to the manual setup
+ * (`import 'apex-grid/define'` + host CSS). Idempotent — safe to call more
+ * than once; host styles are adopted only on the first call.
  *
- * ```ts
- * import { setup } from 'apex-grid';
- * import 'igniteui-webcomponents/themes/light/bootstrap.css';
- *
- * setup({ theme: 'bootstrap' });
- * ```
- *
- * Idempotent — safe to call more than once. Host styles are adopted
- * only on the first call. For full manual control use
- * `import 'apex-grid/define'` and configure the theme yourself; this
- * helper is a shortcut, not a replacement.
+ * Customize the look by overriding `--ag-*` CSS variables (see the README).
+ * The deprecated {@link ApexGridSetupOptions.theme} option only forwards to
+ * igniteui-webcomponents and does not change the grid's appearance.
  *
  * @example
  * ```ts
  * import { setup } from 'apex-grid';
- * import 'igniteui-webcomponents/themes/light/bootstrap.css';
- * setup({ theme: 'bootstrap' });
+ * setup();
  * ```
  *
  * @example Opt out of injected host styles:
  * ```ts
- * setup({ theme: 'material', hostStyles: false });
+ * setup({ hostStyles: false });
  * ```
  */
 export function setup(options: ApexGridSetupOptions = {}): void {
-  const { theme = 'bootstrap', hostStyles = true } = options;
+  const { theme, hostStyles = true } = options;
 
   ApexGrid.register();
-  configureTheme(theme);
+
+  // Deprecated: only forwards to igniteui when a consumer explicitly opts in.
+  // The grid styles itself via `--ag-*` variables regardless.
+  if (theme !== undefined) {
+    configureTheme(theme);
+  }
 
   if (hostStyles) {
     adoptHostStyles();

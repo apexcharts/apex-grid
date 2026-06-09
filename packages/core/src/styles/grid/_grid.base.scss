@@ -1,8 +1,12 @@
 @use '../common' as *;
+@use '../tokens';
 
-$content-background: var(--igx-content-background, var(--content-background));
-$content-text-color: var(--igx-content-text-color, var(--content-text-color));
-$grid-resize-line-color: var(--igx-grid-resize-line-color, var(--grid-resize-line-color));
+// Resolution chain: igniteui consumer override → current semantic var
+// (back-compat) → premium `--ag-*` default. Keeps every existing override
+// hook working while making the premium look the out-of-the-box default.
+$content-background: var(--igx-content-background, var(--content-background, var(--ag-surface)));
+$content-text-color: var(--igx-content-text-color, var(--content-text-color, var(--ag-text-body)));
+$grid-resize-line-color: var(--igx-grid-resize-line-color, var(--grid-resize-line-color, var(--ag-brand)));
 
 // REQUIRED for the grid's internal track layout: toolbar, header-row, filter-row,
 // virtualized body, and paginator live in named CSS grid rows below. Consumers must
@@ -17,8 +21,32 @@ $grid-resize-line-color: var(--igx-grid-resize-line-color, var(--grid-resize-lin
     display: grid;
     height: 100%;
     position: relative;
-    font-family: var(--ig-font-family);
-    box-shadow: elevation(2);
+    box-sizing: border-box;
+    font-family: var(--ig-font-family, var(--ag-font));
+    font-size: var(--ag-fs-cell);
+    line-height: var(--ag-leading);
+    color: $content-text-color;
+
+    // Premium "floating card": soft outer radius, layered surface gradient,
+    // and a soft floating shadow (not a hard drop). The light highlight border
+    // and 1px edge ring come from `--ag-shadow-card` (an outer ring + inset
+    // top highlight) rather than a real `border`, so the card edge never eats
+    // into the content box — column-width math stays exactly the host width.
+    // `overflow: auto` stays — the host is the scroll container; the radius
+    // still clips the sticky header/footer corners.
+    border-radius: var(--ag-radius);
+    background: linear-gradient(
+        155deg,
+        rgba(255, 255, 255, 0.96) 0%,
+        rgba(252, 253, 255, 0.92) 50%,
+        rgba(248, 250, 254, 0.94) 100%
+    );
+    box-shadow: var(--ag-shadow-card);
+
+    // NOTE: no `backdrop-filter` / `transform` / `filter` / `will-change` here.
+    // Any of those would make the host a containing block for `position: fixed`
+    // descendants, which would break the column-reorder drag ghost (rendered
+    // `position: fixed` to follow the cursor in viewport coordinates).
     overflow: auto;
     grid-template-rows:
         [toolbar-row] max-content

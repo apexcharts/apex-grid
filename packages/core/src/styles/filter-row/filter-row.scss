@@ -1,13 +1,14 @@
 @use '../common' as *;
 
-$filtering-row-background: var(--igx-filtering-row-background, var(--filtering-row-background));
-$filtering-row-text-color: var(--igx-filtering-row-text-color, var(--filtering-row-text-color));
-$header-background: var(--igx-header-background, var(--header-background));
-$header-text-color: var(--igx-header-text-color, var(--header-text-color));
-$header-border-width: var(--igx-header-border-width, var(--header-border-width));
-$header-border-style: var(--igx-header-border-style, var(--header-border-style));
-$header-border-color: var(--igx-header-border-color, var(--header-border-color));
-$accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
+// Resolution chain: igniteui override → current semantic var → premium default.
+$filtering-row-background: var(--igx-filtering-row-background, var(--filtering-row-background, transparent));
+$filtering-row-text-color: var(--igx-filtering-row-text-color, var(--filtering-row-text-color, var(--ag-text-body)));
+$header-background: var(--igx-header-background, var(--header-background, var(--ag-surface-elevated)));
+$header-text-color: var(--igx-header-text-color, var(--header-text-color, var(--ag-text-muted)));
+$header-border-width: var(--igx-header-border-width, var(--header-border-width, 1px));
+$header-border-style: var(--igx-header-border-style, var(--header-border-style, solid));
+$header-border-color: var(--igx-header-border-color, var(--header-border-color, var(--ag-hairline)));
+$accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ag-brand)));
 
 :host {
     --ig-size: 1;
@@ -37,16 +38,24 @@ $accent: var(--igx-primary-500, var(--ig-primary-500, currentcolor));
     background: $filtering-row-background;
     color: $filtering-row-text-color;
     min-height: $ig-cells-min-height;
-    min-width: 100%;
     display: flex;
     align-items: center;
     gap: rem(8px);
-    position: relative;
-    inset-block-start: rem(-1px);
+    margin-block-start: rem(-1px);
 
     // Span every grid track in the host so an enabled selection column
     // doesn't squeeze the active filter editor into a narrow 44px slot.
     grid-column: 1 / -1;
+
+    // Pin the editor to the visible viewport and clamp its width to the grid's
+    // client width (written to `--apex-host-width` by the DOM controller) — the
+    // same pattern the toolbar and paginator use. Without this the row stretches
+    // across the full scrollable content width, pushing the Reset/Close actions
+    // far off to the right, reachable only by scrolling horizontally.
+    position: sticky;
+    inset-inline-start: 0;
+    width: var(--apex-host-width, 100%);
+    max-width: var(--apex-host-width, 100%);
 }
 
 [part='filter-row-preview']:last-of-type {
@@ -117,14 +126,16 @@ svg {
     padding: 0 rem(6px);
     gap: rem(4px);
     background: transparent;
-    border: rem(1px) solid $header-border-color;
-    border-radius: rem(4px);
+    border: rem(1px) solid var(--ag-brand-line);
+    border-radius: rem(8px);
     box-sizing: border-box;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    transition:
+        border-color var(--ag-dur-fast) var(--ag-ease),
+        box-shadow var(--ag-dur-fast) var(--ag-ease);
 
     &:focus-within {
-        border-color: $accent;
-        box-shadow: 0 0 0 rem(2px) hsl(from #{$accent} h s l / 18%);
+        border-color: color-mix(in srgb, var(--ag-brand) 50%, transparent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--ag-brand) 14%, transparent);
     }
 }
 
@@ -265,19 +276,22 @@ svg {
     display: inline-flex;
     align-items: center;
     gap: rem(4px);
-    background: hsl(from currentcolor h s l / 6%);
-    color: inherit;
-    border: 0;
-    border-radius: rem(12px);
+    background: transparent;
+    color: var(--ag-text-muted);
+    border: rem(1px) solid var(--ag-hairline);
+    border-radius: var(--ag-radius-sm);
     padding: rem(2px) rem(10px) rem(2px) rem(8px);
     font: inherit;
     font-size: rem(12px);
     line-height: 1.6;
     cursor: pointer;
-    transition: background-color 0.15s ease;
+    transition:
+        background-color var(--ag-dur-fast) var(--ag-ease),
+        color var(--ag-dur-fast) var(--ag-ease);
 
     &:hover {
-        background: hsl(from currentcolor h s l / 14%);
+        background: hsl(from currentcolor h s l / 8%);
+        color: var(--ag-text-body);
     }
 
     &:focus-visible {
@@ -310,19 +324,22 @@ svg {
 [part='expression-chip'] {
     display: inline-flex;
     align-items: stretch;
-    background: hsl(from currentcolor h s l / 6%);
-    color: inherit;
-    border-radius: rem(12px);
+    background: var(--ag-brand-softer);
+    color: var(--ag-brand-strong);
+    border: rem(1px) solid var(--ag-brand-line);
+    border-radius: var(--ag-radius-sm);
     overflow: hidden;
-    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+    transition:
+        background-color var(--ag-dur-fast) var(--ag-ease),
+        box-shadow var(--ag-dur-fast) var(--ag-ease);
 
     &:hover {
-        background: hsl(from currentcolor h s l / 12%);
+        background: var(--ag-brand-soft);
     }
 
     &[selected] {
-        background: hsl(from #{$accent} h s l / 14%);
-        box-shadow: inset 0 0 0 rem(1px) hsl(from #{$accent} h s l / 50%);
+        background: var(--ag-brand-soft);
+        box-shadow: inset 0 0 0 rem(1px) color-mix(in srgb, var(--ag-brand) 50%, transparent);
     }
 }
 

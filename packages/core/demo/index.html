@@ -15,21 +15,22 @@
       }
 
       body {
-        --ig-size: 1;
         --sample-body-padding: 20px;
-        background: hsla(var(--ig-surface-100));
+        background: #f4f6fb;
         margin: 0;
         padding: var(--sample-body-padding);
         overflow: hidden;
+        font-family: 'Titillium Web', -apple-system, blinkmacsystemfont, sans-serif;
+        color: #1f2937;
       }
 
       apex-grid {
         flex: 1;
       }
 
-      /* The shell wraps the theme picker, the page nav, and the active
-         page's blurb. It sits above the demo content and stays mounted
-         across hash-driven navigation. */
+      /* The shell wraps the page nav and the active page's blurb. It sits
+         above the demo content and stays mounted across hash-driven
+         navigation. */
       #demo-shell {
         display: flex;
         flex-direction: column;
@@ -44,15 +45,8 @@
         flex-wrap: wrap;
       }
 
-      .theme-picker {
-        --ig-size: 1;
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-      }
-
       /* Tab-style nav along the top. Active page is underlined with the
-         current primary colour so it tracks the loaded theme. */
+         brand colour. */
       .demo-nav {
         display: flex;
         align-items: center;
@@ -76,8 +70,8 @@
       }
 
       .demo-nav a.is-active {
-        background: hsl(from hsl(var(--ig-primary-500)) h s l / 14%);
-        color: hsl(var(--ig-primary-500));
+        background: rgba(13, 111, 211, 0.12);
+        color: #0d6fd3;
         font-weight: 500;
       }
 
@@ -103,7 +97,7 @@
       }
     </style>
   </head>
-  <body class="ig-typography">
+  <body>
     <div class="demo-root">
       <div id="demo-shell"></div>
       <div id="demo"></div>

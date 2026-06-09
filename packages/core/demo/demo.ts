@@ -1,20 +1,12 @@
-// Entry point for the demo. Renders the persistent shell (theme picker +
-// nav) once, then routes the hash to a page-specific module that owns the
-// grid render inside `#demo`. Each "page" is a focused feature showcase so
-// individual functionality can be exercised without interference from
-// neighbouring features.
+// Entry point for the demo. Renders the persistent shell (page nav) once,
+// then routes the hash to a page-specific module that owns the grid render
+// inside `#demo`. Each "page" is a focused feature showcase so individual
+// functionality can be exercised without interference from neighbouring
+// features.
 
-import {
-  defineComponents,
-  IgcInputComponent,
-  IgcSelectComponent,
-  IgcSwitchComponent,
-} from 'igniteui-webcomponents';
 import { html, render } from 'lit';
 import { ApexGrid } from '../src/index.js';
-import { setTheme, themePicker } from './shared.js';
 
-defineComponents(IgcInputComponent, IgcSelectComponent, IgcSwitchComponent);
 ApexGrid.register();
 
 interface PageDef {
@@ -51,7 +43,6 @@ function renderShell() {
   render(
     html`
       <header class="demo-shell-header">
-        ${themePicker()}
         <nav class="demo-nav" aria-label="Demo pages">
           ${pages.map(
             (page) => html`<a
@@ -94,4 +85,3 @@ window.addEventListener('hashchange', () => {
 });
 
 await mountActivePage();
-await setTheme('bootstrap');

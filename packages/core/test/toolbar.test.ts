@@ -79,15 +79,13 @@ describe('Toolbar — export menu', () => {
     expect(fx.exportMenu()?.hasAttribute('hidden')).to.equal(true);
   });
 
-  it('menu lists CSV and XLSX options as accessible menuitems', async () => {
+  it('menu lists the CSV option as an accessible menuitem', async () => {
     fx.exportTrigger()!.click();
     await fx.waitForUpdate();
     const items = fx.exportMenuItems();
-    expect(items).to.have.length(2);
+    expect(items).to.have.length(1);
     expect(items[0].getAttribute('role')).to.equal('menuitem');
     expect(items[0].textContent?.trim()).to.equal('Export CSV');
-    expect(items[1].getAttribute('role')).to.equal('menuitem');
-    expect(items[1].textContent?.trim()).to.equal('Export XLSX');
   });
 
   it('clicking CSV calls grid.exportToCSV and closes the menu', async () => {
@@ -103,22 +101,6 @@ describe('Toolbar — export menu', () => {
     fx.exportMenuItems()[0].click();
     await fx.waitForUpdate();
     expect(csvCalled).to.equal(1);
-    expect(fx.exportMenu()?.hasAttribute('hidden')).to.equal(true);
-  });
-
-  it('clicking XLSX calls grid.exportToXLSX and closes the menu', async () => {
-    let xlsxCalled = 0;
-    const originalXLSX = fx.grid.exportToXLSX.bind(fx.grid);
-    fx.grid.exportToXLSX = (opts) => {
-      xlsxCalled += 1;
-      return originalXLSX({ ...opts, filename: '' });
-    };
-
-    fx.exportTrigger()!.click();
-    await fx.waitForUpdate();
-    fx.exportMenuItems()[1].click();
-    await fx.waitForUpdate();
-    expect(xlsxCalled).to.equal(1);
     expect(fx.exportMenu()?.hasAttribute('hidden')).to.equal(true);
   });
 

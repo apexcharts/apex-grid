@@ -1,8 +1,15 @@
 import { LicenseManager } from 'apex-commons';
 import {
   ApexGrid,
+  downloadBlob,
+  type ExportFormat,
+  type ExportOptions,
   type GridFeatureModule,
+  getColumnLabel,
   registerComponent,
+  resolveExportColumns,
+  resolveExportRows,
+  resolveExportValue,
   StateController,
 } from 'apex-grid/internal';
 import { html, nothing } from 'lit';
@@ -13,6 +20,9 @@ import {
   type AggregationResults,
   aggregationModule,
 } from './features/aggregation.js';
+import { buildXLSX, type XLSXExportOptions } from './features/xlsx.js';
+
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 /** Custom-element tag for the enterprise grid. */
 export const ENTERPRISE_TAG = 'apex-grid-enterprise';
@@ -100,6 +110,58 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   public getAggregations(): AggregationResults {
     const controller = this.stateController.module<AggregationController<T>>(AGGREGATION_MODULE_ID);
     return controller ? controller.compute(this.data, this.aggregations) : {};
+  }
+
+  /**
+   * Adds XLSX (Excel) export to the community grid's CSV-only menu. Excel
+   * export is an enterprise feature; CSV stays in the community package.
+   */
+  public override get exportFormats(): ReadonlyArray<ExportFormat> {
+    return [...super.exportFormats, { id: 'xlsx', label: 'Export XLSX' }];
+  }
+
+  public override exportAs(formatId: string, options: ExportOptions<T> = {}): void {
+    if (formatId === 'xlsx') {
+      this.exportToXLSX(options as XLSXExportOptions<T>);
+      return;
+    }
+    super.exportAs(formatId, options);
+  }
+
+  /**
+   * Exports the current grid contents as an `.xlsx` workbook and (in a browser
+   * context) triggers a download.
+   *
+   * @remarks
+   * Produces a single-sheet workbook with a bold header row. Numbers, booleans
+   * and `Date` values keep their native cell type in Excel; everything else is
+   * written as inline strings. Shares the same `source` / `columns` /
+   * `formatter` options as the community grid's `exportToCSV`, plus an optional
+   * `sheetName`. Pass `filename: ''` to skip the download and only receive the
+   * bytes back.
+   *
+   * @example
+   * ```ts
+   * grid.exportToXLSX();
+   * grid.exportToXLSX({ filename: 'users', sheetName: 'Users' });
+   * ```
+   */
+  public exportToXLSX(options: XLSXExportOptions<T> = {}): Uint8Array {
+    const columns = resolveExportColumns(this, options);
+    const rows = resolveExportRows(this, options.source);
+    const includeHeader = options.includeHeader ?? true;
+    const bytes = buildXLSX({
+      name: options.sheetName ?? 'Sheet1',
+      headers: includeHeader ? columns.map((column) => getColumnLabel(column)) : [],
+      rows: rows.map((row) => columns.map((column) => resolveExportValue(column, row, options))),
+    });
+    const filename = options.filename;
+    if (filename) {
+      downloadBlob(`${filename}.xlsx`, bytes, XLSX_MIME);
+    } else if (filename === undefined) {
+      downloadBlob('data.xlsx', bytes, XLSX_MIME);
+    }
+    return bytes;
   }
 
   protected override createStateController(): StateController<T> {

@@ -10,16 +10,12 @@ import {
   buildCSV,
   type CSVExportOptions,
   downloadBlob,
-  getColumnLabel,
-  resolveExportColumns,
-  resolveExportRows,
-  resolveExportValue,
-  type XLSXExportOptions,
+  type ExportFormat,
+  type ExportOptions,
 } from '../internal/export.js';
 import { EventEmitterBase } from '../internal/mixins/event-emitter.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_TAG } from '../internal/tags.js';
-import { addThemingController } from '../internal/theming.js';
 import type {
   ColumnConfiguration,
   DataPipelineConfiguration,
@@ -40,13 +36,9 @@ import {
   getFilterOperandsFor,
 } from '../internal/utils.js';
 import { watch } from '../internal/watch.js';
-import { buildXLSX } from '../internal/xlsx.js';
 import type { FilterExpression } from '../operations/filter/types.js';
 import type { SortExpression } from '../operations/sort/types.js';
-import { styles as bootstrap } from '../styles/grid/themes/light/grid.bootstrap.css.js';
-import { styles as fluent } from '../styles/grid/themes/light/grid.fluent.css.js';
-import { styles as indigo } from '../styles/grid/themes/light/grid.indigo.css.js';
-import { styles as material } from '../styles/grid/themes/light/grid.material.css.js';
+import { styles as gridStyles } from '../styles/grid/grid.css.js';
 import ApexGridCell from './cell.js';
 import ApexFilterRow from './filter-row.js';
 import ApexGridHeaderRow from './header-row.js';
@@ -627,7 +619,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     return GRID_TAG;
   }
 
-  public static override styles = bootstrap;
+  public static override styles = gridStyles;
 
   /**
    * Registers `<apex-grid>` and its internal dependencies with the custom-element
@@ -791,9 +783,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    *
    * @remarks
    * When `true`, the toolbar shows a download button on the trailing side;
-   * clicking it opens a menu with "Export CSV" and "Export XLSX" entries
-   * that call {@link ApexGrid.exportToCSV} and {@link ApexGrid.exportToXLSX}
-   * respectively. Both methods remain callable programmatically regardless
+   * clicking it opens a menu with one entry per {@link ApexGrid.exportFormats}
+   * (CSV in the community grid) that calls {@link ApexGrid.exportAs}.
+   * {@link ApexGrid.exportToCSV} remains callable programmatically regardless
    * of this flag.
    *
    * @attr show-export
@@ -1242,15 +1234,6 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     }
   }
 
-  constructor() {
-    super();
-
-    addThemingController(this, {
-      light: { bootstrap, material, fluent, indigo },
-      dark: { bootstrap, material, fluent, indigo },
-    });
-  }
-
   protected override updated(): void {
     // Expose ARIA grid semantics on the host so screen readers announce the
     // structure correctly. We do this in `updated()` (post-render) rather
@@ -1595,41 +1578,28 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
-   * Exports the current grid contents as an `.xlsx` workbook and (in a browser
-   * context) triggers a download.
+   * The export formats offered in the toolbar's export menu, in order.
    *
    * @remarks
-   * Produces a single-sheet workbook with a bold header row. Numbers, booleans
-   * and `Date` values keep their native cell type in Excel; everything else is
-   * written as inline strings. Sharing the same `source` / `columns` /
-   * `formatter` options as {@link ApexGrid.exportToCSV}, plus an optional
-   * `sheetName`. Pass `filename: ''` to skip the download and only receive
-   * the bytes back.
-   *
-   * @example
-   * ```ts
-   * grid.exportToXLSX();
-   * grid.exportToXLSX({ filename: 'users', sheetName: 'Users' });
-   * ```
+   * The community grid offers CSV only. This is the seam derived grids use to
+   * contribute more formats: `@apexcharts/grid-enterprise` overrides it to add
+   * `'xlsx'`. The toolbar renders one menu item per entry and dispatches the
+   * chosen id to {@link ApexGrid.exportAs}.
    */
-  public exportToXLSX(options: XLSXExportOptions<T> = {}): Uint8Array {
-    const columns = resolveExportColumns(this, options);
-    const rows = resolveExportRows(this, options.source);
-    const includeHeader = options.includeHeader ?? true;
-    const sheet = {
-      name: options.sheetName ?? 'Sheet1',
-      headers: includeHeader ? columns.map((column) => getColumnLabel(column)) : [],
-      rows: rows.map((row) => columns.map((column) => resolveExportValue(column, row, options))),
-    };
-    const bytes = buildXLSX(sheet);
-    const filename = options.filename;
-    const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-    if (filename) {
-      downloadBlob(`${filename}.xlsx`, bytes, mime);
-    } else if (filename === undefined) {
-      downloadBlob('data.xlsx', bytes, mime);
+  public get exportFormats(): ReadonlyArray<ExportFormat> {
+    return [{ id: 'csv', label: 'Export CSV' }];
+  }
+
+  /**
+   * Exports the grid in the given format (one of {@link ApexGrid.exportFormats}).
+   * Called by the toolbar's export menu. The community grid handles `'csv'`;
+   * derived grids override to handle additional formats, delegating to `super`
+   * for the ones they don't add.
+   */
+  public exportAs(formatId: string, options: ExportOptions<T> = {}): void {
+    if (formatId === 'csv') {
+      this.exportToCSV(options as CSVExportOptions<T>);
     }
-    return bytes;
   }
 
   /**

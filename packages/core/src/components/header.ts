@@ -2,12 +2,8 @@ import { consume } from '@lit/context';
 import { html, LitElement, nothing } from 'lit';
 import { property } from 'lit/decorators.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
-import {
-  MIN_COL_RESIZE_WIDTH,
-  SORT_ICON_ASCENDING,
-  SORT_ICON_DESCENDING,
-} from '../internal/constants.js';
-import { renderIcon } from '../internal/icons.js';
+import { MIN_COL_RESIZE_WIDTH } from '../internal/constants.js';
+import { renderSortArrows } from '../internal/icons.js';
 import { partNameMap } from '../internal/part-map.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_HEADER_TAG } from '../internal/tags.js';
@@ -228,11 +224,7 @@ export default class ApexGridHeader<T extends object> extends LitElement {
         ? idx + 1
         : nothing
       : nothing;
-    const icon = state
-      ? state.direction === 'ascending'
-        ? SORT_ICON_ASCENDING
-        : SORT_ICON_DESCENDING
-      : SORT_ICON_ASCENDING;
+    const direction = state?.direction ?? 'none';
 
     const label =
       state?.direction === 'ascending'
@@ -246,22 +238,20 @@ export default class ApexGridHeader<T extends object> extends LitElement {
         ? html`<button
             type="button"
             part=${partNameMap({ action: true, sorted: !!state?.direction })}
+            data-sort-active=${direction}
             data-sort-index=${attr === nothing ? '' : (attr as number)}
             aria-label=${label}
             @click=${this.#handleClick}
           >
-            ${renderIcon(icon, {
-              part: partNameMap({ 'sorting-action': !!state }),
-            })}
+            ${renderSortArrows()}
           </button>`
         : html`<span
             part=${partNameMap({ action: true, sorted: !!state?.direction })}
+            data-sort-active=${direction}
             data-sort-index=${attr === nothing ? '' : (attr as number)}
             aria-hidden="true"
           >
-            ${renderIcon(icon, {
-              part: partNameMap({ 'sorting-action': !!state }),
-            })}
+            ${renderSortArrows()}
           </span>`
       : nothing;
   }

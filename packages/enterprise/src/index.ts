@@ -4,4 +4,5 @@ export type {
   AggregationFn,
   AggregationResults,
 } from './features/aggregation.js';
+export type { XLSXExportOptions } from './features/xlsx.js';
 export { ApexGridEnterprise, ENTERPRISE_TAG } from './grid-enterprise.js';

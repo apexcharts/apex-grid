@@ -1,0 +1,56 @@
+// Shared custom checkbox look, used by the three native checkboxes the grid
+// renders: the row selection box (`body-row`), the header select-all box
+// (`header-row`), and the boolean cell mark (`body-cell`). Reused via a mixin
+// so the premium styling lives in one place.
+//
+// Native `<input type="checkbox">` is restyled with `appearance: none` and an
+// SVG `background-image` for the tick / indeterminate bar (replaced elements
+// can't carry a reliable `::after`). Tick + bar are white-on-brand.
+
+@mixin apex-checkbox() {
+    appearance: none;
+    inline-size: 14px;
+    block-size: 14px;
+    margin: 0;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    border: 1.4px solid color-mix(in srgb, var(--ag-brand) 30%, transparent);
+    border-radius: var(--ag-radius-xs);
+    background-color: var(--ag-surface);
+    background-repeat: no-repeat;
+    background-position: center;
+    cursor: pointer;
+    transition:
+        background-color var(--ag-dur-fast) var(--ag-ease),
+        border-color var(--ag-dur-fast) var(--ag-ease),
+        transform var(--ag-dur-fast) var(--ag-ease);
+
+    &:hover {
+        border-color: color-mix(in srgb, var(--ag-brand) 55%, transparent);
+    }
+
+    &:active {
+        transform: scale(0.92);
+    }
+
+    &:checked,
+    &:indeterminate {
+        background-color: var(--ag-brand);
+        border-color: var(--ag-brand);
+    }
+
+    // White tick, 1.7px stroke.
+    &:checked {
+        background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3 7.4 5.8 10.2 11 4.2' fill='none' stroke='%23ffffff' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    }
+
+    // White horizontal bar, 7px × 1.6px.
+    &:indeterminate {
+        background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Crect x='3.5' y='6.2' width='7' height='1.6' rx='0.8' fill='%23ffffff'/%3E%3C/svg%3E");
+    }
+
+    &:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--ag-brand) 50%, transparent);
+        outline-offset: 2px;
+    }
+}

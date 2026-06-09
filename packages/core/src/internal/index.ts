@@ -13,6 +13,14 @@
 export { ApexGrid } from '../components/grid.js';
 export { gridStateContext, StateController } from '../controllers/state.js';
 export { PIPELINE } from './constants.js';
+export type { ExportCellValue, ExportFormat, ExportOptions } from './export.js';
+export {
+  downloadBlob,
+  getColumnLabel,
+  resolveExportColumns,
+  resolveExportRows,
+  resolveExportValue,
+} from './export.js';
 export type { GridFeatureModule } from './feature-module.js';
 export { registerComponent } from './register.js';
 export type { ActiveNode, GridHost } from './types.js';

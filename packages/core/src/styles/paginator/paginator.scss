@@ -1,26 +1,25 @@
 @use '../common' as *;
 
-$header-background: var(--igx-header-background, var(--header-background));
-$header-text-color: var(--igx-header-text-color, var(--header-text-color));
-$header-border-width: var(--igx-header-border-width, var(--header-border-width));
-$header-border-style: var(--igx-header-border-style, var(--header-border-style));
-$header-border-color: var(--igx-header-border-color, var(--header-border-color));
+// Resolution chain: igniteui override → current semantic var → premium default.
+$header-text-color: var(--igx-header-text-color, var(--header-text-color, var(--ag-text-muted)));
+$header-border-color: var(--igx-header-border-color, var(--header-border-color, var(--ag-hairline)));
 
 :host {
     --ig-size: 1;
 
     grid-row: paginator-row;
     display: block;
-    background: $header-background;
+    // Subtle reverse gradient (lighter toward the bottom) so the footer reads
+    // as a grounded surface mirroring the elevated header. Opaque — the footer
+    // is sticky and must mask body rows scrolling underneath it.
+    background: linear-gradient(0deg, #fbfcfd 0%, #f6f7f8 100%);
     color: $header-text-color;
-    border-block-start: $header-border-width $header-border-style $header-border-color;
-    font-size: rem(12px);
+    border-block-start: 1px solid $header-border-color;
+    font-size: 11.5px;
     z-index: calc(var(--z-index-base) + 4);
 
     // Sticky in both axes so the paginator stays anchored to the bottom-left of
-    // the viewport regardless of how the grid host is scrolled. `width` is clamped
-    // to the host's clientWidth (written by `GridDOMController.recomputeHostWidth`)
-    // so it doesn't extend across the scrollable area.
+    // the viewport regardless of how the grid host is scrolled.
     position: sticky;
     inset-block-end: 0;
     inset-inline-start: 0;
@@ -33,7 +32,7 @@ $header-border-color: var(--igx-header-border-color, var(--header-border-color))
     display: flex;
     align-items: center;
     gap: rem(12px);
-    padding: rem(4px) rem(12px);
+    padding: var(--ag-footer-pad);
     min-height: rem(32px);
 }
 
@@ -45,17 +44,17 @@ $header-border-color: var(--igx-header-border-color, var(--header-border-color))
         appearance: auto;
         padding: rem(2px) rem(6px);
         font: inherit;
-        font-size: rem(12px);
-        color: inherit;
-        background: transparent;
-        border: 1px solid $header-border-color;
-        border-radius: rem(3px);
+        font-size: 11.5px;
+        color: var(--ag-text-body);
+        background: var(--ag-surface);
+        border: 1px solid var(--ag-hairline);
+        border-radius: var(--ag-radius-sm);
         line-height: 1;
         cursor: pointer;
     }
 
     select:focus-visible {
-        outline: rem(2px) solid var(--ig-primary-500, currentcolor);
+        outline: rem(2px) solid color-mix(in srgb, var(--ag-brand) 50%, transparent);
         outline-offset: rem(1px);
     }
 }
@@ -64,8 +63,8 @@ $header-border-color: var(--igx-header-border-color, var(--header-border-color))
     flex: 1;
     text-align: center;
     white-space: nowrap;
-    color: inherit;
-    opacity: 0.85;
+    color: $header-text-color;
+    font-variant-numeric: tabular-nums;
 }
 
 [part='paginator-controls'] {
@@ -80,23 +79,29 @@ $header-border-color: var(--igx-header-border-color, var(--header-border-color))
     text-align: center;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
+    font-weight: var(--ag-fw-semibold);
+    color: var(--ag-text);
 }
 
 [part='paginator-button'] {
     appearance: none;
     background: transparent;
-    color: inherit;
+    color: var(--ag-text-body);
     border: 0;
     padding: rem(2px);
     margin: 0;
-    width: rem(24px);
-    height: rem(24px);
+    width: rem(22px);
+    height: rem(22px);
+    min-width: rem(22px);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: rem(3px);
+    border-radius: var(--ag-radius-sm);
     cursor: pointer;
     line-height: 0;
+    transition:
+        background-color var(--ag-dur-fast) var(--ag-ease),
+        color var(--ag-dur-fast) var(--ag-ease);
 
     svg {
         display: block;
@@ -107,16 +112,17 @@ $header-border-color: var(--igx-header-border-color, var(--header-border-color))
 }
 
 [part='paginator-button']:hover:not(:disabled) {
-    background: var(--igx-hover-background, rgb(0 0 0 / 6%));
+    background: hsl(from currentcolor h s l / 8%);
+    color: var(--ag-text);
 }
 
 [part='paginator-button']:focus-visible {
-    outline: rem(2px) solid var(--ig-primary-500, currentcolor);
+    outline: rem(2px) solid color-mix(in srgb, var(--ag-brand) 50%, transparent);
     outline-offset: rem(-2px);
 }
 
 [part='paginator-button']:disabled {
-    opacity: 0.4;
+    color: var(--ag-text-subtle);
     cursor: not-allowed;
 }
 

@@ -1,9 +1,13 @@
-import type { ExportCellValue } from './export.js';
+import type { ExportCellValue, ExportOptions } from 'apex-grid/internal';
 
 // Minimal write-only OOXML (XLSX) implementation. Produces a single-sheet
 // workbook with bold headers and a date cell format, packaged in a store-only
 // (no-compression) ZIP container. No external dependencies — the goal is to
 // keep the bundle footprint of the export feature near zero.
+//
+// Moved out of the community `apex-grid` package in v3: Excel export is an
+// enterprise feature (CSV remains free), matching the AG Grid community/
+// enterprise split.
 
 const encoder = new TextEncoder();
 
@@ -202,6 +206,15 @@ export interface XLSXSheetData {
   headers: string[];
   /** Data rows. Each row is an array of cell values, aligned to `headers`. */
   rows: ExportCellValue[][];
+}
+
+/**
+ * Options for {@link ApexGridEnterprise.exportToXLSX}. Mirrors the community
+ * grid's CSV options, plus an optional worksheet name.
+ */
+export interface XLSXExportOptions<T extends object> extends ExportOptions<T> {
+  /** Worksheet tab name. Defaults to `'Sheet1'`. Trimmed to 31 chars. */
+  sheetName?: string;
 }
 
 /** Filename-illegal characters per the OOXML spec for sheet names. */

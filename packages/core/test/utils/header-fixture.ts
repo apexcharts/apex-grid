@@ -32,7 +32,17 @@ export default class HeaderTestFixture<T extends object> {
   public get sortIcon() {
     const svg = this.sortPart.querySelector('svg');
     if (!svg) return null as unknown as { name: string };
-    return { name: svg.getAttribute('data-icon') ?? '' };
+    // The sort affordance is a stacked up/down chevron; the active direction is
+    // reflected on the sort button via `data-sort-active`. Map it back to the
+    // legacy icon names the sort specs assert on.
+    const direction = this.sortPart.getAttribute('data-sort-active') ?? '';
+    const name =
+      direction === 'ascending'
+        ? 'arrow-upward'
+        : direction === 'descending'
+          ? 'arrow-downward'
+          : '';
+    return { name };
   }
 
   public get isSorted() {

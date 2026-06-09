@@ -1,53 +1,50 @@
 @use '../common' as *;
+@use '../checkbox' as *;
+@use 'cell-renderers';
 
-$row-border-width: var(--igx-row-border-width, var(--row-border-width));
-$cell-active-border-color: var(--igx-cell-active-border-color, var(--cell-active-border-color));
-$inset-shadow-width: #{rem(1px)};
+// Resolution chain: igniteui override → current semantic var → premium default.
+$cell-active-border-color: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ag-brand)));
+$inset-shadow-width: 1px;
 
-// Anchor the editor accent to the theme's --cell-active-border-color so the
-// caret, focus outline, and highlighted-option color in the editor all
-// match the cell's active outline. Each grid theme sets that token to its
-// own accent (Material → secondary, Bootstrap/Fluent/Indigo → primary), so
-// the editor visuals follow the same theme-specific accent as the rest of
-// the grid instead of defaulting to a generic --ig-primary-500.
-$editor-accent: var(--igx-cell-editor-accent-color, var(--cell-active-border-color, var(--ig-primary-500)));
-$editor-tint: hsl(from #{$editor-accent} h s 95%);
-$editor-background: var(--igx-cell-editor-background, var(--ig-surface-500, white));
+// Anchor the editor accent to the active-cell color so the caret, focus
+// outline, and highlighted option all match the cell's active outline.
+$editor-accent: var(--igx-cell-editor-accent-color, var(--cell-active-border-color, var(--ag-brand)));
+$editor-background: var(--igx-cell-editor-background, var(--ag-surface));
 
 :host {
     position: relative;
     display: inline-flex;
     flex: 1 0 0;
     align-items: center;
-    padding: 0 $ig-cells-padding;
+    padding: 0 var(--ag-cell-pad-x);
     color: inherit;
-    border-right: $row-border-width solid transparent;
-    font-size: #{rem(13px)};
+    font-size: var(--ag-fs-cell);
     overflow-wrap: anywhere;
 
     // Cells are inline-flex siblings, so the browser's word/paragraph
-    // selection on a double-click can bleed across cell boundaries —
-    // grabbing the neighbouring column's text. Suppress that here; native
-    // editors below opt back in so the user can still select text inside
-    // a text/number/date input.
+    // selection on a double-click can bleed across cell boundaries. Suppress
+    // that; native editors below opt back in.
     user-select: none;
+}
 
-    &:last-of-type {
-        border-right: 0;
-    }
+// Numeric cells: tabular figures, right-aligned, slightly heavier in the
+// primary text color so columns of numbers line up and read as data.
+:host([data-cell-type='number']),
+:host([data-cell-type='currency']) {
+    justify-content: flex-end;
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--ag-fw-semibold);
+    color: var(--ag-text);
 }
 
 :host([active]) {
     outline: none;
-    box-shadow: inset 0 0 0 $inset-shadow-width $cell-active-border-color;
+    box-shadow: inset 0 0 0 $inset-shadow-width #{$cell-active-border-color};
 }
 
-// While editing, the cell host IS the editor surface — solid white
-// background, the cell-level active outline serves as the editor border.
-// The inline `<input>` below renders chromeless on top of this, so there
-// are never two competing borders to look at.
-// `overflow: hidden` clips the inline editor strictly to the column width
-// so neighbouring cells never get covered.
+// While editing, the cell host IS the editor surface — solid background, the
+// cell-level active outline serves as the editor border. The inline `<input>`
+// below renders chromeless on top, so there are never two competing borders.
 :host([editing]) {
     background: $editor-background;
     z-index: calc(var(--z-index-base) + 2);
@@ -55,24 +52,15 @@ $editor-background: var(--igx-cell-editor-background, var(--ig-surface-500, whit
     cursor: text;
 }
 
-// Pinned cells use `background: inherit` from the data-pinned rule below,
-// which would otherwise outweigh the editing background. Restore the
-// editor surface explicitly for pinned editing cells.
 :host([editing][data-pinned='start']),
 :host([editing][data-pinned='end']) {
     background: $editor-background;
 }
 
-// Select-type editing cells render a listbox popover anchored to the cell
-// that extends below the cell's box. Allow that to escape the cell's clip
-// region — the popover has its own background + shadow so it reads as a
-// distinct surface.
+// Select-type editing cells render a listbox popover that extends below the
+// cell; allow it to escape the cell's clip region.
 :host([editing][data-cell-type='select']) {
     overflow: visible;
-}
-
-:host(:last-child) {
-    border-inline-end: none;
 }
 
 :host([data-pinned='start']),
@@ -90,51 +78,53 @@ $editor-background: var(--igx-cell-editor-background, var(--ig-surface-500, whit
     inset-inline-end: var(--apex-pin-offset, 0);
 }
 
-:host([data-pin-edge='start']) {
-    box-shadow: rem(2px) 0 rem(4px) rgb(0 0 0 / 6%);
+// Frozen-column edge: a soft brand fade (not a hard separator). It sells "this
+// column is fixed" without a 1px border.
+:host([data-pin-edge='start'])::after,
+:host([data-pin-edge='end'])::after {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    width: 14px;
+    pointer-events: none;
 }
 
-:host([data-pin-edge='end']) {
-    box-shadow: rem(-2px) 0 rem(4px) rgb(0 0 0 / 6%);
+:host([data-pin-edge='start'])::after {
+    inset-inline-end: -14px;
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--ag-brand) 6%, transparent) 0%,
+        color-mix(in srgb, var(--ag-brand) 0%, transparent) 100%
+    );
 }
 
-// Pin-edge cells get a directional shadow; an active cell at the pin edge has
-// to layer the inset active border on top of that shadow so single-clicking
-// the last pinned column still shows the active outline.
-:host([active][data-pin-edge='start']) {
-    box-shadow:
-        inset 0 0 0 $inset-shadow-width $cell-active-border-color,
-        rem(2px) 0 rem(4px) rgb(0 0 0 / 6%);
+:host([data-pin-edge='end'])::after {
+    inset-inline-start: -14px;
+    background: linear-gradient(
+        270deg,
+        color-mix(in srgb, var(--ag-brand) 6%, transparent) 0%,
+        color-mix(in srgb, var(--ag-brand) 0%, transparent) 100%
+    );
 }
 
-:host([active][data-pin-edge='end']) {
-    box-shadow:
-        inset 0 0 0 $inset-shadow-width $cell-active-border-color,
-        rem(-2px) 0 rem(4px) rgb(0 0 0 / 6%);
-}
-
-// Inline editor — chromeless `<input>` painted across the cell. The cell
-// host already provides the editor surface (white background) and the
-// active outline; the input itself contributes only the caret + text
-// selection, so the user sees a single clean border around the cell.
+// Inline editor — chromeless `<input>` painted across the cell. The cell host
+// already provides the editor surface + active outline; the input contributes
+// only the caret + text selection.
 input[data-apex-editor] {
     box-sizing: border-box;
     position: absolute;
     inset: 0;
     width: auto;
     height: auto;
-    padding: 0 $ig-cells-padding;
+    padding: 0 var(--ag-cell-pad-x);
     margin: 0;
     border: 0;
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: #{rem(13px)};
+    font-size: var(--ag-fs-cell);
     outline: none;
     caret-color: $editor-accent;
-
-    // Re-enable text selection inside active editors so users can mark
-    // and replace portions of the value while editing.
     user-select: text;
 }
 
@@ -144,24 +134,24 @@ input[type='number'][data-apex-editor] {
 }
 
 input[type='checkbox'][data-apex-editor] {
+    @include apex-checkbox;
+
     position: relative;
     inset: auto;
-    inline-size: #{rem(16px)};
-    block-size: #{rem(16px)};
-    margin: 0;
-    border: 0;
-    border-radius: 0;
-    background: none;
-    box-shadow: none;
-    outline: revert;
-    accent-color: $editor-accent;
 }
 
-// Built-in rating display + editor (column `type: 'rating'`). Stars render at
-// a fixed size relative to the cell font-size; filled stars use the rating
-// accent token (defaults to gold), unfilled stars use the cell's foreground
-// color at low opacity.
-$rating-color: var(--igx-rating-color, var(--ig-warn-500, #f5a623));
+// Built-in boolean display (column `type: 'boolean'`).
+input[part~='boolean-mark'] {
+    @include apex-checkbox;
+}
+
+input[part~='boolean-mark'][aria-readonly='true'] {
+    cursor: default;
+    pointer-events: none;
+}
+
+// Built-in rating display + editor (column `type: 'rating'`).
+$rating-color: var(--igx-rating-color, var(--ag-watch, #f5a623));
 $star-size: #{rem(14px)};
 
 [part~='rating'] {
@@ -206,7 +196,7 @@ $star-size: #{rem(14px)};
         cursor: pointer;
         color: currentcolor;
         opacity: 0.35;
-        border-radius: #{rem(3px)};
+        border-radius: var(--ag-radius-xs);
 
         &:hover {
             opacity: 0.75;
@@ -223,27 +213,7 @@ $star-size: #{rem(14px)};
     }
 }
 
-// Built-in boolean display (column `type: 'boolean'`). For editable columns
-// the checkbox is the interactive control — a single click toggles and
-// commits via `ctx.commit`. Non-editable boolean cells get the read-only
-// fallback (pointer-events disabled, cursor default) so the checkbox reads
-// as a state indicator rather than a toggle.
-input[part~='boolean-mark'] {
-    inline-size: #{rem(16px)};
-    block-size: #{rem(16px)};
-    margin: 0;
-    cursor: pointer;
-    accent-color: $editor-accent;
-}
-
-input[part~='boolean-mark'][aria-readonly='true'] {
-    cursor: default;
-    pointer-events: none;
-}
-
-// Built-in select display (column `type: 'select'`). Closed state is just
-// the value's label as plain text — no chrome, no chevron. The dropdown
-// affordance lives in the listbox popover that appears on edit.
+// Built-in select display (column `type: 'select'`).
 [part~='select-label'] {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -252,11 +222,6 @@ input[part~='boolean-mark'][aria-readonly='true'] {
     inline-size: 100%;
 }
 
-// Built-in select editor — a custom listbox anchored to the cell. The cell
-// host is `position: relative`, so the popover positions itself directly
-// below the cell. We use `position: absolute` (not fixed) so a transformed
-// ancestor — the virtualizer applies `transform: translate` to each row —
-// doesn't re-parent the popover off-screen.
 [part~='select-popover'] {
     position: absolute;
     inset-block-start: 100%;
@@ -265,8 +230,8 @@ input[part~='boolean-mark'][aria-readonly='true'] {
     padding: #{rem(4px)} 0;
     min-inline-size: 100%;
     background: $editor-background;
-    border: #{rem(1px)} solid hsl(from currentcolor h s l / 22%);
-    border-radius: #{rem(4px)};
+    border: #{rem(1px)} solid var(--ag-brand-line);
+    border-radius: var(--ag-radius-sm);
     box-shadow:
         0 #{rem(2px)} #{rem(4px)} rgb(0 0 0 / 6%),
         0 #{rem(6px)} #{rem(16px)} rgb(0 0 0 / 12%);
@@ -289,31 +254,30 @@ input[part~='boolean-mark'][aria-readonly='true'] {
     text-overflow: ellipsis;
 
     &:hover {
-        background: hsl(from #{$editor-accent} h s l / 8%);
+        background: var(--ag-brand-softer);
     }
 
     &[part~='selected'] {
-        background: hsl(from #{$editor-accent} h s l / 14%);
-        color: $editor-accent;
-        font-weight: 500;
+        background: var(--ag-brand-soft);
+        color: var(--ag-brand-strong);
+        font-weight: var(--ag-fw-semibold);
     }
 
     &:focus-visible {
-        background: hsl(from #{$editor-accent} h s l / 14%);
+        background: var(--ag-brand-soft);
         outline: #{rem(2px)} solid $editor-accent;
         outline-offset: #{rem(-2px)};
     }
 }
 
-// Built-in image display (column `type: 'image'`). Sized to fit the cell
-// height; circle variant crops via border-radius.
+// Built-in image display (column `type: 'image'`).
 [part~='image'] {
     block-size: calc(100% - #{rem(8px)});
     max-block-size: #{rem(40px)};
     inline-size: auto;
     aspect-ratio: 1 / 1;
     object-fit: cover;
-    border-radius: #{rem(3px)};
+    border-radius: var(--ag-radius-xs);
     display: block;
     flex-shrink: 0;
 }
@@ -322,17 +286,7 @@ input[part~='boolean-mark'][aria-readonly='true'] {
     border-radius: 50%;
 }
 
-// `<input type="date">` inherits the chromeless `input[data-apex-editor]`
-// styling; no additional rules needed.
-
 // --- Tree (nested-rows) affordance -----------------------------------------
-// Rendered as a prefix inside the "group column" cell: a depth-based indent
-// spacer, a chevron toggle (or leaf placeholder), and the cell body. The
-// spacer's `inline-size` is driven inline from cell.ts and matches the depth
-// times `childIndent`.
-
-$tree-accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ig-primary-500)));
-
 [part='tree-indent'] {
     flex-shrink: 0;
     display: inline-block;
@@ -344,41 +298,41 @@ $tree-accent: var(--igx-cell-active-border-color, var(--cell-active-border-color
     justify-content: center;
     flex-shrink: 0;
 
-    // Touch target floor (WCAG 2.5.8).
+    // Touch target floor (WCAG 2.5.8); visible chevron is 14px.
     inline-size: #{rem(24px)};
     block-size: #{rem(24px)};
     margin-inline-end: #{rem(4px)};
     padding: 0;
-    border: 0;
-    border-radius: 50%;
+    border: 1px solid transparent;
+    border-radius: var(--ag-radius-xs);
     background: transparent;
-    color: inherit;
+    color: var(--ag-text-muted);
     cursor: pointer;
-    transition: background-color 120ms ease;
+    transition:
+        background-color var(--ag-dur-fast) var(--ag-ease),
+        border-color var(--ag-dur-fast) var(--ag-ease),
+        color var(--ag-dur-fast) var(--ag-ease);
 
     &:hover {
-        background: hsl(from currentcolor h s l / 8%);
+        background: var(--ag-brand-soft);
+        border-color: var(--ag-brand-line);
+        color: var(--ag-brand-strong);
     }
 
     &:focus-visible {
-        outline: #{rem(2px)} solid #{$tree-accent};
+        outline: #{rem(2px)} solid color-mix(in srgb, var(--ag-brand) 50%, transparent);
         outline-offset: #{rem(1px)};
     }
 }
 
 [part='tree-chevron'] {
-    transition: transform 160ms ease;
+    transition: transform var(--ag-dur-med) var(--ag-ease);
 }
 
-// Rotate the chevron downward when the parent row is currently expanded.
-// The row element reflects the `data-tree-expanded` attribute when the
-// group cell is rendering for an expanded row.
 :host([data-tree-expanded]) [part='tree-chevron'] {
     transform: rotate(90deg);
 }
 
-// Leaf placeholder — reserves the same width as the chevron toggle so that
-// leaf rows align with their siblings that do have a toggle.
 [part='tree-spacer'] {
     display: inline-block;
     flex-shrink: 0;
@@ -393,4 +347,3 @@ $tree-accent: var(--igx-cell-active-border-color, var(--cell-active-border-color
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-

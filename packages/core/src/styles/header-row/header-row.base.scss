@@ -1,19 +1,20 @@
 @use '../common' as *;
+@use '../checkbox' as *;
 
-$header-background: var(--igx-header-background, var(--header-background));
-$header-text-color: var(--igx-header-text-color, var(--header-text-color));
-$header-border-width: var(--igx-header-border-width, var(--header-border-width));
-$header-border-style: var(--igx-header-border-style, var(--header-border-style));
-$header-border-color: var(--igx-header-border-color, var(--header-border-color));
-$filtering-header-background: var(--igx-filtering-header-background, var(--filtering-header-background));
+// Resolution chain: igniteui override → current semantic var → premium default.
+$header-background: var(--igx-header-background, var(--header-background, var(--ag-surface-elevated)));
+$header-text-color: var(--igx-header-text-color, var(--header-text-color, var(--ag-text-muted)));
+$header-border-color: var(--igx-header-border-color, var(--header-border-color, var(--ag-hairline)));
+$filtering-header-background: var(--igx-filtering-header-background, var(--filtering-header-background, transparent));
+$accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ag-brand)));
 
 :host {
     display: grid;
     grid-row: header-row;
-    min-height: $ig-cells-min-height;
+    min-height: var(--ag-header-h);
     background: $header-background;
     color: $header-text-color;
-    border-block-end: $header-border-width $header-border-style $header-border-color;
+    border-block-end: 1px solid $header-border-color;
     z-index: calc(var(--z-index-base) + 3);
 
     // The grid host owns vertical scrolling, so the header row must stay anchored
@@ -41,22 +42,16 @@ $filtering-header-background: var(--igx-filtering-header-background, var(--filte
     inset-inline-start: 0;
     z-index: calc(var(--z-index-base) + 2);
     background: inherit;
-    border-inline-end: $header-border-width $header-border-style $header-border-color;
+    border-inline-end: 1px solid $header-border-color;
 }
 
 [part='selection-header'] input[type='checkbox'] {
-    inline-size: #{rem(16px)};
-    block-size: #{rem(16px)};
-    margin: 0;
-    cursor: pointer;
-    accent-color: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ig-primary-500)));
+    @include apex-checkbox;
 }
 
 // Built-in expansion header cell — pinned start so it stays aligned with the
 // chevron toggle in the body rows. Renders an "expand all" / "collapse all"
 // button when at least one row is expandable.
-$expansion-accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ig-primary-500)));
-
 [part='expansion-header'] {
     display: flex;
     align-items: center;
@@ -65,7 +60,7 @@ $expansion-accent: var(--igx-cell-active-border-color, var(--cell-active-border-
     inset-inline-start: 0;
     z-index: calc(var(--z-index-base) + 2);
     background: inherit;
-    border-inline-end: $header-border-width $header-border-style $header-border-color;
+    border-inline-end: 1px solid $header-border-color;
 }
 
 [part='expansion-header'] [part='expansion-toggle'] {
@@ -73,51 +68,56 @@ $expansion-accent: var(--igx-cell-active-border-color, var(--cell-active-border-
     align-items: center;
     justify-content: center;
 
-    // Touch target: 24x24 minimum (WCAG 2.5.8).
-    inline-size: #{rem(24px)};
-    block-size: #{rem(24px)};
+    // Touch target: 24x24 minimum (WCAG 2.5.8); visible chevron is 14px.
+    inline-size: rem(24px);
+    block-size: rem(24px);
     padding: 0;
-    border: 0;
-    border-radius: 50%;
+    border: 1px solid transparent;
+    border-radius: var(--ag-radius-xs);
     background: transparent;
-    color: inherit;
+    color: var(--ag-text-muted);
     cursor: pointer;
+    transition:
+        background-color var(--ag-dur-fast) var(--ag-ease),
+        border-color var(--ag-dur-fast) var(--ag-ease),
+        color var(--ag-dur-fast) var(--ag-ease);
 
     &:hover {
-        background: hsl(from currentcolor h s l / 8%);
+        background: var(--ag-brand-softer);
+        border-color: var(--ag-brand-line);
+        color: var(--ag-brand-strong);
     }
 
     &:focus-visible {
-        outline: 2px solid $expansion-accent;
-        outline-offset: 1px;
+        outline: 2px solid color-mix(in srgb, var(--ag-brand) 50%, transparent);
+        outline-offset: 2px;
     }
 }
 
 [part='expansion-header'] [part='expansion-chevron'] {
-    transition: transform 160ms ease;
+    transition: transform var(--ag-dur-med) var(--ag-ease);
 }
 
 // Floating "ghost" rendered while a column is being dragged. The ghost is
 // `position: fixed` (viewport-relative) so it follows the cursor across
 // the entire grid regardless of the header row's sticky positioning. A
 // subtle tilt gives the user a "lifted" cue.
-$drag-ghost-accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ig-primary-500, currentcolor)));
-$drag-ghost-bg: var(--igx-cell-editor-background, var(--ig-surface-500, white));
+$drag-ghost-bg: var(--igx-cell-editor-background, var(--ag-surface));
 
 [part='drag-ghost'] {
     position: fixed;
     display: flex;
     align-items: center;
-    padding: 0 $ig-cells-padding;
+    padding: 0 var(--ag-cell-pad-x);
     background: $drag-ghost-bg;
-    color: inherit;
-    border: #{rem(1px)} solid $drag-ghost-accent;
-    border-radius: #{rem(4px)};
+    color: var(--ag-text-body);
+    border: 1px solid var(--ag-brand-line);
+    border-radius: var(--ag-radius-sm);
     box-shadow:
         0 #{rem(2px)} #{rem(6px)} rgb(0 0 0 / 10%),
         0 #{rem(10px)} #{rem(28px)} rgb(0 0 0 / 18%);
-    font-weight: 600;
-    font-size: #{rem(12px)};
+    font-weight: var(--ag-fw-semibold);
+    font-size: var(--ag-fs-cell);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

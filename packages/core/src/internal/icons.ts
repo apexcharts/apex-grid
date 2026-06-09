@@ -155,3 +155,21 @@ export function renderIcon(name: string, opts: IconRenderOptions = {}): Template
     data-sort-index=${ifDefined(opts.sortIndex)}
   >${icon.paths}</svg>`;
 }
+
+/**
+ * Renders the stacked up/down sort affordance used by sortable column headers.
+ * Both chevrons are dimmed by default; the header CSS lifts the inactive one on
+ * hover and paints the active direction in the brand color, driven by the
+ * button's `data-sort-active` (`'ascending' | 'descending' | 'none'`) attribute.
+ */
+export function renderSortArrows(): TemplateResult {
+  return html`<svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 6 9"
+    width="6"
+    height="9"
+    aria-hidden="true"
+    focusable="false"
+    part="sort-arrows"
+  >${svg`<path part="sort-up" d="M3 0.5 5.5 3.5 0.5 3.5Z" /><path part="sort-down" d="M3 8.5 0.5 5.5 5.5 5.5Z" />`}</svg>`;
+}

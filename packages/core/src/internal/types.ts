@@ -55,8 +55,43 @@ export type PropertyType<T, K extends Keys<T> = Keys<T>> =
  *   {@link BaseColumnConfiguration.shape} to pick between `'square'`
  *   (default) and `'circle'`. The cell's default text editor is used for
  *   editing the URL string when `editable: true` is set.
+ *
+ * The remaining types are premium presentation renderers over primitive
+ * values; for sorting / filtering they behave as their underlying value type:
+ * - `'currency'` formats a number via `Intl.NumberFormat` (tabular, right
+ *   aligned). Configure with {@link BaseColumnConfiguration.currency} /
+ *   {@link BaseColumnConfiguration.locale}. Editable via a number input.
+ * - `'avatar'` renders the value's first letter in a tinted circle (hue is
+ *   derived from the value, stable per row).
+ * - `'badge'` renders the value as a colored pill. Pick the look with
+ *   {@link BaseColumnConfiguration.badgeVariant}.
+ * - `'progress'` renders a number (0..`max`, default `max` 100) as a health
+ *   bar; the fill color tiers at ≥80 / ≥65 / below.
+ * - `'sparkline'` renders a `number[]` as an inline trend chart with an
+ *   optional delta label ({@link BaseColumnConfiguration.showDelta}).
+ * - `'status'` renders a pill with a leading dot. The state is taken from
+ *   {@link BaseColumnConfiguration.statusVariant} or inferred from the value.
  */
-export type DataType = 'number' | 'string' | 'boolean' | 'select' | 'rating' | 'date' | 'image';
+export type DataType =
+  | 'number'
+  | 'string'
+  | 'boolean'
+  | 'select'
+  | 'rating'
+  | 'date'
+  | 'image'
+  | 'currency'
+  | 'avatar'
+  | 'badge'
+  | 'progress'
+  | 'sparkline'
+  | 'status';
+
+/** Visual variant for a `type: 'badge'` pill. */
+export type BadgeVariant = 'gold' | 'brand' | 'neutral' | 'muted';
+
+/** State for a `type: 'status'` badge. */
+export type StatusVariant = 'active' | 'trial' | 'churn';
 
 /**
  * Display format presets for `'date'` columns. Map to
@@ -163,7 +198,7 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
   hidden?: boolean;
   /**
    * Whether this column is included when exporting via
-   * {@link ApexGrid.exportToCSV} or {@link ApexGrid.exportToXLSX}.
+   * {@link ApexGrid.exportToCSV} (or the enterprise grid's XLSX export).
    *
    * @remarks
    * Defaults to `true`. Set to `false` to omit a column from generated files
@@ -244,11 +279,12 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    */
   options?: ColumnSelectOption<BasePropertyType<T, K>>[];
   /**
-   * Star count for columns with `type: 'rating'`.
+   * Upper bound for `type: 'rating'` and `type: 'progress'`.
    *
    * @remarks
-   * The displayed value is clamped to the range `[0, max]`. Defaults to `5`.
-   * Has no effect on columns with another `type`.
+   * For `'rating'` this is the star count (default `5`); the displayed value is
+   * clamped to `[0, max]`. For `'progress'` this is the value that fills the bar
+   * to 100% (default `100`). Has no effect on columns with another `type`.
    */
   max?: number;
   /**
@@ -276,6 +312,34 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    * `type`.
    */
   alt?: string;
+  /**
+   * ISO 4217 currency code for `type: 'currency'` columns (e.g. `'USD'`,
+   * `'EUR'`). Defaults to `'USD'`. Has no effect on columns with another
+   * `type`.
+   */
+  currency?: string;
+  /**
+   * BCP 47 locale for `type: 'currency'` number formatting. Defaults to the
+   * runtime locale. Has no effect on columns with another `type`.
+   */
+  locale?: string;
+  /**
+   * Visual variant for `type: 'badge'` columns. A literal applies to every
+   * cell; a callback picks per value. Defaults to `'neutral'`. Has no effect
+   * on columns with another `type`.
+   */
+  badgeVariant?: BadgeVariant | ((value: BasePropertyType<T, K>) => BadgeVariant);
+  /**
+   * State for `type: 'status'` columns. A literal applies to every cell; a
+   * callback maps a value to a state. When omitted the state is inferred from
+   * the value text. Has no effect on columns with another `type`.
+   */
+  statusVariant?: StatusVariant | ((value: BasePropertyType<T, K>) => StatusVariant);
+  /**
+   * Whether `type: 'sparkline'` columns render a trailing delta-% label.
+   * Defaults to `true`. Has no effect on columns with another `type`.
+   */
+  showDelta?: boolean;
 }
 
 /**

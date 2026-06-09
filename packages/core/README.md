@@ -19,10 +19,10 @@ A Lit-based, framework-agnostic web component data grid. Ships as a single custo
 - **Row selection** — single or multiple, optional checkbox column, full programmatic API.
 - **Row expansion (master-detail)** — opt-in chevron column with a `detailTemplate`.
 - **Tree data (nested rows)** — AG Grid–style `getDataPath` pattern over a flat array.
-- **CSV / XLSX export** — programmatic methods plus an optional toolbar dropdown.
+- **CSV export** — programmatic method plus an optional toolbar dropdown. (Excel/XLSX export is in `apex-grid-enterprise`.)
 - **Toolbar** — opt-in `<apex-grid-toolbar>` with debounced quick filter and export menu.
 - **Templating** — slot-based templates for cells, headers, editors, and detail panels.
-- **Theming** — Bootstrap / Fluent / Indigo / Material themes via `igniteui-webcomponents`, with light and dark variants.
+- **Theming** — styled out-of-the-box; fully customizable through `--ag-*` CSS custom properties (no theme import or build step). Auto-matches an `igniteui-webcomponents` host app when one is present.
 - **Accessibility** — WCAG 2.2 AA semantics (`role="grid"` / `role="treegrid"`, `aria-rowcount`, `aria-colcount`, focus + keyboard navigation).
 - **Provenance-signed npm releases** with OIDC trusted publishing.
 
@@ -34,12 +34,11 @@ A Lit-based, framework-agnostic web component data grid. Ships as a single custo
 
 ```ts
 import { setup } from 'apex-grid';
-import 'igniteui-webcomponents/themes/light/bootstrap.css';
 
-setup({ theme: 'bootstrap' });
+setup();
 ```
 
-That single call registers `<apex-grid>`, calls `configureTheme('bootstrap')`, and adopts a default host stylesheet (`height: 100%; min-height: 240px`). The Ignite UI theme CSS still has to be imported by you — bundlers can't dynamically import CSS portably.
+That single call registers `<apex-grid>` and adopts a default host stylesheet (`height: 100%; min-height: 240px`). The grid is styled out-of-the-box — no theme CSS import is required.
 
 ### Render the grid
 
@@ -105,18 +104,22 @@ ApexGrid.register();
 
 Without this, `<apex-grid>` is an inert unknown element.
 
-### 3. Load a theme
+### 3. (Optional) Customize the look
 
-The grid's filter dropdowns and sort indicators come from `igniteui-webcomponents`. Both the CSS import **and** the `configureTheme()` call are required:
+The grid is styled out-of-the-box — there is no theme to import. Customize it by overriding the `--ag-*` CSS custom properties on `apex-grid` (or any ancestor); a one-line brand override cascades to every tint:
 
-```ts
-import { configureTheme } from 'igniteui-webcomponents';
-import 'igniteui-webcomponents/themes/light/bootstrap.css';
-
-configureTheme('bootstrap'); // 'bootstrap' | 'material' | 'fluent' | 'indigo'
+```css
+apex-grid {
+  --ag-brand: #7c3aed;        /* selection, focus, accents */
+  --ag-brand-strong: #6d28d9; /* hover / pressed */
+  --ag-radius: 12px;          /* outer card radius */
+  --ag-row-h: 40px;           /* row height */
+}
 ```
 
-For dark mode, swap `light` → `dark` in the import path. The name passed to `configureTheme()` must match the imported CSS file.
+See [`src/styles/_tokens.scss`](src/styles/_tokens.scss) for the full token list (brand, surfaces, text, semantic state colors, typography, spacing, motion).
+
+If you embed the grid alongside `igniteui-webcomponents`, the brand tokens automatically re-tint from the igniteui palette (`--ig-primary-500`) — no configuration needed.
 
 ### 4. Size the host
 
@@ -136,7 +139,7 @@ apex-grid {
 
 ### What success looks like
 
-When all four steps are in place you should see:
+With the element registered and the host sized, you should see:
 
 - **Visible borders** between rows and columns.
 - **Sort arrows** (↕) next to each header when `sort: true`.
@@ -148,7 +151,7 @@ When all four steps are in place you should see:
 
 | What you see | Likely cause |
 |---|---|
-| Bare table, no borders, no filter UI | Step 3 — theme CSS not imported or `configureTheme()` not called |
+| Want a different look / brand color | Step 3 — override the `--ag-*` CSS variables |
 | Only ~3 rows visible regardless of data size | Step 4 — no bounded height, **or** consumer CSS sets `display` on `<apex-grid>` (check console for the warning) |
 | `<apex-grid>` blank tag in DOM | Step 2 — element not registered |
 | Columns shown as literal `[object Object]` | `columns=` used as an attribute — must be a **property** (`.columns=${...}` in Lit, `[columns]=` in Angular, `:columns.prop=` in Vue, `el.columns = ...` in vanilla JS) |
@@ -329,7 +332,7 @@ await grid.expandAllTreeRows();
 
 Methods: `toggleTreeRow`, `expandTreeRow`, `collapseTreeRow`, `expandAllTreeRows`, `collapseAllTreeRows`, `isTreeRowExpanded`. Events: `treeRowExpanding` (cancellable), `treeRowExpanded`. When tree mode is active, the host element advertises `role="treegrid"`.
 
-### CSV / XLSX export
+### CSV export
 
 Programmatic:
 
@@ -337,11 +340,11 @@ Programmatic:
 grid.exportToCSV();                                            // downloads data.csv
 grid.exportToCSV({ filename: 'users', source: 'selected' });
 const text = grid.exportToCSV({ filename: '' });               // no download, returns the string
-
-grid.exportToXLSX({ filename: 'users', sheetName: 'Users' });
 ```
 
-`source` can be `'view'` (default — post-filter/post-sort), `'page'`, `'selected'`, or `'all'`. Per-column opt-out: `{ key: 'secret', exportable: false }`. XLSX preserves native cell types for numbers, booleans, and `Date` values.
+`source` can be `'view'` (default — post-filter/post-sort), `'page'`, `'selected'`, or `'all'`. Per-column opt-out: `{ key: 'secret', exportable: false }`.
+
+> **XLSX (Excel) export** moved to [`apex-grid-enterprise`](https://www.npmjs.com/package/apex-grid-enterprise) in v3. `<apex-grid-enterprise>` adds `grid.exportToXLSX(...)` and an "Export XLSX" entry to this same toolbar menu. CSV stays free.
 
 Toolbar dropdown:
 
@@ -349,7 +352,7 @@ Toolbar dropdown:
 <apex-grid show-export></apex-grid>
 ```
 
-Renders a download icon in the toolbar's trailing actions area; the menu has "Export CSV" and "Export XLSX" entries. Toolbar `exportFilename` overrides the default `data` filename. Attribute: `show-export`.
+Renders a download icon in the toolbar's trailing actions area; the menu has an "Export CSV" entry (the enterprise grid adds "Export XLSX"). Toolbar `exportFilename` overrides the default `data` filename. Attribute: `show-export`.
 
 ### Toolbar
 
@@ -370,7 +373,7 @@ Search input has a `debounce` attribute (default `200`ms).
 
 ### Theming
 
-Built-in themes: `bootstrap`, `material`, `fluent`, `indigo` — each with `light` and `dark` variants. Switch at runtime via `configureTheme(name)`.
+The grid styles itself through `--ag-*` CSS custom properties — override them on `apex-grid` (or any ancestor) to rebrand; see [`src/styles/_tokens.scss`](src/styles/_tokens.scss) for the full list. When `igniteui-webcomponents` is present, the brand tokens auto-tint from its palette.
 
 Style with CSS parts on the grid, paginator, and toolbar:
 
@@ -446,7 +449,7 @@ toggleTreeRow(row); expandTreeRow(row); collapseTreeRow(row)
 expandAllTreeRows(); collapseAllTreeRows(); isTreeRowExpanded(row)
 
 exportToCSV(options?): string
-exportToXLSX(options?): Uint8Array
+exportAs(formatId, options?): void   // toolbar dispatch; 'csv' (community), 'xlsx' (enterprise)
 ```
 
 ### Events

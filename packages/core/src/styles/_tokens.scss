@@ -1,0 +1,106 @@
+// ─────────────────────────────────────────────────────────────────────────
+// Premium default design tokens (`--ag-*`).
+//
+// These land on the `<apex-grid>` host (this file is `@use`d by
+// `grid/_grid.base.scss`, which ships inside every theme). CSS custom
+// properties inherit across shadow boundaries, so every child component
+// (`apex-grid-row`, `apex-grid-cell`, `apex-grid-header`, …) can read them.
+//
+// This is the single rebrand surface: override ~12 values on `apex-grid` and
+// the whole grid re-skins. Values fall back to self-contained literals, so a
+// grid mounted with zero consumer CSS already looks premium; the brand tokens
+// additionally re-tint from the igniteui palette when it is present.
+//
+// No `!important`, no downstream hardcoded numerics — every rule resolves here.
+// ─────────────────────────────────────────────────────────────────────────
+
+:host {
+    // ── Brand ────────────────────────────────────────────────────────────
+    // Re-tints from the igniteui palette when its CSS is loaded (so the grid
+    // auto-matches an igniteui host app), and falls back to the self-contained
+    // premium blue otherwise. This igniteui hook used to live in the per-theme
+    // files; folding it here keeps that integration without named themes.
+    --ag-brand: var(--ig-primary-500, #0d6fd3); // primary blue
+    --ag-brand-strong: var(--ig-primary-700, #0a56b8); // hover / pressed
+
+    // Brand-derived washes are mixed from `--ag-brand` so a one-line rebrand
+    // cascades to every tint. With the default brand these resolve to the
+    // spec's exact rgba(13, 111, 211, …) values.
+    --ag-brand-soft: color-mix(in srgb, var(--ag-brand) 10%, transparent); // selected row / chip wash
+    --ag-brand-softer: color-mix(in srgb, var(--ag-brand) 7%, transparent); // chip / control wash
+    --ag-brand-line: color-mix(in srgb, var(--ag-brand) 18%, transparent); // chip / search borders
+
+    // ── Neutral chrome ───────────────────────────────────────────────────
+    // The grid's chrome (surfaces, gridlines, row hover) is grayscale so the
+    // grid reads as a calm, neutral table; `--ag-brand` is reserved for genuine
+    // state (selection, focus, checkboxes, active sort) and accents (chips).
+    --ag-hairline: rgba(15, 23, 42, 0.08); // header / structural gridlines
+    --ag-row-hover: color-mix(in srgb, #0f172a 5%, var(--ag-surface)); // neutral hover wash (opaque)
+
+    // ── Surfaces ─────────────────────────────────────────────────────────
+    // These back sticky/pinned regions (header, footer, frozen columns) which
+    // paint `background: inherit` to mask content scrolling underneath, so they
+    // MUST be opaque — a translucent surface lets the scrolled content bleed
+    // through.
+    --ag-surface: #fff; // grid card background
+    --ag-surface-alt: #f9fafb; // alternating row tint (neutral, opaque)
+    --ag-surface-elevated: linear-gradient(180deg, #fbfcfd 0%, #f6f7f8 100%); // header bg (neutral, opaque)
+
+    // ── Text ─────────────────────────────────────────────────────────────
+    --ag-text: #111827; // primary
+    --ag-text-body: #1f2937; // row text
+    --ag-text-muted: #6b7280; // roles, labels
+    --ag-text-subtle: #9ca3af; // placeholder, ellipsis
+    --ag-text-on-brand: #fff;
+
+    --ag-border: rgba(15, 23, 42, 0.05); // row separators
+
+    // ── State ────────────────────────────────────────────────────────────
+    --ag-good: #10b981; // health > 80, Active
+    --ag-good-text: #047857;
+    --ag-good-soft: rgba(16, 185, 129, 0.1);
+    --ag-watch: #f59e0b; // health 65–80, Trial
+    --ag-watch-text: #b45309;
+    --ag-watch-soft: rgba(245, 158, 11, 0.1);
+    --ag-risk: #ef4444; // health < 65, Churn
+    --ag-risk-text: #b91c1c;
+    --ag-risk-soft: rgba(239, 68, 68, 0.1);
+
+    --ag-gold: #fef3c7; // Enterprise pill bg
+    --ag-gold-line: #fde68a;
+    --ag-gold-text: #92400e;
+
+    --ag-shadow-card:
+        0 16px 38px rgba(15, 23, 42, 0.12),
+        0 0 0 1px rgba(15, 23, 42, 0.06),
+        0 1px 0 rgba(255, 255, 255, 0.9) inset; // soft neutral floating shadow
+
+    // ── Typography ───────────────────────────────────────────────────────
+    --ag-font: 'Inter', -apple-system, blinkmacsystemfont, sans-serif;
+    --ag-fs-cell: 12px;
+    --ag-fs-cell-secondary: 10.5px; // role line, header labels
+    --ag-fs-tiny: 10px; // tags, page ellipsis
+    --ag-fw-regular: 500;
+    --ag-fw-semibold: 600;
+    --ag-fw-bold: 700;
+    --ag-tracking-tight: -0.005em;
+    --ag-tracking-header: 0.05em; // uppercase header labels
+    --ag-leading: 1.4;
+
+    // ── Spacing & sizing ─────────────────────────────────────────────────
+    --ag-cell-pad-x: 10px;
+    --ag-row-h: 36px; // dense but readable
+    --ag-header-h: 36px;
+    --ag-toolbar-pad: 12px 14px;
+    --ag-footer-pad: 10px 14px;
+    --ag-radius: 18px; // outer card
+    --ag-radius-sm: 6px; // chips, page buttons
+    --ag-radius-xs: 4px; // checkboxes, expand button
+    --ag-radius-pill: 20px; // status badges
+
+    // ── Motion ───────────────────────────────────────────────────────────
+    --ag-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --ag-dur-fast: 120ms; // hover, focus
+    --ag-dur-med: 180ms; // chevron rotate
+    --ag-dur-slow: 240ms; // health bar fill
+}
