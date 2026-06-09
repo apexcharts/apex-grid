@@ -9,6 +9,14 @@ permissions:
   id-token: write    # OIDC for npm trusted publishing + provenance
   contents: write    # for tag + GitHub Release creation
 
+# Release is driven by the head commit message. Supported forms:
+#   release: 2.1.0                                        -> apex-grid (core) only — back-compat
+#   release: apex-grid@2.1.0                              -> core
+#   release: apex-grid-enterprise@0.1.0                   -> enterprise
+#   release: apex-grid@2.1.0 apex-grid-enterprise@0.1.0   -> both, on their own version lines
+# A pre-release version (containing a hyphen, e.g. 2.2.0-beta.1) publishes under the
+# `next` dist-tag; otherwise `latest`. Each package is verified, published with
+# provenance from its own dist/, git-tagged, and given a GitHub Release.
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -19,34 +27,61 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check commit message and extract version
-        id: check
+      # Parse the release commit into newline-separated entries:
+      #   <dir>|<npm-name>|<version>|<git-tag>|<npm-dist-tag>
+      - name: Parse release commit
+        id: parse
         env:
           MSG: ${{ github.event.head_commit.message }}
         run: |
-          if echo "$MSG" | grep -qE '^release: [0-9]+\.[0-9]+\.[0-9]+'; then
-            VERSION=$(echo "$MSG" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+[^ ]*' | head -1)
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            if echo "$VERSION" | grep -qE '[-]'; then
-              echo "tag=next" >> $GITHUB_OUTPUT
-            else
-              echo "tag=latest" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "❌ Commit message must match 'release: X.Y.Z'"
-            exit 1
-          fi
+          set -euo pipefail
+          # Map an npm package name to its workspace dir (case, not an associative
+          # array, so it runs the same on bash 3.x and 5.x).
+          dir_of() {
+            case "$1" in
+              apex-grid) echo packages/core;;
+              apex-grid-enterprise) echo packages/enterprise;;
+              *) echo "";;
+            esac
+          }
+          HEAD_LINE=$(printf '%s\n' "$MSG" | head -1)
+          BODY=$(printf '%s' "${HEAD_LINE#release:}" | xargs || true)   # strip prefix + trim
+          RELEASES=""
+          npm_tag_for() { case "$1" in *-*) echo next;; *) echo latest;; esac; }
 
-      - name: Verify package.json version matches commit message
-        env:
-          MSG_VERSION: ${{ steps.check.outputs.version }}
-        run: |
-          PKG_VERSION=$(node -p "require('./packages/core/package.json').version")
-          if [ "$PKG_VERSION" != "$MSG_VERSION" ]; then
-            echo "❌ package.json version ($PKG_VERSION) does not match commit message version ($MSG_VERSION)"
-            exit 1
+          if [[ "$BODY" =~ ^[0-9]+\.[0-9]+\.[0-9]+[A-Za-z0-9.+-]*$ ]]; then
+            # Bare version -> core, legacy git tag form vX.Y.Z.
+            RELEASES="packages/core|apex-grid|$BODY|v$BODY|$(npm_tag_for "$BODY")"
+          else
+            for tok in $BODY; do
+              name=${tok%@*}; version=${tok#*@}
+              dir=$(dir_of "$name")
+              if [[ -z "$dir" ]]; then echo "❌ Unknown package '$name'"; exit 1; fi
+              if [[ "$tok" != *@* || -z "$version" ]]; then echo "❌ Expected <name>@<version>, got '$tok'"; exit 1; fi
+              if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+[A-Za-z0-9.+-]*$ ]]; then echo "❌ Bad version '$version'"; exit 1; fi
+              RELEASES+="${dir}|${name}|${version}|${name}@${version}|$(npm_tag_for "$version")"$'\n'
+            done
           fi
-          echo "✅ Version $PKG_VERSION confirmed"
+          RELEASES=$(printf '%s' "$RELEASES" | sed '/^$/d')
+          if [[ -z "$RELEASES" ]]; then echo "❌ Commit must match 'release: X.Y.Z' or 'release: <name>@<version> ...'"; exit 1; fi
+          echo "Planned releases:"; printf '%s\n' "$RELEASES"
+          { echo "releases<<RELEOF"; printf '%s\n' "$RELEASES"; echo "RELEOF"; } >> "$GITHUB_OUTPUT"
+
+      # Fail fast if a requested version doesn't match the package's package.json,
+      # BEFORE we spend time installing/building/publishing anything.
+      - name: Verify source versions
+        env:
+          RELEASES: ${{ steps.parse.outputs.releases }}
+        run: |
+          set -euo pipefail
+          while IFS='|' read -r dir name version gittag npmtag; do
+            [[ -z "$dir" ]] && continue
+            pv=$(node -p "require('./$dir/package.json').version")
+            if [[ "$pv" != "$version" ]]; then
+              echo "❌ $name: $dir/package.json version ($pv) does not match requested ($version)"; exit 1
+            fi
+            echo "✅ $name source version $pv"
+          done < <(printf '%s\n' "$RELEASES")
 
       - uses: actions/setup-node@v4
         with:
@@ -66,46 +101,39 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Verify dist/package.json version
+      - name: Publish, tag, and release each package
         env:
-          MSG_VERSION: ${{ steps.check.outputs.version }}
-        run: |
-          DIST_VERSION=$(node -p "require('./packages/core/dist/package.json').version")
-          if [ "$DIST_VERSION" != "$MSG_VERSION" ]; then
-            echo "❌ dist/package.json version ($DIST_VERSION) does not match expected ($MSG_VERSION). Build did not inject the version correctly."
-            exit 1
-          fi
-          echo "✅ dist version $DIST_VERSION confirmed"
-
-      - name: Publish to npm
-        run: npm publish --provenance --tag ${{ steps.check.outputs.tag }}
-        working-directory: packages/core/dist
-
-      - name: Create git tag
-        run: |
-          TAG="v${{ steps.check.outputs.version }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists, skipping"
-          else
-            git tag -a "$TAG" -m "Release $TAG"
-            git push origin "$TAG"
-          fi
-
-      - name: Create GitHub Release
-        env:
+          RELEASES: ${{ steps.parse.outputs.releases }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v${{ steps.check.outputs.version }}"
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -n "$PREV_TAG" ]; then
-            NOTES=$(git log "$PREV_TAG..HEAD" --pretty=format:"- %s" --no-merges)
-          else
-            NOTES=$(git log --pretty=format:"- %s" --no-merges)
-          fi
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists, skipping"
-          else
-            gh release create "$TAG" --notes "$NOTES" --title "$TAG"
-          fi
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          while IFS='|' read -r dir name version gittag npmtag; do
+            [[ -z "$dir" ]] && continue
+            echo "::group::Release $name@$version ($npmtag)"
+
+            # The built dist/ is the publishable manifest — confirm the build injected the version.
+            dist_v=$(node -p "require('./$dir/dist/package.json').version")
+            if [[ "$dist_v" != "$version" ]]; then
+              echo "❌ $name: dist version ($dist_v) does not match expected ($version). Build did not inject the version."; exit 1
+            fi
+
+            ( cd "$dir/dist" && npm publish --provenance --tag "$npmtag" )
+            echo "✅ Published $name@$version to npm (dist-tag: $npmtag)"
+
+            if git rev-parse "$gittag" >/dev/null 2>&1; then
+              echo "Tag $gittag already exists, skipping"
+            else
+              git tag -a "$gittag" -m "Release $gittag"
+              git push origin "$gittag"
+            fi
+
+            if gh release view "$gittag" >/dev/null 2>&1; then
+              echo "Release $gittag already exists, skipping"
+            else
+              notes=$(printf '%s\n\n%s' "\`$name@$version\` published to npm with provenance." "See the commit history for changes since the previous release.")
+              gh release create "$gittag" --title "$gittag" --notes "$notes"
+            fi
+            echo "::endgroup::"
+          done < <(printf '%s\n' "$RELEASES")

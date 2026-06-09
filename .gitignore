@@ -35,7 +35,12 @@ custom-elements.json
 
 plans
 
-## Playwright e2e — keep committed baselines (e2e/__screenshots__), ignore run artifacts.
+## Playwright e2e — only the Linux baselines (chromium-linux) are committed; they
+## are the single source of truth and match CI (refresh via `npm run e2e:docker:update`).
+## Baselines for any other platform (e.g. macOS chromium-darwin) are a local-only
+## convenience for native iteration and must never be committed.
+/e2e/__screenshots__/*
+!/e2e/__screenshots__/chromium-linux
 /test-results
 /playwright-report
 /blob-report

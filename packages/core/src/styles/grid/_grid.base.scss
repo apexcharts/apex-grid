@@ -27,11 +27,12 @@ $grid-resize-line-color: var(--igx-grid-resize-line-color, var(--grid-resize-lin
     line-height: var(--ag-leading);
     color: $content-text-color;
 
-    // Premium "floating card": soft outer radius, layered surface gradient,
-    // and a soft floating shadow (not a hard drop). The light highlight border
-    // and 1px edge ring come from `--ag-shadow-card` (an outer ring + inset
-    // top highlight) rather than a real `border`, so the card edge never eats
-    // into the content box — column-width math stays exactly the host width.
+    // Flat by default: a crisp 1px edge ring (no drop shadow) so the grid reads
+    // as inline chrome, not a floating card. The ring is a `box-shadow` rather
+    // than a real `border` so it never eats into the content box — column-width
+    // math stays exactly the host width. Opt back into the elevated card look
+    // with `--ag-grid-shadow: var(--ag-shadow-card)`, or drop the edge entirely
+    // with `--ag-grid-shadow: none`.
     // `overflow: auto` stays — the host is the scroll container; the radius
     // still clips the sticky header/footer corners.
     border-radius: var(--ag-radius);
@@ -41,7 +42,7 @@ $grid-resize-line-color: var(--igx-grid-resize-line-color, var(--grid-resize-lin
         rgba(252, 253, 255, 0.92) 50%,
         rgba(248, 250, 254, 0.94) 100%
     );
-    box-shadow: var(--ag-shadow-card);
+    box-shadow: var(--ag-grid-shadow, 0 0 0 1px var(--ag-hairline));
 
     // NOTE: no `backdrop-filter` / `transform` / `filter` / `will-change` here.
     // Any of those would make the host a containing block for `position: fixed`

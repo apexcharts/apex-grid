@@ -20,20 +20,40 @@ run `npm run build:core` beforehand so `dist/` (and thus the bundle) is current.
 
 ## Updating baselines
 
-Baselines are **per-OS** — font hinting/antialiasing differ across platforms, so
-macOS and Linux each keep their own set under
-`e2e/__screenshots__/chromium-<platform>/`. CI verifies the **Linux** set, so
-that one is the source of truth; refresh it through the pinned Playwright
-container (matching CI exactly), and refresh the macOS set locally:
+Baselines are environment-sensitive (font hinting/antialiasing differ across
+platforms), so the **only committed set is the Linux one** —
+`e2e/__screenshots__/chromium-linux/`. It is the single source of truth and is
+exactly what CI verifies. Refresh it through the pinned Playwright container
+(which matches CI rendering); this needs Docker:
 
 ```bash
-npm run e2e:update          # refresh the macOS set (chromium-darwin)
-npm run e2e:docker:update   # refresh the Linux set (chromium-linux) — needs Docker
+npm run e2e:docker:update   # refresh the committed Linux set (chromium-linux)
 ```
+
+> **Subtle changes can slip the diff threshold.** `--update-snapshots` only
+> rewrites a baseline when the new render differs beyond `maxDiffPixelRatio` /
+> `threshold`. A low-contrast change (a soft shadow, a faint tint) can fall
+> *under* that and leave the old baseline in place. When you make a global visual
+> change, **delete the PNGs first** so every baseline is written fresh:
+> `rm e2e/__screenshots__/chromium-linux/*.png && npm run e2e:docker:update`.
 
 Always **review the regenerated PNGs** in the diff before committing — an
 intended visual change and an accidental regression both show up as updated
-baselines. Commit both platform sets together.
+baselines.
+
+### Iterating locally on macOS / Windows
+
+Native (non-Docker) runs render differently, so they keep their own
+`chromium-<platform>/` set (e.g. `chromium-darwin`) which is **gitignored — never
+committed**. It's purely a fast local feedback loop:
+
+```bash
+npm run e2e:update          # generate/refresh your local (gitignored) platform set
+npm run e2e                 # compare against it
+```
+
+The authoritative check is always Docker/Linux. With no local baseline a native
+run fails with "snapshot doesn't exist" by design — run `npm run e2e:docker`.
 
 ## How it stays deterministic
 

@@ -14,9 +14,13 @@ const PORT = 5599;
 
 export default defineConfig({
   testDir: './e2e',
-  // Baselines are grouped by browser project AND OS: font hinting/antialiasing
-  // differ across platforms, so macOS (local) and Linux (CI) each keep their own
-  // set and both stay green. Refresh the Linux set with `npm run e2e:docker:update`.
+  // Baselines are keyed by browser project AND OS because font hinting/antialiasing
+  // differ across platforms. Only the Linux set (`chromium-linux`) is committed and
+  // gated by CI — it is the single source of truth; refresh it with
+  // `npm run e2e:docker:update`. Running natively on a non-Linux host writes to a
+  // separate, gitignored `chromium-<platform>` dir (e.g. `chromium-darwin`); that is
+  // a local-only convenience and is never committed. A native run with no local
+  // baseline fails with a clear "snapshot doesn't exist" — use `npm run e2e:docker`.
   snapshotPathTemplate: '{testDir}/__screenshots__/{projectName}-{platform}/{arg}{ext}',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
