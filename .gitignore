@@ -35,6 +35,13 @@ custom-elements.json
 
 plans
 
+## Playwright e2e — keep committed baselines (e2e/__screenshots__), ignore run artifacts.
+/test-results
+/playwright-report
+/blob-report
+/.playwright
+/e2e/vendor
+
 ## Local demo bundles — self-contained build of /define, rebuilt via `npm run demo:bundle`.
 ## The demos under demo/ reference these by relative path; the website's gulp "samples"
 ## task rewrites that path to the CDN URL on copy, so the file is never published or

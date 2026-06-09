@@ -17,6 +17,14 @@
     "build:core": "npm run build -w packages/core",
     "build:enterprise": "npm run build -w packages/enterprise",
     "demo:bundle": "esbuild packages/core/dist/define.js --bundle --format=iife --global-name=apexGrid --minify --outfile=apex-grid.min.js",
+    "e2e:vendor": "esbuild e2e/vendor-lit-entry.js --bundle --format=esm --minify --outfile=e2e/vendor/lit.esm.js",
+    "pree2e": "npm run demo:bundle && npm run e2e:vendor",
+    "e2e": "playwright test",
+    "e2e:update": "npm run pree2e && playwright test --update-snapshots",
+    "e2e:ui": "npm run pree2e && playwright test --ui",
+    "e2e:report": "playwright show-report",
+    "e2e:docker": "docker run --rm --ipc=host -v \"$PWD\":/work -w /work mcr.microsoft.com/playwright:v1.60.0-noble npx playwright test",
+    "e2e:docker:update": "docker run --rm --ipc=host -v \"$PWD\":/work -w /work mcr.microsoft.com/playwright:v1.60.0-noble npx playwright test --update-snapshots",
     "test": "npm run test -w packages/core && npm run test -w packages/enterprise",
     "lint": "npm run lint -w packages/core && npm run lint -w packages/enterprise",
     "format": "npm run format -w packages/core",
@@ -28,6 +36,7 @@
     ]
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "esbuild": "^0.27.7",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.2"
