@@ -119,6 +119,13 @@ apex-grid {
 
 See [`src/styles/_tokens.scss`](src/styles/_tokens.scss) for the full token list (brand, surfaces, text, semantic state colors, typography, spacing, motion).
 
+**Grid edge / shadow.** By default the grid shows a flat 1px hairline edge (no drop shadow). Control it with the `--ag-grid-shadow` hook — this is an opt-in override, not one of the `_tokens.scss` defaults:
+
+```css
+apex-grid { --ag-grid-shadow: var(--ag-shadow-card); } /* elevated floating-card look */
+apex-grid { --ag-grid-shadow: none; }                  /* remove the edge entirely */
+```
+
 If you embed the grid alongside `igniteui-webcomponents`, the brand tokens automatically re-tint from the igniteui palette (`--ig-primary-500`) — no configuration needed.
 
 ### 4. Size the host

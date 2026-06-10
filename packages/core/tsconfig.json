@@ -90,6 +90,7 @@
       "@element",
       "@fires",
       "@csspart",
+      "@cssprop",
       "@attr"
     ],
     "validation": {

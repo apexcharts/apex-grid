@@ -67,7 +67,7 @@ export interface CSVExportOptions<T extends object> extends ExportOptions<T> {
  * The toolbar renders one menu item per entry returned by
  * {@link ApexGrid.exportFormats} and dispatches the chosen `id` to
  * {@link ApexGrid.exportAs}. The community grid offers `'csv'`; derived grids
- * (e.g. `@apexcharts/grid-enterprise`) extend the list (e.g. with `'xlsx'`).
+ * (e.g. `apex-grid-enterprise`) extend the list (e.g. with `'xlsx'`).
  */
 export interface ExportFormat {
   /** Stable format identifier, e.g. `'csv'`. */

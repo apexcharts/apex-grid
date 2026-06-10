@@ -34,6 +34,7 @@ custom-elements.json
 *.css.ts
 
 plans
+release-notes
 
 ## Playwright e2e — only the Linux baselines (chromium-linux) are committed; they
 ## are the single source of truth and match CI (refresh via `npm run e2e:docker:update`).

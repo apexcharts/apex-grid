@@ -520,16 +520,6 @@ export interface ApexGridEventMap<T extends object> {
    */
   rowEditEnded: CustomEvent<ApexRowEditEndedEvent>;
   /**
-   * Emitted before the row selection set changes.
-   *
-   * @remarks
-   * Cancellable — calling `preventDefault()` aborts the selection change.
-   * Fires for every selection-mutating call (toggle, range select, select-all,
-   * programmatic `selectedRows = ...`).
-   *
-   * @event
-   */
-  /**
    * Emitted before the tree-row expansion set changes.
    *
    * @remarks
@@ -563,6 +553,16 @@ export interface ApexGridEventMap<T extends object> {
    * @event
    */
   rowExpanded: CustomEvent<ApexRowExpandedEvent<T>>;
+  /**
+   * Emitted before the row selection set changes.
+   *
+   * @remarks
+   * Cancellable — calling `preventDefault()` aborts the selection change.
+   * Fires for every selection-mutating call (toggle, range select, select-all,
+   * programmatic `selectedRows = ...`).
+   *
+   * @event
+   */
   rowSelecting: CustomEvent<ApexRowSelectingEvent<T>>;
   /**
    * Emitted after a row-selection change has been applied.
@@ -579,18 +579,18 @@ export interface ApexGridEventMap<T extends object> {
  * the ability to template cells and headers and column hiding.
  *
  * @remarks
- * A working, styled grid requires four setup steps:
+ * A working, styled grid requires three things:
  *  1. Register the element: `import 'apex-grid/define'` (or `ApexGrid.register()`).
- *  2. Configure an Ignite UI theme + import the matching CSS, e.g.
- *     `import { configureTheme } from 'igniteui-webcomponents';`
- *     `import 'igniteui-webcomponents/themes/light/bootstrap.css';`
- *     `configureTheme('bootstrap');`
- *  3. Give the host element a bounded height, e.g. `apex-grid { height: 480px }` —
+ *  2. Give the host element a bounded height, e.g. `apex-grid { height: 480px }` —
  *     the virtualizer collapses without one.
- *  4. Do NOT set `display` on the host — the component declares `:host { display: grid }`
+ *  3. Do NOT set `display` on the host — the component declares `:host { display: grid }`
  *     internally and any override breaks the track layout.
  *
- * See the README "Getting Started" section for the full example.
+ * The grid is styled out of the box through `--ag-*` CSS custom properties —
+ * there is no theme to import and no `configureTheme()` call. Override `--ag-*`
+ * tokens on the host (or any ancestor) to rebrand; when `igniteui-webcomponents`
+ * is present, the brand tokens auto-tint from its palette. See the README
+ * "Getting Started" and "Theming" sections for the full example and token list.
  *
  * @element apex-grid
  *
@@ -612,7 +612,32 @@ export interface ApexGridEventMap<T extends object> {
  * @fires rowEditEnded - Emitted when a row leaves edit mode (row mode only).
  * @fires rowSelecting - Cancellable. Emitted before a selection-set change is applied.
  * @fires rowSelected - Emitted after a selection-set change has been applied.
+ * @fires rowExpanding - Cancellable. Emitted before the row-expansion set changes (master-detail).
+ * @fires rowExpanded - Emitted after a row-expansion change has been applied.
+ * @fires treeRowExpanding - Cancellable. Emitted before a tree-row expansion change (tree mode).
+ * @fires treeRowExpanded - Emitted after a tree-row expansion change has been applied.
  *
+ * @csspart live-region - Visually-hidden ARIA live region used for screen-reader announcements.
+ *
+ * @cssprop [--ag-brand] - Brand color for selection, focus rings, and accents. Auto-tints from `--ig-primary-500` when igniteui is present.
+ * @cssprop [--ag-brand-strong] - Brand color for hover / pressed states.
+ * @cssprop [--ag-grid-shadow] - Grid edge/shadow override. Default is a flat 1px hairline edge; set to `var(--ag-shadow-card)` for the elevated card look, or `none` to remove it.
+ * @cssprop [--ag-surface] - Grid card background (must be opaque).
+ * @cssprop [--ag-surface-alt] - Alternating row tint.
+ * @cssprop [--ag-surface-elevated] - Header background.
+ * @cssprop [--ag-hairline] - Header / structural gridline color.
+ * @cssprop [--ag-border] - Row separator color.
+ * @cssprop [--ag-text] - Primary text color.
+ * @cssprop [--ag-text-body] - Row text color.
+ * @cssprop [--ag-text-muted] - Muted text (roles, labels).
+ * @cssprop [--ag-row-hover] - Row hover wash.
+ * @cssprop [--ag-row-h] - Row height.
+ * @cssprop [--ag-header-h] - Header height.
+ * @cssprop [--ag-radius] - Outer card corner radius.
+ * @cssprop [--ag-font] - Grid font family.
+ * @cssprop [--ag-fs-cell] - Cell font size.
+ *
+ * @see {@link https://github.com/apexcharts/apex-grid/blob/main/packages/core/src/styles/_tokens.scss | _tokens.scss} for the complete `--ag-*` token list.
  */
 export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMap<T>> {
   public static get tagName(): string {

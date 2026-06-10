@@ -60,6 +60,15 @@ const WATERMARK_STYLE = [
  * Licensing follows the non-hostile, offline model: without a valid key set via
  * {@link ApexGridEnterprise.setLicense} the grid keeps working but renders a
  * watermark and logs a console notice.
+ *
+ * @element apex-grid-enterprise
+ *
+ * @remarks
+ * Inherits all properties, attributes, methods, and events of {@link ApexGrid}
+ * (see its docs for the full `@fires` list and `--ag-*` theming hooks), and adds
+ * column aggregations, XLSX export, and licensing on top.
+ *
+ * @csspart license-watermark - Non-interactive diagonal watermark overlay shown when no valid license is set.
  */
 export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   /** Live instances, so {@link setLicense} can refresh watermarks on the fly. */

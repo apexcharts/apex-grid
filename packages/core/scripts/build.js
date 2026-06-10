@@ -10,7 +10,7 @@ const DEST_DIR = path.join.bind(
   null,
   path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist')
 );
-const RELEASE_FILES = ['custom-elements.json', 'LICENSE', 'README.md'];
+const RELEASE_FILES = ['custom-elements.json', 'LICENSE', 'README.md', 'CHANGELOG.md'];
 
 async function writeDistPackageJson() {
   // Single source of truth for the published version is the root package.json.
