@@ -36,6 +36,13 @@ import {
   groupingModule,
 } from './features/grouping.js';
 import { PIVOT_MODULE_ID, type PivotController, pivotModule } from './features/pivot.js';
+import {
+  RANGE_SELECTION_MODULE_ID,
+  type RangeBounds,
+  type RangeSelectionController,
+  type RangeStats,
+  rangeSelectionModule,
+} from './features/range-selection.js';
 import { buildXLSX, type XLSXExportOptions } from './features/xlsx.js';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -51,6 +58,7 @@ const ENTERPRISE_MODULES: ReadonlyArray<GridFeatureModule> = [
   aggregationModule,
   groupingModule,
   pivotModule,
+  rangeSelectionModule,
 ];
 
 // Repeating diagonal watermark shown when no valid license is set. Rendered in
@@ -86,7 +94,8 @@ const WATERMARK_STYLE = [
  * @remarks
  * Inherits all properties, attributes, methods, and events of {@link ApexGrid}
  * (see its docs for the full `@fires` list and `--ag-*` theming hooks), and adds
- * column aggregations, XLSX export, and licensing on top.
+ * column aggregations, row grouping, pivoting, integrated charts, cell range
+ * selection, XLSX export, and licensing on top.
  *
  * @csspart license-watermark - Non-interactive diagonal watermark overlay shown when no valid license is set.
  */
@@ -130,6 +139,15 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   /** Measures aggregated into each pivot cell, e.g. `{ salary: ['sum'] }`. */
   @property({ attribute: false })
   public pivotValues: AggregationConfig = {};
+
+  /**
+   * Spreadsheet-style cell range selection (click-drag / shift-click). Enabled
+   * by default; set `range-selection="false"` (or the property) to turn it off.
+   * Pairs with `<apex-grid-status-bar>` for live selection aggregates and with
+   * {@link copySelection} for clipboard export.
+   */
+  @property({ type: Boolean, attribute: 'range-selection' })
+  public rangeSelection = true;
 
   /** Columns saved before pivoting activated, restored when it deactivates. */
   #savedColumns: ColumnConfiguration<T>[] | null = null;
@@ -187,7 +205,17 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     // first paint. Pivot runs first since it disables grouping when active.
     this.#syncPivot(changed);
     this.#syncGrouping(changed);
+    this.#syncRange(changed);
     super.willUpdate(changed);
+  }
+
+  /** Mirror the `rangeSelection` toggle onto the controller; clear when off. */
+  #syncRange(changed: PropertyValues): void {
+    if (!changed.has('rangeSelection')) return;
+    const range = this.#rangeController();
+    if (!range) return;
+    range.enabled = this.rangeSelection;
+    if (!this.rangeSelection) range.clearSelection();
   }
 
   /**
@@ -260,6 +288,47 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   #pivotController(): PivotController<T> | undefined {
     return this.stateController.module<PivotController<T>>(PIVOT_MODULE_ID);
+  }
+
+  #rangeController(): RangeSelectionController<T> | undefined {
+    return this.stateController.module<RangeSelectionController<T>>(RANGE_SELECTION_MODULE_ID);
+  }
+
+  /** Bounds of the current cell range selection (view coordinates), or `null`. */
+  public getSelectionBounds(): RangeBounds | null {
+    return this.#rangeController()?.getSelectionBounds() ?? null;
+  }
+
+  /** Aggregate statistics (count/sum/avg/min/max) over the selected range. */
+  public getSelectionStats(): RangeStats {
+    return (
+      this.#rangeController()?.getSelectionStats() ?? {
+        count: 0,
+        numericCount: 0,
+        sum: 0,
+        average: 0,
+        min: 0,
+        max: 0,
+      }
+    );
+  }
+
+  /** The selected range serialized as TSV (tab-separated, Excel-pasteable). */
+  public getSelectionTSV(): string {
+    return this.#rangeController()?.getSelectionTSV() ?? '';
+  }
+
+  /** Copy the selected range to the clipboard as TSV. */
+  public copySelection(): Promise<boolean> {
+    return this.#rangeController()?.copySelection() ?? Promise.resolve(false);
+  }
+
+  /**
+   * Clear the current cell range selection. Named distinctly from the inherited
+   * {@link ApexGrid.clearSelection} (which clears selected rows).
+   */
+  public clearRangeSelection(): void {
+    this.#rangeController()?.clearSelection();
   }
 
   /** Expand a single group by its key (see {@link GroupRowMeta.key}). */

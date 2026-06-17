@@ -2,7 +2,12 @@
 // toggle and the aggregation feature on top of the full community grid.
 import { configureTheme } from 'igniteui-webcomponents';
 import type { ColumnConfiguration } from 'apex-grid';
-import { ApexGridEnterprise, ApexGridToolPanel, LicenseManager } from '../src/index.js';
+import {
+  ApexGridEnterprise,
+  ApexGridStatusBar,
+  ApexGridToolPanel,
+  LicenseManager,
+} from '../src/index.js';
 
 type User = {
   id: number;
@@ -17,6 +22,7 @@ const DEPARTMENTS = ['Engineering', 'Sales', 'Marketing', 'Support'];
 
 ApexGridEnterprise.register();
 ApexGridToolPanel.register();
+ApexGridStatusBar.register();
 
 async function loadTheme(theme = 'bootstrap', variant = 'light'): Promise<void> {
   await import(
@@ -56,6 +62,9 @@ grid.groupingOptions = { defaultExpanded: false };
 
 const toolPanel = document.getElementById('tool-panel') as ApexGridToolPanel;
 toolPanel.grid = grid;
+
+const statusBar = document.getElementById('status-bar') as ApexGridStatusBar;
+statusBar.grid = grid as ApexGridStatusBar['grid'];
 
 const statusEl = document.getElementById('status') as HTMLElement;
 const aggEl = document.getElementById('aggregations') as HTMLElement;
@@ -154,6 +163,17 @@ document.getElementById('chart-bar')?.addEventListener('click', () => {
 document.getElementById('chart-line')?.addEventListener('click', () => {
   chartType = 'line';
   void redrawChart();
+});
+
+document.getElementById('copy-range')?.addEventListener('click', async () => {
+  const copied = await grid.copySelection();
+  const bounds = grid.getSelectionBounds();
+  statusEl.innerHTML = copied
+    ? `✓ Copied range (rows ${bounds?.top}–${bounds?.bottom}, cols ${bounds?.left}–${bounds?.right}) as TSV.`
+    : '✗ Nothing selected — drag across some cells first.';
+});
+document.getElementById('clear-range')?.addEventListener('click', () => {
+  grid.clearRangeSelection();
 });
 
 await loadTheme();

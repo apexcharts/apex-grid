@@ -23,6 +23,14 @@
       apex-grid-enterprise {
         flex: 1;
         min-height: 0;
+        /* Theme the (inert-by-default) cell range-selection decoration. */
+        --apex-range-fill: rgba(37, 99, 235, 0.12);
+        --apex-range-active-fill: rgba(37, 99, 235, 0.22);
+        --apex-range-border: #2563eb;
+        --apex-range-border-width: 1.5px;
+      }
+      apex-grid-status-bar {
+        flex: 0 0 auto;
       }
       .toolbar {
         display: flex;
@@ -86,12 +94,19 @@
       <button id="chart-line">Line</button>
       <span style="font-size: 0.8rem; opacity: 0.6">— charts the current group/pivot aggregates via ApexCharts</span>
     </div>
+    <div class="toolbar">
+      <strong style="font-size: 0.85rem">Range selection:</strong>
+      <button id="copy-range">Copy selection (TSV)</button>
+      <button id="clear-range">Clear selection</button>
+      <span style="font-size: 0.8rem; opacity: 0.6">— drag across cells (or shift-click); Ctrl/⌘+C copies. Status bar below shows live aggregates.</span>
+    </div>
     <div id="status"></div>
     <div id="aggregations"></div>
     <div style="display: flex; flex: 1; gap: 8px; min-height: 0">
       <apex-grid-enterprise style="flex: 1; min-width: 0"></apex-grid-enterprise>
       <apex-grid-tool-panel id="tool-panel"></apex-grid-tool-panel>
     </div>
+    <apex-grid-status-bar id="status-bar"></apex-grid-status-bar>
     <div id="chart" style="flex: 0 0 340px; min-height: 0"></div>
     <script type="module" src="./demo.ts"></script>
   </body>
