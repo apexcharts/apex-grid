@@ -207,6 +207,27 @@ export class RangeSelectionController<T extends object>
 
   // --- public API ----------------------------------------------------------
 
+  /**
+   * Programmatically select a rectangular range by row index and column key
+   * (the anchor → focus corners). `to` defaults to `from` for a single cell.
+   * No-op if the feature is disabled or a column key isn't visible.
+   */
+  public selectRange(
+    from: { row: number; column: string },
+    to: { row: number; column: string } = from
+  ): void {
+    if (!this.enabled) return;
+    const columns = this.#visibleColumns();
+    const indexOf = (key: string) => columns.findIndex((column) => String(column.key) === key);
+    const anchorCol = indexOf(from.column);
+    const focusCol = indexOf(to.column);
+    if (anchorCol < 0 || focusCol < 0) return;
+    this.#anchor = { row: from.row, col: anchorCol };
+    this.#focus = { row: to.row, col: focusCol };
+    this.#dragging = false;
+    this.#commit();
+  }
+
   /** Whether a range is currently selected. */
   public hasSelection(): boolean {
     return this.#anchor !== null && this.#focus !== null;

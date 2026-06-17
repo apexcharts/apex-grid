@@ -294,6 +294,18 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     return this.stateController.module<RangeSelectionController<T>>(RANGE_SELECTION_MODULE_ID);
   }
 
+  /**
+   * Programmatically select a rectangular cell range by row index + column key
+   * (anchor → focus). `to` defaults to `from`. Useful for restoring state or
+   * driving the selection from app code.
+   */
+  public selectRange(
+    from: { row: number; column: string },
+    to?: { row: number; column: string }
+  ): void {
+    this.#rangeController()?.selectRange(from, to);
+  }
+
   /** Bounds of the current cell range selection (view coordinates), or `null`. */
   public getSelectionBounds(): RangeBounds | null {
     return this.#rangeController()?.getSelectionBounds() ?? null;

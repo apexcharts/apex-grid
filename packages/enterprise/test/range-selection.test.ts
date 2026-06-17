@@ -116,6 +116,13 @@ describe('Range selection', () => {
     expect(grid.getSelectionBounds()).to.eql({ top: 0, bottom: 2, left: 2, right: 3 });
   });
 
+  it('selects a range programmatically by row + column key', async () => {
+    const grid = await mount();
+    grid.selectRange({ row: 0, column: 'amount' }, { row: 2, column: 'score' });
+    expect(grid.getSelectionBounds()).to.eql({ top: 0, bottom: 2, left: 2, right: 3 });
+    expect(grid.getSelectionStats().sum).to.equal(660);
+  });
+
   it('aggregates numeric stats over the selected range', async () => {
     const grid = await mount();
     // amount [10,20,30] + score [100,200,300]
