@@ -1224,7 +1224,10 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     if (this.stateController?.tree?.enabled) {
       next = this.stateController.tree.process(next);
     }
-    this.dataState = next;
+    // Run any feature-module row transforms (e.g. enterprise grouping) so
+    // injected rows appear on first paint, not only after the async pipeline.
+    // Identity pass-through when no modules are registered (community grid).
+    this.dataState = this.stateController ? this.stateController.applyModuleTransforms(next) : next;
     if (this.hasUpdated) {
       this.pipeline();
     }

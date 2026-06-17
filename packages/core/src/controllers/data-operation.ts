@@ -77,6 +77,12 @@ export class DataOperationsController<T extends object> implements ReactiveContr
       transformed = state.tree.process(transformed);
     }
 
+    // Feature modules (e.g. enterprise row grouping) may inject or reorder rows
+    // after the built-in pipeline, before pagination slices the page. With no
+    // modules registered this is an identity pass-through, so the community
+    // `<apex-grid>` behaviour is unchanged.
+    transformed = state.applyModuleTransforms(transformed);
+
     return transformed;
   }
 }

@@ -21,6 +21,13 @@ export {
   resolveExportRows,
   resolveExportValue,
 } from './export.js';
-export type { GridFeatureModule } from './feature-module.js';
+export type {
+  GridFeatureModule,
+  PresentedRow,
+  RowPresenter,
+  RowPresenterContext,
+  RowTransformer,
+} from './feature-module.js';
+export { isRowPresenter, isRowTransformer } from './feature-module.js';
 export { registerComponent } from './register.js';
 export type { ActiveNode, GridHost } from './types.js';

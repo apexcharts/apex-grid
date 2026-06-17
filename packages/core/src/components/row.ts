@@ -3,6 +3,7 @@ import { html, LitElement, nothing } from 'lit';
 import { property, queryAll } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
+import type { PresentedRow } from '../internal/feature-module.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_ROW_TAG } from '../internal/tags.js';
 import type { ActiveNode, ColumnConfiguration, Keys } from '../internal/types.js';
@@ -62,6 +63,13 @@ export default class ApexGridRow<T extends object> extends LitElement {
   @property({ attribute: false })
   public editingKey: Keys<T> | null = null;
 
+  /**
+   * Result of the feature-module row presenter for the current update, or
+   * `null` when no module renders this row full-width (the normal case).
+   * Computed in {@link willUpdate} and consumed in {@link render}.
+   */
+  #presented: PresentedRow | null = null;
+
   public override connectedCallback(): void {
     super.connectedCallback();
     this.setAttribute('exportparts', 'cell');
@@ -76,9 +84,33 @@ export default class ApexGridRow<T extends object> extends LitElement {
   public ariaRowOffset = 1;
 
   protected override willUpdate() {
+    this.setAttribute('aria-rowindex', String(this.index + this.ariaRowOffset + 1));
+
+    // Ask feature modules whether this row is rendered full-width (e.g. an
+    // enterprise group header). When one owns it, the row is not a selectable
+    // data row — it carries its own level/expanded semantics and skips the
+    // selection/tree aria below.
+    this.#presented = this.state
+      ? this.state.presentRow(this.data, { columns: this.columns, rowIndex: this.index })
+      : null;
+    if (this.#presented) {
+      this.selected = false;
+      this.removeAttribute('aria-selected');
+      if (typeof this.#presented.level === 'number') {
+        this.setAttribute('aria-level', String(this.#presented.level));
+      } else {
+        this.removeAttribute('aria-level');
+      }
+      if (typeof this.#presented.expanded === 'boolean') {
+        this.setAttribute('aria-expanded', this.#presented.expanded ? 'true' : 'false');
+      } else {
+        this.removeAttribute('aria-expanded');
+      }
+      return;
+    }
+
     this.selected = Boolean(this.state?.selection.isSelected(this.data));
     this.expanded = Boolean(this.state?.expansion.isExpanded(this.data));
-    this.setAttribute('aria-rowindex', String(this.index + this.ariaRowOffset + 1));
     if (this.state?.selection.enabled) {
       this.setAttribute('aria-selected', this.selected ? 'true' : 'false');
     } else {
@@ -217,6 +249,15 @@ export default class ApexGridRow<T extends object> extends LitElement {
   }
 
   protected override render() {
+    // Full-width module-rendered row (e.g. a group header): render the module's
+    // content spanning all columns, like the master-detail panel, and skip the
+    // normal selection/expansion/cell grid.
+    if (this.#presented) {
+      return html`<div part=${this.#presented.part ?? 'group-row'} style="grid-column: 1 / -1">
+        ${this.#presented.content}
+      </div>`;
+    }
+
     const { column: key, row: index } = this.activeNode;
 
     // Track aria-colindex (1-based) across the auto chrome columns and the

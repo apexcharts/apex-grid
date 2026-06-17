@@ -1,6 +1,12 @@
 import { createContext } from '@lit/context';
 import type { ReactiveController } from 'lit';
-import type { GridFeatureModule } from '../internal/feature-module.js';
+import {
+  type GridFeatureModule,
+  isRowPresenter,
+  isRowTransformer,
+  type PresentedRow,
+  type RowPresenterContext,
+} from '../internal/feature-module.js';
 import type { ActiveNode, GridHost } from '../internal/types.js';
 import { EditingController } from './editing.js';
 import { ExpansionController } from './expansion.js';
@@ -127,6 +133,37 @@ export class StateController<T extends object> implements ReactiveController {
    */
   public module<C extends ReactiveController>(id: string): C | undefined {
     return this.modules.get(id) as C | undefined;
+  }
+
+  /**
+   * Runs the post-pipeline row transforms contributed by feature modules
+   * implementing {@link RowTransformer}, in registration order. Returns the
+   * input unchanged when no such module is registered — the community grid path
+   * is a no-op pass-through.
+   */
+  public applyModuleTransforms(rows: T[]): T[] {
+    let result = rows;
+    for (const controller of this.modules.values()) {
+      if (isRowTransformer<T>(controller)) {
+        result = controller.processRows(result);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Asks feature modules implementing {@link RowPresenter} whether they render
+   * the given row as full-width custom content (e.g. a group header). Returns
+   * the first non-null result, or `null` when no module owns the row.
+   */
+  public presentRow(row: T, ctx: RowPresenterContext<T>): PresentedRow | null {
+    for (const controller of this.modules.values()) {
+      if (isRowPresenter<T>(controller)) {
+        const presented = controller.presentRow(row, ctx);
+        if (presented) return presented;
+      }
+    }
+    return null;
   }
 
   public hostConnected() {}
