@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Integrated Charts (Enterprise) - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid-enterprise.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .badge {
+        font-size: 13px;
+        font-weight: 500;
+        color: #92400e;
+        background: #fef3c7;
+        border: 1px solid #fde68a;
+        border-radius: 20px;
+        padding: 2px 10px;
+        vertical-align: middle;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .toolbar button {
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 13px;
+        border: 1px solid #d0d5dd;
+        background: #fff;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .toolbar button:hover {
+        background: #f7f9fc;
+      }
+      code {
+        background: #f1f1f1;
+        padding: 0 0.25rem;
+        border-radius: 3px;
+      }
+      apex-grid-enterprise {
+        min-height: 300px;
+        --ig-size: 2;
+      }
+      #chart {
+        margin-top: 16px;
+        border: 1px solid #eef0f4;
+        border-radius: 6px;
+        padding: 8px;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid-enterprise');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Integrated Charts <span class="badge">Enterprise</span></h2>
+    <p class="subtitle">
+      Chart the grid's grouped/pivoted aggregates with ApexCharts. <code>getChartModel()</code> turns the current view into series; <code>renderChart(container)</code> draws it. Here: salary sum &amp; average per department.
+    </p>
+    <div class="toolbar">
+      <button id="bar">Bar</button>
+      <button id="line">Line</button>
+    </div>
+    <apex-grid-enterprise id="grid"></apex-grid-enterprise>
+    <div id="chart"></div>
+    <script type="module">
+      const data = [
+        { id: 1, name: 'Ava Morgan', department: 'Engineering', salary: 96000 },
+        { id: 2, name: 'Liam Chen', department: 'Engineering', salary: 104000 },
+        { id: 3, name: 'Noah Patel', department: 'Engineering', salary: 88000 },
+        { id: 4, name: 'Emma Davis', department: 'Sales', salary: 72000 },
+        { id: 5, name: 'Olivia Rossi', department: 'Sales', salary: 69000 },
+        { id: 6, name: 'William Kim', department: 'Sales', salary: 81000 },
+        { id: 7, name: 'Sophia Nguyen', department: 'Marketing', salary: 64000 },
+        { id: 8, name: 'James Muller', department: 'Marketing', salary: 71000 },
+        { id: 9, name: 'Isabella Costa', department: 'Engineering', salary: 99000 },
+        { id: 10, name: 'Mateo Silva', department: 'Sales', salary: 75000 },
+        { id: 11, name: 'Mia Johnson', department: 'Marketing', salary: 68000 },
+        { id: 12, name: 'Lucas Brown', department: 'Engineering', salary: 91000 },
+      ];
+
+      const grid = document.getElementById('grid');
+      const chartEl = document.getElementById('chart');
+      grid.columns = [
+        { key: 'name', headerText: 'Name' },
+        { key: 'department', headerText: 'Department' },
+        { key: 'salary', headerText: 'Salary', type: 'number' },
+      ];
+      grid.data = data;
+      grid.aggregations = { salary: ['sum', 'avg'] };
+      grid.groupBy = ['department'];
+
+      let chart = null;
+      let chartType = 'bar';
+
+      async function draw() {
+        await grid.updateComplete;
+        await grid.updateComplete;
+        await new Promise((r) => requestAnimationFrame(r));
+        if (chart) { chart.destroy(); chart = null; }
+        // Animations off + toolbar hidden so the rendered frame is stable.
+        const money = (v) => `$${Math.round(Number(v)).toLocaleString('en-US')}`;
+        chart = await grid.renderChart(chartEl, {
+          title: 'Salary by department',
+          apexOptions: {
+            chart: { type: chartType, height: 300, animations: { enabled: false }, toolbar: { show: false } },
+            yaxis: { labels: { formatter: money } },
+            dataLabels: { formatter: money },
+          },
+        });
+      }
+
+      document.getElementById('bar').onclick = () => { chartType = 'bar'; draw(); };
+      document.getElementById('line').onclick = () => { chartType = 'line'; draw(); };
+
+      draw();
+    </script>
+  </body>
+</html>
