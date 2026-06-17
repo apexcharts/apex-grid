@@ -1,7 +1,8 @@
 import type { ColumnConfiguration } from 'apex-grid';
 import { registerComponent } from 'apex-grid/internal';
-import { css, html, LitElement } from 'lit';
+import { css, html, LitElement, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
+import type { AggregationFn } from './features/aggregation.js';
 import type { ApexGridEnterprise } from './grid-enterprise.js';
 
 export const TOOL_PANEL_TAG = 'apex-grid-tool-panel';
@@ -13,9 +14,15 @@ const PIN_GLYPH: Record<string, string> = { start: '⇤', end: '⇥' };
 
 /**
  * Columns tool panel — a side panel that manages the grid's columns (show/hide,
- * search, pin, reorder) and toggles row grouping per column. It reads and writes
- * the grid's reactive `columns` / `groupBy`, so every action maps to an existing
- * API. Mount it beside the grid and set its `grid` property.
+ * search, pin, reorder) and drives row grouping, aggregation, and pivoting via
+ * drag-and-drop zones. It reads and writes the grid's reactive APIs
+ * (`columns`, `groupBy`, `aggregations`, `pivotRows`/`pivotOn`/`pivotValues`),
+ * so every action maps to an existing capability. Mount beside the grid and set
+ * its `grid` property.
+ *
+ * Drag a column from the list into **Row Groups**, **Values**, or (in pivot
+ * mode) **Column Labels**. The pivot-mode toggle repoints the zones at the
+ * pivot APIs.
  *
  * @element apex-grid-tool-panel
  */
@@ -32,7 +39,7 @@ export class ApexGridToolPanel extends LitElement {
     :host {
       display: block;
       box-sizing: border-box;
-      inline-size: 260px;
+      inline-size: 270px;
       font: 0.85rem/1.4 system-ui, sans-serif;
       color: #1f2328;
       background: #f6f7f8;
@@ -64,6 +71,7 @@ export class ApexGridToolPanel extends LitElement {
       gap: 6px;
       padding: 3px 4px;
       border-radius: 4px;
+      cursor: grab;
     }
     [part='item']:hover {
       background: #eceef0;
@@ -74,7 +82,6 @@ export class ApexGridToolPanel extends LitElement {
       align-items: center;
       gap: 6px;
       min-inline-size: 0;
-      cursor: pointer;
     }
     [part='label'] span {
       overflow: hidden;
@@ -102,6 +109,52 @@ export class ApexGridToolPanel extends LitElement {
       background: #1f6feb;
       color: #fff;
     }
+    [part='pivot-toggle'] {
+      padding: 6px 10px;
+      border-block-start: 1px solid #e4e6e9;
+    }
+    [part='zone'] {
+      margin: 6px 10px;
+      padding: 6px;
+      border: 1px dashed #c4c8cd;
+      border-radius: 5px;
+      background: #fbfbfc;
+    }
+    [part='zone-title'] {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: #6a737d;
+      margin-block-end: 4px;
+    }
+    [part='chips'] {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      min-block-size: 20px;
+    }
+    [part='zone-empty'] {
+      font-size: 0.78rem;
+      color: #9aa1a8;
+    }
+    [part='chip'] {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 4px 1px 7px;
+      background: #1f6feb;
+      color: #fff;
+      border-radius: 10px;
+      font-size: 0.78rem;
+    }
+    [part='chip'] button {
+      color: #fff;
+      padding: 0 3px;
+    }
+    [part='chip'] button:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
   `;
 
   /** The grid this panel controls. */
@@ -111,12 +164,23 @@ export class ApexGridToolPanel extends LitElement {
   @state()
   private search = '';
 
+  /** When true, the zones drive the pivot APIs instead of grouping/aggregation. */
+  @state()
+  public pivotMode = false;
+
+  // --- column helpers ------------------------------------------------------
+
   #columns(): AnyColumn[] {
     return (this.grid?.columns ?? []) as AnyColumn[];
   }
 
   #label(column: AnyColumn): string {
     return column.headerText ?? String(column.key);
+  }
+
+  #labelFor(key: string): string {
+    const column = this.#columns().find((each) => String(each.key) === key);
+    return column ? this.#label(column) : key;
   }
 
   #setColumns(next: AnyColumn[]): void {
@@ -152,14 +216,130 @@ export class ApexGridToolPanel extends LitElement {
     this.#setColumns(columns);
   }
 
-  #toggleGroup(key: unknown): void {
+  // --- grouping / aggregation / pivot zones --------------------------------
+
+  /** Row-dimension keys for the current mode (groupBy or pivotRows). */
+  #groupKeys(): string[] {
+    return this.pivotMode ? (this.grid?.pivotRows ?? []) : (this.grid?.groupBy ?? []);
+  }
+
+  #setGroupKeys(next: string[]): void {
     if (!this.grid) return;
-    const groupBy = this.grid.groupBy ?? [];
-    const stringKey = String(key);
-    this.grid.groupBy = groupBy.includes(stringKey)
-      ? groupBy.filter((each) => each !== stringKey)
-      : [...groupBy, stringKey];
+    if (this.pivotMode) {
+      this.grid.pivotRows = next;
+    } else {
+      this.grid.groupBy = next;
+    }
     this.requestUpdate();
+  }
+
+  #addToGroups(key: string): void {
+    const keys = this.#groupKeys();
+    if (!keys.includes(key)) this.#setGroupKeys([...keys, key]);
+  }
+
+  #removeFromGroups(key: string): void {
+    this.#setGroupKeys(this.#groupKeys().filter((each) => each !== key));
+  }
+
+  /** Public toggle used by the per-row group button (mode-aware). */
+  public toggleGroup(key: string): void {
+    if (this.#groupKeys().includes(key)) {
+      this.#removeFromGroups(key);
+    } else {
+      this.#addToGroups(key);
+    }
+  }
+
+  #valuesConfig() {
+    return this.pivotMode ? (this.grid?.pivotValues ?? {}) : (this.grid?.aggregations ?? {});
+  }
+
+  #addToValues(key: string): void {
+    if (!this.grid) return;
+    const config = this.#valuesConfig();
+    if (config[key]) return;
+    const next = { ...config, [key]: ['sum'] as AggregationFn[] };
+    if (this.pivotMode) {
+      this.grid.pivotValues = next;
+    } else {
+      this.grid.aggregations = next;
+    }
+    this.requestUpdate();
+  }
+
+  #removeFromValues(key: string): void {
+    if (!this.grid) return;
+    const next = { ...this.#valuesConfig() };
+    delete next[key];
+    if (this.pivotMode) {
+      this.grid.pivotValues = next;
+    } else {
+      this.grid.aggregations = next;
+    }
+    this.requestUpdate();
+  }
+
+  #setColumnLabel(key: string): void {
+    if (!this.grid) return;
+    this.grid.pivotOn = key;
+    this.requestUpdate();
+  }
+
+  #clearColumnLabel(): void {
+    if (!this.grid) return;
+    this.grid.pivotOn = '';
+    this.requestUpdate();
+  }
+
+  /** Enter/exit pivot mode, carrying the row dimension across. */
+  #setPivotMode(on: boolean): void {
+    if (!this.grid) return;
+    if (on) {
+      this.grid.pivotRows = this.grid.groupBy;
+      this.grid.groupBy = [];
+    } else {
+      this.grid.groupBy = this.grid.pivotRows;
+      this.grid.pivotOn = '';
+    }
+    this.pivotMode = on;
+    this.requestUpdate();
+  }
+
+  #dropKey(event: DragEvent): string | null {
+    return event.dataTransfer?.getData('text/plain') || null;
+  }
+
+  #renderZone(
+    title: string,
+    keys: string[],
+    onDrop: (key: string) => void,
+    renderChip: (key: string) => TemplateResult
+  ) {
+    return html`<div
+      part="zone"
+      @dragover=${(event: DragEvent) => event.preventDefault()}
+      @drop=${(event: DragEvent) => {
+        event.preventDefault();
+        const key = this.#dropKey(event);
+        if (key) onDrop(key);
+      }}
+    >
+      <div part="zone-title">${title}</div>
+      <div part="chips">
+        ${
+          keys.length
+            ? keys.map(renderChip)
+            : html`<span part="zone-empty">Drag columns here</span>`
+        }
+      </div>
+    </div>`;
+  }
+
+  #chip(label: string, onRemove: () => void): TemplateResult {
+    return html`<span part="chip"
+      >${label}<button title="Remove" @click=${onRemove}>×</button></span
+    >`;
   }
 
   protected override render() {
@@ -167,7 +347,7 @@ export class ApexGridToolPanel extends LitElement {
       return html`<div part="header">No grid connected</div>`;
     }
     const term = this.search.trim().toLowerCase();
-    const groupBy = this.grid.groupBy ?? [];
+    const groupKeys = this.#groupKeys();
     const columns = this.#columns().filter((column) =>
       this.#label(column).toLowerCase().includes(term)
     );
@@ -185,7 +365,13 @@ export class ApexGridToolPanel extends LitElement {
       />
       <ul part="list">
         ${columns.map(
-          (column) => html`<li part="item" data-key=${String(column.key)}>
+          (column) => html`<li
+            part="item"
+            data-key=${String(column.key)}
+            draggable="true"
+            @dragstart=${(event: DragEvent) =>
+              event.dataTransfer?.setData('text/plain', String(column.key))}
+          >
             <label part="label">
               <input
                 type="checkbox"
@@ -211,8 +397,8 @@ export class ApexGridToolPanel extends LitElement {
               <button
                 part="group"
                 title="Group by this column"
-                aria-pressed=${groupBy.includes(String(column.key)) ? 'true' : 'false'}
-                @click=${() => this.#toggleGroup(column.key)}
+                aria-pressed=${groupKeys.includes(String(column.key)) ? 'true' : 'false'}
+                @click=${() => this.toggleGroup(String(column.key))}
               >
                 ⊞
               </button>
@@ -220,6 +406,45 @@ export class ApexGridToolPanel extends LitElement {
           </li>`
         )}
       </ul>
+
+      <div part="pivot-toggle">
+        <label>
+          <input
+            type="checkbox"
+            part="pivot-mode"
+            .checked=${this.pivotMode}
+            @change=${(event: Event) =>
+              this.#setPivotMode((event.target as HTMLInputElement).checked)}
+          />
+          Pivot mode
+        </label>
+      </div>
+
+      ${this.#renderZone(
+        this.pivotMode ? 'Row Groups (pivot rows)' : 'Row Groups',
+        groupKeys,
+        (key) => this.#addToGroups(key),
+        (key) => this.#chip(this.#labelFor(key), () => this.#removeFromGroups(key))
+      )}
+      ${this.#renderZone(
+        'Values',
+        Object.keys(this.#valuesConfig()),
+        (key) => this.#addToValues(key),
+        (key) =>
+          this.#chip(`${this.#labelFor(key)} (${this.#valuesConfig()[key].join('/')})`, () =>
+            this.#removeFromValues(key)
+          )
+      )}
+      ${
+        this.pivotMode
+          ? this.#renderZone(
+              'Column Labels',
+              this.grid.pivotOn ? [this.grid.pivotOn] : [],
+              (key) => this.#setColumnLabel(key),
+              (key) => this.#chip(this.#labelFor(key), () => this.#clearColumnLabel())
+            )
+          : nothing
+      }
     `;
   }
 }

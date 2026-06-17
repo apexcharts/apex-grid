@@ -97,7 +97,9 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   /**
    * Per-column aggregation request (sum/avg/min/max/count). Read on demand by
    * {@link getAggregations}, and computed per group when {@link groupBy} is set.
+   * Reactive: changing it re-runs grouping so group aggregates update.
    */
+  @property({ attribute: false })
   public aggregations: AggregationConfig = {};
 
   /**
@@ -235,7 +237,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   #syncGrouping(changed: PropertyValues): void {
-    if (!(changed.has('groupBy') || changed.has('groupingOptions'))) return;
+    if (!(changed.has('groupBy') || changed.has('groupingOptions') || changed.has('aggregations')))
+      return;
     // Requesting a grouping switches off any active pivot (mutually exclusive).
     if (this.groupBy.length > 0 && this.#pivotActive) {
       this.#deactivatePivot();

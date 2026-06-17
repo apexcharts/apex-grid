@@ -46,6 +46,17 @@ function keysOf(grid: ApexGridEnterprise<Row>): string[] {
   return grid.columns.map((c) => String(c.key));
 }
 
+function zoneByTitle(panel: ApexGridToolPanel, title: string): HTMLElement {
+  return [...panel.shadowRoot!.querySelectorAll('[part="zone"]')].find((zone) =>
+    zone.querySelector('[part="zone-title"]')?.textContent?.includes(title)
+  ) as HTMLElement;
+}
+function dropOnZone(zone: HTMLElement, key: string): void {
+  const dt = new DataTransfer();
+  dt.setData('text/plain', key);
+  zone.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+}
+
 describe('ApexGridToolPanel', () => {
   before(() => {
     ApexGridEnterprise.register();
@@ -114,5 +125,68 @@ describe('ApexGridToolPanel', () => {
     const rows = panel.shadowRoot!.querySelectorAll('li[part="item"]');
     expect(rows.length).to.equal(1);
     expect(rows[0].getAttribute('data-key')).to.equal('amount');
+  });
+
+  it('dragging a column into Row Groups sets groupBy', async () => {
+    const { grid, panel } = await mount();
+    dropOnZone(zoneByTitle(panel, 'Row Groups'), 'name');
+    await settle(grid, panel);
+    expect(grid.groupBy).to.eql(['name']);
+  });
+
+  it('dragging a column into Values sets aggregations', async () => {
+    const { grid, panel } = await mount();
+    dropOnZone(zoneByTitle(panel, 'Values'), 'amount');
+    await settle(grid, panel);
+    expect(grid.aggregations).to.eql({ amount: ['sum'] });
+  });
+
+  it('removing a Values chip clears that aggregation', async () => {
+    const { grid, panel } = await mount();
+    dropOnZone(zoneByTitle(panel, 'Values'), 'amount');
+    await settle(grid, panel);
+
+    const remove = zoneByTitle(panel, 'Values').querySelector(
+      '[part="chip"] button'
+    ) as HTMLButtonElement;
+    remove.click();
+    await settle(grid, panel);
+    expect(grid.aggregations).to.eql({});
+  });
+
+  it('pivot mode repoints the zones and activates pivot once all three are set', async () => {
+    const { grid, panel } = await mount();
+    (panel.shadowRoot!.querySelector('[part="pivot-mode"]') as HTMLInputElement).click();
+    await settle(grid, panel);
+    expect(panel.pivotMode).to.be.true;
+
+    dropOnZone(zoneByTitle(panel, 'Row Groups'), 'id');
+    await settle(grid, panel);
+    dropOnZone(zoneByTitle(panel, 'Column Labels'), 'name');
+    await settle(grid, panel);
+    dropOnZone(zoneByTitle(panel, 'Values'), 'amount');
+    await settle(grid, panel);
+
+    expect(grid.pivotRows).to.eql(['id']);
+    expect(grid.pivotOn).to.equal('name');
+    expect(grid.pivotValues).to.eql({ amount: ['sum'] });
+    expect(grid.isPivoting).to.be.true;
+  });
+
+  it('leaving pivot mode carries the row dimension back to groupBy', async () => {
+    const { grid, panel } = await mount();
+    const toggle = panel.shadowRoot!.querySelector('[part="pivot-mode"]') as HTMLInputElement;
+
+    toggle.click(); // enter pivot mode
+    await settle(grid, panel);
+    dropOnZone(zoneByTitle(panel, 'Row Groups'), 'name');
+    await settle(grid, panel);
+    expect(grid.pivotRows).to.eql(['name']);
+
+    toggle.click(); // leave pivot mode
+    await settle(grid, panel);
+    expect(panel.pivotMode).to.be.false;
+    expect(grid.groupBy).to.eql(['name']);
+    expect(grid.isPivoting).to.be.false;
   });
 });
