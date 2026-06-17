@@ -24,6 +24,12 @@ import {
   aggregationModule,
 } from './features/aggregation.js';
 import {
+  type ChartModel,
+  type ChartSeries,
+  type RenderChartOptions,
+  renderApexChart,
+} from './features/chart.js';
+import {
   GROUPING_MODULE_ID,
   type GroupingController,
   type GroupRowMeta,
@@ -281,6 +287,54 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   /** The group headers (with counts + aggregates) from the latest pipeline pass. */
   public getGroups(): GroupRowMeta<T>[] {
     return this.#groupingController()?.getGroups() ?? [];
+  }
+
+  /**
+   * Build a chart-ready model from the current view's aggregates:
+   * - **Grouping active:** categories = top-level group labels; one series per
+   *   `aggregations` measure×fn.
+   * - **Pivot active:** categories = pivot row labels; one series per generated
+   *   pivot value column.
+   * - **Neither:** empty model.
+   */
+  public getChartModel(): ChartModel {
+    if (this.groupBy.length > 0) {
+      const groups = (this.#groupingController()?.getGroups() ?? []).filter((g) => g.depth === 0);
+      const categories = groups.map((group) => group.label);
+      const series: ChartSeries[] = [];
+      for (const [measure, fns] of Object.entries(this.aggregations)) {
+        for (const fn of fns) {
+          series.push({
+            name: `${measure} ${fn}`,
+            data: groups.map((group) => group.aggregates[measure]?.[fn] ?? 0),
+          });
+        }
+      }
+      return { categories, series };
+    }
+
+    if (this.#pivotActive) {
+      const rows = this.pageItems as ReadonlyArray<Record<string, unknown>>;
+      const categories = rows.map((row) =>
+        this.pivotRows.map((field) => String(row[field])).join(' / ')
+      );
+      const valueCols = this.columns.filter((column) => String(column.key).startsWith('pivot::'));
+      const series: ChartSeries[] = valueCols.map((column) => ({
+        name: column.headerText ?? String(column.key),
+        data: rows.map((row) => Number(row[String(column.key)]) || 0),
+      }));
+      return { categories, series };
+    }
+
+    return { categories: [], series: [] };
+  }
+
+  /**
+   * Render the current {@link getChartModel} into a (light-DOM) container using
+   * ApexCharts and return the instance. ApexCharts is dynamically imported.
+   */
+  public renderChart(container: HTMLElement, options?: RenderChartOptions) {
+    return renderApexChart(container, this.getChartModel(), options);
   }
 
   /**

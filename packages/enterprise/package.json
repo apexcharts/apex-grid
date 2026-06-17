@@ -30,7 +30,8 @@
   },
   "dependencies": {
     "apex-commons": "^0.1.0",
-    "apex-grid": "^3.0.0"
+    "apex-grid": "^3.0.0",
+    "apexcharts": "^5.15.0"
   },
   "peerDependencies": {
     "@lit/context": "^1.1.5",

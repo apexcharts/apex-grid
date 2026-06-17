@@ -48,7 +48,7 @@ const columns: ColumnConfiguration<User>[] = [
 const grid = document.querySelector('apex-grid-enterprise') as ApexGridEnterprise<User>;
 grid.data = generateUsers(200);
 grid.columns = columns;
-grid.aggregations = { age: ['avg'], salary: ['sum', 'avg'] };
+grid.aggregations = { salary: ['avg'] };
 // Start grouped by department to show the feature; aggregates render per group.
 grid.groupBy = ['department'];
 grid.groupingOptions = { defaultExpanded: false };
@@ -56,6 +56,34 @@ grid.groupingOptions = { defaultExpanded: false };
 const statusEl = document.getElementById('status') as HTMLElement;
 const aggEl = document.getElementById('aggregations') as HTMLElement;
 const keyInput = document.getElementById('key') as HTMLInputElement;
+const chartEl = document.getElementById('chart') as HTMLElement;
+
+let chartInstance: Awaited<ReturnType<typeof grid.renderChart>> | null = null;
+let chartType: 'bar' | 'line' = 'bar';
+
+/** Redraw the chart of the current group/pivot view after the pipeline settles. */
+async function redrawChart(): Promise<void> {
+  // Let the grouping/pivot property change flow through the async data pipeline.
+  await grid.updateComplete;
+  await grid.updateComplete;
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+
+  if (chartInstance) {
+    chartInstance.destroy();
+    chartInstance = null;
+  }
+  const model = grid.getChartModel();
+  if (!model.series.length) {
+    chartEl.innerHTML =
+      '<p style="opacity:.6;font-size:.85rem;margin:0">Group or pivot the grid to chart its aggregates.</p>';
+    return;
+  }
+  chartEl.innerHTML = '';
+  chartInstance = await grid.renderChart(chartEl, {
+    type: chartType,
+    title: grid.isPivoting ? 'Pivot aggregates' : 'Group aggregates',
+  });
+}
 
 function refresh(): void {
   const valid = LicenseManager.isLicenseValid();
@@ -65,10 +93,7 @@ function refresh(): void {
     : `✗ <strong>Unlicensed</strong> — grid still works, watermark shown. ${message ?? ''}`;
 
   const a = grid.getAggregations();
-  aggEl.textContent =
-    `Aggregations (all ${grid.data.length} rows) — ` +
-    `age avg ${a.age?.avg?.toFixed(1)}; ` +
-    `salary: sum ${a.salary?.sum?.toLocaleString()}, avg ${a.salary?.avg?.toFixed(0)}`;
+  aggEl.textContent = `Aggregations (all ${grid.data.length} rows) — salary avg ${a.salary?.avg?.toFixed(0)}`;
 }
 
 document.getElementById('apply')?.addEventListener('click', () => {
@@ -93,13 +118,16 @@ document.getElementById('trial')?.addEventListener('click', () => {
 
 document.getElementById('group-dept')?.addEventListener('click', () => {
   grid.groupBy = ['department'];
+  void redrawChart();
 });
 document.getElementById('group-dept-active')?.addEventListener('click', () => {
   grid.groupBy = ['department', 'active'];
+  void redrawChart();
 });
 document.getElementById('ungroup')?.addEventListener('click', () => {
   grid.groupBy = [];
   grid.pivotOn = '';
+  void redrawChart();
 });
 document.getElementById('expand-all')?.addEventListener('click', () => grid.expandAllGroups());
 document.getElementById('collapse-all')?.addEventListener('click', () => grid.collapseAllGroups());
@@ -108,10 +136,22 @@ document.getElementById('pivot-active-dept')?.addEventListener('click', () => {
   grid.pivotRows = ['active'];
   grid.pivotOn = 'department';
   grid.pivotValues = { salary: ['sum'] };
+  void redrawChart();
 });
 document.getElementById('unpivot')?.addEventListener('click', () => {
   grid.pivotOn = '';
+  void redrawChart();
+});
+
+document.getElementById('chart-bar')?.addEventListener('click', () => {
+  chartType = 'bar';
+  void redrawChart();
+});
+document.getElementById('chart-line')?.addEventListener('click', () => {
+  chartType = 'line';
+  void redrawChart();
 });
 
 await loadTheme();
 refresh();
+await redrawChart();
