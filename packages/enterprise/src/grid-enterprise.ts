@@ -6,13 +6,15 @@ import {
   type ExportOptions,
   type GridFeatureModule,
   getColumnLabel,
+  PIPELINE,
   registerComponent,
   resolveExportColumns,
   resolveExportRows,
   resolveExportValue,
   StateController,
 } from 'apex-grid/internal';
-import { html, nothing } from 'lit';
+import { html, nothing, type PropertyValues } from 'lit';
+import { property } from 'lit/decorators.js';
 import {
   AGGREGATION_MODULE_ID,
   type AggregationConfig,
@@ -20,6 +22,12 @@ import {
   type AggregationResults,
   aggregationModule,
 } from './features/aggregation.js';
+import {
+  GROUPING_MODULE_ID,
+  type GroupingController,
+  type GroupRowMeta,
+  groupingModule,
+} from './features/grouping.js';
 import { buildXLSX, type XLSXExportOptions } from './features/xlsx.js';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -31,7 +39,7 @@ export const ENTERPRISE_TAG = 'apex-grid-enterprise';
  * Feature modules layered onto the enterprise grid via the core extension seam.
  * Kept as a module-level constant so it is shared across instances.
  */
-const ENTERPRISE_MODULES: ReadonlyArray<GridFeatureModule> = [aggregationModule];
+const ENTERPRISE_MODULES: ReadonlyArray<GridFeatureModule> = [aggregationModule, groupingModule];
 
 // Repeating diagonal watermark shown when no valid license is set. Rendered in
 // the grid's shadow DOM as a non-interactive overlay (absolute + inset:0 covers
@@ -76,9 +84,22 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   /**
    * Per-column aggregation request (sum/avg/min/max/count). Read on demand by
-   * {@link getAggregations}.
+   * {@link getAggregations}, and computed per group when {@link groupBy} is set.
    */
   public aggregations: AggregationConfig = {};
+
+  /**
+   * Ordered column keys to group rows by (derived row grouping, distinct from
+   * declared `tree` data). Empty disables grouping. Each group renders an
+   * expandable, full-width header row with its value, leaf count, and the
+   * configured {@link aggregations}.
+   */
+  @property({ attribute: false })
+  public groupBy: string[] = [];
+
+  /** Tuning for row grouping (e.g. default group expansion). */
+  @property({ attribute: false })
+  public groupingOptions: { defaultExpanded?: boolean | number } = {};
 
   public static override get tagName(): string {
     return ENTERPRISE_TAG;
@@ -119,6 +140,59 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   public getAggregations(): AggregationResults {
     const controller = this.stateController.module<AggregationController<T>>(AGGREGATION_MODULE_ID);
     return controller ? controller.compute(this.data, this.aggregations) : {};
+  }
+
+  protected override willUpdate(changed: PropertyValues): void {
+    // Push grouping config to the controller *before* super.willUpdate runs the
+    // `@watch('data')` handler, so the initial dataState is grouped on first
+    // paint. requestUpdate(PIPELINE) re-runs the pipeline when only the grouping
+    // config changed (no data change).
+    if (changed.has('groupBy') || changed.has('groupingOptions')) {
+      const grouping = this.#groupingController();
+      if (grouping) {
+        grouping.groupBy = this.groupBy;
+        grouping.aggregations = this.aggregations;
+        if (this.groupingOptions?.defaultExpanded !== undefined) {
+          grouping.defaultExpanded = this.groupingOptions.defaultExpanded;
+        }
+        this.requestUpdate(PIPELINE);
+      }
+    }
+    super.willUpdate(changed);
+  }
+
+  #groupingController(): GroupingController<T> | undefined {
+    return this.stateController.module<GroupingController<T>>(GROUPING_MODULE_ID);
+  }
+
+  /** Expand a single group by its key (see {@link GroupRowMeta.key}). */
+  public expandGroup(key: string): void {
+    this.#groupingController()?.expandGroup(key);
+  }
+
+  /** Collapse a single group by its key. */
+  public collapseGroup(key: string): void {
+    this.#groupingController()?.collapseGroup(key);
+  }
+
+  /** Toggle a single group's expansion by its key. */
+  public toggleGroup(key: string): void {
+    this.#groupingController()?.toggleGroup(key);
+  }
+
+  /** Expand every group. */
+  public expandAllGroups(): void {
+    this.#groupingController()?.expandAllGroups();
+  }
+
+  /** Collapse every group. */
+  public collapseAllGroups(): void {
+    this.#groupingController()?.collapseAllGroups();
+  }
+
+  /** The group headers (with counts + aggregates) from the latest pipeline pass. */
+  public getGroups(): GroupRowMeta<T>[] {
+    return this.#groupingController()?.getGroups() ?? [];
   }
 
   /**
