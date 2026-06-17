@@ -3,6 +3,11 @@ import type { ReactiveController } from 'lit';
 import { ApexGrid } from '../src/components/grid.js';
 import { StateController } from '../src/controllers/state.js';
 import type {
+  CellDecoration,
+  CellDecorator,
+  CellDecoratorContext,
+  CellInteraction,
+  CellInteractionHandler,
   GridFeatureModule,
   PresentedRow,
   RowPresenter,
@@ -65,6 +70,26 @@ describe('Feature module seam', () => {
       state.presentRow(rows[0], { columns: grid.columns, rowIndex: 0 }),
       'presenter returns null'
     ).to.be.null;
+
+    // The cell-decoration / cell-interaction seams are inert too: no decoration
+    // contributed, version pinned at 0, and forwarding an interaction is a no-op.
+    expect(state.decorationVersion, 'decoration version starts at 0').to.equal(0);
+    expect(
+      state.decorateCell({ row: rows[0], rowIndex: 0, column: grid.columns[0], value: undefined }),
+      'decorateCell returns null'
+    ).to.be.null;
+    expect(() =>
+      state.handleCellInteraction({
+        kind: 'down',
+        row: rows[0],
+        rowIndex: 0,
+        column: grid.columns[0],
+        shiftKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        originalEvent: new PointerEvent('pointerdown'),
+      })
+    ).to.not.throw();
   });
 
   it('injected module is constructed and retrievable via module(id)', async () => {
@@ -203,5 +228,143 @@ describe('Row transform + presenter seams', () => {
     const groupRows = deepQueryAll(grid.shadowRoot!, '[part="group-row"]');
     expect(groupRows.length, 'a full-width group row is rendered').to.be.greaterThan(0);
     expect(groupRows[0].textContent ?? '').to.contain('Group');
+  });
+});
+
+describe('Cell decoration + interaction seams', () => {
+  afterEach(() => fixtureCleanup());
+
+  /**
+   * Stub module that records interactions and decorates the first column's
+   * cells — the shape the enterprise range-selection feature takes.
+   */
+  class DecorateStub
+    implements ReactiveController, CellDecorator<TestData>, CellInteractionHandler<TestData>
+  {
+    public interactions: CellInteraction<TestData>[] = [];
+    public decoratedKey: string | null = null;
+
+    constructor(
+      host: GridHost<TestData>,
+      private state: StateController<TestData>
+    ) {
+      host.addController(this);
+    }
+    hostConnected() {}
+
+    handleCellInteraction(interaction: CellInteraction<TestData>): void {
+      this.interactions.push(interaction);
+      this.decoratedKey = String(interaction.column.key);
+      this.state.bumpDecoration();
+    }
+
+    decorateCell(ctx: CellDecoratorContext<TestData>): CellDecoration | null {
+      if (this.decoratedKey === null || String(ctx.column.key) !== this.decoratedKey) return null;
+      return { attributes: { 'data-range': 'selected', 'data-range-edge': 'top left' } };
+    }
+  }
+
+  let stub: DecorateStub;
+  const decorateModule: GridFeatureModule<TestData> = {
+    id: 'decorate-stub',
+    create: (host, state) => {
+      stub = new DecorateStub(host, state as StateController<TestData>);
+      return stub;
+    },
+  };
+
+  class DecorateGrid<T extends object> extends ApexGrid<T> {
+    public static override get tagName() {
+      return 'apex-grid-decorate-test';
+    }
+    public static override register() {
+      if (!customElements.get(DecorateGrid.tagName)) {
+        customElements.define(DecorateGrid.tagName, DecorateGrid);
+      }
+    }
+    protected override createStateController(): StateController<T> {
+      return new StateController<T>(this, [decorateModule as unknown as GridFeatureModule<T>]);
+    }
+  }
+
+  const columns = [
+    { key: 'id' },
+    { key: 'name' },
+    { key: 'active' },
+    { key: 'importance' },
+  ] as ApexGrid<TestData>['columns'];
+
+  async function mount() {
+    DecorateGrid.register();
+    const grid = await fixture<DecorateGrid<TestData>>(
+      html`<apex-grid-decorate-test .data=${data} .columns=${columns}></apex-grid-decorate-test>`
+    );
+    await grid.updateComplete;
+    await nextFrame();
+    return grid;
+  }
+
+  it('passes the StateController to module.create', async () => {
+    const grid = await mount();
+    const state = stateOf(grid);
+    // The stub stored the state and uses it to bump decoration — proving it
+    // received a live StateController as the second create() argument.
+    expect(state.module('decorate-stub')).to.equal(stub);
+  });
+
+  it('forwards cell pointer interactions and bumps the decoration version', async () => {
+    const grid = await mount();
+    const state = stateOf(grid);
+    const before = state.decorationVersion;
+
+    const key = String(grid.columns[0].key);
+    state.handleCellInteraction({
+      kind: 'down',
+      row: grid.pageItems[0],
+      rowIndex: 0,
+      column: grid.columns[0],
+      shiftKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      originalEvent: new PointerEvent('pointerdown'),
+    });
+
+    expect(stub.interactions.length, 'interaction forwarded to module').to.equal(1);
+    expect(stub.interactions[0].kind).to.equal('down');
+    expect(state.decorationVersion, 'decoration version bumped').to.equal(before + 1);
+    expect(stub.decoratedKey).to.equal(key);
+  });
+
+  it('reflects module decoration attributes onto the matching cells', async () => {
+    const grid = await mount();
+    const state = stateOf(grid);
+    const column = grid.columns[0];
+
+    // decorateCell returns the attributes for the targeted column once selected.
+    state.handleCellInteraction({
+      kind: 'down',
+      row: grid.pageItems[0],
+      rowIndex: 0,
+      column,
+      shiftKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      originalEvent: new PointerEvent('pointerdown'),
+    });
+    const decoration = state.decorateCell({
+      row: grid.pageItems[0],
+      rowIndex: 0,
+      column,
+      value: undefined,
+    });
+    expect(decoration?.attributes['data-range']).to.equal('selected');
+    expect(decoration?.attributes['data-range-edge']).to.equal('top left');
+
+    // After the bump, the rendered cells of that column carry the attribute.
+    await grid.updateComplete;
+    await nextFrame();
+    await nextFrame();
+    const decorated = deepQueryAll(grid.shadowRoot!, '[data-range="selected"]');
+    expect(decorated.length, 'at least one cell decorated').to.be.greaterThan(0);
   });
 });

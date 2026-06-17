@@ -22,12 +22,24 @@ export {
   resolveExportValue,
 } from './export.js';
 export type {
+  CellDecoration,
+  CellDecorator,
+  CellDecoratorContext,
+  CellInteraction,
+  CellInteractionHandler,
+  CellInteractionKind,
   GridFeatureModule,
   PresentedRow,
   RowPresenter,
   RowPresenterContext,
   RowTransformer,
 } from './feature-module.js';
-export { isRowPresenter, isRowTransformer } from './feature-module.js';
+export {
+  isCellDecorator,
+  isCellInteractionHandler,
+  isRowPresenter,
+  isRowTransformer,
+} from './feature-module.js';
 export { registerComponent } from './register.js';
-export type { ActiveNode, GridHost } from './types.js';
+export type { ActiveNode, ColumnConfiguration, GridHost, Keys } from './types.js';
+export { getDisplayColumns } from './utils.js';

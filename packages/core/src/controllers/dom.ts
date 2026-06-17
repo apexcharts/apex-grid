@@ -67,6 +67,7 @@ export class GridDOMController<T extends object> implements ReactiveController {
         .pinOffsets=${this.pinOffsets}
         .editingKey=${editingKey}
         .ariaRowOffset=${ariaRowOffset}
+        .decorationVersion=${this.state.decorationVersion}
       >
       </apex-grid-row>
     `;

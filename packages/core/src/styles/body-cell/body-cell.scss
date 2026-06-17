@@ -347,3 +347,47 @@ $star-size: #{rem(14px)};
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+// --- Cell-range decoration (CellDecorator seam) ----------------------------
+// Inert by default: the community grid never sets these attributes (it
+// registers no decorator module). A feature module (enterprise range
+// selection) reflects `data-range` / `data-range-edge` onto cells, and themes
+// the look purely through the `--apex-range-*` custom properties, which inherit
+// across the shadow boundary from the grid host. With the defaults below (fully
+// transparent fill, zero-width border) decorated cells render identically to
+// undecorated ones until a theme defines those properties.
+:host([data-range]) {
+    background: var(--apex-range-fill, transparent);
+}
+
+:host([data-range~='active']) {
+    background: var(--apex-range-active-fill, var(--apex-range-fill, transparent));
+}
+
+// Perimeter outline drawn on a non-interactive overlay so it never shifts the
+// cell's content box. Edge tokens (`data-range-edge="top left"`) light up only
+// the sides on the selection's boundary, yielding the classic spreadsheet box.
+:host([data-range])::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    border: 0 solid var(--apex-range-border, transparent);
+}
+
+:host([data-range-edge~='top'])::before {
+    border-block-start-width: var(--apex-range-border-width, 1px);
+}
+
+:host([data-range-edge~='bottom'])::before {
+    border-block-end-width: var(--apex-range-border-width, 1px);
+}
+
+:host([data-range-edge~='left'])::before {
+    border-inline-start-width: var(--apex-range-border-width, 1px);
+}
+
+:host([data-range-edge~='right'])::before {
+    border-inline-end-width: var(--apex-range-border-width, 1px);
+}

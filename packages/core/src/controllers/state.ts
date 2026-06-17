@@ -1,7 +1,12 @@
 import { createContext } from '@lit/context';
 import type { ReactiveController } from 'lit';
 import {
+  type CellDecoration,
+  type CellDecoratorContext,
+  type CellInteraction,
   type GridFeatureModule,
+  isCellDecorator,
+  isCellInteractionHandler,
   isRowPresenter,
   isRowTransformer,
   type PresentedRow,
@@ -123,7 +128,7 @@ export class StateController<T extends object> implements ReactiveController {
 
     for (const module of this.extraModules) {
       if (this.modules.has(module.id)) continue;
-      this.modules.set(module.id, module.create(this.host));
+      this.modules.set(module.id, module.create(this.host, this));
     }
   }
 
@@ -164,6 +169,61 @@ export class StateController<T extends object> implements ReactiveController {
       }
     }
     return null;
+  }
+
+  /**
+   * Monotonic token bumped by {@link bumpDecoration} whenever module-driven cell
+   * decoration changes. Forwarded down to each cell as a reactive property so a
+   * decoration-only change (e.g. dragging a selection range) re-renders cells
+   * without re-running the data pipeline. Always `0` for the community grid.
+   */
+  #decorationVersion = 0;
+
+  public get decorationVersion(): number {
+    return this.#decorationVersion;
+  }
+
+  /**
+   * Signals that {@link CellDecorator} output may have changed. Bumps the
+   * {@link decorationVersion} and requests a host update so cells re-run their
+   * decoration. Called by feature modules after mutating decoration state.
+   */
+  public bumpDecoration(): void {
+    this.#decorationVersion += 1;
+    this.host.requestUpdate();
+  }
+
+  /**
+   * Collects per-cell decoration contributed by feature modules implementing
+   * {@link CellDecorator}, merging their attribute maps (later modules win on a
+   * key clash). Returns `null` when no module decorates the cell — the community
+   * grid path, where each cell applies nothing.
+   */
+  public decorateCell(ctx: CellDecoratorContext<T>): CellDecoration | null {
+    let attributes: Record<string, string | null | undefined> | null = null;
+    for (const controller of this.modules.values()) {
+      if (isCellDecorator<T>(controller)) {
+        const decoration = controller.decorateCell(ctx);
+        if (decoration) {
+          attributes ??= {};
+          Object.assign(attributes, decoration.attributes);
+        }
+      }
+    }
+    return attributes ? { attributes } : null;
+  }
+
+  /**
+   * Forwards a body-cell pointer interaction to every feature module that
+   * implements {@link CellInteractionHandler}. No-op for the community grid
+   * (no modules); the grid only calls this when modules are registered.
+   */
+  public handleCellInteraction(interaction: CellInteraction<T>): void {
+    for (const controller of this.modules.values()) {
+      if (isCellInteractionHandler<T>(controller)) {
+        controller.handleCellInteraction(interaction);
+      }
+    }
   }
 
   public hostConnected() {}

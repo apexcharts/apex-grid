@@ -13,6 +13,7 @@ import {
   type ExportFormat,
   type ExportOptions,
 } from '../internal/export.js';
+import type { CellInteractionKind } from '../internal/feature-module.js';
 import { EventEmitterBase } from '../internal/mixins/event-emitter.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_TAG } from '../internal/tags.js';
@@ -1704,6 +1705,33 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     }
   }
 
+  /**
+   * Forwards body-cell pointer interactions (press / drag-over / release) to
+   * feature modules via {@link StateController.handleCellInteraction}. Gated on
+   * there being at least one registered module so the community grid does no
+   * per-event work (it registers none). The seam a range-selection feature
+   * builds on.
+   */
+  protected bodyPointerHandler(event: PointerEvent) {
+    if (this.stateController.modules.size === 0) return;
+    const target = event.composedPath().find((el) => el instanceof ApexGridCell) as
+      | ApexGridCell<T>
+      | undefined;
+    if (!target?.row) return;
+    const kind: CellInteractionKind =
+      event.type === 'pointerdown' ? 'down' : event.type === 'pointerup' ? 'up' : 'over';
+    this.stateController.handleCellInteraction({
+      kind,
+      row: target.row.data,
+      rowIndex: target.row.index,
+      column: target.column,
+      shiftKey: event.shiftKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+      originalEvent: event,
+    });
+  }
+
   protected renderHeaderRow() {
     return html`
       <apex-grid-header-row
@@ -1721,6 +1749,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
         .renderItem=${this.DOM.rowRenderer}
         @click=${this.bodyClickHandler}
         @keydown=${this.bodyKeydownHandler}
+        @pointerdown=${this.bodyPointerHandler}
+        @pointerover=${this.bodyPointerHandler}
+        @pointerup=${this.bodyPointerHandler}
       ></apex-virtualizer>
     `;
   }

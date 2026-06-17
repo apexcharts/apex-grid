@@ -111,6 +111,18 @@ export default class ApexGridCell<T extends object> extends LitElement {
   @property({ attribute: false, type: Number })
   public colindex = 0;
 
+  /**
+   * Reactive token forwarded from {@link StateController.decorationVersion}.
+   * Changing it re-runs {@link willUpdate} so module-driven cell decoration is
+   * re-evaluated when it changes (e.g. while dragging a selection range). Stays
+   * `0` for the community grid, so cells are never re-decorated there.
+   */
+  @property({ attribute: false, type: Number })
+  public decorationVersion = 0;
+
+  /** Decoration attribute keys applied on the previous update, for cleanup. */
+  #decoratedKeys: string[] = [];
+
   public override connectedCallback(): void {
     super.connectedCallback();
     this.setAttribute('role', 'gridcell');
@@ -149,6 +161,43 @@ export default class ApexGridCell<T extends object> extends LitElement {
     } else {
       this.removeAttribute('data-tree-expanded');
     }
+
+    this.#applyDecoration();
+  }
+
+  /**
+   * Reflects module-contributed decoration attributes (see {@link CellDecorator})
+   * onto the cell host, reconciling against the previous update so attributes
+   * that are no longer present are removed. Inert for the community grid:
+   * `state.decorateCell` returns `null` with no modules, so nothing is set.
+   */
+  #applyDecoration(): void {
+    const decoration =
+      this.state && this.row
+        ? this.state.decorateCell({
+            row: this.row.data,
+            rowIndex: this.row.index,
+            column: this.column,
+            value: this.value as unknown,
+          })
+        : null;
+    const next = decoration?.attributes ?? {};
+
+    // Remove anything we set last time that's gone (or explicitly cleared).
+    for (const key of this.#decoratedKeys) {
+      if (next[key] == null) this.removeAttribute(key);
+    }
+
+    const applied: string[] = [];
+    for (const [key, value] of Object.entries(next)) {
+      if (value == null) {
+        this.removeAttribute(key);
+      } else {
+        this.setAttribute(key, value);
+        applied.push(key);
+      }
+    }
+    this.#decoratedKeys = applied;
   }
 
   protected override updated() {

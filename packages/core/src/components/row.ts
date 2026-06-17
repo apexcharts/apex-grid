@@ -64,6 +64,14 @@ export default class ApexGridRow<T extends object> extends LitElement {
   public editingKey: Keys<T> | null = null;
 
   /**
+   * Reactive token from {@link StateController.decorationVersion}, forwarded to
+   * each cell so a decoration-only change re-renders the row's cells. Stays `0`
+   * for the community grid.
+   */
+  @property({ attribute: false, type: Number })
+  public decorationVersion = 0;
+
+  /**
    * Result of the feature-module row presenter for the current update, or
    * `null` when no module renders this row full-width (the normal case).
    * Computed in {@link willUpdate} and consumed in {@link render}.
@@ -295,6 +303,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
             .row=${this as ApexGridRow<T>}
             .value=${this.data[column.key]}
             .colindex=${ariaColindex}
+            .decorationVersion=${this.decorationVersion}
           ></apex-grid-cell>`;
         }
       )}
