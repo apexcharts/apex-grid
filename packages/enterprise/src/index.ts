@@ -8,3 +8,4 @@ export type { ChartModel, ChartSeries, RenderChartOptions } from './features/cha
 export type { GroupRowMeta } from './features/grouping.js';
 export type { XLSXExportOptions } from './features/xlsx.js';
 export { ApexGridEnterprise, ENTERPRISE_TAG } from './grid-enterprise.js';
+export { ApexGridToolPanel, TOOL_PANEL_TAG } from './tool-panel.js';

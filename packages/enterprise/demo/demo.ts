@@ -2,7 +2,7 @@
 // toggle and the aggregation feature on top of the full community grid.
 import { configureTheme } from 'igniteui-webcomponents';
 import type { ColumnConfiguration } from 'apex-grid';
-import { ApexGridEnterprise, LicenseManager } from '../src/index.js';
+import { ApexGridEnterprise, ApexGridToolPanel, LicenseManager } from '../src/index.js';
 
 type User = {
   id: number;
@@ -16,6 +16,7 @@ type User = {
 const DEPARTMENTS = ['Engineering', 'Sales', 'Marketing', 'Support'];
 
 ApexGridEnterprise.register();
+ApexGridToolPanel.register();
 
 async function loadTheme(theme = 'bootstrap', variant = 'light'): Promise<void> {
   await import(
@@ -52,6 +53,9 @@ grid.aggregations = { salary: ['avg'] };
 // Start grouped by department to show the feature; aggregates render per group.
 grid.groupBy = ['department'];
 grid.groupingOptions = { defaultExpanded: false };
+
+const toolPanel = document.getElementById('tool-panel') as ApexGridToolPanel;
+toolPanel.grid = grid;
 
 const statusEl = document.getElementById('status') as HTMLElement;
 const aggEl = document.getElementById('aggregations') as HTMLElement;

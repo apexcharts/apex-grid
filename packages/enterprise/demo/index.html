@@ -88,7 +88,10 @@
     </div>
     <div id="status"></div>
     <div id="aggregations"></div>
-    <apex-grid-enterprise></apex-grid-enterprise>
+    <div style="display: flex; flex: 1; gap: 8px; min-height: 0">
+      <apex-grid-enterprise style="flex: 1; min-width: 0"></apex-grid-enterprise>
+      <apex-grid-tool-panel id="tool-panel"></apex-grid-tool-panel>
+    </div>
     <div id="chart" style="flex: 0 0 340px; min-height: 0"></div>
     <script type="module" src="./demo.ts"></script>
   </body>
