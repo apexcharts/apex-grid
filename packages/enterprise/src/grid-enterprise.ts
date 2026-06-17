@@ -1,4 +1,5 @@
 import { LicenseManager } from 'apex-commons';
+import type { ColumnConfiguration } from 'apex-grid';
 import {
   ApexGrid,
   downloadBlob,
@@ -28,6 +29,7 @@ import {
   type GroupRowMeta,
   groupingModule,
 } from './features/grouping.js';
+import { PIVOT_MODULE_ID, type PivotController, pivotModule } from './features/pivot.js';
 import { buildXLSX, type XLSXExportOptions } from './features/xlsx.js';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -39,7 +41,11 @@ export const ENTERPRISE_TAG = 'apex-grid-enterprise';
  * Feature modules layered onto the enterprise grid via the core extension seam.
  * Kept as a module-level constant so it is shared across instances.
  */
-const ENTERPRISE_MODULES: ReadonlyArray<GridFeatureModule> = [aggregationModule, groupingModule];
+const ENTERPRISE_MODULES: ReadonlyArray<GridFeatureModule> = [
+  aggregationModule,
+  groupingModule,
+  pivotModule,
+];
 
 // Repeating diagonal watermark shown when no valid license is set. Rendered in
 // the grid's shadow DOM as a non-interactive overlay (absolute + inset:0 covers
@@ -101,8 +107,33 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   @property({ attribute: false })
   public groupingOptions: { defaultExpanded?: boolean | number } = {};
 
+  /**
+   * Column-dimension field for pivoting: its distinct values become columns.
+   * Empty disables pivoting. Requires {@link pivotRows} and {@link pivotValues}.
+   * Pivoting and {@link groupBy} are mutually exclusive (pivot wins).
+   */
+  @property({ attribute: false })
+  public pivotOn = '';
+
+  /** Row-dimension field(s) for pivoting (one leading column each). */
+  @property({ attribute: false })
+  public pivotRows: string[] = [];
+
+  /** Measures aggregated into each pivot cell, e.g. `{ salary: ['sum'] }`. */
+  @property({ attribute: false })
+  public pivotValues: AggregationConfig = {};
+
+  /** Columns saved before pivoting activated, restored when it deactivates. */
+  #savedColumns: ColumnConfiguration<T>[] | null = null;
+  #pivotActive = false;
+
   public static override get tagName(): string {
     return ENTERPRISE_TAG;
+  }
+
+  /** Whether a pivot view is currently active. */
+  public get isPivoting(): boolean {
+    return this.#pivotActive;
   }
 
   /**
@@ -143,26 +174,83 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   protected override willUpdate(changed: PropertyValues): void {
-    // Push grouping config to the controller *before* super.willUpdate runs the
-    // `@watch('data')` handler, so the initial dataState is grouped on first
-    // paint. requestUpdate(PIPELINE) re-runs the pipeline when only the grouping
-    // config changed (no data change).
-    if (changed.has('groupBy') || changed.has('groupingOptions')) {
-      const grouping = this.#groupingController();
-      if (grouping) {
-        grouping.groupBy = this.groupBy;
-        grouping.aggregations = this.aggregations;
-        if (this.groupingOptions?.defaultExpanded !== undefined) {
-          grouping.defaultExpanded = this.groupingOptions.defaultExpanded;
-        }
-        this.requestUpdate(PIPELINE);
-      }
-    }
+    // Sync feature config to the controllers *before* super.willUpdate runs the
+    // `@watch('data')` handler, so the initial dataState reflects the config on
+    // first paint. Pivot runs first since it disables grouping when active.
+    this.#syncPivot(changed);
+    this.#syncGrouping(changed);
     super.willUpdate(changed);
+  }
+
+  /**
+   * Activate/deactivate pivoting. On activate it saves the current columns, swaps
+   * in the generated pivot columns, disables grouping, and re-runs the pipeline;
+   * on deactivate it restores the saved columns. Recomputes columns when the data
+   * changes while pivoting (distinct column-dimension values may differ).
+   */
+  #syncPivot(changed: PropertyValues): void {
+    const configChanged =
+      changed.has('pivotOn') || changed.has('pivotRows') || changed.has('pivotValues');
+    if (!configChanged && !(changed.has('data') && this.#pivotActive)) return;
+
+    const pivot = this.#pivotController();
+    if (!pivot) return;
+
+    const shouldActivate =
+      this.pivotOn !== '' && this.pivotRows.length > 0 && Object.keys(this.pivotValues).length > 0;
+
+    if (shouldActivate) {
+      pivot.rows = this.pivotRows;
+      pivot.on = this.pivotOn;
+      pivot.values = this.pivotValues;
+      if (!this.#pivotActive) {
+        this.#savedColumns = this.columns;
+        this.#pivotActive = true;
+      }
+      // Pivot and row grouping are mutually exclusive — pivot wins.
+      const grouping = this.#groupingController();
+      if (grouping) grouping.groupBy = [];
+      this.groupBy = [];
+      this.columns = pivot.computeColumns(this.data);
+      this.requestUpdate(PIPELINE);
+    } else if (this.#pivotActive) {
+      this.#deactivatePivot();
+    }
+  }
+
+  /** Turn pivoting off and restore the pre-pivot columns. */
+  #deactivatePivot(): void {
+    const pivot = this.#pivotController();
+    if (pivot) pivot.on = '';
+    this.#pivotActive = false;
+    if (this.#savedColumns) this.columns = this.#savedColumns;
+    this.#savedColumns = null;
+    this.requestUpdate(PIPELINE);
+  }
+
+  #syncGrouping(changed: PropertyValues): void {
+    if (!(changed.has('groupBy') || changed.has('groupingOptions'))) return;
+    // Requesting a grouping switches off any active pivot (mutually exclusive).
+    if (this.groupBy.length > 0 && this.#pivotActive) {
+      this.#deactivatePivot();
+      this.pivotOn = '';
+    }
+    const grouping = this.#groupingController();
+    if (!grouping) return;
+    grouping.groupBy = this.groupBy;
+    grouping.aggregations = this.aggregations;
+    if (this.groupingOptions?.defaultExpanded !== undefined) {
+      grouping.defaultExpanded = this.groupingOptions.defaultExpanded;
+    }
+    this.requestUpdate(PIPELINE);
   }
 
   #groupingController(): GroupingController<T> | undefined {
     return this.stateController.module<GroupingController<T>>(GROUPING_MODULE_ID);
+  }
+
+  #pivotController(): PivotController<T> | undefined {
+    return this.stateController.module<PivotController<T>>(PIVOT_MODULE_ID);
   }
 
   /** Expand a single group by its key (see {@link GroupRowMeta.key}). */

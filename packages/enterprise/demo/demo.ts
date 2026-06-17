@@ -99,9 +99,19 @@ document.getElementById('group-dept-active')?.addEventListener('click', () => {
 });
 document.getElementById('ungroup')?.addEventListener('click', () => {
   grid.groupBy = [];
+  grid.pivotOn = '';
 });
 document.getElementById('expand-all')?.addEventListener('click', () => grid.expandAllGroups());
 document.getElementById('collapse-all')?.addEventListener('click', () => grid.collapseAllGroups());
+
+document.getElementById('pivot-active-dept')?.addEventListener('click', () => {
+  grid.pivotRows = ['active'];
+  grid.pivotOn = 'department';
+  grid.pivotValues = { salary: ['sum'] };
+});
+document.getElementById('unpivot')?.addEventListener('click', () => {
+  grid.pivotOn = '';
+});
 
 await loadTheme();
 refresh();
