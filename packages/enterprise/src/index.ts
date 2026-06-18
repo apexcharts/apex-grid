@@ -14,5 +14,6 @@ export type {
 export { RANGE_CHANGED_EVENT } from './features/range-selection.js';
 export type { XLSXExportOptions } from './features/xlsx.js';
 export { ApexGridEnterprise, ENTERPRISE_TAG } from './grid-enterprise.js';
+export { ApexGridSetFilter, SET_FILTER_TAG } from './set-filter.js';
 export { ApexGridStatusBar, STATUS_BAR_TAG } from './status-bar.js';
 export { ApexGridToolPanel, TOOL_PANEL_TAG } from './tool-panel.js';
