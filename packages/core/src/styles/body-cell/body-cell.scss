@@ -391,3 +391,20 @@ $star-size: #{rem(14px)};
 :host([data-range-edge~='right'])::before {
     border-inline-end-width: var(--apex-range-border-width, 1px);
 }
+
+// Fill handle: a small draggable square at the bottom-right of the active
+// range. Purely visual (the feature module hit-tests the corner on pointerdown);
+// inert until a theme defines `--apex-range-border`. Placed after the pinned-edge
+// `::after` rule so a handle on a frozen-column edge still shows the handle.
+:host([data-range-handle])::after {
+    content: '';
+    position: absolute;
+    inset-inline-end: -1px;
+    inset-block-end: -1px;
+    inline-size: 7px;
+    block-size: 7px;
+    background: var(--apex-range-border, transparent);
+    border: 1px solid var(--ag-surface, #fff);
+    z-index: 4;
+    pointer-events: none;
+}

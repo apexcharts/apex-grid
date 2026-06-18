@@ -8,6 +8,7 @@ import {
   type GridFeatureModule,
   type GridHost,
   getDisplayColumns,
+  PIPELINE,
   type StateController,
 } from 'apex-grid/internal';
 import type { ReactiveController } from 'lit';
@@ -16,6 +17,9 @@ export const RANGE_SELECTION_MODULE_ID = 'range-selection';
 
 /** Custom event fired on the grid host whenever the selected range changes. */
 export const RANGE_CHANGED_EVENT = 'apex-range-changed';
+
+/** How close (px) to a cell's bottom-right corner counts as grabbing the fill handle. */
+const FILL_HANDLE_HIT = 10;
 
 /** A cell coordinate within the current page/view (visible-column index). */
 interface CellRef {
@@ -33,9 +37,9 @@ export interface RangeBounds {
   readonly right: number;
 }
 
-/** Aggregate statistics over the values in the current range. */
+/** Aggregate statistics over the values in the current selection. */
 export interface RangeStats {
-  /** Non-empty cells in the range. */
+  /** Non-empty cells in the selection. */
   readonly count: number;
   /** Cells whose value is numeric (drives sum/avg/min/max). */
   readonly numericCount: number;
@@ -47,9 +51,11 @@ export interface RangeStats {
 
 /** Detail payload of the {@link RANGE_CHANGED_EVENT}. */
 export interface RangeChangedDetail {
-  /** Current bounds, or `null` when the selection was cleared. */
+  /** Active range bounds, or `null` when the selection was cleared. */
   readonly bounds: RangeBounds | null;
-  /** Stats over the current range (zeroed when empty). */
+  /** All selected rectangles (additional Ctrl-click ranges + the active one). */
+  readonly ranges: RangeBounds[];
+  /** Stats over every selected cell (deduped across ranges; zeroed when empty). */
   readonly stats: RangeStats;
 }
 
@@ -82,16 +88,21 @@ function formatCell(value: unknown): string {
   return String(value);
 }
 
+function sameBounds(a: RangeBounds, b: RangeBounds): boolean {
+  return a.top === b.top && a.bottom === b.bottom && a.left === b.left && a.right === b.right;
+}
+
 /**
- * Enterprise feature: spreadsheet-style cell **range selection**. Click-drag (or
- * shift-click) across body cells to select a rectangular range; the selection is
- * the basis for the {@link RangeStats} status bar and clipboard copy (TSV).
+ * Enterprise feature: spreadsheet-style cell **range selection** and the
+ * productivity tools built on it — multi-range (Ctrl-click), clipboard
+ * copy/paste (TSV), and a drag **fill handle** (copy or numeric series).
  *
  * Wired through the core seams: it implements {@link CellInteractionHandler} (to
- * track the drag from forwarded pointer events) and {@link CellDecorator} (to
- * flag the cells inside the range with `data-range` / `data-range-edge`, which
- * the core cell styles inertly via `--apex-range-*` custom properties). It also
- * installs host-level listeners for Escape (clear) and Ctrl/Cmd+C (copy).
+ * track drags from forwarded pointer events) and {@link CellDecorator} (to flag
+ * in-range cells with `data-range` / `data-range-edge` and the corner with
+ * `data-range-handle`, all styled inertly by the core cell via `--apex-range-*`).
+ * It also installs host listeners for Escape (clear), Ctrl/Cmd+C (copy), and
+ * Ctrl/Cmd+V (paste).
  */
 export class RangeSelectionController<T extends object>
   implements ReactiveController, CellDecorator<T>, CellInteractionHandler<T>
@@ -99,9 +110,16 @@ export class RangeSelectionController<T extends object>
   /** Whether range selection is active. When `false`, the feature is inert. */
   public enabled = true;
 
+  /** The active range's corners. */
   #anchor: CellRef | null = null;
   #focus: CellRef | null = null;
-  #dragging = false;
+  /** Committed extra rectangles from Ctrl-click (the active range is separate). */
+  #additional: RangeBounds[] = [];
+
+  #mode: 'idle' | 'select' | 'fill' = 'idle';
+  /** Fill-drag state: the source range and the live preview region. */
+  #fillSource: RangeBounds | null = null;
+  #fillPreview: RangeBounds | null = null;
 
   constructor(
     private host: GridHost<T>,
@@ -126,7 +144,8 @@ export class RangeSelectionController<T extends object>
   }
 
   #onWindowPointerUp = (): void => {
-    this.#dragging = false;
+    if (this.#mode === 'fill') this.#commitFill();
+    this.#mode = 'idle';
   };
 
   #onKeydown = (event: KeyboardEvent): void => {
@@ -135,9 +154,15 @@ export class RangeSelectionController<T extends object>
       this.clearSelection();
       return;
     }
-    if ((event.ctrlKey || event.metaKey) && (event.key === 'c' || event.key === 'C')) {
+    const accel = event.ctrlKey || event.metaKey;
+    if (accel && (event.key === 'c' || event.key === 'C')) {
       event.preventDefault();
       void this.copySelection();
+      return;
+    }
+    if (accel && (event.key === 'v' || event.key === 'V')) {
+      event.preventDefault();
+      void this.pasteFromClipboard();
     }
   };
 
@@ -153,25 +178,49 @@ export class RangeSelectionController<T extends object>
       case 'down': {
         // Primary button only; let right-click / middle-click pass through.
         if (interaction.originalEvent.button !== 0) return;
+
+        // Grabbing the fill handle starts a fill-drag rather than a selection.
+        if (this.#isHandleGrab(interaction, ref)) {
+          this.#fillSource = this.#activeBounds();
+          this.#fillPreview = this.#fillSource;
+          this.#mode = 'fill';
+          this.#commit();
+          return;
+        }
+
+        const additive = (interaction.ctrlKey || interaction.metaKey) && !interaction.shiftKey;
         if (interaction.shiftKey && this.#anchor) {
           this.#focus = ref;
+        } else if (additive) {
+          const current = this.#activeBounds();
+          if (current) this.#additional.push(current);
+          this.#anchor = ref;
+          this.#focus = ref;
         } else {
+          this.#additional = [];
           this.#anchor = ref;
           this.#focus = ref;
         }
-        this.#dragging = true;
+        this.#mode = 'select';
         this.#commit();
         return;
       }
       case 'over': {
-        if (!this.#dragging) return;
+        if (this.#mode === 'fill' && this.#fillSource) {
+          this.#fillPreview = this.#computeFillPreview(this.#fillSource, ref);
+          this.#commit();
+          return;
+        }
+        if (this.#mode !== 'select') return;
         if (this.#focus && this.#focus.row === ref.row && this.#focus.col === ref.col) return;
         this.#focus = ref;
         this.#commit();
         return;
       }
       case 'up': {
-        this.#dragging = false;
+        if (this.#mode === 'fill') this.#commitFill();
+        this.#mode = 'idle';
+        this.#commit();
         return;
       }
     }
@@ -181,26 +230,35 @@ export class RangeSelectionController<T extends object>
 
   public decorateCell(ctx: CellDecoratorContext<T>): CellDecoration | null {
     if (!this.enabled) return null;
-    const bounds = this.getSelectionBounds();
-    if (!bounds) return null;
+    const ranges = this.getRanges();
+    if (!ranges.length) return null;
     const col = this.#colIndex(ctx.column);
     if (col < 0) return null;
     const row = ctx.rowIndex;
-    if (row < bounds.top || row > bounds.bottom || col < bounds.left || col > bounds.right) {
-      return null;
-    }
+
+    const container = ranges.find(
+      (b) => row >= b.top && row <= b.bottom && col >= b.left && col <= b.right
+    );
+    if (!container) return null;
 
     const edges: string[] = [];
-    if (row === bounds.top) edges.push('top');
-    if (row === bounds.bottom) edges.push('bottom');
-    if (col === bounds.left) edges.push('left');
-    if (col === bounds.right) edges.push('right');
+    if (row === container.top) edges.push('top');
+    if (row === container.bottom) edges.push('bottom');
+    if (col === container.left) edges.push('left');
+    if (col === container.right) edges.push('right');
 
-    const isFocus = this.#focus?.row === row && this.#focus?.col === col;
+    const isFocus = this.#mode !== 'fill' && this.#focus?.row === row && this.#focus?.col === col;
+    // The fill handle sits on the bottom-right of the primary range, shown only
+    // when idle so it doesn't get in the way of an in-progress drag.
+    const primary = this.#fillPreview ?? this.#activeBounds();
+    const isHandle =
+      this.#mode === 'idle' && !!primary && row === primary.bottom && col === primary.right;
+
     return {
       attributes: {
         'data-range': isFocus ? 'selected active' : 'selected',
         'data-range-edge': edges.length ? edges.join(' ') : null,
+        'data-range-handle': isHandle ? '' : null,
       },
     };
   }
@@ -210,7 +268,7 @@ export class RangeSelectionController<T extends object>
   /**
    * Programmatically select a rectangular range by row index and column key
    * (the anchor → focus corners). `to` defaults to `from` for a single cell.
-   * No-op if the feature is disabled or a column key isn't visible.
+   * Clears any multi-range selection. No-op if disabled or a key isn't visible.
    */
   public selectRange(
     from: { row: number; column: string },
@@ -222,26 +280,29 @@ export class RangeSelectionController<T extends object>
     const anchorCol = indexOf(from.column);
     const focusCol = indexOf(to.column);
     if (anchorCol < 0 || focusCol < 0) return;
+    this.#additional = [];
     this.#anchor = { row: from.row, col: anchorCol };
     this.#focus = { row: to.row, col: focusCol };
-    this.#dragging = false;
+    this.#mode = 'idle';
     this.#commit();
   }
 
-  /** Whether a range is currently selected. */
+  /** Whether any range is currently selected. */
   public hasSelection(): boolean {
     return this.#anchor !== null && this.#focus !== null;
   }
 
-  /** The current rectangular bounds (view coordinates), or `null`. */
+  /** The active range's bounds (view coordinates), or `null`. */
   public getSelectionBounds(): RangeBounds | null {
-    if (!this.#anchor || !this.#focus) return null;
-    return {
-      top: Math.min(this.#anchor.row, this.#focus.row),
-      bottom: Math.max(this.#anchor.row, this.#focus.row),
-      left: Math.min(this.#anchor.col, this.#focus.col),
-      right: Math.max(this.#anchor.col, this.#focus.col),
-    };
+    return this.#activeBounds();
+  }
+
+  /** Every selected rectangle (committed Ctrl-click ranges + the active one). */
+  public getRanges(): RangeBounds[] {
+    const ranges = [...this.#additional];
+    const primary = this.#fillPreview ?? this.#activeBounds();
+    if (primary) ranges.push(primary);
+    return ranges;
   }
 
   /** Clears the selection and refreshes decoration. */
@@ -249,30 +310,30 @@ export class RangeSelectionController<T extends object>
     if (!this.hasSelection()) return;
     this.#anchor = null;
     this.#focus = null;
-    this.#dragging = false;
+    this.#additional = [];
+    this.#fillSource = null;
+    this.#fillPreview = null;
+    this.#mode = 'idle';
     this.#commit();
   }
 
-  /** Aggregate statistics over the current range (zeroed when empty). */
+  /** Aggregate statistics over every selected cell (deduped across ranges). */
   public getSelectionStats(): RangeStats {
-    const { values } = this.#cellsInRange();
     let count = 0;
     let numericCount = 0;
     let sum = 0;
     let min = Number.POSITIVE_INFINITY;
     let max = Number.NEGATIVE_INFINITY;
 
-    for (const rowValues of values) {
-      for (const value of rowValues) {
-        if (isBlank(value)) continue;
-        count += 1;
-        const n = toNumber(value);
-        if (n !== null) {
-          numericCount += 1;
-          sum += n;
-          if (n < min) min = n;
-          if (n > max) max = n;
-        }
+    for (const value of this.#unionValues()) {
+      if (isBlank(value)) continue;
+      count += 1;
+      const n = toNumber(value);
+      if (n !== null) {
+        numericCount += 1;
+        sum += n;
+        if (n < min) min = n;
+        if (n > max) max = n;
       }
     }
 
@@ -282,30 +343,138 @@ export class RangeSelectionController<T extends object>
     return { count, numericCount, sum, average: sum / numericCount, min, max };
   }
 
-  /** The current range serialized as tab-separated values (Excel-pasteable). */
+  /**
+   * The selection serialized as TSV (Excel-pasteable). A single range is one
+   * matrix; multiple Ctrl-click ranges are emitted as blocks separated by a
+   * blank line.
+   */
   public getSelectionTSV(): string {
-    const { values } = this.#cellsInRange();
-    return values.map((rowValues) => rowValues.map(formatCell).join('\t')).join('\n');
+    return this.getRanges()
+      .map((bounds) =>
+        this.#matrix(bounds)
+          .map((line) => line.map(formatCell).join('\t'))
+          .join('\n')
+      )
+      .join('\n\n');
   }
 
   /**
-   * Copies the current range to the clipboard as TSV. Resolves `false` when
-   * there's nothing selected or the clipboard API is unavailable/blocked.
+   * Copies the selection to the clipboard as TSV. Resolves `false` when there's
+   * nothing selected or the clipboard API is unavailable/blocked.
    */
   public async copySelection(): Promise<boolean> {
     const tsv = this.getSelectionTSV();
     if (!tsv) return false;
     try {
       await navigator.clipboard.writeText(tsv);
-      const cells = this.#cellsInRange().values.reduce((sum, row) => sum + row.length, 0);
-      this.host.announce(`Copied ${cells} cells to the clipboard`);
+      this.host.announce('Copied selection to the clipboard');
       return true;
     } catch {
       return false;
     }
   }
 
+  /**
+   * Writes a block of TSV (rows split on `\n`, columns on `\t`) into the grid
+   * starting at the active range's top-left cell, then expands the selection to
+   * cover the written block. Values are coerced to the target column's type.
+   * Cells beyond the data/columns are clipped. No-op without an active range.
+   */
+  public pasteText(text: string): void {
+    if (!this.enabled || !text) return;
+    const start = this.#activeBounds();
+    if (!start) return;
+
+    const matrix = text
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .map((line) => line.split('\t'));
+    // Drop a trailing empty line (common with copied blocks).
+    if (
+      matrix.length > 1 &&
+      matrix[matrix.length - 1].length === 1 &&
+      matrix[matrix.length - 1][0] === ''
+    ) {
+      matrix.pop();
+    }
+
+    const columns = this.#visibleColumns();
+    const items = this.host.pageItems as Record<string, unknown>[];
+    let wrote = false;
+    let lastRow = start.top;
+    let lastCol = start.left;
+
+    for (let i = 0; i < matrix.length; i += 1) {
+      const row = start.top + i;
+      const record = items[row];
+      if (!record) continue;
+      for (let j = 0; j < matrix[i].length; j += 1) {
+        const colIndex = start.left + j;
+        const column = columns[colIndex];
+        if (!column) continue;
+        record[String(column.key)] = this.#coerce(matrix[i][j], column);
+        wrote = true;
+        lastRow = Math.max(lastRow, row);
+        lastCol = Math.max(lastCol, colIndex);
+      }
+    }
+    if (!wrote) return;
+
+    this.#additional = [];
+    this.#anchor = { row: start.top, col: start.left };
+    this.#focus = { row: lastRow, col: lastCol };
+    this.host.requestUpdate(PIPELINE);
+    this.#commit();
+    this.host.announce(`Pasted ${matrix.length} × ${matrix[0]?.length ?? 0} cells`);
+  }
+
+  /**
+   * Reads the clipboard and pastes it via {@link pasteText}. Resolves `false`
+   * if the clipboard API is unavailable/blocked.
+   */
+  public async pasteFromClipboard(): Promise<boolean> {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) this.pasteText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Fills from the active range toward `to` (row + column key) — the
+   * programmatic equivalent of dragging the fill handle. Extends along the
+   * dominant axis only; numeric source lines extrapolate a linear series,
+   * everything else tiles (repeats) the source pattern.
+   */
+  public fillTo(to: { row: number; column: string }): void {
+    if (!this.enabled) return;
+    const source = this.#activeBounds();
+    if (!source) return;
+    const targetCol = this.#visibleColumns().findIndex((c) => String(c.key) === to.column);
+    if (targetCol < 0) return;
+    const preview = this.#computeFillPreview(source, { row: to.row, col: targetCol });
+    if (sameBounds(preview, source)) return;
+    this.#applyFill(source, preview);
+    this.#anchor = { row: preview.top, col: preview.left };
+    this.#focus = { row: preview.bottom, col: preview.right };
+    this.host.requestUpdate(PIPELINE);
+    this.#commit();
+  }
+
   // --- internals -----------------------------------------------------------
+
+  #activeBounds(): RangeBounds | null {
+    if (!this.#anchor || !this.#focus) return null;
+    return {
+      top: Math.min(this.#anchor.row, this.#focus.row),
+      bottom: Math.max(this.#anchor.row, this.#focus.row),
+      left: Math.min(this.#anchor.col, this.#focus.col),
+      right: Math.max(this.#anchor.col, this.#focus.col),
+    };
+  }
 
   /** Visible columns in display (pinned/reorder) order. */
   #visibleColumns(): ColumnConfiguration<T>[] {
@@ -316,27 +485,162 @@ export class RangeSelectionController<T extends object>
     return this.#visibleColumns().findIndex((candidate) => candidate.key === column.key);
   }
 
-  #cellsInRange(): { values: unknown[][]; columns: ColumnConfiguration<T>[] } {
-    const bounds = this.getSelectionBounds();
-    if (!bounds) return { values: [], columns: [] };
+  /** The 2-D value matrix for a bounds (clipped to existing rows/columns). */
+  #matrix(bounds: RangeBounds): unknown[][] {
     const columns = this.#visibleColumns().slice(bounds.left, bounds.right + 1);
     const items = this.host.pageItems as ReadonlyArray<Record<string, unknown>>;
-    const values: unknown[][] = [];
+    const rows: unknown[][] = [];
     for (let row = bounds.top; row <= bounds.bottom; row += 1) {
       const record = items[row];
       if (!record) continue;
-      values.push(columns.map((column) => record[String(column.key)]));
+      rows.push(columns.map((column) => record[String(column.key)]));
     }
-    return { values, columns };
+    return rows;
+  }
+
+  /** Flat list of values over every distinct selected cell. */
+  #unionValues(): unknown[] {
+    const columns = this.#visibleColumns();
+    const items = this.host.pageItems as ReadonlyArray<Record<string, unknown>>;
+    const seen = new Set<string>();
+    const out: unknown[] = [];
+    for (const bounds of this.getRanges()) {
+      for (let row = bounds.top; row <= bounds.bottom; row += 1) {
+        const record = items[row];
+        if (!record) continue;
+        for (let col = bounds.left; col <= bounds.right; col += 1) {
+          const key = `${row}:${col}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const column = columns[col];
+          if (column) out.push(record[String(column.key)]);
+        }
+      }
+    }
+    return out;
+  }
+
+  #coerce(value: string, column: ColumnConfiguration<T>): unknown {
+    if (column.type === 'number') {
+      const n = Number(value);
+      return value.trim() !== '' && Number.isFinite(n) ? n : value;
+    }
+    if (column.type === 'boolean') {
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+    }
+    return value;
+  }
+
+  /** The fill region that extending `source` toward `target` would produce. */
+  #computeFillPreview(source: RangeBounds, target: CellRef): RangeBounds {
+    const vertical = Math.max(0, source.top - target.row, target.row - source.bottom);
+    const horizontal = Math.max(0, source.left - target.col, target.col - source.right);
+    if (vertical === 0 && horizontal === 0) return source;
+    if (vertical >= horizontal) {
+      return {
+        top: Math.min(source.top, target.row),
+        bottom: Math.max(source.bottom, target.row),
+        left: source.left,
+        right: source.right,
+      };
+    }
+    return {
+      top: source.top,
+      bottom: source.bottom,
+      left: Math.min(source.left, target.col),
+      right: Math.max(source.right, target.col),
+    };
+  }
+
+  /** Continuation value for `position` (relative to the source start) of a line. */
+  #seriesValue(sourceLine: unknown[], position: number): unknown {
+    const m = sourceLine.length;
+    if (m === 0) return '';
+    const numbers = sourceLine.map(toNumber);
+    if (numbers.every((n) => n !== null)) {
+      const first = numbers[0] as number;
+      const step = m >= 2 ? ((numbers[m - 1] as number) - first) / (m - 1) : 0;
+      return first + step * position;
+    }
+    return sourceLine[((position % m) + m) % m];
+  }
+
+  /** Write the extrapolated/tiled values into the extension cells of `preview`. */
+  #applyFill(source: RangeBounds, preview: RangeBounds): void {
+    const columns = this.#visibleColumns();
+    const items = this.host.pageItems as Record<string, unknown>[];
+    const vertical = preview.top < source.top || preview.bottom > source.bottom;
+
+    if (vertical) {
+      for (let col = source.left; col <= source.right; col += 1) {
+        const column = columns[col];
+        if (!column) continue;
+        const key = String(column.key);
+        const line: unknown[] = [];
+        for (let row = source.top; row <= source.bottom; row += 1) line.push(items[row]?.[key]);
+        for (let row = preview.top; row <= preview.bottom; row += 1) {
+          if (row >= source.top && row <= source.bottom) continue;
+          const record = items[row];
+          if (record) record[key] = this.#seriesValue(line, row - source.top);
+        }
+      }
+    } else {
+      for (let row = source.top; row <= source.bottom; row += 1) {
+        const record = items[row];
+        if (!record) continue;
+        const line: unknown[] = [];
+        for (let col = source.left; col <= source.right; col += 1) {
+          line.push(columns[col] ? record[String(columns[col].key)] : undefined);
+        }
+        for (let col = preview.left; col <= preview.right; col += 1) {
+          if (col >= source.left && col <= source.right) continue;
+          const column = columns[col];
+          if (column) record[String(column.key)] = this.#seriesValue(line, col - source.left);
+        }
+      }
+    }
+  }
+
+  /** Apply the in-progress fill-drag and promote the preview to the selection. */
+  #commitFill(): void {
+    if (this.#fillSource && this.#fillPreview && !sameBounds(this.#fillSource, this.#fillPreview)) {
+      const preview = this.#fillPreview;
+      this.#applyFill(this.#fillSource, preview);
+      this.#anchor = { row: preview.top, col: preview.left };
+      this.#focus = { row: preview.bottom, col: preview.right };
+      this.host.requestUpdate(PIPELINE);
+    }
+    this.#fillSource = null;
+    this.#fillPreview = null;
+  }
+
+  /** Whether a `down` interaction landed on the fill handle's hit area. */
+  #isHandleGrab(interaction: CellInteraction<T>, ref: CellRef): boolean {
+    if (this.#mode !== 'idle') return false;
+    const primary = this.#activeBounds();
+    if (!primary || ref.row !== primary.bottom || ref.col !== primary.right) return false;
+    const cell = interaction.originalEvent
+      .composedPath()
+      .find((el) => el instanceof HTMLElement && el.localName === 'apex-grid-cell') as
+      | HTMLElement
+      | undefined;
+    if (!cell) return false;
+    const rect = cell.getBoundingClientRect();
+    return (
+      interaction.originalEvent.clientX >= rect.right - FILL_HANDLE_HIT &&
+      interaction.originalEvent.clientY >= rect.bottom - FILL_HANDLE_HIT
+    );
   }
 
   /** Re-decorate cells and notify listeners (status bar / app) of the change. */
   #commit(): void {
     this.state.bumpDecoration();
-    const bounds = this.getSelectionBounds();
+    const bounds = this.#activeBounds();
     const detail: RangeChangedDetail = {
       bounds,
-      stats: bounds ? this.getSelectionStats() : EMPTY_STATS,
+      ranges: this.getRanges(),
+      stats: this.hasSelection() ? this.getSelectionStats() : EMPTY_STATS,
     };
     (this.host as unknown as HTMLElement).dispatchEvent(
       new CustomEvent<RangeChangedDetail>(RANGE_CHANGED_EVENT, {

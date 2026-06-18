@@ -40,8 +40,9 @@ async function layoutComplete(grid: ApexGridEnterprise<Row>) {
 }
 
 async function mount() {
+  // Clone the data so mutating features (paste / fill) can't leak across tests.
   const grid = await fixture<ApexGridEnterprise<Row>>(
-    html`<apex-grid-enterprise .data=${data} .columns=${columns}></apex-grid-enterprise>`,
+    html`<apex-grid-enterprise .data=${data.map((row) => ({ ...row }))} .columns=${columns}></apex-grid-enterprise>`,
     { parentNode: sizedParent() }
   );
   await layoutComplete(grid);
@@ -63,7 +64,7 @@ function interact(
   kind: 'down' | 'over' | 'up',
   rowIndex: number,
   key: keyof Row,
-  opts: { shift?: boolean } = {}
+  opts: { shift?: boolean; ctrl?: boolean } = {}
 ): void {
   const controller = (
     grid as unknown as {
@@ -77,10 +78,15 @@ function interact(
     rowIndex,
     column,
     shiftKey: Boolean(opts.shift),
-    ctrlKey: false,
+    ctrlKey: Boolean(opts.ctrl),
     metaKey: false,
     originalEvent: new PointerEvent(`pointer${kind === 'over' ? 'move' : kind}`, { button: 0 }),
   });
+}
+
+/** Reads a numeric cell value straight from the grid's data. */
+function cellValue(grid: ApexGridEnterprise<Row>, rowIndex: number, key: keyof Row): unknown {
+  return (grid.pageItems[rowIndex] as Row)[key];
 }
 
 /** Drag-select a rectangle [r0,c0] → [r1,c1]. */
@@ -213,5 +219,98 @@ describe('Range selection', () => {
     await grid.updateComplete;
 
     expect(grid.getSelectionBounds()).to.eql({ top: 0, bottom: 0, left: 2, right: 2 });
+  });
+
+  // --- multi-range (Ctrl-click) ------------------------------------------
+
+  it('adds a second rectangle with Ctrl-click', async () => {
+    const grid = await mount();
+    interact(grid, 'down', 0, 'amount');
+    interact(grid, 'up', 0, 'amount');
+    interact(grid, 'down', 2, 'score', { ctrl: true });
+    interact(grid, 'up', 2, 'score');
+
+    const ranges = grid.getSelectionRanges();
+    expect(ranges.length).to.equal(2);
+    expect(ranges).to.deep.include({ top: 0, bottom: 0, left: 2, right: 2 });
+    expect(ranges).to.deep.include({ top: 2, bottom: 2, left: 3, right: 3 });
+  });
+
+  it('aggregates stats across multiple ranges (deduped)', async () => {
+    const grid = await mount();
+    interact(grid, 'down', 0, 'amount'); // amount[0] = 10
+    interact(grid, 'up', 0, 'amount');
+    interact(grid, 'down', 2, 'score', { ctrl: true }); // score[2] = 300
+    interact(grid, 'up', 2, 'score');
+
+    const stats = grid.getSelectionStats();
+    expect(stats.count).to.equal(2);
+    expect(stats.sum).to.equal(310);
+  });
+
+  it('serializes multiple ranges as TSV blocks', async () => {
+    const grid = await mount();
+    interact(grid, 'down', 0, 'amount');
+    interact(grid, 'up', 0, 'amount');
+    interact(grid, 'down', 2, 'score', { ctrl: true });
+    interact(grid, 'up', 2, 'score');
+    expect(grid.getSelectionTSV()).to.equal('10\n\n300');
+  });
+
+  // --- clipboard paste ----------------------------------------------------
+
+  it('pastes a TSV block from the active anchor (coerced to column type)', async () => {
+    const grid = await mount();
+    grid.selectRange({ row: 0, column: 'amount' });
+    grid.pasteText('5\t6\n7\t8');
+    await grid.updateComplete;
+
+    expect(cellValue(grid, 0, 'amount')).to.equal(5);
+    expect(cellValue(grid, 0, 'score')).to.equal(6);
+    expect(cellValue(grid, 1, 'amount')).to.equal(7);
+    expect(cellValue(grid, 1, 'score')).to.equal(8);
+    // Selection expands to cover the pasted block.
+    expect(grid.getSelectionBounds()).to.eql({ top: 0, bottom: 1, left: 2, right: 3 });
+  });
+
+  // --- fill handle --------------------------------------------------------
+
+  it('fill copies a single source cell down the column', async () => {
+    const grid = await mount();
+    grid.selectRange({ row: 0, column: 'score' }); // score[0] = 100
+    grid.fillTo({ row: 2, column: 'score' });
+    await grid.updateComplete;
+
+    expect(cellValue(grid, 1, 'score')).to.equal(100);
+    expect(cellValue(grid, 2, 'score')).to.equal(100);
+    expect(grid.getSelectionBounds()).to.eql({ top: 0, bottom: 2, left: 3, right: 3 });
+  });
+
+  it('fill extrapolates a numeric series down the column', async () => {
+    const grid = await mount();
+    // Seed a source with step 3 that does NOT match the (linear) sample data.
+    grid.selectRange({ row: 0, column: 'amount' });
+    grid.pasteText('2\n5'); // amount[0]=2, amount[1]=5
+    await grid.updateComplete;
+
+    grid.selectRange({ row: 0, column: 'amount' }, { row: 1, column: 'amount' });
+    grid.fillTo({ row: 3, column: 'amount' });
+    await grid.updateComplete;
+
+    expect(cellValue(grid, 2, 'amount')).to.equal(8); // 2 + 3*2
+    expect(cellValue(grid, 3, 'amount')).to.equal(11); // 2 + 3*3
+  });
+
+  it('shows a fill handle on the active range corner only', async () => {
+    const grid = await mount();
+    grid.selectRange({ row: 0, column: 'amount' }, { row: 1, column: 'score' });
+    await grid.updateComplete;
+    await nextFrame();
+    await nextFrame();
+
+    const corner = renderedCell(grid, 1, 'score'); // bottom-right
+    expect(corner?.hasAttribute('data-range-handle'), 'corner has handle').to.be.true;
+    const inner = renderedCell(grid, 0, 'amount'); // top-left
+    expect(inner?.hasAttribute('data-range-handle'), 'non-corner has no handle').to.be.false;
   });
 });

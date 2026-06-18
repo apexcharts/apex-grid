@@ -306,9 +306,31 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.#rangeController()?.selectRange(from, to);
   }
 
-  /** Bounds of the current cell range selection (view coordinates), or `null`. */
+  /** Bounds of the active cell range selection (view coordinates), or `null`. */
   public getSelectionBounds(): RangeBounds | null {
     return this.#rangeController()?.getSelectionBounds() ?? null;
+  }
+
+  /** Every selected rectangle (Ctrl-click ranges + the active one). */
+  public getSelectionRanges(): RangeBounds[] {
+    return this.#rangeController()?.getRanges() ?? [];
+  }
+
+  /**
+   * Fill from the active range toward the given cell (row + column key) — the
+   * programmatic form of dragging the fill handle. Numeric source lines
+   * extrapolate a series; everything else tiles the source.
+   */
+  public fillTo(to: { row: number; column: string }): void {
+    this.#rangeController()?.fillTo(to);
+  }
+
+  /**
+   * Paste a TSV block into the grid starting at the active range's top-left,
+   * expanding the selection to cover it (values coerced to column type).
+   */
+  public pasteText(text: string): void {
+    this.#rangeController()?.pasteText(text);
   }
 
   /** Aggregate statistics (count/sum/avg/min/max) over the selected range. */

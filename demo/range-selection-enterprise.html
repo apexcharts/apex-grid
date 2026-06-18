@@ -93,12 +93,13 @@
   <body>
     <h2>Cell Range Selection <span class="badge">Enterprise</span></h2>
     <p class="subtitle">
-      Spreadsheet-style range selection: click-drag (or shift-click) across cells. The status bar shows live aggregates of the selection; <code>Ctrl/⌘+C</code> copies it as TSV. Theme the highlight with the <code>--apex-range-*</code> custom properties.
+      Spreadsheet-style range selection: click-drag (or shift-click) across cells, <code>Ctrl/⌘+click</code> for multiple rectangles. Drag the <strong>fill handle</strong> (bottom-right corner) to copy or extend a numeric series; <code>Ctrl/⌘+C</code> copies as TSV and <code>Ctrl/⌘+V</code> pastes. The status bar shows live aggregates; theme the highlight with the <code>--apex-range-*</code> properties.
     </p>
     <div class="toolbar">
       <button id="copy">Copy selection (TSV)</button>
+      <button id="fill">Fill down ×2</button>
       <button id="clear">Clear selection</button>
-      <span class="hint">Drag across cells, then copy — or paste straight into a spreadsheet.</span>
+      <span class="hint">Drag the corner handle to fill, or copy/paste straight into a spreadsheet.</span>
     </div>
     <apex-grid-enterprise id="grid"></apex-grid-enterprise>
     <apex-grid-status-bar id="status"></apex-grid-status-bar>
@@ -129,6 +130,13 @@
 
       document.getElementById('copy').onclick = () => grid.copySelection();
       document.getElementById('clear').onclick = () => grid.clearRangeSelection();
+      // Extend the current selection downward by its own height (fill handle, programmatic form).
+      document.getElementById('fill').onclick = () => {
+        const b = grid.getSelectionBounds();
+        if (!b) return;
+        const col = grid.columns[b.right];
+        grid.fillTo({ row: b.bottom + (b.bottom - b.top) + 1, column: String(col.key) });
+      };
 
       // Pre-select a range so the highlight + status bar are visible on load.
       (async () => {
