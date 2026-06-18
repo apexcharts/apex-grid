@@ -35,6 +35,7 @@ import {
   type GroupRowMeta,
   groupingModule,
 } from './features/grouping.js';
+import { type MasterDetailConfig, MasterDetailManager } from './features/master-detail.js';
 import { PIVOT_MODULE_ID, type PivotController, pivotModule } from './features/pivot.js';
 import {
   RANGE_SELECTION_MODULE_ID,
@@ -149,6 +150,17 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   @property({ type: Boolean, attribute: 'range-selection' })
   public rangeSelection = true;
 
+  /**
+   * Declarative master/detail: each expanded master row renders a nested grid
+   * of related rows. Setting this configures the grid's {@link expansion}
+   * automatically (creating, caching, and populating the child grids), so you
+   * don't hand-write a `detailTemplate`. Overrides any manual `expansion`.
+   */
+  @property({ attribute: false })
+  public masterDetail: MasterDetailConfig<T> | null = null;
+
+  #masterDetailManager: MasterDetailManager<T> | null = null;
+
   /** Columns saved before pivoting activated, restored when it deactivates. */
   #savedColumns: ColumnConfiguration<T>[] | null = null;
   #pivotActive = false;
@@ -206,7 +218,27 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.#syncPivot(changed);
     this.#syncGrouping(changed);
     this.#syncRange(changed);
+    this.#syncMasterDetail(changed);
     super.willUpdate(changed);
+  }
+
+  /** Wire the declarative master/detail config onto the grid's expansion. */
+  #syncMasterDetail(changed: PropertyValues): void {
+    if (!changed.has('masterDetail')) return;
+    if (this.masterDetail) {
+      this.#masterDetailManager = new MasterDetailManager<T>(this.masterDetail, () =>
+        this.requestUpdate()
+      );
+      this.expansion = this.#masterDetailManager.buildExpansion();
+    } else {
+      this.#masterDetailManager = null;
+    }
+  }
+
+  /** Drop a master row's cached detail grid so it rebuilds on next expand. */
+  public refreshDetail(row: T): void {
+    this.#masterDetailManager?.invalidate(row);
+    this.requestUpdate();
   }
 
   /** Mirror the `rangeSelection` toggle onto the controller; clear when off. */

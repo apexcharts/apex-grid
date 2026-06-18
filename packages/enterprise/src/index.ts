@@ -6,6 +6,7 @@ export type {
 } from './features/aggregation.js';
 export type { ChartModel, ChartSeries, RenderChartOptions } from './features/chart.js';
 export type { GroupRowMeta } from './features/grouping.js';
+export type { MasterDetailConfig, MasterDetailContext } from './features/master-detail.js';
 export type {
   RangeBounds,
   RangeChangedDetail,

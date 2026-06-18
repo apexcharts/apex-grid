@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Master / Detail (Enterprise) - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid-enterprise.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .badge {
+        font-size: 13px;
+        font-weight: 500;
+        color: #92400e;
+        background: #fef3c7;
+        border: 1px solid #fde68a;
+        border-radius: 20px;
+        padding: 2px 10px;
+        vertical-align: middle;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .toolbar button {
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 13px;
+        border: 1px solid #d0d5dd;
+        background: #fff;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .toolbar button:hover {
+        background: #f7f9fc;
+      }
+      code {
+        background: #f1f1f1;
+        padding: 0 0.25rem;
+        border-radius: 3px;
+      }
+      apex-grid-enterprise {
+        min-height: 460px;
+        --ig-size: 2;
+      }
+      /* The nested detail grid renders a touch smaller for visual contrast. */
+      apex-grid-enterprise::part(master-detail) {
+        background: #f8fafc;
+        border-radius: 6px;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid-enterprise');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Master / Detail <span class="badge">Enterprise</span></h2>
+    <p class="subtitle">
+      Declarative master/detail: set the <code>masterDetail</code> property with the child <code>columns</code> and a <code>getDetailData(row)</code> callback, and each expanded row renders a nested grid of related rows. The grid creates, caches, and (optionally async-) populates the detail grids — no hand-written <code>detailTemplate</code>.
+    </p>
+    <div class="toolbar">
+      <button id="expand">Expand all</button>
+      <button id="collapse">Collapse all</button>
+    </div>
+    <apex-grid-enterprise id="grid"></apex-grid-enterprise>
+    <script type="module">
+      const orders = [
+        {
+          id: 'ORD-1001', customer: 'Acme Corp', date: '2026-05-03', total: 1840,
+          items: [
+            { sku: 'KB-104', product: 'Mechanical Keyboard', qty: 4, unitPrice: 189 },
+            { sku: 'MS-220', product: 'Ergonomic Mouse', qty: 4, unitPrice: 79 },
+            { sku: 'Hub-3', product: 'USB-C Hub', qty: 8, unitPrice: 49 },
+          ],
+        },
+        {
+          id: 'ORD-1002', customer: 'Globex', date: '2026-05-07', total: 960,
+          items: [
+            { sku: 'WC-4K', product: '4K Webcam', qty: 6, unitPrice: 149 },
+            { sku: 'STD-1', product: 'Monitor Stand', qty: 2, unitPrice: 59 },
+          ],
+        },
+        {
+          id: 'ORD-1003', customer: 'Initech', date: '2026-05-12', total: 2580,
+          items: [
+            { sku: 'HP-WL', product: 'Wireless Headphones', qty: 12, unitPrice: 129 },
+            { sku: 'KB-104', product: 'Mechanical Keyboard', qty: 5, unitPrice: 189 },
+          ],
+        },
+        {
+          id: 'ORD-1004', customer: 'Umbrella', date: '2026-05-19', total: 410,
+          items: [{ sku: 'MS-220', product: 'Ergonomic Mouse', qty: 5, unitPrice: 79 }],
+        },
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'id', headerText: 'Order' },
+        { key: 'customer', headerText: 'Customer' },
+        { key: 'date', headerText: 'Date' },
+        { key: 'total', headerText: 'Total ($)', type: 'number' },
+      ];
+      grid.data = orders;
+
+      // Declarative master/detail — the child grid is wired for you.
+      grid.masterDetail = {
+        detailHeight: 180,
+        columns: [
+          { key: 'sku', headerText: 'SKU' },
+          { key: 'product', headerText: 'Product' },
+          { key: 'qty', headerText: 'Qty', type: 'number' },
+          { key: 'unitPrice', headerText: 'Unit ($)', type: 'number' },
+        ],
+        getDetailData: (order) => order.items,
+      };
+
+      document.getElementById('expand').addEventListener('click', () => grid.expandAll());
+      document.getElementById('collapse').addEventListener('click', () => grid.collapseAll());
+
+      // Expand the first order so the nested grid is visible on load.
+      await grid.updateComplete;
+      await grid.expandRow(orders[0]);
+    </script>
+  </body>
+</html>
