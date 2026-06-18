@@ -35,6 +35,11 @@ import {
   type GroupRowMeta,
   groupingModule,
 } from './features/grouping.js';
+import {
+  type InfiniteHost,
+  type InfiniteRowModelConfig,
+  InfiniteRowModelManager,
+} from './features/infinite-row-model.js';
 import { type MasterDetailConfig, MasterDetailManager } from './features/master-detail.js';
 import { PIVOT_MODULE_ID, type PivotController, pivotModule } from './features/pivot.js';
 import {
@@ -161,6 +166,18 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   #masterDetailManager: MasterDetailManager<T> | null = null;
 
+  /**
+   * Infinite (server-side) row model: lazily fetch fixed-size blocks from a
+   * datasource as the user scrolls, pushing sort/filter/quick-filter to the
+   * server. Setting this disables client-side sort/filter (the server owns
+   * ordering) — keep pagination off. See {@link InfiniteRowModelConfig}.
+   */
+  @property({ attribute: false })
+  public infiniteRowModel: InfiniteRowModelConfig<T> | null = null;
+
+  #infiniteManager: InfiniteRowModelManager<T> | null = null;
+  #infiniteNeedsStart = false;
+
   /** Columns saved before pivoting activated, restored when it deactivates. */
   #savedColumns: ColumnConfiguration<T>[] | null = null;
   #pivotActive = false;
@@ -202,6 +219,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   public override disconnectedCallback(): void {
     ApexGridEnterprise.#instances.delete(this);
+    this.#infiniteManager?.stop();
     super.disconnectedCallback();
   }
 
@@ -219,7 +237,44 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.#syncGrouping(changed);
     this.#syncRange(changed);
     this.#syncMasterDetail(changed);
+    this.#syncInfiniteRowModel(changed);
     super.willUpdate(changed);
+  }
+
+  /** Create/tear down the infinite row-model manager when the config changes. */
+  #syncInfiniteRowModel(changed: PropertyValues): void {
+    if (!changed.has('infiniteRowModel')) return;
+    this.#infiniteManager?.stop();
+    if (this.infiniteRowModel) {
+      this.#infiniteManager = new InfiniteRowModelManager<T>(
+        this.infiniteRowModel,
+        this as unknown as InfiniteHost<T>
+      );
+      // Start after render so the body virtualizer exists to attach to.
+      this.#infiniteNeedsStart = true;
+    } else {
+      this.#infiniteManager = null;
+    }
+  }
+
+  protected override updated(): void {
+    super.updated();
+    if (this.#infiniteManager && this.#infiniteNeedsStart) {
+      this.#infiniteNeedsStart = false;
+      this.#infiniteManager.start();
+    }
+    // Idempotent — binds the virtualizer's rangeChanged once it's rendered.
+    this.#infiniteManager?.attach();
+  }
+
+  /** Whether a row is an unloaded placeholder under the infinite row model. */
+  public isRowLoading(row: T): boolean {
+    return this.#infiniteManager?.isPlaceholder(row) ?? false;
+  }
+
+  /** Discard the infinite-model cache and refetch from the top. */
+  public refreshRows(): void {
+    this.#infiniteManager?.refresh();
   }
 
   /** Wire the declarative master/detail config onto the grid's expansion. */

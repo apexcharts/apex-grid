@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Infinite Row Model (Enterprise) - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid-enterprise.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .badge {
+        font-size: 13px;
+        font-weight: 500;
+        color: #92400e;
+        background: #fef3c7;
+        border: 1px solid #fde68a;
+        border-radius: 20px;
+        padding: 2px 10px;
+        vertical-align: middle;
+      }
+      .status {
+        margin-top: 10px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-family: ui-monospace, monospace;
+        color: #1a1a2e;
+        background: #f7f9fc;
+        border-left: 3px solid #4f6ee0;
+        border-radius: 0 4px 4px 0;
+      }
+      code {
+        background: #f1f1f1;
+        padding: 0 0.25rem;
+        border-radius: 3px;
+      }
+      apex-grid-enterprise {
+        block-size: 460px;
+        --ig-size: 2;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid-enterprise');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Infinite Row Model <span class="badge">Enterprise</span></h2>
+    <p class="subtitle">
+      Server-side data: instead of holding every row, set <code>infiniteRowModel</code> with a <code>datasource.getRows({ startRow, endRow, sortModel, filterModel, quickFilter })</code>. The grid lazily fetches fixed-size blocks as you scroll and pushes sort / search to the server. Try scrolling, sorting a column, or searching — each is a fresh server request.
+    </p>
+    <apex-grid-enterprise id="grid"></apex-grid-enterprise>
+    <div class="status" id="status">Loading…</div>
+    <script type="module">
+      // ---- Fake server: 5,000 rows held "remotely" ----------------------------
+      const COUNTRIES = ['USA', 'Germany', 'Japan', 'Brazil', 'India', 'Canada', 'France', 'Kenya'];
+      const STATUSES = ['Active', 'Trial', 'Churned', 'Lead'];
+      const SERVER_ROWS = Array.from({ length: 5000 }, (_, i) => ({
+        id: i + 1,
+        name: `Customer ${String(i + 1).padStart(4, '0')}`,
+        country: COUNTRIES[i % COUNTRIES.length],
+        status: STATUSES[i % STATUSES.length],
+        mrr: 50 + ((i * 37) % 950),
+      }));
+
+      function queryServer({ startRow, endRow, sortModel, filterModel, quickFilter }) {
+        let rows = SERVER_ROWS;
+        const q = (quickFilter || '').trim().toLowerCase();
+        if (q) {
+          rows = rows.filter(
+            (r) =>
+              r.name.toLowerCase().includes(q) ||
+              r.country.toLowerCase().includes(q) ||
+              r.status.toLowerCase().includes(q)
+          );
+        }
+        const sort = sortModel[0];
+        if (sort) {
+          const dir = sort.direction === 'descending' ? -1 : 1;
+          const key = sort.key;
+          rows = rows.slice().sort((a, b) => (a[key] > b[key] ? 1 : a[key] < b[key] ? -1 : 0) * dir);
+        }
+        const rowCount = rows.length;
+        // Resolve on a microtask to mimic an async fetch (kept instant for the demo).
+        return Promise.resolve({ rows: rows.slice(startRow, endRow), rowCount });
+      }
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'id', headerText: 'ID', type: 'number', sort: true },
+        { key: 'name', headerText: 'Customer', sort: true },
+        { key: 'country', headerText: 'Country', sort: true },
+        { key: 'status', headerText: 'Status', sort: true },
+        { key: 'mrr', headerText: 'MRR ($)', type: 'number', sort: true },
+      ];
+      grid.showQuickFilter = true; // toolbar search → server quick-filter
+
+      // Enable the server-side row model.
+      grid.infiniteRowModel = { datasource: { getRows: queryServer }, blockSize: 100 };
+
+      const statusEl = document.getElementById('status');
+      grid.addEventListener('apex-rows-loaded', (event) => {
+        const { rowCount, loadedBlocks, blockSize } = event.detail;
+        statusEl.textContent =
+          `${rowCount.toLocaleString()} rows on the server · ` +
+          `${loadedBlocks} block${loadedBlocks === 1 ? '' : 's'} of ${blockSize} fetched · ` +
+          `lazy-loaded on scroll`;
+      });
+    </script>
+  </body>
+</html>

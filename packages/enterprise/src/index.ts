@@ -6,6 +6,14 @@ export type {
 } from './features/aggregation.js';
 export type { ChartModel, ChartSeries, RenderChartOptions } from './features/chart.js';
 export type { GroupRowMeta } from './features/grouping.js';
+export type {
+  InfiniteDataSource,
+  InfiniteGetRowsParams,
+  InfiniteGetRowsResult,
+  InfiniteRowModelConfig,
+  RowsLoadedDetail,
+} from './features/infinite-row-model.js';
+export { ROWS_LOADED_EVENT } from './features/infinite-row-model.js';
 export type { MasterDetailConfig, MasterDetailContext } from './features/master-detail.js';
 export type {
   RangeBounds,
