@@ -41,5 +41,8 @@
     "esbuild": "^0.27.7",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.2"
+  },
+  "overrides": {
+    "shell-quote": "^1.8.4"
   }
 }
