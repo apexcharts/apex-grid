@@ -4,7 +4,49 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.1.1] — unreleased
+## [0.2.0] — 2026-06-19
+
+First feature release on top of the new `apex-grid` `3.1.0` module seams.
+Everything is additive — `<apex-grid-enterprise>` stays a drop-in replacement
+for `<apex-grid>`.
+
+### Added
+- **Row grouping** — `groupBy` with nested, expandable group headers and
+  per-group aggregates computed over the filtered leaves.
+- **Pivoting** — `pivotOn` / `pivotRows` / `pivotValues`; distinct
+  column-dimension values expand into dynamic columns of computed aggregates.
+  (Grouping and pivoting are mutually exclusive.)
+- **Integrated charts** — `getChartModel()` / `renderChart()` chart the group /
+  pivot aggregates with **ApexCharts** (dynamically imported) into a
+  caller-supplied container.
+- **Columns tool panel** — `<apex-grid-tool-panel>` sibling element: per-column
+  show/hide, pin cycle, reorder, and search, plus drag-and-drop **Row Groups /
+  Values / Column Labels** zones and a grouping ⇄ pivot mode toggle.
+- **Cell range selection** — click-drag / shift-click range with a perimeter
+  box; Ctrl/⌘-click adds disjoint ranges; exposes bounds, TSV, and
+  count / sum / avg / min / max stats; fires `apex-range-changed`. Toggle via
+  the `range-selection` attribute.
+- **Status bar** — `<apex-grid-status-bar>` sibling element showing live
+  selection aggregates.
+- **Spreadsheet editing** — clipboard copy (Ctrl/⌘+C) and paste (Ctrl/⌘+V,
+  `pasteText`, coerced to the column type), plus a drag **fill handle**
+  (`fillTo` — numeric ranges extrapolate a linear series, otherwise tile).
+- **Set filter** — `<apex-grid-set-filter>`: Excel-style distinct-value
+  checklist with search and (Select all); composes with other filters through
+  the grid's public `filter()` / `clearFilter()`.
+- **Master / detail** — declarative embedded detail grids via the `masterDetail`
+  config (`columns` + `getDetailData(row)`, sync or async); `refreshDetail(row)`.
+- **Infinite (server-side) row model** — `infiniteRowModel = { datasource,
+  blockSize }` lazily fetches fixed-size blocks from
+  `datasource.getRows({ startRow, endRow, sortModel, filterModel, quickFilter })`
+  as the user scrolls and pushes sort / filter / quick-filter to the server.
+  `isRowLoading(row)`, `refreshRows()`; fires `apex-rows-loaded`.
+
+### Changed
+- **`apex-grid` dependency raised to `^3.1.0`** — these features build on the
+  row / cell module seams added in that release.
+
+## [0.1.1] — 2026-06-10
 
 Documentation-only patch (no runtime or API changes).
 
@@ -37,5 +79,6 @@ Initial release. Pro-licensed grid that extends the community
 - `apex-grid` `^3.0.0`, `apex-commons` `^0.1.0`. Peer deps: `lit`, `@lit/context`,
   `igniteui-webcomponents` (shared single copy with core).
 
+[0.2.0]: https://github.com/apexcharts/apex-grid/releases
 [0.1.1]: https://github.com/apexcharts/apex-grid/releases
 [0.1.0]: https://github.com/apexcharts/apex-grid/releases
