@@ -266,6 +266,12 @@ export default class ApexGridRow<T extends object> extends LitElement {
       </div>`;
     }
 
+    // A row index can transiently fall beyond the current data — e.g. while a
+    // server-side / infinite row model resizes `data` on a filter or sort
+    // change, the virtualizer may render a stale index for a frame. Render
+    // nothing until the real item arrives, rather than dereferencing undefined.
+    if (this.data == null) return nothing;
+
     const { column: key, row: index } = this.activeNode;
 
     // Track aria-colindex (1-based) across the auto chrome columns and the
