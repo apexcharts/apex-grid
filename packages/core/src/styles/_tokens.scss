@@ -42,6 +42,17 @@
     // paint `background: inherit` to mask content scrolling underneath, so they
     // MUST be opaque — a translucent surface lets the scrolled content bleed
     // through.
+    // Host card background. Kept as its own token (rather than reusing
+    // `--ag-surface`) so the default can carry the subtle premium light
+    // gradient while sticky surfaces stay flat/opaque. Dark themes override it
+    // with a flat color. The host paints THIS, so dark mode is impossible
+    // without it being a token.
+    --ag-grid-bg: linear-gradient(
+        155deg,
+        rgba(255, 255, 255, 0.96) 0%,
+        rgba(252, 253, 255, 0.92) 50%,
+        rgba(248, 250, 254, 0.94) 100%
+    );
     --ag-surface: #fff; // grid card background
     --ag-surface-alt: #f9fafb; // alternating row tint (neutral, opaque)
     --ag-surface-elevated: linear-gradient(180deg, #fbfcfd 0%, #f6f7f8 100%); // header bg (neutral, opaque)
@@ -103,4 +114,91 @@
     --ag-dur-fast: 120ms; // hover, focus
     --ag-dur-med: 180ms; // chevron rotate
     --ag-dur-slow: 240ms; // health bar fill
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Built-in dark theme. Opt in with `<apex-grid theme="dark">`.
+//
+// Only color/surface tokens are flipped to a neutral slate palette; geometry,
+// typography, motion, and the brand hue (which still auto-tints from the
+// igniteui palette when present) are inherited from the light block above.
+// `theme~='dark'` matches a space-separated word so `theme="dark compact"`
+// style stacking keeps working. These tokens inherit across the shadow
+// boundary to every child component, so the whole grid re-skins from here.
+// ─────────────────────────────────────────────────────────────────────────
+:host([theme~='dark']) {
+    // ── Brand ── brighter fallbacks so the accent reads on a dark surface;
+    // still re-tints from the igniteui palette first when it is present.
+    --ag-brand: var(--ig-primary-500, #3b82f6);
+    --ag-brand-strong: var(--ig-primary-400, #60a5fa);
+
+    // ── Surfaces ── flat, opaque slate (sticky regions paint these).
+    --ag-grid-bg: #0f172a; // host card (flat in dark)
+    --ag-surface: #0f172a; // grid body / row bg
+    --ag-surface-alt: #172033; // alternating row tint (subtle lift)
+    --ag-surface-elevated: #1e293b; // header / footer / toolbar
+
+    // ── Chrome ── light-on-dark gridlines + a hover wash that mixes toward
+    // white (the light default mixes toward #0f172a, which is invisible here).
+    --ag-hairline: rgba(255, 255, 255, 0.12); // structural gridlines
+    --ag-border: rgba(255, 255, 255, 0.07); // row separators
+    --ag-row-hover: color-mix(in srgb, #ffffff 7%, var(--ag-surface));
+
+    // ── Text ──
+    --ag-text: #f1f5f9; // primary
+    --ag-text-body: #e2e8f0; // row text
+    --ag-text-muted: #94a3b8; // roles, labels
+    --ag-text-subtle: #64748b; // placeholder, ellipsis
+
+    // ── State ── brighter text + slightly stronger washes for legibility on
+    // the dark surface.
+    --ag-good-text: #34d399;
+    --ag-good-soft: rgba(16, 185, 129, 0.18);
+    --ag-watch-text: #fbbf24;
+    --ag-watch-soft: rgba(245, 158, 11, 0.18);
+    --ag-risk-text: #f87171;
+    --ag-risk-soft: rgba(239, 68, 68, 0.18);
+
+    --ag-gold: rgba(245, 158, 11, 0.16); // Enterprise pill bg (dark amber wash)
+    --ag-gold-line: rgba(245, 158, 11, 0.35);
+    --ag-gold-text: #fcd34d;
+
+    // Drop the light-mode white inset highlight; deepen the drop shadow.
+    --ag-shadow-card:
+        0 16px 38px rgba(0, 0, 0, 0.55),
+        0 0 0 1px rgba(255, 255, 255, 0.06),
+        0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Optional brand-tinted chrome. Opt in with `theme="tinted"` (composes with
+// dark as `theme="dark tinted"`).
+//
+// By default the chrome is neutral grayscale and `--ag-brand` only shows on
+// interactive state (selection, focus, active sort). This variant mixes a
+// little brand into the surfaces/gridlines so the grid wears its brand even
+// at rest, AG-Grid-Alpine style. Because every value is `color-mix(... var
+// (--ag-brand) ...)`, it follows whatever brand is in effect (including the
+// igniteui auto-tint) with no per-brand CSS.
+//
+// The light variant mixes into the white neutrals; the dark variant (higher
+// specificity, so it wins under `theme="dark tinted"`) mixes the SAME token
+// set into the slate neutrals. Body row surface stays untinted for legibility.
+// ─────────────────────────────────────────────────────────────────────────
+:host([theme~='tinted']) {
+    --ag-surface-alt: color-mix(in srgb, var(--ag-brand) 4%, #fff); // zebra
+    --ag-surface-elevated: color-mix(in srgb, var(--ag-brand) 11%, #fbfcfd); // header / footer / toolbar
+    --ag-hairline: color-mix(in srgb, var(--ag-brand) 24%, rgba(15, 23, 42, 0.07)); // gridlines
+    --ag-border: color-mix(in srgb, var(--ag-brand) 12%, transparent); // row separators
+    --ag-row-hover: color-mix(in srgb, var(--ag-brand) 9%, var(--ag-surface));
+    --ag-text-muted: color-mix(in srgb, var(--ag-brand) 32%, #6b7280); // header labels pick up the brand
+}
+
+:host([theme~='dark'][theme~='tinted']) {
+    --ag-surface-alt: color-mix(in srgb, var(--ag-brand) 10%, #172033);
+    --ag-surface-elevated: color-mix(in srgb, var(--ag-brand) 20%, #1e293b);
+    --ag-hairline: color-mix(in srgb, var(--ag-brand) 30%, rgba(255, 255, 255, 0.12));
+    --ag-border: color-mix(in srgb, var(--ag-brand) 16%, rgba(255, 255, 255, 0.07));
+    --ag-row-hover: color-mix(in srgb, var(--ag-brand) 12%, var(--ag-surface));
+    --ag-text-muted: color-mix(in srgb, var(--ag-brand) 28%, #94a3b8);
 }

@@ -9,10 +9,10 @@ $header-border-color: var(--igx-header-border-color, var(--header-border-color, 
 
     grid-row: paginator-row;
     display: block;
-    // Subtle reverse gradient (lighter toward the bottom) so the footer reads
-    // as a grounded surface mirroring the elevated header. Opaque — the footer
-    // is sticky and must mask body rows scrolling underneath it.
-    background: linear-gradient(0deg, #fbfcfd 0%, #f6f7f8 100%);
+    // Shares the header's elevated surface so the footer reads as grounded
+    // chrome and re-skins with it (incl. dark mode). Opaque by contract: the
+    // footer is sticky and must mask body rows scrolling underneath it.
+    background: var(--ag-surface-elevated);
     color: $header-text-color;
     border-block-start: 1px solid $header-border-color;
     font-size: 11.5px;

@@ -14,7 +14,9 @@
         margin: 0 auto;
         font-family: 'Inter', sans-serif;
         background: #fff;
+        color: #1a1a2e;
         padding: 20px;
+        transition: background 0.3s, color 0.3s;
       }
       h2 {
         font-size: 22px;
@@ -27,6 +29,10 @@
         font-size: 13px;
         color: #888;
         margin-bottom: 16px;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.92em;
       }
       apex-grid {
         min-height: 400px;
@@ -50,41 +56,61 @@
         font-size: 13px;
         font-family: inherit;
       }
+
+      /* Page chrome follows the selected variant. */
+      body.dark {
+        background: #0f172a;
+        color: #e2e8f0;
+      }
+      body.dark h2 {
+        color: #f1f5f9;
+      }
+      body.dark .panel label {
+        color: #94a3b8;
+      }
+      body.dark .panel select {
+        background: #1e293b;
+        color: #e2e8f0;
+        border-color: #334155;
+      }
     </style>
   </head>
   <body>
-    <h2>Built-in Themes — Watchlist</h2>
+    <h2>Theme Presets: Watchlist</h2>
     <p class="subtitle">
-      Switch between 8 pre-built themes (Bootstrap, Fluent, Material, Indigo — each in light and dark variants)
+      Four brand presets, each in light and dark. Each preset sets only <code>--ag-brand</code>; the
+      <code>theme="tinted"</code> flag mixes that brand into the chrome (header, zebra rows, gridlines) so
+      every preset reads distinctly at rest. Dark variants use <code>theme="dark tinted"</code>. No external CSS.
     </p>
     <div class="panel">
       <label for="themeSelect">Select a theme:</label>
       <select id="themeSelect">
-        <option value="bootstrap-light" selected>Bootstrap</option>
-        <option value="bootstrap-dark">Bootstrap Dark</option>
-        <option value="fluent-light">Fluent</option>
-        <option value="fluent-dark">Fluent Dark</option>
-        <option value="material-light">Material</option>
-        <option value="material-dark">Material Dark</option>
-        <option value="indigo-light">Indigo</option>
-        <option value="indigo-dark">Indigo Dark</option>
+        <option value="blue-light" selected>Blue</option>
+        <option value="blue-dark">Blue Dark</option>
+        <option value="teal-light">Teal</option>
+        <option value="teal-dark">Teal Dark</option>
+        <option value="violet-light">Violet</option>
+        <option value="violet-dark">Violet Dark</option>
+        <option value="amber-light">Amber</option>
+        <option value="amber-dark">Amber Dark</option>
       </select>
     </div>
     <apex-grid id="grid"></apex-grid>
     <script type="module">
       import { html } from 'https://cdn.jsdelivr.net/npm/lit@3/+esm';
 
-      const themeBaseUrl = 'https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes';
-
+      // Each preset is a brand accent (light/dark surfaces come from the
+      // grid's default tokens / the built-in theme="dark"). Switching a preset
+      // only overrides --ag-brand on the host, and the chrome re-skins from there.
       const themeMap = {
-        'bootstrap-light': `${themeBaseUrl}/light/bootstrap.css`,
-        'bootstrap-dark': `${themeBaseUrl}/dark/bootstrap.css`,
-        'fluent-light': `${themeBaseUrl}/light/fluent.css`,
-        'fluent-dark': `${themeBaseUrl}/dark/fluent.css`,
-        'material-light': `${themeBaseUrl}/light/material.css`,
-        'material-dark': `${themeBaseUrl}/dark/material.css`,
-        'indigo-light': `${themeBaseUrl}/light/indigo.css`,
-        'indigo-dark': `${themeBaseUrl}/dark/indigo.css`,
+        'blue-light': { brand: '#2563eb', strong: '#1d4ed8', dark: false },
+        'blue-dark': { brand: '#60a5fa', strong: '#93c5fd', dark: true },
+        'teal-light': { brand: '#0d9488', strong: '#0f766e', dark: false },
+        'teal-dark': { brand: '#2dd4bf', strong: '#5eead4', dark: true },
+        'violet-light': { brand: '#7c3aed', strong: '#6d28d9', dark: false },
+        'violet-dark': { brand: '#a78bfa', strong: '#c4b5fd', dark: true },
+        'amber-light': { brand: '#d97706', strong: '#b45309', dark: false },
+        'amber-dark': { brand: '#fbbf24', strong: '#fcd34d', dark: true },
       };
 
       const data = [
@@ -119,41 +145,30 @@
         { key: 'marketCap', headerText: 'Market Cap', sort: true, filter: true, type: 'number', cellTemplate: fmtCap },
       ];
       grid.data = data;
+      // Start sorted so the active-sort header carries the accent too.
+      grid.sort({ key: 'changePct', direction: 'descending' });
 
-      async function applyTheme(themeKey) {
-        const url = themeMap[themeKey];
-        if (!url) return;
+      function applyTheme(themeKey) {
+        const preset = themeMap[themeKey];
+        if (!preset) return;
 
-        try {
-          const resp = await fetch(url);
-          const css = await resp.text();
-          const scoped = css.replaceAll(':root', 'apex-grid');
+        // `tinted` mixes the brand into the chrome (header, zebra rows,
+        // gridlines) so each preset reads distinctly even with nothing
+        // selected; `dark` adds the built-in slate palette on top.
+        grid.setAttribute('theme', preset.dark ? 'dark tinted' : 'tinted');
 
-          let styleEl = document.getElementById('theme-style');
-          if (!styleEl) {
-            styleEl = document.createElement('style');
-            styleEl.id = 'theme-style';
-            document.head.appendChild(styleEl);
-          }
-          styleEl.textContent = scoped;
+        grid.style.setProperty('--ag-brand', preset.brand);
+        grid.style.setProperty('--ag-brand-strong', preset.strong);
 
-          if (themeKey.includes('dark')) {
-            document.body.style.background = '#1e1e2e';
-            document.body.style.color = '#e2e8f0';
-          } else {
-            document.body.style.background = '#fff';
-            document.body.style.color = '#1a1a2e';
-          }
-        } catch (e) {
-          console.warn('Failed to load theme:', e);
-        }
+        // Page chrome follows along.
+        document.body.classList.toggle('dark', preset.dark);
       }
 
       document.getElementById('themeSelect').addEventListener('change', (e) => {
         applyTheme(e.target.value);
       });
 
-      applyTheme('bootstrap-light');
+      applyTheme('blue-light');
     </script>
   </body>
 </html>

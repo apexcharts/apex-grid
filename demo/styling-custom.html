@@ -27,6 +27,10 @@
         color: #888;
         margin-bottom: 16px;
       }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.92em;
+      }
       apex-grid {
         min-height: 400px;
         --ig-size: 2;
@@ -58,14 +62,21 @@
         color: #f1f5f9;
         border-color: #1e293b;
       }
+      /* A bespoke teal palette built entirely from the grid's --ag-* tokens.
+         Overriding ~12 values on <apex-grid> re-skins the whole grid. */
       body.light apex-grid {
-        --apexgrid-header-bg: #f1f5f9;
-        --apexgrid-header-color: #1e293b;
-        --apexgrid-row-bg: #ffffff;
-        --apexgrid-row-alt-bg: #f8fafc;
-        --apexgrid-row-hover-bg: #e2e8f0;
-        --apexgrid-border-color: #e2e8f0;
-        --apexgrid-color: #334155;
+        --ag-brand: #0d9488;
+        --ag-brand-strong: #0f766e;
+        --ag-grid-bg: #ffffff;
+        --ag-surface: #ffffff;
+        --ag-surface-alt: #f6faf9;
+        --ag-surface-elevated: #ecfdf5;
+        --ag-row-hover: #e6f4f1;
+        --ag-hairline: #d6e6e2;
+        --ag-border: #eef4f2;
+        --ag-text: #0f172a;
+        --ag-text-body: #334155;
+        --ag-text-muted: #64748b;
       }
 
       /* Dark theme */
@@ -81,21 +92,28 @@
       body.dark .subtitle {
         color: #64748b;
       }
+      /* The same tokens flipped to a bespoke slate + teal dark palette.
+         (Or skip all of this and just set theme="dark" for the built-in one.) */
       body.dark apex-grid {
-        --apexgrid-header-bg: #1e293b;
-        --apexgrid-header-color: #e2e8f0;
-        --apexgrid-row-bg: #0f172a;
-        --apexgrid-row-alt-bg: #1e293b;
-        --apexgrid-row-hover-bg: #334155;
-        --apexgrid-border-color: #334155;
-        --apexgrid-color: #cbd5e1;
+        --ag-brand: #2dd4bf;
+        --ag-brand-strong: #5eead4;
+        --ag-grid-bg: #0b1220;
+        --ag-surface: #0f172a;
+        --ag-surface-alt: #141f33;
+        --ag-surface-elevated: #142231;
+        --ag-row-hover: #1b2a3d;
+        --ag-hairline: rgba(255, 255, 255, 0.1);
+        --ag-border: rgba(255, 255, 255, 0.06);
+        --ag-text: #f1f5f9;
+        --ag-text-body: #e2e8f0;
+        --ag-text-muted: #94a3b8;
       }
     </style>
   </head>
   <body class="light">
     <h2>Custom Theme</h2>
     <p class="subtitle">
-      Toggle between custom light and dark themes using CSS custom properties
+      Toggle between a bespoke light and dark theme, both built from the grid's <code>--ag-*</code> CSS custom properties
     </p>
     <div class="panel">
       <button class="toggle-btn" id="toggleBtn">Switch to dark theme</button>

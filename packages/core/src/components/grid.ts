@@ -590,10 +590,16 @@ export interface ApexGridEventMap<T extends object> {
  * The grid is styled out of the box through `--ag-*` CSS custom properties —
  * there is no theme to import and no `configureTheme()` call. Override `--ag-*`
  * tokens on the host (or any ancestor) to rebrand; when `igniteui-webcomponents`
- * is present, the brand tokens auto-tint from its palette. See the README
- * "Getting Started" and "Theming" sections for the full example and token list.
+ * is present, the brand tokens auto-tint from its palette. For dark mode, set
+ * the `theme="dark"` attribute on the host for the built-in slate dark palette
+ * (further `--ag-*` overrides still compose on top). Add `tinted` (e.g.
+ * `theme="tinted"` or `theme="dark tinted"`) to mix the brand into the chrome
+ * so the grid wears its brand even at rest. See the README "Getting Started"
+ * and "Theming" sections for the full example and token list.
  *
  * @element apex-grid
+ *
+ * @attr {string} theme - Space-separated theme flags. `dark` opts into the built-in dark palette; `tinted` mixes `--ag-brand` into the chrome surfaces. Combine as `theme="dark tinted"`.
  *
  * @fires sorting - Emitted when sorting is initiated through the UI.
  * @fires sorted - Emitted when a sort operation initiated through the UI has completed.
@@ -623,6 +629,7 @@ export interface ApexGridEventMap<T extends object> {
  * @cssprop [--ag-brand] - Brand color for selection, focus rings, and accents. Auto-tints from `--ig-primary-500` when igniteui is present.
  * @cssprop [--ag-brand-strong] - Brand color for hover / pressed states.
  * @cssprop [--ag-grid-shadow] - Grid edge/shadow override. Default is a flat 1px hairline edge; set to `var(--ag-shadow-card)` for the elevated card look, or `none` to remove it.
+ * @cssprop [--ag-grid-bg] - Host card background. Defaults to a subtle light gradient; override with a flat color (or use `theme="dark"`) for dark themes.
  * @cssprop [--ag-surface] - Grid card background (must be opaque).
  * @cssprop [--ag-surface-alt] - Alternating row tint.
  * @cssprop [--ag-surface-elevated] - Header background.
