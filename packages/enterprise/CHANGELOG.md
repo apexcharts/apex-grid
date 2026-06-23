@@ -4,6 +4,15 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.1] — 2026-06-23
+
+Documentation-only patch (no runtime, API, or dependency changes).
+
+### Documentation
+- Expanded the package README with full feature coverage (row grouping,
+  pivoting, integrated charts, tool panel, range selection / status bar,
+  spreadsheet editing, set filter, master / detail, infinite row model).
+
 ## [0.2.0] — 2026-06-19
 
 First feature release on top of the new `apex-grid` `3.1.0` module seams.
@@ -79,6 +88,7 @@ Initial release. Pro-licensed grid that extends the community
 - `apex-grid` `^3.0.0`, `apex-commons` `^0.1.0`. Peer deps: `lit`, `@lit/context`,
   `igniteui-webcomponents` (shared single copy with core).
 
+[0.2.1]: https://github.com/apexcharts/apex-grid/releases
 [0.2.0]: https://github.com/apexcharts/apex-grid/releases
 [0.1.1]: https://github.com/apexcharts/apex-grid/releases
 [0.1.0]: https://github.com/apexcharts/apex-grid/releases

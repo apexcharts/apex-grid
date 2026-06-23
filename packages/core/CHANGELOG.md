@@ -4,6 +4,28 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.2.0] — 2026-06-23
+
+Additive, backward-compatible release. The default look of `<apex-grid>` is
+unchanged; the dark theme is opt-in via a new `theme` attribute.
+
+### Added
+- **Built-in dark theme.** Set `theme="dark"` on the host for a built-in slate
+  dark palette — no theme to import and no `configureTheme()` call. Add `tinted`
+  (`theme="tinted"` or `theme="dark tinted"`) to mix `--ag-brand` into the chrome
+  surfaces so the grid wears its brand even at rest. Further `--ag-*` overrides
+  still compose on top.
+- **`--ag-grid-bg` token.** Host card background hook; defaults to the subtle
+  light gradient and is driven by the new token-based surfaces.
+
+### Changed
+- **Multi-sort now requires Ctrl/⌘ to append a column.** With multi-sort
+  enabled, a plain header click sorts by that column alone (clearing other sort
+  keys); Ctrl/⌘+click appends the column as a lower-priority sort. Keyboard
+  activation mirrors the modifier keys, so Ctrl/⌘+Enter is additive too.
+  Previously every plain click accumulated a sort key, so a second column added
+  behind a unique primary column did not change the visible order.
+
 ## [3.1.0] — 2026-06-19
 
 Additive, backward-compatible release. The public `apex-grid` `.` / `./define`
@@ -85,6 +107,7 @@ Documentation-only patch (no runtime or API changes).
 - Repository converted to an npm-workspaces monorepo; this package publishes
   from `packages/core`.
 
+[3.2.0]: https://github.com/apexcharts/apex-grid/releases
 [3.1.0]: https://github.com/apexcharts/apex-grid/releases
 [3.0.1]: https://github.com/apexcharts/apex-grid/releases
 [3.0.0]: https://github.com/apexcharts/apex-grid/releases
