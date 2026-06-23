@@ -74,9 +74,12 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     this.addEventListener('pointermove', this.#handleResize);
   }
 
-  #handleClick(e: Event) {
+  #handleClick(e: MouseEvent) {
     e.stopPropagation();
-    this.state.sorting.sortFromHeaderClick(this.column);
+    // Ctrl/Cmd+click appends to a multi-column sort; a plain click sorts by
+    // this column alone. Keyboard activation (Enter/Space) fires a click whose
+    // modifier flags mirror the keys held, so Ctrl/Cmd+Enter is additive too.
+    this.state.sorting.sortFromHeaderClick(this.column, e.ctrlKey || e.metaKey);
   }
 
   #handleResize = ({ clientX }: PointerEvent) => {

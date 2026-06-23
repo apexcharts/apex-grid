@@ -88,17 +88,40 @@ describe('Grid UI sort', () => {
       expect(TDD.rows.first.data.id).to.equal(8);
     });
 
-    it('Multiple sort by clicking', async () => {
-      // Ascending `active` & ascending `id`
+    it('Multiple sort by Ctrl/Cmd-clicking', async () => {
+      // Ascending `active` & ascending `id` (Ctrl/Cmd+click appends the column)
       await TDD.sortHeader('active');
-      await TDD.sortHeader('id');
+      await TDD.sortHeader('id', true);
       expect(TDD.rows.first.data.active).to.equal(false);
       expect(TDD.rows.first.data.id).to.equal(1);
 
       // Ascending `active` & descending `id`
-      await TDD.sortHeader('id');
+      await TDD.sortHeader('id', true);
       expect(TDD.rows.first.data.active).to.equal(false);
       expect(TDD.rows.first.data.id).to.equal(6);
+    });
+
+    it('Plain click replaces the sort even in multi-sort mode', async () => {
+      // Multi-sort is enabled by default in this fixture.
+      await TDD.sortHeader('active');
+      TDD.columnIsSorted('active');
+      expect(TDD.grid.sortExpressions).lengthOf(1);
+
+      // A plain click on a different column clears `active` and sorts by `id`
+      // alone — it does NOT silently append behind the existing sort.
+      await TDD.sortHeader('id');
+      TDD.columnIsNotSorted('active');
+      TDD.columnIsSorted('id');
+      expect(TDD.grid.sortExpressions).lengthOf(1);
+      expect(TDD.rows.first.data.id).to.equal(1);
+    });
+
+    it('Ctrl/Cmd click appends a sort column', async () => {
+      await TDD.sortHeader('active');
+      await TDD.sortHeader('id', true);
+      TDD.columnIsSorted('active');
+      TDD.columnIsSorted('id');
+      expect(TDD.grid.sortExpressions).lengthOf(2);
     });
   });
 
@@ -155,20 +178,20 @@ describe('Grid UI sort', () => {
     });
 
     it('Multiple sort with tri-state', async () => {
-      // ASC
+      // ASC `id`
       await TDD.sortHeader('id');
 
-      // ASC -> DESC
-      await TDD.sortHeader('active');
-      await TDD.sortHeader('active');
+      // Ctrl/Cmd+click appends `active`, then toggles ASC -> DESC
+      await TDD.sortHeader('active', true);
+      await TDD.sortHeader('active', true);
 
       TDD.indicatorIsAscending('id');
       TDD.indicatorIsDescending('active');
       TDD.columnIsSorted('id');
       TDD.columnIsSorted('active');
 
-      // Reset
-      await TDD.sortHeader('active');
+      // Tri-state third Ctrl/Cmd+click clears `active`, leaving `id` sorted
+      await TDD.sortHeader('active', true);
 
       TDD.indicatorIsAscending('id');
       TDD.columnIsNotSorted('active');
@@ -177,18 +200,18 @@ describe('Grid UI sort', () => {
     it('Multiple sort without tri-state', async () => {
       await TDD.updateProperty('sortConfiguration', { multiple: true, triState: false });
 
-      // ASC
+      // ASC `id`
       await TDD.sortHeader('id');
 
-      // ASC -> DESC
-      await TDD.sortHeader('active');
-      await TDD.sortHeader('active');
+      // Ctrl/Cmd+click appends `active`, then toggles ASC -> DESC
+      await TDD.sortHeader('active', true);
+      await TDD.sortHeader('active', true);
 
       TDD.indicatorIsAscending('id');
       TDD.indicatorIsDescending('active');
 
       // DESC -> ASC
-      await TDD.sortHeader('active');
+      await TDD.sortHeader('active', true);
 
       TDD.indicatorIsAscending('id');
       TDD.indicatorIsAscending('active');

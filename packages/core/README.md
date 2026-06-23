@@ -182,7 +182,7 @@ grid.sort({ key: 'age', direction: 'asc' });
 grid.clearSort();                                          // or grid.clearSort('age')
 ```
 
-Events: `sorting` (cancellable), `sorted`.
+When `multiple` is enabled, a plain header click sorts by that column alone; hold Ctrl/Cmd and click to append additional columns as lower-priority sort keys. Events: `sorting` (cancellable), `sorted`.
 
 ### Filtering
 

@@ -79,7 +79,9 @@ export default class HeaderTestFixture<T extends object> {
     this.resizePart.dispatchEvent(new Event('dblclick', DEFAULT_ARGS));
   }
 
-  public sort() {
-    this.sortPart.click();
+  public sort(additive = false) {
+    this.sortPart.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, composed: true, ctrlKey: additive })
+    );
   }
 }

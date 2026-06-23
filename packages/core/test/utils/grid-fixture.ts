@@ -126,8 +126,8 @@ export default class GridTestFixture<T extends object> {
     );
   }
 
-  public async sortHeader(key: Keys<T>) {
-    this.getHeader(key).sort();
+  public async sortHeader(key: Keys<T>, additive = false) {
+    this.getHeader(key).sort(additive);
     await this.waitForUpdate();
   }
 

@@ -77,14 +77,20 @@ export class SortController<T extends object> implements ReactiveController {
       : this.state.set(expression.key, { ...expression });
   }
 
-  public async sortFromHeaderClick(column: ColumnConfiguration<T>) {
+  public async sortFromHeaderClick(column: ColumnConfiguration<T>, additive = false) {
     const expression = this.prepareExpression(column);
 
     if (!this.#emitSortingEvent(expression)) {
       return;
     }
 
-    if (!this.#isMultipleSort) {
+    // A plain click sorts by this column alone, clearing any other sorted
+    // columns. Only a Ctrl/Cmd+click while multi-sort is enabled keeps the
+    // existing sort keys and appends this column as an additional, lower-
+    // priority sort. Without this gate every plain click would accumulate a
+    // key, so a second column added behind a unique primary column would not
+    // change the visible order at all.
+    if (!this.#isMultipleSort || !additive) {
       this.reset();
     }
 
