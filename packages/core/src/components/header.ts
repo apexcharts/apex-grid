@@ -182,6 +182,11 @@ export default class ApexGridHeader<T extends object> extends LitElement {
   };
 
   protected override updated() {
+    // Mirror the column's data type onto the host so the header label can match
+    // the body cell alignment by default (numeric/currency cells right-align,
+    // so their headers should too). Kept in sync on every update because the
+    // column config can change at runtime (reorder, reconfigure).
+    this.setAttribute('data-cell-type', this.column.type ?? 'string');
     // Reflect reorderability as an attribute so SCSS can show the grab
     // cursor only on columns that can actually be dragged. Tracks both the
     // grid-level `columnReordering` flag (arriving via context) and the

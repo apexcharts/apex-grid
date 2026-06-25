@@ -86,6 +86,16 @@ $header-hover: color-mix(in srgb, var(--ag-brand) 4%, transparent);
     user-select: none;
 }
 
+// Numeric and currency columns right-align their body cells, so the header
+// label should sit flush with the values below it. Reversing the content row
+// pins the label to the trailing edge (matching the cells) and tucks the sort
+// affordance to its left.
+:host([data-cell-type='number']) [part~='content'],
+:host([data-cell-type='currency']) [part~='content'] {
+    flex-direction: row-reverse;
+    justify-content: flex-start;
+}
+
 [part~='title'] {
     display: block;
     position: relative;
