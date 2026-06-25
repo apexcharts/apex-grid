@@ -16,6 +16,7 @@
     "build": "npm run build -w packages/core && npm run build -w packages/enterprise",
     "build:core": "npm run build -w packages/core",
     "build:enterprise": "npm run build -w packages/enterprise",
+    "dev": "node scripts/dev.js",
     "demo:bundle": "esbuild packages/core/dist/define.js --bundle --format=iife --global-name=apexGrid --minify --outfile=apex-grid.min.js",
     "demo:bundle:enterprise": "esbuild packages/enterprise/dist/define.js --bundle --format=iife --global-name=apexGridEnterprise --minify --outfile=apex-grid-enterprise.min.js",
     "e2e:vendor": "esbuild e2e/vendor-lit-entry.js --bundle --format=esm --minify --outfile=e2e/vendor/lit.esm.js",
