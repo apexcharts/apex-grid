@@ -121,6 +121,14 @@ export class ApexGridChart extends LitElement {
   @property({ type: Number })
   public height = 320;
 
+  /**
+   * Cross-filter mode: clicking a category filters the grid to it (and toggles off on re-click).
+   * The chart reads the grid's full, unfiltered data, so it keeps all categories rather than
+   * collapsing to the filtered subset.
+   */
+  @property({ type: Boolean, reflect: true, attribute: 'cross-filter' })
+  public crossFilter = false;
+
   /** Extra ApexCharts options, merged last (escape hatch — the thin-Format story). */
   @property({ attribute: false })
   public apexOptions: RenderChartOptions['apexOptions'] = {};
@@ -130,11 +138,15 @@ export class ApexGridChart extends LitElement {
 
   #chart: ApexCharts | null = null;
   #boundGrid: HTMLElement | null = null;
+  /** Cross-filter: the column key being filtered, and the active category value (or null). */
+  #crossFilterKey: string | null = null;
+  #activeCategory: string | null = null;
   #rafHandle = 0;
   #drag: { pointerId: number; offsetX: number; offsetY: number } | null = null;
 
   public override disconnectedCallback(): void {
     this.#detach();
+    this.#clearCrossFilter();
     this.#destroyChart();
     if (this.#rafHandle) cancelAnimationFrame(this.#rafHandle);
     this.#rafHandle = 0;
@@ -146,12 +158,15 @@ export class ApexGridChart extends LitElement {
   }
 
   protected override updated(changed: Map<PropertyKey, unknown>): void {
-    // Type / source / theme changes (and a fresh grid) all force a redraw.
+    // Turning cross-filter off drops any filter it applied.
+    if (changed.has('crossFilter') && !this.crossFilter) this.#clearCrossFilter();
+    // Type / source / theme / cross-filter changes (and a fresh grid) all force a redraw.
     if (
       changed.has('type') ||
       changed.has('source') ||
       changed.has('theme') ||
-      changed.has('grid')
+      changed.has('grid') ||
+      changed.has('crossFilter')
     ) {
       this.#scheduleRefresh();
     }
@@ -236,17 +251,76 @@ export class ApexGridChart extends LitElement {
   #resolveModel(): ChartModel {
     const grid = this.grid;
     if (!grid) return { categories: [], series: [] };
+    if (this.crossFilter) {
+      const { categoryKey, model } = grid.getCrossFilterModel();
+      this.#crossFilterKey = categoryKey;
+      return model;
+    }
     if (this.source === 'selection') return grid.getRangeChartModel();
     if (this.source === 'view') return grid.getViewChartModel();
     return grid.getChartModel();
   }
 
   #options(): RenderChartOptions {
+    const theme = this.#themeOptions();
+    const user = this.apexOptions ?? {};
+    // Cross-filter wires ApexCharts' point-selection event to the grid filter.
+    const events = this.crossFilter
+      ? {
+          chart: {
+            events: {
+              dataPointSelection: (
+                _event: unknown,
+                _ctx: unknown,
+                config: { dataPointIndex?: number }
+              ) => this.selectCategory(config?.dataPointIndex ?? -1),
+            },
+          },
+        }
+      : {};
     return {
       type: this.type,
       height: this.height,
-      apexOptions: { ...this.#themeOptions(), ...this.apexOptions },
+      // Deep-merge the `chart` key so theme + events + caller overrides all survive.
+      apexOptions: {
+        ...theme,
+        ...events,
+        ...user,
+        chart: {
+          ...(theme as { chart?: object }).chart,
+          ...(events as { chart?: object }).chart,
+          ...(user as { chart?: object }).chart,
+        },
+      },
     };
+  }
+
+  /**
+   * Toggle the cross-filter on the category at `index` (the programmatic form of clicking a chart
+   * segment): filters the grid to that category, or clears it if it was already active. Reads the
+   * grid's full data so it is independent of the current filter.
+   */
+  public selectCategory(index: number): void {
+    const grid = this.grid;
+    if (!grid) return;
+    const { categoryKey, model } = grid.getCrossFilterModel();
+    const value = model.categories[index];
+    if (categoryKey == null || value === undefined) return;
+    this.#crossFilterKey = categoryKey;
+    if (this.#activeCategory === value) {
+      this.#clearCrossFilter();
+    } else {
+      this.#activeCategory = value;
+      grid.filter({ key: categoryKey, condition: 'equals', searchTerm: value } as never);
+    }
+  }
+
+  /** Drop any filter this panel applied via cross-filter. */
+  #clearCrossFilter(): void {
+    if (this.grid && this.#crossFilterKey != null && this.#activeCategory != null) {
+      this.grid.clearFilter(this.#crossFilterKey as never);
+    }
+    this.#activeCategory = null;
   }
 
   /** Derive ApexCharts theme options from the grid's tokens (or a forced light/dark mode). */

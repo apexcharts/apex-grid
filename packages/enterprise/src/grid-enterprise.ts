@@ -700,6 +700,39 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   /**
+   * Build a **cross-filter** chart model: the category column from the active selection (first
+   * non-numeric column), aggregated over the grid's **full, unfiltered** `data`, summing the first
+   * numeric column (or counting rows). Reading the full data keeps every category present, so a
+   * chart-driven filter highlights a category instead of collapsing the chart. Returns the
+   * `categoryKey` so the caller knows which column to filter. Empty when no category column.
+   */
+  public getCrossFilterModel(): { categoryKey: string | null; model: ChartModel } {
+    const active = this.#rangeController()?.getActiveGrid();
+    const empty = { categoryKey: null, model: { categories: [], series: [] } };
+    if (!active) return empty;
+    const categoryCol = active.columns.find((column) => column.type !== 'number');
+    const valueCol = active.columns.find((column) => column.type === 'number');
+    if (!categoryCol) return empty;
+
+    const categoryKey = String(categoryCol.key);
+    const valueKey = valueCol ? String(valueCol.key) : null;
+    const totals = new Map<string, number>();
+    for (const row of this.data as ReadonlyArray<Record<string, unknown>>) {
+      const category = String(row[categoryKey] ?? '');
+      const amount = valueKey ? (toNumber(row[valueKey]) ?? 0) : 1;
+      totals.set(category, (totals.get(category) ?? 0) + amount);
+    }
+    const categories = [...totals.keys()];
+    const series: ChartSeries[] = [
+      {
+        name: valueCol ? getColumnLabel(valueCol) : 'Count',
+        data: categories.map((c) => totals.get(c) ?? 0),
+      },
+    ];
+    return { categoryKey, model: { categories, series } };
+  }
+
+  /**
    * Render the current {@link getChartModel} into a (light-DOM) container using
    * ApexCharts and return the instance. ApexCharts is dynamically imported.
    */

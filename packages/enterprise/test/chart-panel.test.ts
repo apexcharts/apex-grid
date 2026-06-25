@@ -187,3 +187,70 @@ describe('ApexGridEnterprise "Create chart" toolbar action', () => {
     expect(document.body.querySelector('apex-grid-chart')).to.equal(null);
   });
 });
+
+describe('ApexGridChart cross-filter', () => {
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+    ApexGridChart.register();
+  });
+  afterEach(() => {
+    for (const c of document.querySelectorAll('apex-grid-chart')) c.remove();
+    fixtureCleanup();
+  });
+
+  it('getCrossFilterModel aggregates over the full data with a categoryKey', async () => {
+    const grid = await mountGrid();
+    grid.selectRange({ row: 0, column: 'name' }, { row: 2, column: 'q1' });
+    const { categoryKey, model } = grid.getCrossFilterModel();
+    expect(categoryKey).to.equal('name');
+    expect(model.categories).to.eql(['A', 'B', 'C']);
+    expect(model.series[0].data).to.eql([10, 20, 30]);
+  });
+
+  // A disconnected panel never runs its update cycle, so selectCategory is exercised
+  // without triggering a real ApexCharts render.
+  function detachedPanel(grid: ApexGridEnterprise<Row>) {
+    const panel = document.createElement('apex-grid-chart') as ApexGridChart;
+    panel.grid = grid as never;
+    return panel;
+  }
+
+  it('selectCategory toggles a grid filter on the category column', async () => {
+    const grid = await mountGrid();
+    grid.selectRange({ row: 0, column: 'name' }, { row: 2, column: 'q1' });
+    const panel = detachedPanel(grid);
+
+    panel.selectCategory(0);
+    expect(grid.filterExpressions.map((f) => f.key)).to.include('name');
+    expect(grid.filterExpressions.some((f) => f.key === 'q1')).to.equal(false);
+
+    panel.selectCategory(0); // re-click clears
+    expect(grid.filterExpressions.some((f) => f.key === 'name')).to.equal(false);
+  });
+
+  it('preserves a filter on another column', async () => {
+    const grid = await mountGrid();
+    grid.selectRange({ row: 0, column: 'name' }, { row: 2, column: 'q1' });
+    grid.filter({ key: 'q1', condition: 'equals', searchTerm: 10 });
+    const panel = detachedPanel(grid);
+
+    panel.selectCategory(0);
+    const keys = grid.filterExpressions.map((f) => f.key);
+    expect(keys).to.include('q1');
+    expect(keys).to.include('name');
+  });
+
+  it('clears its cross-filter on disconnect', async () => {
+    const grid = await mountGrid();
+    grid.selectRange({ row: 0, column: 'name' }, { row: 2, column: 'q1' });
+    const panel = detachedPanel(grid);
+    panel.selectCategory(0);
+    expect(grid.filterExpressions.some((f) => f.key === 'name')).to.equal(true);
+
+    document.body.appendChild(panel);
+    panel.remove(); // disconnectedCallback clears the cross-filter
+    await nextFrame();
+    expect(grid.filterExpressions.some((f) => f.key === 'name')).to.equal(false);
+  });
+});
