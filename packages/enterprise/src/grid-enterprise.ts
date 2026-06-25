@@ -658,6 +658,12 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * "select cells → chart" path). Orientation: the first non-numeric column in the range is the
    * category axis; every numeric column becomes a series (named by its header). When the range is
    * all-numeric, row positions (1, 2, 3, …) are the categories and every column is a series.
+   *
+   * When the category column has **repeated values** (e.g. a `department` column with several rows
+   * per department) the rows are grouped by category and each series is **summed** per category, so
+   * the chart shows one bar/point per distinct category instead of one per row. A category axis of
+   * already-distinct values (or all-numeric row positions) is charted row-for-row.
+   *
    * Returns an empty model when there is no selection or no numeric series. Uses the active
    * (primary) range under a multi-range selection.
    */
@@ -681,21 +687,44 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     });
 
     const catIndex = numeric.findIndex((isNumeric) => !isNumeric);
-    const categories =
+    const labels =
       catIndex >= 0
         ? rows.map((row) => String(row[catIndex] ?? ''))
         : rows.map((_, i) => String(i + 1));
 
-    const series: ChartSeries[] = [];
+    const valueColumns = columns.filter((_, c) => c !== catIndex && numeric[c]);
+    if (valueColumns.length === 0) return { categories: [], series: [] };
+
+    const perRow: ChartSeries[] = [];
     columns.forEach((column, c) => {
       if (c === catIndex || !numeric[c]) return;
-      series.push({
+      perRow.push({
         name: getColumnLabel(column),
         data: rows.map((row) => toNumber(row[c]) ?? 0),
       });
     });
 
-    if (series.length === 0) return { categories: [], series: [] };
+    // Distinct labels → chart row-for-row. Repeats (only possible with a real category column) →
+    // group by category and sum each series, preserving first-seen category order.
+    const hasRepeats = catIndex >= 0 && new Set(labels).size !== labels.length;
+    if (!hasRepeats) return { categories: labels, series: perRow };
+
+    const categories: string[] = [];
+    const index = new Map<string, number>();
+    const sums = perRow.map(() => [] as number[]);
+    labels.forEach((label, r) => {
+      let slot = index.get(label);
+      if (slot === undefined) {
+        slot = categories.length;
+        index.set(label, slot);
+        categories.push(label);
+        for (const sum of sums) sum[slot] = 0;
+      }
+      perRow.forEach((s, si) => {
+        sums[si][slot as number] += s.data[r];
+      });
+    });
+    const series = perRow.map((s, si) => ({ name: s.name, data: sums[si] }));
     return { categories, series };
   }
 

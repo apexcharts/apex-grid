@@ -349,19 +349,22 @@ $star-size: #{rem(14px)};
 }
 
 // --- Cell-range decoration (CellDecorator seam) ----------------------------
-// Inert by default: the community grid never sets these attributes (it
-// registers no decorator module). A feature module (enterprise range
-// selection) reflects `data-range` / `data-range-edge` onto cells, and themes
-// the look purely through the `--apex-range-*` custom properties, which inherit
-// across the shadow boundary from the grid host. With the defaults below (fully
-// transparent fill, zero-width border) decorated cells render identically to
-// undecorated ones until a theme defines those properties.
+// Inert for the community grid (it registers no decorator module, so no cell
+// ever gets these attributes). A feature module (enterprise range selection)
+// reflects `data-range` / `data-range-edge` onto cells, and the look is themed
+// through the `--apex-range-*` custom properties, which inherit across the
+// shadow boundary from the grid host. The fallbacks below derive a subtle,
+// brand-tinted highlight from `--ag-brand` so a selection is visible out of the
+// box (brand reserved for state/accent); a theme can still override any token.
 :host([data-range]) {
-    background: var(--apex-range-fill, transparent);
+    background: var(--apex-range-fill, color-mix(in srgb, var(--ag-brand) 12%, transparent));
 }
 
 :host([data-range~='active']) {
-    background: var(--apex-range-active-fill, var(--apex-range-fill, transparent));
+    background: var(
+        --apex-range-active-fill,
+        var(--apex-range-fill, color-mix(in srgb, var(--ag-brand) 20%, transparent))
+    );
 }
 
 // Perimeter outline drawn on a non-interactive overlay so it never shifts the
@@ -373,7 +376,7 @@ $star-size: #{rem(14px)};
     inset: 0;
     pointer-events: none;
     z-index: 1;
-    border: 0 solid var(--apex-range-border, transparent);
+    border: 0 solid var(--apex-range-border, var(--ag-brand));
 }
 
 :host([data-range-edge~='top'])::before {
@@ -403,7 +406,7 @@ $star-size: #{rem(14px)};
     inset-block-end: -1px;
     inline-size: 7px;
     block-size: 7px;
-    background: var(--apex-range-border, transparent);
+    background: var(--apex-range-border, var(--ag-brand));
     border: 1px solid var(--ag-surface, #fff);
     z-index: 4;
     pointer-events: none;

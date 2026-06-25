@@ -86,15 +86,24 @@ export function chartModelToApexOptions(
   const type: ChartType = requested === 'auto' ? recommendChartType(model) : requested;
   const height = options.height ?? 320;
   const title = options.title ? { title: { text: options.title } } : {};
+  const userApex = options.apexOptions ?? {};
+  // Deep-merge `chart` and `xaxis` (per-key, caller wins) and place them LAST in the returned
+  // object. A shallow `...apexOptions` spread would replace the whole `chart` / `xaxis` object and
+  // silently drop what we computed whenever a caller passes a nested option: a `chart.*` option
+  // (animations, toolbar) would lose the resolved `type` and collapse every chart to ApexCharts'
+  // default line, and an `xaxis.labels` formatter (e.g. money on the value axis of a horizontal bar)
+  // would lose `categories` and fall the category axis back to 1, 2, 3. Merging keeps our keys
+  // unless the caller overrides them outright.
+  const chart = { type: toApexType(type), height, ...userApex.chart };
 
   if (CIRCULAR.has(type)) {
     // Pie/donut chart the first measure across categories; extra series are ignored.
     const apexOptions: ApexOptions = {
-      chart: { type: toApexType(type), height },
       series: model.series[0]?.data ?? [],
       labels: model.categories,
       ...title,
-      ...options.apexOptions,
+      ...userApex,
+      chart,
     };
     return apexOptions;
   }
@@ -108,14 +117,15 @@ export function chartModelToApexOptions(
         }))
       : model.series.map((s) => ({ name: s.name, data: s.data }));
 
+  const xaxis = { categories: model.categories, ...userApex.xaxis };
   const apexOptions: ApexOptions = {
-    chart: { type: toApexType(type), height },
     series,
-    xaxis: { categories: model.categories },
     // 'column' is the default (vertical); 'bar' flips to horizontal.
     ...(type === 'bar' ? { plotOptions: { bar: { horizontal: true } } } : {}),
     ...title,
-    ...options.apexOptions,
+    ...userApex,
+    chart,
+    xaxis,
   };
   return apexOptions;
 }

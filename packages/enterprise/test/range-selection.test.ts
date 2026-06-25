@@ -195,6 +195,26 @@ describe('Range selection', () => {
     expect(grid.getSelectionBounds()).to.eql({ top: 1, bottom: 3, left: 2, right: 3 });
   });
 
+  it('moves the active cell to a new selection so a prior click outline does not linger', async () => {
+    const grid = await mount();
+    const activeNode = () =>
+      (grid as unknown as { stateController: { active: { column: string; row: number } } })
+        .stateController.active;
+
+    // Click one cell, then drag-select a different rectangle.
+    interact(grid, 'down', 3, 'name');
+    interact(grid, 'up', 3, 'name');
+    expect(activeNode()).to.include({ column: 'name', row: 3 });
+
+    dragSelect(grid, 0, 'amount', 1, 'score');
+    // Active follows the new selection's anchor; the old (name, 3) outline is gone.
+    expect(activeNode()).to.include({ column: 'amount', row: 0 });
+
+    // Shift-extend keeps the existing anchor active.
+    interact(grid, 'down', 3, 'score', { shift: true });
+    expect(activeNode()).to.include({ column: 'amount', row: 0 });
+  });
+
   it('decorates the cells inside the range with edge tokens on the perimeter', async () => {
     const grid = await mount();
     dragSelect(grid, 0, 'amount', 1, 'score');

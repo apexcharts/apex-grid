@@ -188,6 +188,13 @@ export class RangeSelectionController<T extends object>
           return;
         }
 
+        // Move the grid's active (focused) cell to the pressed cell so an earlier click's active
+        // outline doesn't linger outside the new selection. A Shift-extend keeps the existing
+        // anchor active, matching spreadsheet behavior.
+        if (!(interaction.shiftKey && this.#anchor)) {
+          this.state.active = { column: interaction.column.key, row: interaction.rowIndex };
+        }
+
         const additive = (interaction.ctrlKey || interaction.metaKey) && !interaction.shiftKey;
         if (interaction.shiftKey && this.#anchor) {
           this.#focus = ref;

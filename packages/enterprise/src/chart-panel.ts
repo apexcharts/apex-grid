@@ -7,6 +7,7 @@ import {
   type ChartType,
   chartModelToApexOptions,
   type RenderChartOptions,
+  recommendChartType,
   renderApexChart,
 } from './features/chart.js';
 import { RANGE_CHANGED_EVENT } from './features/range-selection.js';
@@ -137,6 +138,11 @@ export class ApexGridChart extends LitElement {
   private hasModel = false;
 
   #chart: ApexCharts | null = null;
+  /** Concrete chart type last rendered (after resolving `'auto'`), so a type switch rebuilds. */
+  #renderedType: ChartType | null = null;
+  /** Re-entrancy guard for {@link refresh} + a trailing-rerun flag (see the method). */
+  #refreshing = false;
+  #refreshPending = false;
   #boundGrid: HTMLElement | null = null;
   /** Cross-filter: the column key being filtered, and the active category value (or null). */
   #crossFilterKey: string | null = null;
@@ -191,8 +197,33 @@ export class ApexGridChart extends LitElement {
     return this.#chart;
   }
 
-  /** Re-read the model and redraw (called automatically on live signals). */
+  /**
+   * Re-read the model and redraw (called automatically on live signals).
+   *
+   * Serialized: creating/updating an ApexCharts instance is async, so without a guard two
+   * overlapping refreshes (rapid drag-select plus a view signal) could both observe `#chart === null`
+   * and render twice into the same canvas — the flicker / "sometimes it doesn't render" failure mode.
+   * One render runs at a time; any calls that arrive mid-render collapse into a single trailing rerun
+   * that picks up the latest model.
+   */
   public async refresh(): Promise<void> {
+    if (this.#refreshing) {
+      this.#refreshPending = true;
+      return;
+    }
+    this.#refreshing = true;
+    try {
+      do {
+        this.#refreshPending = false;
+        await this.#renderOnce();
+      } while (this.#refreshPending);
+    } finally {
+      this.#refreshing = false;
+    }
+  }
+
+  /** One pass of model resolution + ApexCharts render. Never call directly — go through {@link refresh}. */
+  async #renderOnce(): Promise<void> {
     const model = this.#resolveModel();
     const next = model.series.length > 0;
     if (next !== this.hasModel) {
@@ -204,12 +235,19 @@ export class ApexGridChart extends LitElement {
       this.#destroyChart();
       return;
     }
-    const options = chartModelToApexOptions(model, this.#options());
+    const options = this.#options();
+    // Resolve the concrete type so switching type (including `'auto'` and any cartesian↔circular
+    // move) tears down and rebuilds rather than mutating in place — ApexCharts' updateOptions is
+    // unreliable across those transitions, another source of the "sometimes blank" chart.
+    const resolvedType =
+      options.type === 'auto' || options.type == null ? recommendChartType(model) : options.type;
+    if (this.#chart && resolvedType !== this.#renderedType) this.#destroyChart();
     if (this.#chart) {
-      await this.#chart.updateOptions(options, false, false);
+      await this.#chart.updateOptions(chartModelToApexOptions(model, options), false, false);
     } else {
-      this.#chart = await renderApexChart(canvas, model, this.#options());
+      this.#chart = await renderApexChart(canvas, model, options);
     }
+    this.#renderedType = resolvedType;
     this.dispatchEvent(
       new CustomEvent('apex-chart-created', {
         detail: { chart: this.#chart, type: this.type },
@@ -352,6 +390,7 @@ export class ApexGridChart extends LitElement {
   #destroyChart(): void {
     this.#chart?.destroy();
     this.#chart = null;
+    this.#renderedType = null;
   }
 
   #selectType(type: ChartType | 'auto'): void {

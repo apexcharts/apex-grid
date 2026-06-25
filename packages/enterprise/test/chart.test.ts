@@ -103,6 +103,27 @@ describe('integrated charts — chartModelToApexOptions (pure transform)', () =>
     expect(opts.chart?.height).to.equal(500);
   });
 
+  it('keeps the computed type when the caller only sets other chart.* options', () => {
+    const opts = chartModelToApexOptions(MODEL, {
+      type: 'column',
+      apexOptions: { chart: { toolbar: { show: false } } },
+    });
+    // A shallow merge would drop chart.type and fall back to a line.
+    expect(opts.chart?.type).to.equal('bar');
+    expect(opts.chart?.toolbar?.show).to.equal(false);
+  });
+
+  it('keeps xaxis.categories when the caller sets a value-axis xaxis formatter (horizontal bar)', () => {
+    const formatter = (v: number) => `$${v}`;
+    const opts = chartModelToApexOptions(MODEL, {
+      type: 'bar',
+      apexOptions: { xaxis: { labels: { formatter } } },
+    });
+    // Categories must survive so the bar's category axis shows labels, not 1, 2, 3.
+    expect(opts.xaxis?.categories).to.eql(['A', 'B', 'C']);
+    expect(opts.xaxis?.labels?.formatter).to.equal(formatter);
+  });
+
   it("resolves type: 'auto' via the recommend heuristic", () => {
     // 1 series, 3 categories → pie
     const single: ChartModel = { categories: ['A', 'B', 'C'], series: [MODEL.series[0]] };
@@ -243,5 +264,37 @@ describe('ApexGridEnterprise integrated charts — getRangeChartModel', () => {
     const model = grid.getChartModel();
     expect(model.categories).to.eql(['A', 'B', 'C']);
     expect(model.series.map((s) => s.name)).to.eql(['Q1']);
+  });
+
+  it('sums each numeric series per category when category labels repeat', async () => {
+    interface DeptRow {
+      dept: string;
+      salary: number;
+      bonus: number;
+    }
+    const grid = await fixture<ApexGridEnterprise<DeptRow>>(html`<apex-grid-enterprise
+      .data=${[
+        { dept: 'Eng', salary: 100, bonus: 10 },
+        { dept: 'Sales', salary: 70, bonus: 7 },
+        { dept: 'Eng', salary: 90, bonus: 9 },
+        { dept: 'Sales', salary: 80, bonus: 8 },
+      ]}
+      .columns=${
+        [
+          { key: 'dept', type: 'string', headerText: 'Dept' },
+          { key: 'salary', type: 'number', headerText: 'Salary' },
+          { key: 'bonus', type: 'number', headerText: 'Bonus' },
+        ] as ColumnConfiguration<DeptRow>[]
+      }
+    ></apex-grid-enterprise>`);
+    await grid.updateComplete;
+    await nextFrame();
+    grid.selectRange({ row: 0, column: 'dept' }, { row: 3, column: 'bonus' });
+    const model = grid.getRangeChartModel();
+    // One bar per distinct department (first-seen order), each series summed.
+    expect(model.categories).to.eql(['Eng', 'Sales']);
+    expect(model.series.map((s) => s.name)).to.eql(['Salary', 'Bonus']);
+    expect(model.series[0].data).to.eql([190, 150]);
+    expect(model.series[1].data).to.eql([19, 15]);
   });
 });

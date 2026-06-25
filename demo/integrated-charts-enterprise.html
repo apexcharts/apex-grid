@@ -62,12 +62,25 @@
         border-radius: 3px;
       }
       apex-grid-enterprise {
-        min-height: 300px;
+        /* Fixed height (the grid scrolls internally) so cross-filtering, which
+           changes the row count, can't grow or shrink the page and bounce the
+           main scrollbar. 520px fits all 12 rows; filtering just leaves empty
+           space inside instead of reflowing the page. */
+        height: 520px;
         --ig-size: 2;
       }
       #chart {
         display: block;
         margin-top: 16px;
+      }
+      .cf-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 12px;
+        font-size: 13px;
+        color: #555;
+        cursor: pointer;
       }
     </style>
     <script type="module">
@@ -83,10 +96,14 @@
   <body>
     <h2>Integrated Charts <span class="badge">Enterprise</span></h2>
     <p class="subtitle">
-      <code>&lt;apex-grid-chart&gt;</code> charts the grid with ApexCharts and live-redraws. <strong>Right-click</strong> any cell for the context menu (sort, pin, hide, <em>Chart range</em>). With <strong>cross-filter</strong> on, <strong>click a bar</strong> to filter the grid to that category. The toolbar's <strong>Create chart</strong> button opens a floating dialog.
+      Drag to <strong>select a range of cells</strong>: the chart below follows the selection and live-redraws. A category column with repeats (like <em>Department</em>) is summed per category. <strong>Right-click</strong> any cell for the context menu (sort, pin, hide, <em>Chart range</em>). Tick <strong>cross-filter</strong> to make <strong>clicking a bar</strong> filter the grid to that category. The toolbar's <strong>Create chart</strong> button opens a floating dialog.
     </p>
     <apex-grid-enterprise id="grid"></apex-grid-enterprise>
-    <apex-grid-chart id="chart" mode="inline" cross-filter></apex-grid-chart>
+    <label class="cf-toggle">
+      <input type="checkbox" id="cross-filter" />
+      Cross-filter (click a bar to filter the grid)
+    </label>
+    <apex-grid-chart id="chart" mode="inline"></apex-grid-chart>
     <script type="module">
       const data = [
         { id: 1, name: 'Ava Morgan', department: 'Engineering', salary: 96000, bonus: 12000 },
@@ -116,17 +133,34 @@
       const money = (v) => `$${Math.round(Number(v)).toLocaleString('en-US')}`;
 
       // The panel handles its own type gallery + live redraw; we bind it to the
-      // grid in cross-filter mode. Animations off so the e2e snapshot is stable.
+      // grid so it charts the current cell selection. Animations off so the e2e
+      // snapshot is stable.
       chart.grid = grid;
       chart.type = 'column';
-      chart.apexOptions = {
-        chart: { animations: { enabled: false }, toolbar: { show: false } },
-        yaxis: { labels: { formatter: money } },
+
+      // Format the VALUE axis as money. ApexCharts only ever hands real numbers to
+      // the value axis; the category axis gets the labels (e.g. "Sales") and would
+      // turn into "$NaN" if money-formatted. Horizontal bars swap the axes, so the
+      // value axis is the x-axis for `bar` and the y-axis for everything else.
+      const applyAxisFormat = () => {
+        const valueAxis = chart.type === 'bar' ? 'xaxis' : 'yaxis';
+        chart.apexOptions = {
+          chart: { animations: { enabled: false }, toolbar: { show: false } },
+          [valueAxis]: { labels: { formatter: money } },
+        };
       };
+      applyAxisFormat();
+      chart.addEventListener('apex-chart-type-changed', applyAxisFormat);
+
+      // Cross-filter is opt-in here so the two behaviours stay distinct: off, the
+      // chart follows the selection; on, clicking a bar filters the grid.
+      document.getElementById('cross-filter').addEventListener('change', (event) => {
+        chart.crossFilter = event.target.checked;
+      });
 
       await grid.updateComplete;
-      // Select Department + Salary so the cross-filter chart groups salary by
-      // department (clicking a bar filters the grid to that department).
+      // Pre-select Department + Salary: a repeated category, so the chart sums
+      // salary per department (three bars) instead of one bar per row.
       grid.selectRange({ row: 0, column: 'department' }, { row: 11, column: 'salary' });
     </script>
   </body>
