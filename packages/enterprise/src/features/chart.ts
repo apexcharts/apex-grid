@@ -6,30 +6,127 @@ export interface ChartSeries {
   readonly data: number[];
 }
 
-/** Chart-ready model derived from the grid's group/pivot aggregates. */
+/** Chart-ready model derived from the grid's range / group / pivot aggregates. */
 export interface ChartModel {
   readonly categories: string[];
   readonly series: ChartSeries[];
 }
 
-/** Options for {@link renderApexChart}. */
+/**
+ * Friendly chart types. Mapped to ApexCharts shapes internally (see
+ * {@link chartModelToApexOptions}); `'column'`/`'bar'` distinguish vertical vs horizontal,
+ * `'combo'` mixes per-series types.
+ */
+export type ChartType =
+  | 'column'
+  | 'bar'
+  | 'line'
+  | 'area'
+  | 'pie'
+  | 'donut'
+  | 'scatter'
+  | 'radar'
+  | 'heatmap'
+  | 'combo';
+
+/** Circular types take ApexCharts' `{ series: number[], labels }` shape, not the cartesian one. */
+const CIRCULAR: ReadonlySet<ChartType> = new Set(['pie', 'donut']);
+
+/** Options for {@link renderApexChart} / {@link chartModelToApexOptions}. */
 export interface RenderChartOptions {
-  /** ApexCharts chart type. Defaults to `'bar'`. */
-  readonly type?: NonNullable<ApexOptions['chart']>['type'];
+  /** Friendly chart type, or `'auto'` for the recommended-type heuristic. Defaults to `'column'`. */
+  readonly type?: ChartType | 'auto';
   readonly title?: string;
   readonly height?: number;
+  /**
+   * Per-series type overrides for `type: 'combo'`, aligned by series index. Defaults to series 0 =
+   * column, the rest = line.
+   */
+  readonly comboTypes?: ChartType[];
   /** Extra ApexCharts options, deep-merged last (escape hatch). */
   readonly apexOptions?: Partial<ApexOptions>;
 }
 
+/** Map a friendly {@link ChartType} to the ApexCharts `chart.type` string. */
+function toApexType(type: ChartType): NonNullable<ApexOptions['chart']>['type'] {
+  switch (type) {
+    case 'column':
+    case 'bar':
+      return 'bar';
+    case 'combo':
+      // Mixed charts use a base of 'line'; each series carries its own type.
+      return 'line';
+    default:
+      return type;
+  }
+}
+
 /**
- * Render a {@link ChartModel} into `container` using ApexCharts and return the
- * instance (so the caller can `updateOptions`/`destroy`).
+ * Excel-style "Recommended Charts" lite: pick a sensible default type from the model shape.
+ * One series over a handful of categories reads best as a pie; a long category axis as a line;
+ * otherwise a column chart.
+ */
+export function recommendChartType(model: ChartModel): ChartType {
+  if (model.series.length === 1 && model.categories.length <= 6) return 'pie';
+  if (model.categories.length > 12) return 'line';
+  return 'column';
+}
+
+/**
+ * Pure transform: a {@link ChartModel} + options into an ApexCharts options object. No ApexCharts
+ * import, so it is unit-tested directly. Handles the cartesian vs circular (pie/donut) data shapes
+ * and combo per-series types, resolves `type: 'auto'`, and deep-merges `apexOptions` last so the
+ * caller can override anything.
+ */
+export function chartModelToApexOptions(
+  model: ChartModel,
+  options: RenderChartOptions = {}
+): ApexOptions {
+  const requested = options.type ?? 'column';
+  const type: ChartType = requested === 'auto' ? recommendChartType(model) : requested;
+  const height = options.height ?? 320;
+  const title = options.title ? { title: { text: options.title } } : {};
+
+  if (CIRCULAR.has(type)) {
+    // Pie/donut chart the first measure across categories; extra series are ignored.
+    const apexOptions: ApexOptions = {
+      chart: { type: toApexType(type), height },
+      series: model.series[0]?.data ?? [],
+      labels: model.categories,
+      ...title,
+      ...options.apexOptions,
+    };
+    return apexOptions;
+  }
+
+  const series =
+    type === 'combo'
+      ? model.series.map((s, i) => ({
+          name: s.name,
+          data: s.data,
+          type: toApexType(options.comboTypes?.[i] ?? (i === 0 ? 'column' : 'line')),
+        }))
+      : model.series.map((s) => ({ name: s.name, data: s.data }));
+
+  const apexOptions: ApexOptions = {
+    chart: { type: toApexType(type), height },
+    series,
+    xaxis: { categories: model.categories },
+    // 'column' is the default (vertical); 'bar' flips to horizontal.
+    ...(type === 'bar' ? { plotOptions: { bar: { horizontal: true } } } : {}),
+    ...title,
+    ...options.apexOptions,
+  };
+  return apexOptions;
+}
+
+/**
+ * Render a {@link ChartModel} into `container` using ApexCharts and return the instance (so the
+ * caller can `updateOptions`/`destroy`).
  *
- * ApexCharts is **dynamically imported** so it only loads when a chart is
- * actually drawn — the base enterprise bundle stays lean. Render into a
- * light-DOM container (not the grid's shadow root): ApexCharts injects global
- * styles and measures layout, which is unreliable inside shadow DOM.
+ * ApexCharts is **dynamically imported** so it only loads when a chart is actually drawn (the base
+ * enterprise bundle stays lean). Render into a light-DOM container (not the grid's shadow root):
+ * ApexCharts injects global styles and measures layout, which is unreliable inside shadow DOM.
  */
 export async function renderApexChart(
   container: HTMLElement,
@@ -37,14 +134,7 @@ export async function renderApexChart(
   options: RenderChartOptions = {}
 ) {
   const { default: ApexCharts } = await import('apexcharts');
-  const apexOptions: ApexOptions = {
-    chart: { type: options.type ?? 'bar', height: options.height ?? 320 },
-    series: model.series.map((series) => ({ name: series.name, data: series.data })),
-    xaxis: { categories: model.categories },
-    ...(options.title ? { title: { text: options.title } } : {}),
-    ...options.apexOptions,
-  };
-  const chart = new ApexCharts(container, apexOptions);
+  const chart = new ApexCharts(container, chartModelToApexOptions(model, options));
   await chart.render();
   return chart;
 }

@@ -2,7 +2,7 @@ import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testi
 import type { ColumnConfiguration } from 'apex-grid';
 import { render } from 'lit';
 import { type GroupingController, getGroupMeta } from '../src/features/grouping.js';
-import { type AggregationConfig, ApexGridEnterprise } from '../src/index.js';
+import { type AggregationConfig, ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 
 interface Row {
   region: string;
@@ -52,7 +52,10 @@ function partition(grid: ApexGridEnterprise<Row>) {
 }
 
 describe('ApexGridEnterprise row grouping', () => {
-  before(() => ApexGridEnterprise.register());
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+  });
   afterEach(() => fixtureCleanup());
 
   it('registers the grouping module alongside aggregation', async () => {

@@ -1,6 +1,6 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
-import { type AggregationConfig, ApexGridEnterprise } from '../src/index.js';
+import { type AggregationConfig, ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 
 interface Row {
   region: string;
@@ -54,7 +54,10 @@ const A = 'pivot::A::amount::sum';
 const B = 'pivot::B::amount::sum';
 
 describe('ApexGridEnterprise pivoting', () => {
-  before(() => ApexGridEnterprise.register());
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+  });
   afterEach(() => fixtureCleanup());
 
   it('registers the pivot module alongside aggregation + grouping', async () => {

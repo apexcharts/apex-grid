@@ -9,6 +9,24 @@ export type NavigationState = 'previous' | 'current';
 export type GridHost<T extends object> = ReactiveControllerHost & ApexGrid<T>;
 
 /**
+ * A custom action button contributed to the toolbar's trailing actions area.
+ *
+ * @remarks
+ * The seam derived grids use to add toolbar buttons, mirroring the export-format
+ * seam: the community grid contributes none (its {@link ApexGrid.toolbarActions}
+ * returns `[]`), and the toolbar renders one button per entry, invoking
+ * {@link ToolbarAction.run} on click.
+ */
+export interface ToolbarAction {
+  /** Stable identifier, e.g. `'create-chart'`. */
+  id: string;
+  /** Button label. */
+  label: string;
+  /** Invoked when the button is clicked. */
+  run(): void;
+}
+
+/**
  * Helper type for resolving keys of type T.
  */
 export type Keys<T> = keyof T;

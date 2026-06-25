@@ -1,6 +1,6 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
-import { ApexGridEnterprise, ApexGridToolPanel } from '../src/index.js';
+import { ApexGridEnterprise, ApexGridToolPanel, enterpriseModules } from '../src/index.js';
 
 interface Row {
   id: number;
@@ -59,6 +59,7 @@ function dropOnZone(zone: HTMLElement, key: string): void {
 
 describe('ApexGridToolPanel', () => {
   before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
     ApexGridEnterprise.register();
     ApexGridToolPanel.register();
   });

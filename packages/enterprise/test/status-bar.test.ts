@@ -1,6 +1,6 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
-import { ApexGridEnterprise, ApexGridStatusBar } from '../src/index.js';
+import { ApexGridEnterprise, ApexGridStatusBar, enterpriseModules } from '../src/index.js';
 
 interface Row {
   id: number;
@@ -69,6 +69,7 @@ function selectAmountColumn(grid: ApexGridEnterprise<Row>): void {
 
 describe('ApexGridStatusBar', () => {
   before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
     ApexGridEnterprise.register();
     ApexGridStatusBar.register();
   });

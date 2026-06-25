@@ -33,17 +33,45 @@ npm install apex-grid-enterprise apex-grid lit igniteui-webcomponents
 `apex-grid`, `lit`, and `igniteui-webcomponents` are peer dependencies shared
 with the community package: install a single copy of each.
 
+[`apexcharts`](https://www.npmjs.com/package/apexcharts) is an **optional** peer
+dependency, used only by the integrated charts (`renderChart()`). It is loaded
+through a dynamic `import()`, so a grid that never charts neither bundles nor
+downloads it. Install it only when you chart:
+
+```bash
+npm install apexcharts
+```
+
 ## Usage
 
 ```ts
 import 'apex-grid-enterprise/define'; // registers the enterprise element set
 ```
 
-`/define` registers the grid and its companion elements: `<apex-grid-enterprise>`,
-`<apex-grid-tool-panel>`, `<apex-grid-status-bar>`, and `<apex-grid-set-filter>`.
-The configuration API is identical to `apex-grid`; see the
-[`apex-grid` README](https://www.npmjs.com/package/apex-grid) for column
+`/define` is the batteries-included entry: it opts the grid into **every**
+built-in feature module and registers the grid plus its companion elements
+(`<apex-grid-enterprise>`, `<apex-grid-tool-panel>`, `<apex-grid-status-bar>`,
+`<apex-grid-set-filter>`). The configuration API is identical to `apex-grid`;
+see the [`apex-grid` README](https://www.npmjs.com/package/apex-grid) for column
 configuration, theming, and events.
+
+### Composing only the features you use
+
+Importing from the package root wires in **no** feature modules by default, so
+each one is tree-shaken unless you opt into it via `ApexGridEnterprise.use()`.
+Call it once at startup, before registering the element:
+
+```ts
+import { ApexGridEnterprise, pivotModule, rangeSelectionModule } from 'apex-grid-enterprise';
+
+ApexGridEnterprise.use(pivotModule, rangeSelectionModule); // only these are bundled + wired
+ApexGridEnterprise.register();
+```
+
+Available modules: `aggregationModule`, `groupingModule`, `pivotModule`,
+`rangeSelectionModule`. The `enterpriseModules` array is the full set (it is what
+`/define` passes to `use()`). Modules a grid is not opted into add nothing to
+your bundle.
 
 ---
 
@@ -191,15 +219,43 @@ grid.refreshDetail(row); // drop a row's cached detail grid to force a reload
 Render the grid's current data as an ApexCharts chart. ApexCharts is dynamically
 imported, so it only loads when a chart is actually drawn.
 
+The chart model is derived by intent: a selected **cell range** wins, otherwise the
+**grouping/pivot view**. Friendly chart types (`column`, `bar`, `line`, `area`,
+`pie`, `donut`, `scatter`, `radar`, `heatmap`, `combo`, or `'auto'`) map to the
+right ApexCharts shape.
+
 ```ts
-const model = grid.getChartModel();          // categories + series from the grid
-const chart = grid.renderChart(container, {  // returns the ApexCharts instance
-  type: 'bar',
-  title: 'Revenue by region',
-  height: 320,
+const model = grid.getRangeChartModel();     // from the active cell selection
+// or grid.getViewChartModel()               // from grouping / pivot only
+// or grid.getChartModel()                   // selection if present, else view
+
+const chart = grid.createRangeChart(container, {
+  type: 'column',
   apexOptions: { /* deep-merged escape hatch */ },
 });
 ```
+
+### `<apex-grid-chart>` panel
+
+A built-in chart panel with a type gallery that **live-redraws** as the selection or
+view changes. Set its `grid` property; choose `mode="inline"` (embedded) or
+`mode="dialog"` (a floating, draggable panel — the default). It renders in light DOM
+(ApexCharts cannot render inside a shadow root).
+
+```html
+<apex-grid-chart mode="inline"></apex-grid-chart>
+```
+
+```ts
+chart.grid = grid;
+chart.source = 'selection'; // 'auto' (default) | 'selection' | 'view'
+chart.type = 'column';      // gallery-switchable; 'auto' uses the recommended type
+chart.theme = 'grid';       // 'grid' (sync palette to grid theme) | 'light' | 'dark'
+```
+
+The enterprise grid also adds a **"Create chart"** toolbar button that opens the
+panel in a dialog. The panel and toolbar button require `<apex-grid-chart>` to be
+registered (the `/define` entry does this for you).
 
 ## Infinite (server-side) row model
 

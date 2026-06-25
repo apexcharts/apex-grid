@@ -19,6 +19,7 @@ import { styles } from '../styles/toolbar/toolbar.css.js';
  * @csspart search-icon - The leading search icon.
  * @csspart search-input - The text input itself.
  * @csspart toolbar-actions - The trailing actions area (right side).
+ * @csspart toolbar-action - A custom host-contributed action button (e.g. "Create chart").
  * @csspart export-trigger - The export menu trigger button.
  * @csspart export-menu - The dropdown menu containing export options.
  * @csspart export-menu-item - A single menu item inside the export dropdown.
@@ -271,11 +272,25 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
     </div>`;
   }
 
+  protected renderToolbarActions() {
+    const actions = this.state?.host?.toolbarActions ?? [];
+    if (!actions.length) return nothing;
+    return html`${actions.map(
+      (action) => html`<button
+        type="button"
+        part="toolbar-action"
+        @click=${() => action.run()}
+      >
+        ${action.label}
+      </button>`
+    )}`;
+  }
+
   protected override render() {
     return html`
       <div part="toolbar" role="toolbar" aria-label="Grid toolbar">
         ${this.renderQuickFilter()}
-        <div part="toolbar-actions">${this.renderExportMenu()}</div>
+        <div part="toolbar-actions">${this.renderToolbarActions()}${this.renderExportMenu()}</div>
       </div>
     `;
   }

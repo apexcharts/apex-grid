@@ -1,6 +1,6 @@
 import { expect, fixture, fixtureCleanup, html } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
-import { ApexGridEnterprise } from '../src/index.js';
+import { ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 
 type Row = { id: number; age: number };
 const data: Row[] = [
@@ -11,7 +11,10 @@ const data: Row[] = [
 const columns: ColumnConfiguration<Row>[] = [{ key: 'id' }, { key: 'age' }];
 
 describe('ApexGridEnterprise aggregations', () => {
-  before(() => ApexGridEnterprise.register());
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+  });
   afterEach(() => fixtureCleanup());
 
   it('computes sum/avg/min/max/count for a numeric column', async () => {

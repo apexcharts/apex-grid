@@ -29,6 +29,7 @@ import type {
   PaginationConfiguration,
   PaginationState,
   PinPosition,
+  ToolbarAction,
 } from '../internal/types.js';
 import {
   asArray,
@@ -1627,6 +1628,20 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
+   * Custom action buttons rendered in the toolbar's trailing actions area, in
+   * order.
+   *
+   * @remarks
+   * The community grid contributes none. This is the seam derived grids use to
+   * add toolbar buttons (mirroring {@link ApexGrid.exportFormats}):
+   * `@apexcharts/grid-enterprise` overrides it to add a "Create chart" action.
+   * The toolbar renders one button per entry and calls its `run()` on click.
+   */
+  public get toolbarActions(): ReadonlyArray<ToolbarAction> {
+    return [];
+  }
+
+  /**
    * Exports the grid in the given format (one of {@link ApexGrid.exportFormats}).
    * Called by the toolbar's export menu. The community grid handles `'csv'`;
    * derived grids override to handle additional formats, delegating to `super`
@@ -1772,7 +1787,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   protected renderToolbar() {
     // Toolbar is shared by all toolbar-housed features. Render it whenever
     // any one of them is enabled.
-    if (!this.showQuickFilter && !this.showExport) return nothing;
+    if (!this.showQuickFilter && !this.showExport && this.toolbarActions.length === 0) {
+      return nothing;
+    }
     return html`<apex-grid-toolbar
       .value=${this.quickFilter}
       .showQuickFilter=${this.showQuickFilter}

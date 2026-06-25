@@ -1,6 +1,12 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
-import { ApexGridEnterprise } from '../src/index.js';
+import {
+  ApexGridEnterprise,
+  type ChartModel,
+  chartModelToApexOptions,
+  enterpriseModules,
+  recommendChartType,
+} from '../src/index.js';
 
 interface Row {
   region: string;
@@ -38,8 +44,94 @@ async function mount(extra: Record<string, unknown>) {
   return grid;
 }
 
+const MODEL: ChartModel = {
+  categories: ['A', 'B', 'C'],
+  series: [
+    { name: 'Sales', data: [10, 20, 30] },
+    { name: 'Cost', data: [5, 8, 9] },
+  ],
+};
+
+describe('integrated charts — chartModelToApexOptions (pure transform)', () => {
+  it('builds the cartesian shape for column (series + xaxis.categories, no horizontal)', () => {
+    const opts = chartModelToApexOptions(MODEL, { type: 'column' });
+    expect(opts.chart?.type).to.equal('bar');
+    expect(opts.plotOptions?.bar?.horizontal).to.equal(undefined);
+    expect(opts.xaxis?.categories).to.eql(['A', 'B', 'C']);
+    expect((opts.series as { name: string }[]).map((s) => s.name)).to.eql(['Sales', 'Cost']);
+  });
+
+  it('flips bar to horizontal', () => {
+    const opts = chartModelToApexOptions(MODEL, { type: 'bar' });
+    expect(opts.chart?.type).to.equal('bar');
+    expect(opts.plotOptions?.bar?.horizontal).to.equal(true);
+  });
+
+  it('builds the circular shape for pie (series: number[] + labels, first series only)', () => {
+    const opts = chartModelToApexOptions(MODEL, { type: 'pie' });
+    expect(opts.chart?.type).to.equal('pie');
+    expect(opts.series).to.eql([10, 20, 30]); // first measure
+    expect(opts.labels).to.eql(['A', 'B', 'C']);
+    expect(opts.xaxis).to.equal(undefined);
+  });
+
+  it('donut maps to the donut type with the circular shape', () => {
+    const opts = chartModelToApexOptions(MODEL, { type: 'donut' });
+    expect(opts.chart?.type).to.equal('donut');
+    expect(opts.series).to.eql([10, 20, 30]);
+  });
+
+  it('combo gives each series its own type (default: first column, rest line)', () => {
+    const opts = chartModelToApexOptions(MODEL, { type: 'combo' });
+    expect(opts.chart?.type).to.equal('line');
+    const series = opts.series as { name: string; type: string }[];
+    expect(series.map((s) => s.type)).to.eql(['bar', 'line']);
+  });
+
+  it('combo honors comboTypes overrides by series index', () => {
+    const opts = chartModelToApexOptions(MODEL, { type: 'combo', comboTypes: ['line', 'column'] });
+    const series = opts.series as { type: string }[];
+    expect(series.map((s) => s.type)).to.eql(['line', 'bar']);
+  });
+
+  it('deep-merges apexOptions last so the caller can override', () => {
+    const opts = chartModelToApexOptions(MODEL, {
+      type: 'line',
+      apexOptions: { chart: { type: 'area', height: 500 } },
+    });
+    expect(opts.chart?.type).to.equal('area');
+    expect(opts.chart?.height).to.equal(500);
+  });
+
+  it("resolves type: 'auto' via the recommend heuristic", () => {
+    // 1 series, 3 categories → pie
+    const single: ChartModel = { categories: ['A', 'B', 'C'], series: [MODEL.series[0]] };
+    expect(chartModelToApexOptions(single, { type: 'auto' }).chart?.type).to.equal('pie');
+  });
+});
+
+describe('integrated charts — recommendChartType', () => {
+  it('single series over few categories → pie', () => {
+    expect(recommendChartType({ categories: ['A', 'B'], series: [MODEL.series[0]] })).to.equal(
+      'pie'
+    );
+  });
+
+  it('many categories → line', () => {
+    const cats = Array.from({ length: 20 }, (_, i) => String(i));
+    expect(recommendChartType({ categories: cats, series: MODEL.series })).to.equal('line');
+  });
+
+  it('otherwise → column', () => {
+    expect(recommendChartType(MODEL)).to.equal('column');
+  });
+});
+
 describe('ApexGridEnterprise integrated charts — getChartModel', () => {
-  before(() => ApexGridEnterprise.register());
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+  });
   afterEach(() => fixtureCleanup());
 
   it('returns an empty model when neither grouping nor pivot is active', async () => {
@@ -71,5 +163,85 @@ describe('ApexGridEnterprise integrated charts — getChartModel', () => {
     expect(model.series.map((s) => s.name)).to.eql(['A', 'B']);
     expect(model.series.find((s) => s.name === 'A')!.data).to.eql([10, 70]);
     expect(model.series.find((s) => s.name === 'B')!.data).to.eql([20, 0]);
+  });
+});
+
+interface RangeRow {
+  name: string;
+  q1: number;
+  q2: number;
+}
+const rangeData: RangeRow[] = [
+  { name: 'A', q1: 10, q2: 5 },
+  { name: 'B', q1: 20, q2: 8 },
+  { name: 'C', q1: 30, q2: 9 },
+];
+const rangeColumns: ColumnConfiguration<RangeRow>[] = [
+  { key: 'name', type: 'string', headerText: 'Name' },
+  { key: 'q1', type: 'number', headerText: 'Q1' },
+  { key: 'q2', type: 'number', headerText: 'Q2' },
+];
+
+async function mountRange() {
+  const grid = await fixture<ApexGridEnterprise<RangeRow>>(html`<apex-grid-enterprise
+    .data=${rangeData.map((row) => ({ ...row }))}
+    .columns=${rangeColumns}
+  ></apex-grid-enterprise>`);
+  await grid.updateComplete;
+  await nextFrame();
+  return grid;
+}
+
+describe('ApexGridEnterprise integrated charts — getRangeChartModel', () => {
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+  });
+  afterEach(() => fixtureCleanup());
+
+  it('label + numeric columns → categories from the label, a series per numeric column', async () => {
+    const grid = await mountRange();
+    grid.selectRange({ row: 0, column: 'name' }, { row: 2, column: 'q2' });
+    const model = grid.getRangeChartModel();
+    expect(model.categories).to.eql(['A', 'B', 'C']);
+    expect(model.series.map((s) => s.name)).to.eql(['Q1', 'Q2']);
+    expect(model.series[0].data).to.eql([10, 20, 30]);
+    expect(model.series[1].data).to.eql([5, 8, 9]);
+  });
+
+  it('single numeric column → row-position categories, one series', async () => {
+    const grid = await mountRange();
+    grid.selectRange({ row: 0, column: 'q1' }, { row: 2, column: 'q1' });
+    const model = grid.getRangeChartModel();
+    expect(model.categories).to.eql(['1', '2', '3']);
+    expect(model.series.length).to.equal(1);
+    expect(model.series[0].data).to.eql([10, 20, 30]);
+  });
+
+  it('all-numeric multi-column → row-position categories, every column a series', async () => {
+    const grid = await mountRange();
+    grid.selectRange({ row: 0, column: 'q1' }, { row: 2, column: 'q2' });
+    const model = grid.getRangeChartModel();
+    expect(model.categories).to.eql(['1', '2', '3']);
+    expect(model.series.map((s) => s.name)).to.eql(['Q1', 'Q2']);
+  });
+
+  it('label-only selection → empty model', async () => {
+    const grid = await mountRange();
+    grid.selectRange({ row: 0, column: 'name' }, { row: 2, column: 'name' });
+    expect(grid.getRangeChartModel()).to.eql({ categories: [], series: [] });
+  });
+
+  it('no selection → empty model', async () => {
+    const grid = await mountRange();
+    expect(grid.getRangeChartModel()).to.eql({ categories: [], series: [] });
+  });
+
+  it('getChartModel dispatches to the range model when a numeric range is selected', async () => {
+    const grid = await mountRange();
+    grid.selectRange({ row: 0, column: 'name' }, { row: 2, column: 'q1' });
+    const model = grid.getChartModel();
+    expect(model.categories).to.eql(['A', 'B', 'C']);
+    expect(model.series.map((s) => s.name)).to.eql(['Q1']);
   });
 });

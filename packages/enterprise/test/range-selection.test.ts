@@ -1,6 +1,11 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
-import { ApexGridEnterprise, RANGE_CHANGED_EVENT, type RangeChangedDetail } from '../src/index.js';
+import {
+  ApexGridEnterprise,
+  enterpriseModules,
+  RANGE_CHANGED_EVENT,
+  type RangeChangedDetail,
+} from '../src/index.js';
 
 interface Row {
   id: number;
@@ -113,7 +118,10 @@ function deepQueryAll(root: ShadowRoot | Element, selector: string): Element[] {
 }
 
 describe('Range selection', () => {
-  before(() => ApexGridEnterprise.register());
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+  });
   afterEach(() => fixtureCleanup());
 
   it('computes bounds over a dragged rectangle', async () => {
@@ -146,6 +154,37 @@ describe('Range selection', () => {
     const grid = await mount();
     dragSelect(grid, 0, 'amount', 2, 'score');
     expect(grid.getSelectionTSV()).to.equal('10\t100\n20\t200\n30\t300');
+  });
+
+  it('exposes the active range as a labeled grid (columns + value matrix)', async () => {
+    const grid = await mount();
+    dragSelect(grid, 0, 'name', 2, 'amount');
+    const controller = (
+      grid as unknown as {
+        stateController: {
+          module(id: string): {
+            getActiveGrid(): { columns: { key: unknown }[]; rows: unknown[][] } | null;
+          };
+        };
+      }
+    ).stateController.module('range-selection');
+    const active = controller.getActiveGrid()!;
+    expect(active.columns.map((c) => c.key)).to.eql(['name', 'amount']);
+    expect(active.rows).to.eql([
+      ['A', 10],
+      ['B', 20],
+      ['C', 30],
+    ]);
+  });
+
+  it('getActiveGrid is null without a selection', async () => {
+    const grid = await mount();
+    const controller = (
+      grid as unknown as {
+        stateController: { module(id: string): { getActiveGrid(): unknown } };
+      }
+    ).stateController.module('range-selection');
+    expect(controller.getActiveGrid()).to.equal(null);
   });
 
   it('extends the range with shift-click from the existing anchor', async () => {

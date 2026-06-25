@@ -30,12 +30,20 @@
   },
   "dependencies": {
     "apex-commons": "^0.1.0",
-    "apex-grid": "^3.1.0",
+    "apex-grid": "^3.1.0"
+  },
+  "devDependencies": {
     "apexcharts": "^5.15.0"
   },
   "peerDependencies": {
     "@lit/context": "^1.1.5",
+    "apexcharts": "^5.15.0",
     "igniteui-webcomponents": "~6.1.0",
     "lit": "^3.3.0"
+  },
+  "peerDependenciesMeta": {
+    "apexcharts": {
+      "optional": true
+    }
   }
 }

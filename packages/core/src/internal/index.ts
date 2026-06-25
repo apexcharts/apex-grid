@@ -41,5 +41,5 @@ export {
   isRowTransformer,
 } from './feature-module.js';
 export { registerComponent } from './register.js';
-export type { ActiveNode, ColumnConfiguration, GridHost, Keys } from './types.js';
+export type { ActiveNode, ColumnConfiguration, GridHost, Keys, ToolbarAction } from './types.js';
 export { getDisplayColumns } from './utils.js';

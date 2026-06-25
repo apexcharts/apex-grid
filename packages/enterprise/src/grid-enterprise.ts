@@ -13,15 +13,16 @@ import {
   resolveExportRows,
   resolveExportValue,
   StateController,
+  type ToolbarAction,
 } from 'apex-grid/internal';
 import { html, nothing, type PropertyValues } from 'lit';
 import { property } from 'lit/decorators.js';
+import type { ApexGridChart } from './chart-panel.js';
 import {
   AGGREGATION_MODULE_ID,
   type AggregationConfig,
   type AggregationController,
   type AggregationResults,
-  aggregationModule,
 } from './features/aggregation.js';
 import {
   type ChartModel,
@@ -33,7 +34,6 @@ import {
   GROUPING_MODULE_ID,
   type GroupingController,
   type GroupRowMeta,
-  groupingModule,
 } from './features/grouping.js';
 import {
   type InfiniteHost,
@@ -41,31 +41,36 @@ import {
   InfiniteRowModelManager,
 } from './features/infinite-row-model.js';
 import { type MasterDetailConfig, MasterDetailManager } from './features/master-detail.js';
-import { PIVOT_MODULE_ID, type PivotController, pivotModule } from './features/pivot.js';
+import { PIVOT_MODULE_ID, type PivotController } from './features/pivot.js';
 import {
   RANGE_SELECTION_MODULE_ID,
   type RangeBounds,
   type RangeSelectionController,
   type RangeStats,
-  rangeSelectionModule,
 } from './features/range-selection.js';
 import { buildXLSX, type XLSXExportOptions } from './features/xlsx.js';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
+/** Coerce a cell value to a finite number, or `null` if it is not numeric. */
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 /** Custom-element tag for the enterprise grid. */
 export const ENTERPRISE_TAG = 'apex-grid-enterprise';
 
 /**
- * Feature modules layered onto the enterprise grid via the core extension seam.
- * Kept as a module-level constant so it is shared across instances.
+ * Fired on the grid (bubbles, composed) after its render pipeline settles and the
+ * rendered view (columns / row count / grouping / pivot) has changed. The signal
+ * `<apex-grid-chart>` listens to for live redraws on group/pivot/data changes.
  */
-const ENTERPRISE_MODULES: ReadonlyArray<GridFeatureModule> = [
-  aggregationModule,
-  groupingModule,
-  pivotModule,
-  rangeSelectionModule,
-];
+export const VIEW_CHANGED_EVENT = 'apex-view-changed';
 
 // Repeating diagonal watermark shown when no valid license is set. Rendered in
 // the grid's shadow DOM as a non-interactive overlay (absolute + inset:0 covers
@@ -108,6 +113,39 @@ const WATERMARK_STYLE = [
 export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   /** Live instances, so {@link setLicense} can refresh watermarks on the fly. */
   static #instances = new Set<ApexGridEnterprise<any>>();
+
+  /**
+   * Feature modules opted into via {@link use}, keyed by module id so re-adding
+   * the same module is a no-op. Read once per instance by
+   * {@link createStateController}, so register modules before constructing any
+   * grid. Empty by default: importing the grid wires in **no** features, so each
+   * one is tree-shaken unless you opt into it (the bundle a non-charting,
+   * non-pivoting app ships stays minimal). The batteries-included
+   * `apex-grid-enterprise/define` entry calls {@link use} with every built-in
+   * module for you.
+   */
+  static #modules = new Map<string, GridFeatureModule>();
+
+  /**
+   * Opt feature modules into every enterprise grid (idempotent per module id).
+   * Returns the class so calls can chain. Call before constructing any
+   * `<apex-grid-enterprise>` (and before {@link register}).
+   *
+   * @example
+   * ```ts
+   * import { ApexGridEnterprise, pivotModule } from 'apex-grid-enterprise';
+   * ApexGridEnterprise.use(pivotModule); // only pivoting is bundled + wired
+   * ApexGridEnterprise.register();
+   * ```
+   */
+  public static use(...modules: ReadonlyArray<GridFeatureModule>): typeof ApexGridEnterprise {
+    for (const module of modules) {
+      if (!ApexGridEnterprise.#modules.has(module.id)) {
+        ApexGridEnterprise.#modules.set(module.id, module);
+      }
+    }
+    return ApexGridEnterprise;
+  }
 
   /**
    * Per-column aggregation request (sum/avg/min/max/count). Read on demand by
@@ -265,6 +303,29 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     }
     // Idempotent — binds the virtualizer's rangeChanged once it's rendered.
     this.#infiniteManager?.attach();
+    this.#emitViewChanged();
+  }
+
+  /**
+   * Fire {@link VIEW_CHANGED_EVENT} when the rendered view actually changed
+   * (columns, row count, grouping, or pivot), so `<apex-grid-chart>` (and future
+   * dashboards) can live-redraw on group/pivot/data changes — which, unlike
+   * header-click sort/filter, emit no `sorted`/`filtered` event. Gated on a cheap
+   * signature so it does not fire on every render.
+   */
+  #viewSignature = '';
+
+  #emitViewChanged(): void {
+    const signature = [
+      this.columns.length,
+      this.pageItems.length,
+      this.groupBy.join(','),
+      this.pivotOn,
+      this.#pivotActive ? '1' : '0',
+    ].join('|');
+    if (signature === this.#viewSignature) return;
+    this.#viewSignature = signature;
+    this.dispatchEvent(new CustomEvent(VIEW_CHANGED_EVENT, { bubbles: true, composed: true }));
   }
 
   /** Whether a row is an unloaded placeholder under the infinite row model. */
@@ -483,14 +544,30 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   /**
-   * Build a chart-ready model from the current view's aggregates:
+   * Build a chart-ready model from the current view. Dispatches by intent:
+   * - **Cell range selected (non-empty):** the range model (see {@link getRangeChartModel}) wins.
    * - **Grouping active:** categories = top-level group labels; one series per
    *   `aggregations` measure×fn.
    * - **Pivot active:** categories = pivot row labels; one series per generated
    *   pivot value column.
-   * - **Neither:** empty model.
+   * - **None of the above:** empty model.
    */
   public getChartModel(): ChartModel {
+    const range = this.getRangeChartModel();
+    if (range.series.length > 0) return range;
+    return this.getViewChartModel();
+  }
+
+  /**
+   * Build a chart-ready model from the **grouping or pivot view** (ignoring any cell range
+   * selection). The selection-independent half of {@link getChartModel}; `<apex-grid-chart>` uses
+   * it for `source="view"`.
+   * - **Grouping active:** categories = top-level group labels; one series per `aggregations`
+   *   measure×fn.
+   * - **Pivot active:** categories = pivot row labels; one series per generated pivot value column.
+   * - **Neither:** empty model.
+   */
+  public getViewChartModel(): ChartModel {
     if (this.groupBy.length > 0) {
       const groups = (this.#groupingController()?.getGroups() ?? []).filter((g) => g.depth === 0);
       const categories = groups.map((group) => group.label);
@@ -523,11 +600,96 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   /**
+   * Build a chart-ready model from the **active cell range selection** (the Excel-style
+   * "select cells → chart" path). Orientation: the first non-numeric column in the range is the
+   * category axis; every numeric column becomes a series (named by its header). When the range is
+   * all-numeric, row positions (1, 2, 3, …) are the categories and every column is a series.
+   * Returns an empty model when there is no selection or no numeric series. Uses the active
+   * (primary) range under a multi-range selection.
+   */
+  public getRangeChartModel(): ChartModel {
+    const active = this.#rangeController()?.getActiveGrid();
+    if (!active || active.rows.length === 0) return { categories: [], series: [] };
+    const { columns, rows } = active;
+
+    // A column is numeric if declared `type: 'number'` or every non-blank cell parses to a finite
+    // number (and there is at least one value to judge by).
+    const numeric = columns.map((column, c) => {
+      if (column.type === 'number') return true;
+      let sawValue = false;
+      for (const row of rows) {
+        const value = row[c];
+        if (value === null || value === undefined || value === '') continue;
+        sawValue = true;
+        if (toNumber(value) === null) return false;
+      }
+      return sawValue;
+    });
+
+    const catIndex = numeric.findIndex((isNumeric) => !isNumeric);
+    const categories =
+      catIndex >= 0
+        ? rows.map((row) => String(row[catIndex] ?? ''))
+        : rows.map((_, i) => String(i + 1));
+
+    const series: ChartSeries[] = [];
+    columns.forEach((column, c) => {
+      if (c === catIndex || !numeric[c]) return;
+      series.push({
+        name: getColumnLabel(column),
+        data: rows.map((row) => toNumber(row[c]) ?? 0),
+      });
+    });
+
+    if (series.length === 0) return { categories: [], series: [] };
+    return { categories, series };
+  }
+
+  /**
    * Render the current {@link getChartModel} into a (light-DOM) container using
    * ApexCharts and return the instance. ApexCharts is dynamically imported.
    */
   public renderChart(container: HTMLElement, options?: RenderChartOptions) {
     return renderApexChart(container, this.getChartModel(), options);
+  }
+
+  /**
+   * Render the active cell range ({@link getRangeChartModel}) into a (light-DOM) container using
+   * ApexCharts and return the instance. ApexCharts is dynamically imported.
+   */
+  public createRangeChart(container: HTMLElement, options?: RenderChartOptions) {
+    return renderApexChart(container, this.getRangeChartModel(), options);
+  }
+
+  #chartDialog: ApexGridChart | null = null;
+
+  /**
+   * Adds a "Create chart" button to the toolbar (on top of the community grid's none). Clicking it
+   * opens a floating `<apex-grid-chart mode="dialog">` bound to this grid. Requires
+   * `<apex-grid-chart>` to be registered (the `/define` entry does so).
+   */
+  public override get toolbarActions(): ReadonlyArray<ToolbarAction> {
+    return [
+      ...super.toolbarActions,
+      { id: 'create-chart', label: 'Create chart', run: () => this.#openChartDialog() },
+    ];
+  }
+
+  #openChartDialog(): void {
+    if (!this.#chartDialog) {
+      // createElement by tag (not an import) keeps the grid free of a runtime dependency on the
+      // chart element, so it tree-shakes when a consumer never charts.
+      const chart = document.createElement('apex-grid-chart') as ApexGridChart;
+      chart.mode = 'dialog';
+      chart.grid = this as unknown as ApexGridEnterprise<Record<string, unknown>>;
+      chart.addEventListener('apex-chart-closed', () => {
+        chart.remove();
+        this.#chartDialog = null;
+      });
+      document.body.appendChild(chart);
+      this.#chartDialog = chart;
+    }
+    this.#chartDialog.show();
   }
 
   /**
@@ -583,7 +745,10 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   protected override createStateController(): StateController<T> {
-    return new StateController<T>(this, ENTERPRISE_MODULES as ReadonlyArray<GridFeatureModule<T>>);
+    const modules = [...ApexGridEnterprise.#modules.values()] as ReadonlyArray<
+      GridFeatureModule<T>
+    >;
+    return new StateController<T>(this, modules);
   }
 
   protected override render() {

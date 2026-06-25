@@ -305,6 +305,20 @@ export class RangeSelectionController<T extends object>
     return ranges;
   }
 
+  /**
+   * The active range as a labeled grid for charting/inspection: the in-range display columns and
+   * their per-row cell values (clipped to existing rows). `null` when nothing is selected. A
+   * multi-range selection uses the active (primary) range.
+   */
+  public getActiveGrid(): { columns: ColumnConfiguration<T>[]; rows: unknown[][] } | null {
+    const bounds = this.#activeBounds();
+    if (!bounds) return null;
+    return {
+      columns: this.#visibleColumns().slice(bounds.left, bounds.right + 1),
+      rows: this.#matrix(bounds),
+    };
+  }
+
   /** Clears the selection and refreshes decoration. */
   public clearSelection(): void {
     if (!this.hasSelection()) return;

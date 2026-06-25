@@ -66,10 +66,8 @@
         --ig-size: 2;
       }
       #chart {
+        display: block;
         margin-top: 16px;
-        border: 1px solid #eef0f4;
-        border-radius: 6px;
-        padding: 8px;
       }
     </style>
     <script type="module">
@@ -85,65 +83,53 @@
   <body>
     <h2>Integrated Charts <span class="badge">Enterprise</span></h2>
     <p class="subtitle">
-      Chart the grid's grouped/pivoted aggregates with ApexCharts. <code>getChartModel()</code> turns the current view into series; <code>renderChart(container)</code> draws it. Here: salary sum &amp; average per department.
+      Select cells in the grid and switch chart type in the panel below: <code>&lt;apex-grid-chart&gt;</code> live-redraws the selection with ApexCharts. The toolbar's <strong>Create chart</strong> button opens the same chart in a floating dialog.
     </p>
-    <div class="toolbar">
-      <button id="bar">Bar</button>
-      <button id="line">Line</button>
-    </div>
     <apex-grid-enterprise id="grid"></apex-grid-enterprise>
-    <div id="chart"></div>
+    <apex-grid-chart id="chart" mode="inline"></apex-grid-chart>
     <script type="module">
       const data = [
-        { id: 1, name: 'Ava Morgan', department: 'Engineering', salary: 96000 },
-        { id: 2, name: 'Liam Chen', department: 'Engineering', salary: 104000 },
-        { id: 3, name: 'Noah Patel', department: 'Engineering', salary: 88000 },
-        { id: 4, name: 'Emma Davis', department: 'Sales', salary: 72000 },
-        { id: 5, name: 'Olivia Rossi', department: 'Sales', salary: 69000 },
-        { id: 6, name: 'William Kim', department: 'Sales', salary: 81000 },
-        { id: 7, name: 'Sophia Nguyen', department: 'Marketing', salary: 64000 },
-        { id: 8, name: 'James Muller', department: 'Marketing', salary: 71000 },
-        { id: 9, name: 'Isabella Costa', department: 'Engineering', salary: 99000 },
-        { id: 10, name: 'Mateo Silva', department: 'Sales', salary: 75000 },
-        { id: 11, name: 'Mia Johnson', department: 'Marketing', salary: 68000 },
-        { id: 12, name: 'Lucas Brown', department: 'Engineering', salary: 91000 },
+        { id: 1, name: 'Ava Morgan', department: 'Engineering', salary: 96000, bonus: 12000 },
+        { id: 2, name: 'Liam Chen', department: 'Engineering', salary: 104000, bonus: 15000 },
+        { id: 3, name: 'Noah Patel', department: 'Engineering', salary: 88000, bonus: 9000 },
+        { id: 4, name: 'Emma Davis', department: 'Sales', salary: 72000, bonus: 7000 },
+        { id: 5, name: 'Olivia Rossi', department: 'Sales', salary: 69000, bonus: 6500 },
+        { id: 6, name: 'William Kim', department: 'Sales', salary: 81000, bonus: 8000 },
+        { id: 7, name: 'Sophia Nguyen', department: 'Marketing', salary: 64000, bonus: 5000 },
+        { id: 8, name: 'James Muller', department: 'Marketing', salary: 71000, bonus: 7500 },
+        { id: 9, name: 'Isabella Costa', department: 'Engineering', salary: 99000, bonus: 14000 },
+        { id: 10, name: 'Mateo Silva', department: 'Sales', salary: 75000, bonus: 8500 },
+        { id: 11, name: 'Mia Johnson', department: 'Marketing', salary: 68000, bonus: 6000 },
+        { id: 12, name: 'Lucas Brown', department: 'Engineering', salary: 91000, bonus: 11000 },
       ];
 
       const grid = document.getElementById('grid');
-      const chartEl = document.getElementById('chart');
+      const chart = document.getElementById('chart');
       grid.columns = [
         { key: 'name', headerText: 'Name' },
         { key: 'department', headerText: 'Department' },
         { key: 'salary', headerText: 'Salary', type: 'number' },
+        { key: 'bonus', headerText: 'Bonus', type: 'number' },
       ];
       grid.data = data;
-      grid.aggregations = { salary: ['sum', 'avg'] };
-      grid.groupBy = ['department'];
 
-      let chart = null;
-      let chartType = 'bar';
+      const money = (v) => `$${Math.round(Number(v)).toLocaleString('en-US')}`;
 
-      async function draw() {
-        await grid.updateComplete;
-        await grid.updateComplete;
-        await new Promise((r) => requestAnimationFrame(r));
-        if (chart) { chart.destroy(); chart = null; }
-        // Animations off + toolbar hidden so the rendered frame is stable.
-        const money = (v) => `$${Math.round(Number(v)).toLocaleString('en-US')}`;
-        chart = await grid.renderChart(chartEl, {
-          title: 'Salary by department',
-          apexOptions: {
-            chart: { type: chartType, height: 300, animations: { enabled: false }, toolbar: { show: false } },
-            yaxis: { labels: { formatter: money } },
-            dataLabels: { formatter: money },
-          },
-        });
-      }
+      // The panel handles its own type gallery + live redraw; we just bind it to
+      // the grid and chart the current selection. Animations off so the e2e
+      // snapshot is stable.
+      chart.grid = grid;
+      chart.source = 'selection';
+      chart.type = 'column';
+      chart.apexOptions = {
+        chart: { animations: { enabled: false }, toolbar: { show: false } },
+        yaxis: { labels: { formatter: money } },
+      };
 
-      document.getElementById('bar').onclick = () => { chartType = 'bar'; draw(); };
-      document.getElementById('line').onclick = () => { chartType = 'line'; draw(); };
-
-      draw();
+      await grid.updateComplete;
+      // Pre-select Name + Salary + Bonus for the first six people so the chart is
+      // populated on load. The panel live-updates as the user selects other cells.
+      grid.selectRange({ row: 0, column: 'name' }, { row: 5, column: 'bonus' });
     </script>
   </body>
 </html>

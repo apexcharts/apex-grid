@@ -1,7 +1,12 @@
 import { elementUpdated, expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
 import { ApexGrid } from 'apex-grid/internal';
-import { ApexGridEnterprise, ENTERPRISE_TAG } from '../src/index.js';
+import {
+  ApexGridEnterprise,
+  ENTERPRISE_TAG,
+  enterpriseModules,
+  VIEW_CHANGED_EVENT,
+} from '../src/index.js';
 
 type Row = { id: number; name: string };
 const data: Row[] = Array.from({ length: 5 }, (_, id) => ({ id, name: `Row ${id}` }));
@@ -57,7 +62,19 @@ describe('ApexGridEnterprise', () => {
     expect(grid.rows.length).to.equal(data.length);
   });
 
-  it('registers its enterprise feature modules via the seam', async () => {
+  // Declared before the `use()` test below: the static module registry is
+  // empty until something opts in, so this asserts the tree-shakeable default
+  // (a grid that imports nothing extra wires zero feature modules).
+  it('wires no feature modules until opted in', async () => {
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise .data=${data} .columns=${columns}></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    expect(stateOf(grid).modules.size).to.equal(0);
+  });
+
+  it('wires the feature modules opted into via use()', async () => {
+    ApexGridEnterprise.use(...enterpriseModules);
     const grid = await fixture<ApexGridEnterprise<Row>>(
       html`<apex-grid-enterprise .data=${data} .columns=${columns}></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
@@ -68,5 +85,22 @@ describe('ApexGridEnterprise', () => {
     expect(modules.has('grouping')).to.be.true;
     expect(modules.has('pivot')).to.be.true;
     expect(modules.has('range-selection')).to.be.true;
+  });
+
+  it('fires apex-view-changed when the view (grouping) changes', async () => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise .data=${data} .columns=${columns}></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    await layoutComplete(grid);
+    let fired = 0;
+    grid.addEventListener(VIEW_CHANGED_EVENT, () => {
+      fired += 1;
+    });
+    grid.groupBy = ['name'];
+    await grid.updateComplete;
+    await nextFrame();
+    expect(fired).to.be.greaterThan(0);
   });
 });
