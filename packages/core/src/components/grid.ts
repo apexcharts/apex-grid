@@ -1022,8 +1022,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    *
    * @remarks
    * Tree mode keeps {@link ApexGrid.data} flat; the grid derives the
-   * hierarchy from a user-supplied `getDataPath(row)` callback (AG Grid's
-   * "tree data" pattern). When enabled, the first visible data column (or
+   * hierarchy from a user-supplied `getDataPath(row)` callback (the
+   * flat-array "tree data" pattern). When enabled, the first visible data column (or
    * the column referenced by `groupColumnKey`) renders a chevron toggle
    * and depth-based indentation.
    *
@@ -1736,6 +1736,12 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   protected bodyPointerHandler(event: PointerEvent) {
     if (this.stateController.modules.size === 0) return;
+    // `pointermove` drives the drag-extend (`over`): tracking the move (not just
+    // cell-entry via `pointerover`) means a cell is flagged the instant the
+    // cursor crosses into it, even while in-range cells re-render under the
+    // pointer. Plain hover moves carry no held button, so skip them — a drag
+    // always opens with a `pointerdown` that keeps the button down.
+    if (event.type === 'pointermove' && event.buttons === 0) return;
     const target = event.composedPath().find((el) => el instanceof ApexGridCell) as
       | ApexGridCell<T>
       | undefined;
@@ -1772,7 +1778,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
         @click=${this.bodyClickHandler}
         @keydown=${this.bodyKeydownHandler}
         @pointerdown=${this.bodyPointerHandler}
-        @pointerover=${this.bodyPointerHandler}
+        @pointermove=${this.bodyPointerHandler}
         @pointerup=${this.bodyPointerHandler}
       ></apex-virtualizer>
     `;
