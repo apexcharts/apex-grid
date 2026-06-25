@@ -17,7 +17,7 @@ import {
 } from 'apex-grid/internal';
 import { html, nothing, type PropertyValues } from 'lit';
 import { property } from 'lit/decorators.js';
-import type { ApexGridChart } from './chart-panel.js';
+import type { ApexGridChart, ChartSource } from './chart-panel.js';
 import {
   AGGREGATION_MODULE_ID,
   type AggregationConfig,
@@ -27,10 +27,16 @@ import {
 import {
   type ChartModel,
   type ChartSeries,
+  type ChartType,
   type RenderChartOptions,
   renderApexChart,
 } from './features/chart.js';
-import { CONTEXT_MENU_MODULE_ID, type ContextMenuController } from './features/context-menu.js';
+import {
+  CONTEXT_MENU_MODULE_ID,
+  type ContextMenuConfig,
+  type ContextMenuController,
+  type ContextMenuItem,
+} from './features/context-menu.js';
 import {
   GROUPING_MODULE_ID,
   type GroupingController,
@@ -196,10 +202,11 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   /**
    * Right-click context menu on cells and headers (sort / pin / hide / copy, plus "Chart range").
-   * Enabled by default; set `context-menu="false"` (or the property) to turn it off.
+   * Enabled by default; set `context-menu="false"` to turn it off, or assign a
+   * {@link ContextMenuConfig} (via property) to replace the items.
    */
   @property({ type: Boolean, attribute: 'context-menu' })
-  public contextMenu = true;
+  public contextMenu: boolean | ContextMenuConfig<T> = true;
 
   /**
    * Declarative master/detail: each expanded master row renders a nested grid
@@ -288,12 +295,42 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     super.willUpdate(changed);
   }
 
-  /** Mirror the `contextMenu` toggle onto the controller. */
+  /** Mirror the `contextMenu` toggle/config onto the controller. */
   #syncContextMenu(changed: PropertyValues): void {
     if (!changed.has('contextMenu')) return;
     const controller =
       this.stateController.module<ContextMenuController<T>>(CONTEXT_MENU_MODULE_ID);
-    if (controller) controller.enabled = this.contextMenu;
+    if (!controller) return;
+    const config = this.contextMenu;
+    controller.enabled = config !== false;
+    const userItems = config && typeof config === 'object' ? config.items : undefined;
+    // Default items = the controller's built-ins + a "Chart range" submenu.
+    controller.items =
+      userItems ?? ((target) => [...controller.defaultItems(target), this.#chartRangeItem()]);
+  }
+
+  /** The "Chart range ▸ [type]" submenu entry, opening the dialog on the current selection. */
+  #chartRangeItem(): ContextMenuItem<T> {
+    const types: ReadonlyArray<{ type: ChartType | 'auto'; label: string }> = [
+      { type: 'column', label: 'Column' },
+      { type: 'bar', label: 'Bar' },
+      { type: 'line', label: 'Line' },
+      { type: 'area', label: 'Area' },
+      { type: 'pie', label: 'Pie' },
+      { type: 'donut', label: 'Donut' },
+      { type: 'combo', label: 'Combo' },
+      { type: 'auto', label: 'Auto' },
+    ];
+    return {
+      id: 'chart-range',
+      label: 'Chart range',
+      separatorBefore: true,
+      submenu: types.map(({ type, label }) => ({
+        id: `chart-${type}`,
+        label,
+        run: () => this.#openChartDialog({ source: 'selection', type }),
+      })),
+    };
   }
 
   /** Create/tear down the infinite row-model manager when the config changes. */
@@ -692,7 +729,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     ];
   }
 
-  #openChartDialog(): void {
+  #openChartDialog(options: { source?: ChartSource; type?: ChartType | 'auto' } = {}): void {
     if (!this.#chartDialog) {
       // createElement by tag (not an import) keeps the grid free of a runtime dependency on the
       // chart element, so it tree-shakes when a consumer never charts.
@@ -706,6 +743,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       document.body.appendChild(chart);
       this.#chartDialog = chart;
     }
+    if (options.source) this.#chartDialog.source = options.source;
+    if (options.type) this.#chartDialog.type = options.type;
     this.#chartDialog.show();
   }
 

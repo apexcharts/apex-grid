@@ -1,9 +1,30 @@
 import type { ColumnConfiguration, SortExpression } from 'apex-grid';
 import type { GridFeatureModule, GridHost } from 'apex-grid/internal';
 import type { ReactiveController } from 'lit';
-import { html, render } from 'lit';
+import { html, nothing, render } from 'lit';
 
 export const CONTEXT_MENU_MODULE_ID = 'context-menu';
+
+/** Fired on the grid before a context menu opens; cancellable, with a mutable `items` array. */
+export const CONTEXT_MENU_OPENING_EVENT = 'apex-context-menu-opening';
+
+/** Declarative config for the context menu (alternative to the boolean toggle). */
+export interface ContextMenuConfig<T extends object = any> {
+  /** Replace the default items: a static array or a per-target callback. */
+  items?: ContextMenuItem<T>[] | ((target: ContextMenuTarget<T>) => ContextMenuItem<T>[]);
+}
+
+/** Detail of {@link CONTEXT_MENU_OPENING_EVENT}: mutate `items` (or `preventDefault()`) to customize. */
+export interface ContextMenuOpeningDetail<T extends object = any> {
+  readonly target: ContextMenuTarget<T>;
+  items: ContextMenuItem<T>[];
+}
+
+/** Menu element augmented with the data the controller threads through render + keyboard nav. */
+type MenuEl<T extends object> = HTMLElement & {
+  __items?: ContextMenuItem<T>[];
+  __parentButton?: HTMLElement;
+};
 
 /** What was right-clicked: a body cell (with its row) or a column header. */
 export interface ContextMenuTarget<T extends object> {
@@ -92,9 +113,9 @@ export class ContextMenuController<T extends object> implements ReactiveControll
     | ((target: ContextMenuTarget<T>) => ContextMenuItem<T>[])
     | null = null;
 
-  #menu: HTMLElement | null = null;
+  /** Open menus, root first; submenus pushed on top. */
+  #menus: MenuEl<T>[] = [];
   #target: ContextMenuTarget<T> | null = null;
-  #current: ContextMenuItem<T>[] = [];
 
   constructor(private host: GridHost<T>) {
     host.addController(this);
@@ -218,82 +239,137 @@ export class ContextMenuController<T extends object> implements ReactiveControll
     ensureStyle();
     this.#close();
     this.#target = target;
-    this.#current = this.#buildItems(target);
-    const menu = document.createElement('div');
-    menu.className = 'apex-grid-context-menu';
-    menu.setAttribute('role', 'menu');
-    document.body.appendChild(menu);
-    this.#menu = menu;
-    this.#renderItems();
 
-    // Clamp into the viewport.
+    const detail: ContextMenuOpeningDetail<T> = { target, items: this.#buildItems(target) };
+    const opening = new CustomEvent<ContextMenuOpeningDetail<T>>(CONTEXT_MENU_OPENING_EVENT, {
+      detail,
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    });
+    (this.host as unknown as HTMLElement).dispatchEvent(opening);
+    if (opening.defaultPrevented || detail.items.length === 0) {
+      this.#target = null;
+      return;
+    }
+
+    const menu = this.#spawnMenu(detail.items);
     const rect = menu.getBoundingClientRect();
     menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - rect.width - 4))}px`;
     menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - rect.height - 4))}px`;
-
-    this.#focusItem(0);
+    this.#focusFirst(menu);
     document.addEventListener('pointerdown', this.#onOutside, true);
-    menu.addEventListener('keydown', this.#onMenuKeydown);
   }
 
-  #renderItems(): void {
-    if (!this.#menu) return;
+  #spawnMenu(items: ContextMenuItem<T>[]): MenuEl<T> {
+    const menu = document.createElement('div') as MenuEl<T>;
+    menu.className = 'apex-grid-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.__items = items;
+    document.body.appendChild(menu);
+    this.#menus.push(menu);
     render(
-      html`${this.#current.map(
-        (item) => html`${
-          item.separatorBefore ? html`<div class="agcm-sep" role="separator"></div>` : ''
+      html`${items.map(
+        (item, index) => html`${
+          item.separatorBefore ? html`<div class="agcm-sep" role="separator"></div>` : nothing
         }<button
             type="button"
             role="menuitem"
             class="agcm-item"
             tabindex="-1"
+            data-index=${index}
             ?disabled=${item.disabled}
-            @click=${() => this.#run(item)}
+            aria-haspopup=${item.submenu ? 'menu' : nothing}
+            @click=${(event: Event) =>
+              this.#activate(item, menu, event.currentTarget as HTMLElement)}
           >
-            ${item.label}
+            ${item.label}${
+              item.submenu ? html`<span class="agcm-caret" aria-hidden="true">›</span>` : nothing
+            }
           </button>`
       )}`,
-      this.#menu
+      menu
     );
+    menu.addEventListener('keydown', this.#onMenuKeydown);
+    return menu;
   }
 
-  #buttons(): HTMLButtonElement[] {
-    return this.#menu
-      ? [...this.#menu.querySelectorAll<HTMLButtonElement>('.agcm-item:not([disabled])')]
-      : [];
+  #activate(item: ContextMenuItem<T>, menu: MenuEl<T>, button: HTMLElement): void {
+    if (item.disabled) return;
+    if (item.submenu?.length) this.#openSubmenu(item, menu, button);
+    else this.#run(item);
   }
 
-  #focusItem(index: number): void {
-    const buttons = this.#buttons();
-    if (!buttons.length) return;
-    const i = ((index % buttons.length) + buttons.length) % buttons.length;
-    buttons[i]?.focus();
+  #openSubmenu(item: ContextMenuItem<T>, parentMenu: MenuEl<T>, button: HTMLElement): void {
+    // Collapse anything stacked above the parent, then flyout to the button's side.
+    this.#closeFrom(this.#menus.indexOf(parentMenu) + 1);
+    const child = this.#spawnMenu(item.submenu ?? []);
+    child.__parentButton = button;
+    const rect = button.getBoundingClientRect();
+    const left =
+      rect.right + child.offsetWidth > window.innerWidth - 4
+        ? rect.left - child.offsetWidth
+        : rect.right;
+    const top = Math.min(rect.top, window.innerHeight - child.offsetHeight - 4);
+    child.style.left = `${Math.max(4, left)}px`;
+    child.style.top = `${Math.max(4, top)}px`;
+    this.#focusFirst(child);
+  }
+
+  #buttonsOf(menu: MenuEl<T>): HTMLButtonElement[] {
+    return [...menu.querySelectorAll<HTMLButtonElement>('.agcm-item:not([disabled])')];
+  }
+
+  #focusFirst(menu: MenuEl<T>): void {
+    this.#buttonsOf(menu)[0]?.focus();
   }
 
   #onMenuKeydown = (event: KeyboardEvent): void => {
-    const buttons = this.#buttons();
-    const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const menu = event.currentTarget as MenuEl<T>;
+    const buttons = this.#buttonsOf(menu);
+    const active = document.activeElement as HTMLButtonElement;
+    const current = buttons.indexOf(active);
+    const move = (delta: number) => {
+      event.preventDefault();
+      const i = (((current + delta) % buttons.length) + buttons.length) % buttons.length;
+      buttons[i]?.focus();
+    };
     switch (event.key) {
       case 'ArrowDown':
-        event.preventDefault();
-        this.#focusItem(current + 1);
+        move(1);
         break;
       case 'ArrowUp':
-        event.preventDefault();
-        this.#focusItem(current - 1);
+        move(-1);
         break;
       case 'Home':
         event.preventDefault();
-        this.#focusItem(0);
+        buttons[0]?.focus();
         break;
       case 'End':
         event.preventDefault();
-        this.#focusItem(buttons.length - 1);
+        buttons[buttons.length - 1]?.focus();
         break;
-      case 'Escape':
+      case 'ArrowRight': {
+        const item = menu.__items?.[Number(active?.dataset.index)];
+        if (item?.submenu?.length) {
+          event.preventDefault();
+          this.#openSubmenu(item, menu, active);
+        }
+        break;
+      }
+      case 'ArrowLeft':
+      case 'Escape': {
         event.preventDefault();
-        this.#close();
+        const index = this.#menus.indexOf(menu);
+        if (index > 0) {
+          const parentButton = menu.__parentButton;
+          this.#closeFrom(index);
+          parentButton?.focus();
+        } else {
+          this.#close();
+        }
         break;
+      }
       case 'Tab':
         this.#close();
         break;
@@ -301,7 +377,9 @@ export class ContextMenuController<T extends object> implements ReactiveControll
   };
 
   #onOutside = (event: Event): void => {
-    if (this.#menu && !event.composedPath().includes(this.#menu)) this.#close();
+    if (this.#menus.length && !this.#menus.some((m) => event.composedPath().includes(m))) {
+      this.#close();
+    }
   };
 
   #run(item: ContextMenuItem<T>): void {
@@ -311,13 +389,21 @@ export class ContextMenuController<T extends object> implements ReactiveControll
     if (target) item.run?.(target);
   }
 
+  /** Tear down menus from `index` (inclusive) to the top of the stack. */
+  #closeFrom(index: number): void {
+    while (this.#menus.length > index) {
+      const menu = this.#menus.pop()!;
+      menu.removeEventListener('keydown', this.#onMenuKeydown);
+      render(html``, menu);
+      menu.remove();
+    }
+  }
+
   #close = (): void => {
-    if (!this.#menu) return;
-    this.#menu.removeEventListener('keydown', this.#onMenuKeydown);
-    document.removeEventListener('pointerdown', this.#onOutside, true);
-    render(html``, this.#menu);
-    this.#menu.remove();
-    this.#menu = null;
+    if (this.#menus.length) {
+      this.#closeFrom(0);
+      document.removeEventListener('pointerdown', this.#onOutside, true);
+    }
     this.#target = null;
   };
 }

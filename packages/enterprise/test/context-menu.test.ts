@@ -1,6 +1,6 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
-import { ApexGridEnterprise, enterpriseModules } from '../src/index.js';
+import { ApexGridChart, ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 
 interface Row {
   name: string;
@@ -91,18 +91,21 @@ function menu() {
 }
 
 function item(label: string) {
-  return [...(menu()?.querySelectorAll<HTMLButtonElement>('.agcm-item') ?? [])].find(
-    (b) => b.textContent?.trim() === label
-  );
+  // Search across all open menus (root + any flyout submenu); strip the submenu caret.
+  return [
+    ...document.querySelectorAll<HTMLButtonElement>('.apex-grid-context-menu .agcm-item'),
+  ].find((b) => b.textContent?.replace('›', '').trim() === label);
 }
 
 describe('Context menu', () => {
   before(() => {
     ApexGridEnterprise.use(...enterpriseModules);
     ApexGridEnterprise.register();
+    ApexGridChart.register();
   });
   afterEach(() => {
     for (const m of document.querySelectorAll('.apex-grid-context-menu')) m.remove();
+    for (const c of document.querySelectorAll('apex-grid-chart')) c.remove();
     fixtureCleanup();
   });
 
@@ -172,5 +175,47 @@ describe('Context menu', () => {
     const event = rightClick(cellElement(grid, 0, 'name')!);
     expect(event.defaultPrevented).to.equal(false);
     expect(menu()).to.equal(null);
+  });
+
+  it('opens the Chart range submenu and charts the selection by type', async () => {
+    const grid = await mount();
+    grid.selectRange({ row: 0, column: 'name' }, { row: 2, column: 'value' });
+    rightClick(cellElement(grid, 0, 'value')!);
+    item('Chart range')!.click(); // opens the flyout
+    expect(item('Line')).to.exist;
+    item('Line')!.click();
+    const chart = document.body.querySelector('apex-grid-chart');
+    expect(chart).to.exist;
+    expect((chart as unknown as { open: boolean }).open).to.equal(true);
+    expect((chart as unknown as { type: string }).type).to.equal('line');
+    expect((chart as unknown as { source: string }).source).to.equal('selection');
+  });
+
+  it('apex-context-menu-opening can add items', async () => {
+    const grid = await mount();
+    grid.addEventListener('apex-context-menu-opening', (event) => {
+      (event as CustomEvent<{ items: { id: string; label: string }[] }>).detail.items.push({
+        id: 'custom',
+        label: 'Custom action',
+      });
+    });
+    rightClick(cellElement(grid, 0, 'name')!);
+    expect(item('Custom action')).to.exist;
+  });
+
+  it('apex-context-menu-opening is cancellable', async () => {
+    const grid = await mount();
+    grid.addEventListener('apex-context-menu-opening', (event) => event.preventDefault());
+    rightClick(cellElement(grid, 0, 'name')!);
+    expect(menu()).to.equal(null);
+  });
+
+  it('contextMenu config replaces the default items', async () => {
+    const grid = await mount();
+    grid.contextMenu = { items: [{ id: 'only', label: 'Only this', run: () => {} }] };
+    await grid.updateComplete;
+    rightClick(cellElement(grid, 0, 'name')!);
+    expect(item('Only this')).to.exist;
+    expect(item('Sort ascending')).to.equal(undefined);
   });
 });

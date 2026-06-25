@@ -15,7 +15,10 @@ export {
   recommendChartType,
 } from './features/chart.js';
 export {
+  CONTEXT_MENU_OPENING_EVENT,
+  type ContextMenuConfig,
   type ContextMenuItem,
+  type ContextMenuOpeningDetail,
   type ContextMenuTarget,
   contextMenuModule,
 } from './features/context-menu.js';
