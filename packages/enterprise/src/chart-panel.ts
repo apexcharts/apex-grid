@@ -311,7 +311,17 @@ export class ApexGridChart extends LitElement {
       this.#clearCrossFilter();
     } else {
       this.#activeCategory = value;
-      grid.filter({ key: categoryKey, condition: 'equals', searchTerm: value } as never);
+      // A self-contained equality operation (not an operand-name string) so it works regardless of
+      // the category column's declared type.
+      grid.filter({
+        key: categoryKey,
+        searchTerm: value,
+        condition: {
+          name: 'crossFilterEquals',
+          unary: false,
+          logic: (target: unknown) => String(target ?? '') === value,
+        },
+      } as never);
     }
   }
 

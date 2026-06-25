@@ -83,10 +83,10 @@
   <body>
     <h2>Integrated Charts <span class="badge">Enterprise</span></h2>
     <p class="subtitle">
-      Select cells in the grid and switch chart type in the panel below: <code>&lt;apex-grid-chart&gt;</code> live-redraws the selection with ApexCharts. The toolbar's <strong>Create chart</strong> button opens the same chart in a floating dialog.
+      <code>&lt;apex-grid-chart&gt;</code> charts the grid with ApexCharts and live-redraws. <strong>Right-click</strong> any cell for the context menu (sort, pin, hide, <em>Chart range</em>). With <strong>cross-filter</strong> on, <strong>click a bar</strong> to filter the grid to that category. The toolbar's <strong>Create chart</strong> button opens a floating dialog.
     </p>
     <apex-grid-enterprise id="grid"></apex-grid-enterprise>
-    <apex-grid-chart id="chart" mode="inline"></apex-grid-chart>
+    <apex-grid-chart id="chart" mode="inline" cross-filter></apex-grid-chart>
     <script type="module">
       const data = [
         { id: 1, name: 'Ava Morgan', department: 'Engineering', salary: 96000, bonus: 12000 },
@@ -115,11 +115,9 @@
 
       const money = (v) => `$${Math.round(Number(v)).toLocaleString('en-US')}`;
 
-      // The panel handles its own type gallery + live redraw; we just bind it to
-      // the grid and chart the current selection. Animations off so the e2e
-      // snapshot is stable.
+      // The panel handles its own type gallery + live redraw; we bind it to the
+      // grid in cross-filter mode. Animations off so the e2e snapshot is stable.
       chart.grid = grid;
-      chart.source = 'selection';
       chart.type = 'column';
       chart.apexOptions = {
         chart: { animations: { enabled: false }, toolbar: { show: false } },
@@ -127,9 +125,9 @@
       };
 
       await grid.updateComplete;
-      // Pre-select Name + Salary + Bonus for the first six people so the chart is
-      // populated on load. The panel live-updates as the user selects other cells.
-      grid.selectRange({ row: 0, column: 'name' }, { row: 5, column: 'bonus' });
+      // Select Department + Salary so the cross-filter chart groups salary by
+      // department (clicking a bar filters the grid to that department).
+      grid.selectRange({ row: 0, column: 'department' }, { row: 11, column: 'salary' });
     </script>
   </body>
 </html>
