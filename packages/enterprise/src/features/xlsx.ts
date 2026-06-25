@@ -6,8 +6,7 @@ import type { ExportCellValue, ExportOptions } from 'apex-grid/internal';
 // keep the bundle footprint of the export feature near zero.
 //
 // Moved out of the community `apex-grid` package in v3: Excel export is an
-// enterprise feature (CSV remains free), matching the AG Grid community/
-// enterprise split.
+// enterprise feature, while CSV export stays free in the community package.
 
 const encoder = new TextEncoder();
 

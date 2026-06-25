@@ -177,7 +177,7 @@
 // By default the chrome is neutral grayscale and `--ag-brand` only shows on
 // interactive state (selection, focus, active sort). This variant mixes a
 // little brand into the surfaces/gridlines so the grid wears its brand even
-// at rest, AG-Grid-Alpine style. Because every value is `color-mix(... var
+// at rest, a brand-tinted variant. Because every value is `color-mix(... var
 // (--ag-brand) ...)`, it follows whatever brand is in effect (including the
 // igniteui auto-tint) with no per-brand CSS.
 //

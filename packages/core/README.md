@@ -18,7 +18,7 @@ A Lit-based, framework-agnostic web component data grid. Ships as a single custo
 - **Inline editing** — cell or row mode, click or double-click trigger, per-column opt-in.
 - **Row selection** — single or multiple, optional checkbox column, full programmatic API.
 - **Row expansion (master-detail)** — opt-in chevron column with a `detailTemplate`.
-- **Tree data (nested rows)** — AG Grid–style `getDataPath` pattern over a flat array.
+- **Tree data (nested rows)** — `getDataPath` pattern over a flat array.
 - **CSV export** — programmatic method plus an optional toolbar dropdown. (Excel/XLSX export is in `apex-grid-enterprise`.)
 - **Toolbar** — opt-in `<apex-grid-toolbar>` with debounced quick filter and export menu.
 - **Templating** — slot-based templates for cells, headers, editors, and detail panels.
@@ -314,7 +314,7 @@ Events: `rowExpanding` (cancellable), `rowExpanded`.
 
 ### Tree data (nested rows)
 
-The data array stays **flat**. The grid derives the hierarchy from a `getDataPath(row)` callback that returns the path from root to that row — AG Grid's "tree data" pattern.
+The data array stays **flat**. The grid derives the hierarchy from a `getDataPath(row)` callback that returns the path from root to that row — the flat-array "tree data" pattern.
 
 ```ts
 type Person = { id: number; name: string; title: string; path: string[] };

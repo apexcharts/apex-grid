@@ -521,8 +521,8 @@ export interface ApexDetailContext<T extends object> {
  *
  * @remarks
  * Tree mode renders hierarchical data as nested rows that share the same
- * column layout — collapsible parents with indented children, AG Grid's
- * "tree data" pattern. The data array stays flat; the grid derives the
+ * column layout — collapsible parents with indented children, the
+ * flat-array "tree data" pattern. The data array stays flat; the grid derives the
  * hierarchy from {@link getDataPath} at runtime.
  *
  * This is distinct from {@link GridExpansionConfiguration} (master-detail),
