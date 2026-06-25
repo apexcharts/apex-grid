@@ -1,5 +1,6 @@
 import type { GridFeatureModule } from 'apex-grid/internal';
 import { aggregationModule } from './features/aggregation.js';
+import { contextMenuModule } from './features/context-menu.js';
 import { groupingModule } from './features/grouping.js';
 import { pivotModule } from './features/pivot.js';
 import { rangeSelectionModule } from './features/range-selection.js';
@@ -16,4 +17,5 @@ export const enterpriseModules: ReadonlyArray<GridFeatureModule> = [
   groupingModule,
   pivotModule,
   rangeSelectionModule,
+  contextMenuModule,
 ];

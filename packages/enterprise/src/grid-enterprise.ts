@@ -30,6 +30,7 @@ import {
   type RenderChartOptions,
   renderApexChart,
 } from './features/chart.js';
+import { CONTEXT_MENU_MODULE_ID, type ContextMenuController } from './features/context-menu.js';
 import {
   GROUPING_MODULE_ID,
   type GroupingController,
@@ -194,6 +195,13 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   public rangeSelection = true;
 
   /**
+   * Right-click context menu on cells and headers (sort / pin / hide / copy, plus "Chart range").
+   * Enabled by default; set `context-menu="false"` (or the property) to turn it off.
+   */
+  @property({ type: Boolean, attribute: 'context-menu' })
+  public contextMenu = true;
+
+  /**
    * Declarative master/detail: each expanded master row renders a nested grid
    * of related rows. Setting this configures the grid's {@link expansion}
    * automatically (creating, caching, and populating the child grids), so you
@@ -274,9 +282,18 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.#syncPivot(changed);
     this.#syncGrouping(changed);
     this.#syncRange(changed);
+    this.#syncContextMenu(changed);
     this.#syncMasterDetail(changed);
     this.#syncInfiniteRowModel(changed);
     super.willUpdate(changed);
+  }
+
+  /** Mirror the `contextMenu` toggle onto the controller. */
+  #syncContextMenu(changed: PropertyValues): void {
+    if (!changed.has('contextMenu')) return;
+    const controller =
+      this.stateController.module<ContextMenuController<T>>(CONTEXT_MENU_MODULE_ID);
+    if (controller) controller.enabled = this.contextMenu;
   }
 
   /** Create/tear down the infinite row-model manager when the config changes. */

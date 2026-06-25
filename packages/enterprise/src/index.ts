@@ -14,6 +14,11 @@ export {
   type RenderChartOptions,
   recommendChartType,
 } from './features/chart.js';
+export {
+  type ContextMenuItem,
+  type ContextMenuTarget,
+  contextMenuModule,
+} from './features/context-menu.js';
 export type { GroupRowMeta } from './features/grouping.js';
 export { groupingModule } from './features/grouping.js';
 export type {

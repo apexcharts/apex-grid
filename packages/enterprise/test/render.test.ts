@@ -80,11 +80,12 @@ describe('ApexGridEnterprise', () => {
       { parentNode: sizedParent() }
     );
     const { modules } = stateOf(grid);
-    expect(modules.size).to.equal(4);
+    expect(modules.size).to.equal(5);
     expect(modules.has('aggregation')).to.be.true;
     expect(modules.has('grouping')).to.be.true;
     expect(modules.has('pivot')).to.be.true;
     expect(modules.has('range-selection')).to.be.true;
+    expect(modules.has('context-menu')).to.be.true;
   });
 
   it('fires apex-view-changed when the view (grouping) changes', async () => {
