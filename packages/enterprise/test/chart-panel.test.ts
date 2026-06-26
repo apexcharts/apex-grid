@@ -146,6 +146,35 @@ describe('ApexGridChart panel', () => {
     expect(panel.open).to.equal(false);
     expect(closed).to.equal(1);
   });
+
+  it('exposes role="dialog" and labels the panel in dialog mode', async () => {
+    const grid = await mountGrid();
+    const panel = await fixture<ApexGridChart>(
+      html`<apex-grid-chart heading="Revenue" .grid=${grid as never}></apex-grid-chart>`
+    );
+    await panel.updateComplete;
+    const container = panel.querySelector('[part="panel"]')!;
+    expect(container.getAttribute('role')).to.equal('dialog');
+    expect(container.getAttribute('aria-label')).to.equal('Revenue');
+  });
+
+  it('Escape closes an open dialog panel', async () => {
+    const grid = await mountGrid();
+    const panel = await fixture<ApexGridChart>(
+      html`<apex-grid-chart .grid=${grid as never}></apex-grid-chart>`
+    );
+    let closed = 0;
+    panel.addEventListener('apex-chart-closed', () => {
+      closed += 1;
+    });
+    panel.show();
+    await panel.updateComplete;
+    panel
+      .querySelector('[part="panel"]')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(panel.open).to.equal(false);
+    expect(closed).to.equal(1);
+  });
 });
 
 describe('ApexGridEnterprise "Create chart" toolbar action', () => {

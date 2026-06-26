@@ -143,6 +143,9 @@ export class ApexGridChart extends LitElement {
   /** Re-entrancy guard for {@link refresh} + a trailing-rerun flag (see the method). */
   #refreshing = false;
   #refreshPending = false;
+  /** Refits the chart when its container resizes (dialog resize handle / flex layout changes). */
+  #resizeObserver: ResizeObserver | null = null;
+  #lastWidth = 0;
   #boundGrid: HTMLElement | null = null;
   /** Cross-filter: the column key being filtered, and the active category value (or null). */
   #crossFilterKey: string | null = null;
@@ -154,6 +157,8 @@ export class ApexGridChart extends LitElement {
     this.#detach();
     this.#clearCrossFilter();
     this.#destroyChart();
+    this.#resizeObserver?.disconnect();
+    this.#resizeObserver = null;
     if (this.#rafHandle) cancelAnimationFrame(this.#rafHandle);
     this.#rafHandle = 0;
     super.disconnectedCallback();
@@ -180,10 +185,13 @@ export class ApexGridChart extends LitElement {
 
   // --- public API ----------------------------------------------------------
 
-  /** Open the dialog panel. */
+  /** Open the dialog panel (and move focus into it so Escape / tabbing work). */
   public show(): void {
     this.open = true;
     this.#scheduleRefresh();
+    void this.updateComplete.then(() => {
+      this.renderRoot.querySelector<HTMLElement>('[part="close"]')?.focus();
+    });
   }
 
   /** Close the dialog panel and notify (e.g. so a launcher can remove it). */
@@ -191,6 +199,14 @@ export class ApexGridChart extends LitElement {
     this.open = false;
     this.dispatchEvent(new CustomEvent('apex-chart-closed', { bubbles: true, composed: true }));
   }
+
+  /** Escape dismisses an open dialog panel. */
+  #onKeydown = (event: KeyboardEvent): void => {
+    if (this.mode === 'dialog' && this.open && event.key === 'Escape') {
+      event.stopPropagation();
+      this.close();
+    }
+  };
 
   /** The live ApexCharts instance, or `null`. */
   public getChart(): ApexCharts | null {
@@ -248,6 +264,7 @@ export class ApexGridChart extends LitElement {
       this.#chart = await renderApexChart(canvas, model, options);
     }
     this.#renderedType = resolvedType;
+    this.#ensureResizeObserver();
     this.dispatchEvent(
       new CustomEvent('apex-chart-created', {
         detail: { chart: this.#chart, type: this.type },
@@ -255,6 +272,25 @@ export class ApexGridChart extends LitElement {
         composed: true,
       })
     );
+  }
+
+  /**
+   * Observe the panel so the chart refits when its container changes width — the dialog's resize
+   * handle, or a flex/grid layout shift. (ApexCharts already handles window resizes itself.) Width
+   * is the only trigger, so re-rendering the chart can't feed back into another resize.
+   */
+  #ensureResizeObserver(): void {
+    if (this.#resizeObserver || typeof ResizeObserver === 'undefined') return;
+    const panel = this.renderRoot.querySelector<HTMLElement>('[part="panel"]');
+    if (!panel) return;
+    this.#lastWidth = panel.clientWidth;
+    this.#resizeObserver = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? 0;
+      if (Math.abs(width - this.#lastWidth) < 1) return;
+      this.#lastWidth = width;
+      if (this.#chart) this.#scheduleRefresh();
+    });
+    this.#resizeObserver.observe(panel);
   }
 
   // --- internals -----------------------------------------------------------
@@ -524,7 +560,12 @@ export class ApexGridChart extends LitElement {
   protected override render() {
     const empty = !this.hasModel;
     return html`${this.#renderStyle()}
-      <div part="panel">
+      <div
+        part="panel"
+        role=${this.mode === 'dialog' ? 'dialog' : nothing}
+        aria-label=${this.mode === 'dialog' ? this.heading : nothing}
+        @keydown=${this.#onKeydown}
+      >
         ${
           this.mode === 'dialog'
             ? html`<div

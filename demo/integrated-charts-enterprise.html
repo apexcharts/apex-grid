@@ -141,12 +141,17 @@
       // Format the VALUE axis as money. ApexCharts only ever hands real numbers to
       // the value axis; the category axis gets the labels (e.g. "Sales") and would
       // turn into "$NaN" if money-formatted. Horizontal bars swap the axes, so the
-      // value axis is the x-axis for `bar` and the y-axis for everything else.
+      // value axis is the x-axis for `bar` and the y-axis for everything else. We
+      // also money-format the on-bar/point data labels for the cartesian types,
+      // where the label is the value (pie/donut data labels are percentages, and
+      // "auto" may resolve to either, so both are left to ApexCharts' defaults).
+      const valueLabelTypes = new Set(['column', 'bar', 'line', 'area', 'combo', 'radar']);
       const applyAxisFormat = () => {
         const valueAxis = chart.type === 'bar' ? 'xaxis' : 'yaxis';
         chart.apexOptions = {
           chart: { animations: { enabled: false }, toolbar: { show: false } },
           [valueAxis]: { labels: { formatter: money } },
+          ...(valueLabelTypes.has(chart.type) ? { dataLabels: { formatter: money } } : {}),
         };
       };
       applyAxisFormat();

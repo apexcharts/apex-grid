@@ -26,7 +26,6 @@ export type ChartType =
   | 'donut'
   | 'scatter'
   | 'radar'
-  | 'heatmap'
   | 'combo';
 
 /** Circular types take ApexCharts' `{ series: number[], labels }` shape, not the cartesian one. */
@@ -118,12 +117,17 @@ export function chartModelToApexOptions(
       : model.series.map((s) => ({ name: s.name, data: s.data }));
 
   const xaxis = { categories: model.categories, ...userApex.xaxis };
+  // 'column' is the default (vertical); 'bar' flips to horizontal. Deep-merge so a caller's
+  // `plotOptions` (e.g. bar.borderRadius) does not drop the horizontal flag.
+  const plotOptions =
+    type === 'bar'
+      ? { ...userApex.plotOptions, bar: { horizontal: true, ...userApex.plotOptions?.bar } }
+      : userApex.plotOptions;
   const apexOptions: ApexOptions = {
     series,
-    // 'column' is the default (vertical); 'bar' flips to horizontal.
-    ...(type === 'bar' ? { plotOptions: { bar: { horizontal: true } } } : {}),
     ...title,
     ...userApex,
+    ...(plotOptions ? { plotOptions } : {}),
     chart,
     xaxis,
   };

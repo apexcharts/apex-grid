@@ -124,6 +124,15 @@ describe('integrated charts — chartModelToApexOptions (pure transform)', () =>
     expect(opts.xaxis?.labels?.formatter).to.equal(formatter);
   });
 
+  it('keeps bar.horizontal when the caller sets other plotOptions.bar options', () => {
+    const opts = chartModelToApexOptions(MODEL, {
+      type: 'bar',
+      apexOptions: { plotOptions: { bar: { borderRadius: 6 } } },
+    });
+    expect(opts.plotOptions?.bar?.horizontal).to.equal(true);
+    expect(opts.plotOptions?.bar?.borderRadius).to.equal(6);
+  });
+
   it("resolves type: 'auto' via the recommend heuristic", () => {
     // 1 series, 3 categories → pie
     const single: ChartModel = { categories: ['A', 'B', 'C'], series: [MODEL.series[0]] };
