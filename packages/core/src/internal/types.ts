@@ -651,6 +651,17 @@ export interface EditingHistoryConfiguration {
 }
 
 /**
+ * Grid-level row-pinning configuration.
+ */
+export interface GridRowPinningConfiguration {
+  /**
+   * Whether rows can be pinned to a sticky top / bottom band via
+   * {@link ApexGrid.pinRow}. Disabled when omitted.
+   */
+  enabled: boolean;
+}
+
+/**
  * Grid-level editing configuration.
  */
 export interface GridEditingConfiguration {

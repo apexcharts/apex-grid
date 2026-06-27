@@ -22,6 +22,7 @@ import { NavigationController } from './navigation.js';
 import { PaginationController } from './pagination.js';
 import { ReorderController } from './reorder.js';
 import { ResizeController } from './resize.js';
+import { RowPinController } from './row-pin.js';
 import { SelectionController } from './selection.js';
 import { SortController } from './sort.js';
 import { TreeController } from './tree.js';
@@ -38,6 +39,7 @@ export class StateController<T extends object> implements ReactiveController {
   public selection!: SelectionController<T>;
   public expansion!: ExpansionController<T>;
   public tree!: TreeController<T>;
+  public rowPin!: RowPinController<T>;
 
   /**
    * Optional feature controllers contributed by {@link GridFeatureModule}s,
@@ -129,6 +131,7 @@ export class StateController<T extends object> implements ReactiveController {
     this.selection = new SelectionController(this.host);
     this.expansion = new ExpansionController(this.host);
     this.tree = new TreeController(this.host);
+    this.rowPin = new RowPinController(this.host);
 
     for (const module of this.extraModules) {
       if (this.modules.has(module.id)) continue;

@@ -50,11 +50,38 @@ $grid-resize-line-color: var(--igx-grid-resize-line-color, var(--grid-resize-lin
         [toolbar-row] max-content
         [header-row] max-content
         [filter-row] max-content
+        [pinned-top-row] max-content
         [virtualized-container] auto
+        [pinned-bottom-row] max-content
         [paginator-row] max-content;
 
     --scrollbar-offset: 0;
     --z-index-base: 1;
+}
+
+// --- Row pinning (sticky top / bottom bands) -------------------------------
+// Pinned rows are lifted out of the virtualized body (see RowPinController) and
+// rendered here. The band is sticky on the block axis only, so it parks below
+// the header/filter (top) or above the paginator (bottom) during vertical
+// scroll while still moving with the body on horizontal scroll. Not rendered
+// until a row is pinned.
+[part~='pinned-rows'] {
+    position: sticky;
+    z-index: calc(var(--z-index-base) + 3);
+    background: $content-background;
+    color: $content-text-color;
+}
+
+[part~='pinned-top'] {
+    grid-row: pinned-top-row;
+    inset-block-start: var(--apex-row-top-pinned, 0);
+    box-shadow: 0 1px 0 0 var(--ag-hairline);
+}
+
+[part~='pinned-bottom'] {
+    grid-row: pinned-bottom-row;
+    inset-block-end: var(--apex-row-bottom-pinned, 0);
+    box-shadow: 0 -1px 0 0 var(--ag-hairline);
 }
 
 apex-virtualizer {

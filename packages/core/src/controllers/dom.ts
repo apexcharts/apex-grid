@@ -1,7 +1,8 @@
 import type { RenderItemFunction } from '@lit-labs/virtualizer/virtualize.js';
 import { html, type ReactiveController } from 'lit';
 import { type StyleInfo, styleMap } from 'lit/directives/style-map.js';
-import type { ColumnConfiguration, GridHost, Keys } from '../internal/types.js';
+import { SENTINEL_NODE } from '../internal/constants.js';
+import type { ActiveNode, ColumnConfiguration, GridHost, Keys } from '../internal/types.js';
 import { applyColumnWidths, getDisplayColumns } from '../internal/utils.js';
 import type { StateController } from './state.js';
 
@@ -48,14 +49,20 @@ export class GridDOMController<T extends object> implements ReactiveController {
    */
   public pinOffsets = new Map<Keys<T>, number>();
 
+  /**
+   * Number of chrome rows above the body for `aria-rowindex`: header is always
+   * row 1; a filter row (when any column configures a filter) sits at row 2.
+   */
+  protected get headerRowCount(): number {
+    return this.host.columns.some((column) => column.filter) ? 2 : 1;
+  }
+
   public rowRenderer: RenderItemFunction<T> = (data: T, index: number) => {
     const editingCell = this.state.editing.activeCell;
     const editingKey = editingCell?.rowIndex === index ? editingCell.columnKey : null;
-    // aria-rowindex offset: header row is always row 1; filter row (when
-    // any column has a filter configured) sits at row 2; body rows start
-    // immediately after.
-    const hasFilter = this.host.columns.some((column) => column.filter);
-    const ariaRowOffset = hasFilter ? 2 : 1;
+    // Body rows follow the chrome rows and any pinned-top rows in the
+    // aria-rowindex sequence.
+    const ariaRowOffset = this.headerRowCount + this.state.rowPin.pinnedRows.top.length;
     return html`
       <apex-grid-row
         part="row"
@@ -73,6 +80,34 @@ export class GridDOMController<T extends object> implements ReactiveController {
       </apex-grid-row>
     `;
   };
+
+  /**
+   * Renders a single pinned row for a sticky band. Reuses {@link ApexGridRow}
+   * so selection / expansion / decoration all work by data reference, but pins a
+   * sentinel {@link ActiveNode} (pinned rows are presentation + selection
+   * surfaces in v1, never the active/edited cell) and renders no editor.
+   *
+   * @param localIndex - position within the band (drives the active sentinel id).
+   * @param ariaRowOffset - so `aria-rowindex` continues the unified sequence.
+   */
+  public pinnedRowRenderer(data: T, localIndex: number, ariaRowOffset: number) {
+    return html`
+      <apex-grid-row
+        part="row pinned-row"
+        style=${styleMap(this.columnSizes)}
+        .index=${localIndex}
+        .activeNode=${SENTINEL_NODE as ActiveNode<T>}
+        .data=${data}
+        .columns=${this.displayColumns}
+        .pinOffsets=${this.pinOffsets}
+        .editingKey=${null}
+        .ariaRowOffset=${ariaRowOffset}
+        .decorationVersion=${this.state.decorationVersion}
+        .validationVersion=${this.state.editing.validationVersion}
+      >
+      </apex-grid-row>
+    `;
+  }
 
   public async hostConnected() {
     this.setGridColumnSizes();
@@ -218,27 +253,36 @@ export class GridDOMController<T extends object> implements ReactiveController {
 
   #lastHeaderTop = -1;
   #lastFilterTop = -1;
+  #lastPinnedTop = -1;
+  #lastPinnedBottom = -1;
   #lastHostWidth = -1;
   #hostWidthObserver: ResizeObserver | null = null;
 
   /**
-   * Writes the cumulative height of the sticky top rows into CSS custom
-   * properties used by the header/filter rows for their `inset-block-start`
-   * offsets. The toolbar is always at `top: 0`; the header sits below it
-   * (`--apex-row-top-header`) and the filter sits below the header
-   * (`--apex-row-top-filter`). Writes are skipped when the values haven't
-   * changed so the ResizeObserver feedback loop terminates.
+   * Writes the cumulative heights of the sticky chrome rows into CSS custom
+   * properties used for their `inset-block-start` / `inset-block-end` offsets.
+   * The toolbar is at `top: 0`; the header sits below it
+   * (`--apex-row-top-header`), the filter below the header
+   * (`--apex-row-top-filter`), and the pinned-top band below the filter
+   * (`--apex-row-top-pinned`). The pinned-bottom band sticks above the
+   * paginator (`--apex-row-bottom-pinned`). Writes are skipped when values are
+   * unchanged so the ResizeObserver feedback loop terminates.
    */
   public recomputeStickyRowOffsets(): void {
     const root = (this.host as HTMLElement).shadowRoot;
     if (!root) return;
     const toolbar = root.querySelector('apex-grid-toolbar') as HTMLElement | null;
     const header = root.querySelector('apex-grid-header-row') as HTMLElement | null;
+    const filter = root.querySelector('apex-filter-row') as HTMLElement | null;
+    const paginator = root.querySelector('apex-grid-paginator') as HTMLElement | null;
 
     const toolbarH = toolbar?.offsetHeight ?? 0;
     const headerH = header?.offsetHeight ?? 0;
+    const filterH = filter?.offsetHeight ?? 0;
+    const paginatorH = paginator?.offsetHeight ?? 0;
     const headerTop = toolbarH;
     const filterTop = toolbarH + headerH;
+    const pinnedTop = toolbarH + headerH + filterH;
 
     if (headerTop !== this.#lastHeaderTop) {
       this.host.style.setProperty('--apex-row-top-header', `${headerTop}px`);
@@ -248,6 +292,14 @@ export class GridDOMController<T extends object> implements ReactiveController {
       this.host.style.setProperty('--apex-row-top-filter', `${filterTop}px`);
       this.#lastFilterTop = filterTop;
     }
+    if (pinnedTop !== this.#lastPinnedTop) {
+      this.host.style.setProperty('--apex-row-top-pinned', `${pinnedTop}px`);
+      this.#lastPinnedTop = pinnedTop;
+    }
+    if (paginatorH !== this.#lastPinnedBottom) {
+      this.host.style.setProperty('--apex-row-bottom-pinned', `${paginatorH}px`);
+      this.#lastPinnedBottom = paginatorH;
+    }
   }
 
   protected observeStickyRows(): void {
@@ -255,6 +307,8 @@ export class GridDOMController<T extends object> implements ReactiveController {
     if (!root) return;
     const toolbar = root.querySelector('apex-grid-toolbar') as HTMLElement | null;
     const header = root.querySelector('apex-grid-header-row') as HTMLElement | null;
+    const filter = root.querySelector('apex-filter-row') as HTMLElement | null;
+    const paginator = root.querySelector('apex-grid-paginator') as HTMLElement | null;
 
     if (!this.#stickyRowObserver) {
       this.#stickyRowObserver = new ResizeObserver(() => {
@@ -262,7 +316,9 @@ export class GridDOMController<T extends object> implements ReactiveController {
       });
     }
 
-    const next = new Set<Element>([toolbar, header].filter((el): el is HTMLElement => !!el));
+    const next = new Set<Element>(
+      [toolbar, header, filter, paginator].filter((el): el is HTMLElement => !!el)
+    );
     for (const element of this.#observedStickyRows) {
       if (!next.has(element)) this.#stickyRowObserver.unobserve(element);
     }

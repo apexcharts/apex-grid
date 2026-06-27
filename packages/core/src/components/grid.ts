@@ -4,6 +4,7 @@ import { eventOptions, property, query, queryAll, state } from 'lit/decorators.j
 import { styleMap } from 'lit/directives/style-map.js';
 import { DataOperationsController } from '../controllers/data-operation.js';
 import { GridDOMController } from '../controllers/dom.js';
+import type { RowPinPosition } from '../controllers/row-pin.js';
 import { gridStateContext, StateController } from '../controllers/state.js';
 import { DEFAULT_COLUMN_CONFIG, PIPELINE } from '../internal/constants.js';
 import {
@@ -34,6 +35,7 @@ import type {
   DataPipelineConfiguration,
   GridEditingConfiguration,
   GridExpansionConfiguration,
+  GridRowPinningConfiguration,
   GridSelectionConfiguration,
   GridSortConfiguration,
   GridTreeConfiguration,
@@ -233,6 +235,20 @@ export interface ApexCellValidationFailedEvent<T extends object> {
    * The collected validator error messages.
    */
   errors: readonly string[];
+}
+
+/**
+ * Event payload for the cancellable `rowPinning` event and the follow-up
+ * `rowPinned` event.
+ */
+export interface ApexRowPinningEvent<T extends object> {
+  /** The row being pinned or unpinned (a live reference into {@link ApexGrid.data}). */
+  row: T;
+  /**
+   * The target band: `'top'` / `'bottom'` when pinning, or `null` when
+   * unpinning.
+   */
+  position: RowPinPosition | null;
 }
 
 /**
@@ -574,6 +590,21 @@ export interface ApexGridEventMap<T extends object> {
    * @event
    */
   historyChanged: CustomEvent<ApexHistoryChangedEvent>;
+  /**
+   * Emitted before a row is pinned, moved between bands, or unpinned.
+   *
+   * @remarks
+   * Cancellable — `preventDefault()` aborts the change.
+   *
+   * @event
+   */
+  rowPinning: CustomEvent<ApexRowPinningEvent<T>>;
+  /**
+   * Emitted after a row's pin state has changed.
+   *
+   * @event
+   */
+  rowPinned: CustomEvent<ApexRowPinningEvent<T>>;
   /**
    * Emitted when a row enters edit mode (row edit mode only).
    *
@@ -1036,6 +1067,22 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   public expansion?: GridExpansionConfiguration<T>;
 
   /**
+   * Row-pinning configuration.
+   *
+   * @remarks
+   * Disabled by default. Set `enabled: true` to allow pinning rows to a sticky
+   * top / bottom band via {@link ApexGrid.pinRow}.
+   *
+   * @example
+   * ```ts
+   * grid.rowPinning = { enabled: true };
+   * grid.pinRow(grid.data[0], 'top');
+   * ```
+   */
+  @property({ attribute: false })
+  public rowPinning?: GridRowPinningConfiguration;
+
+  /**
    * The currently expanded rows, in insertion order.
    *
    * @remarks
@@ -1251,12 +1298,21 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * enabled (`'local'` mode) this is the active page slice.
    */
   public get pageItems(): ReadonlyArray<T> {
-    if (!this.stateController.pagination.enabled) return this.dataState;
-    if (this.pagination?.mode === 'remote') return this.dataState;
+    // Pinned rows are lifted out of the scrollable body and rendered in their
+    // own sticky bands, so they're excluded here to avoid duplication. The
+    // exclusion happens before pagination so a pinned row never consumes a body
+    // page slot.
+    const rowPin = this.stateController.rowPin;
+    const base =
+      rowPin?.enabled && rowPin.hasPinnedRows
+        ? this.dataState.filter((row) => !rowPin.isPinned(row))
+        : this.dataState;
+    if (!this.stateController.pagination.enabled) return base;
+    if (this.pagination?.mode === 'remote') return base;
     const { page, pageSize } = this.stateController.pagination;
-    if (!pageSize) return this.dataState;
+    if (!pageSize) return base;
     const start = page * pageSize;
-    return this.dataState.slice(start, start + pageSize);
+    return base.slice(start, start + pageSize);
   }
 
   /**
@@ -1359,7 +1415,11 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     this.setAttribute('role', this.stateController.tree.enabled ? 'treegrid' : 'grid');
     const hasFilter = this.columns.some((column) => column.filter);
     const headerRows = hasFilter ? 2 : 1;
-    this.setAttribute('aria-rowcount', String(headerRows + this.pageItems.length));
+    const pinned = this.stateController.rowPin.pinnedRows;
+    this.setAttribute(
+      'aria-rowcount',
+      String(headerRows + pinned.top.length + this.pageItems.length + pinned.bottom.length)
+    );
     const visibleColumns = this.columns.filter((column) => !column.hidden).length;
     const extras =
       (this.stateController.selection.showCheckboxColumn ? 1 : 0) +
@@ -1808,6 +1868,38 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
+   * Pins `row` to a sticky top or bottom band, lifting it out of the scrolling
+   * body. Moves it between bands when already pinned elsewhere.
+   *
+   * @remarks
+   * Requires `rowPinning.enabled`. Goes through the cancellable `rowPinning`
+   * event and emits `rowPinned` on success. Identity is by reference, so pass
+   * the same object held in {@link ApexGrid.data}.
+   *
+   * @returns `true` when applied, `false` when disabled or cancelled.
+   */
+  public pinRow(row: T, position: RowPinPosition = 'top'): boolean {
+    return this.stateController.rowPin.pinRow(row, position);
+  }
+
+  /**
+   * Unpins `row` from whichever band holds it, returning it to the scrolling
+   * body.
+   *
+   * @returns `true` when applied (or already unpinned), `false` when cancelled.
+   */
+  public unpinRow(row: T): boolean {
+    return this.stateController.rowPin.unpinRow(row);
+  }
+
+  /**
+   * The currently pinned rows per band, in the order they were pinned.
+   */
+  public get pinnedRows(): { top: T[]; bottom: T[] } {
+    return this.stateController.rowPin.pinnedRows;
+  }
+
+  /**
    * Exports the current grid contents as a CSV string and (in a browser
    * context) triggers a download.
    *
@@ -2008,6 +2100,34 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     `;
   }
 
+  /** Number of chrome rows above the body (header + optional filter row). */
+  protected get headerRowCount(): number {
+    return this.columns.some((column) => column.filter) ? 2 : 1;
+  }
+
+  protected renderPinnedTop() {
+    const rowPin = this.stateController.rowPin;
+    if (!rowPin.enabled) return nothing;
+    const rows = rowPin.pinnedRows.top;
+    if (rows.length === 0) return nothing;
+    return html`<div part="pinned-rows pinned-top">
+      ${rows.map((data, i) => this.DOM.pinnedRowRenderer(data, i, this.headerRowCount))}
+    </div>`;
+  }
+
+  protected renderPinnedBottom() {
+    const rowPin = this.stateController.rowPin;
+    if (!rowPin.enabled) return nothing;
+    const rows = rowPin.pinnedRows.bottom;
+    if (rows.length === 0) return nothing;
+    // Pinned-bottom rows follow the chrome rows, the pinned-top band, and the
+    // body in the aria-rowindex sequence.
+    const offset = this.headerRowCount + rowPin.pinnedRows.top.length + this.pageItems.length;
+    return html`<div part="pinned-rows pinned-bottom">
+      ${rows.map((data, i) => this.DOM.pinnedRowRenderer(data, i, offset))}
+    </div>`;
+  }
+
   protected renderFilterRow() {
     return this.columns.some((column) => column.filter)
       ? html`<apex-filter-row style=${styleMap(this.DOM.columnSizes)}></apex-filter-row>`
@@ -2064,7 +2184,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       ${this.renderToolbar()}
       ${this.renderHeaderRow()}
       ${this.renderFilterRow()}
+      ${this.renderPinnedTop()}
       ${this.renderBody()}
+      ${this.renderPinnedBottom()}
       ${this.renderPaginator()}
       ${this.renderLiveRegion()}
     `;
