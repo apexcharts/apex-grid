@@ -393,6 +393,35 @@ describe('Range selection', () => {
     expect(failed).to.deep.equal(['amount=99']);
   });
 
+  it('undoes a multi-cell paste as a single step', async () => {
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise
+        .data=${data.map((row) => ({ ...row }))}
+        .columns=${columns}
+        .editing=${{ history: { enabled: true } }}
+      ></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    await layoutComplete(grid);
+
+    grid.selectRange({ row: 0, column: 'amount' });
+    grid.pasteText('5\t6\n7\t8'); // 4 cells across amount/score for rows 0-1
+    await grid.updateComplete;
+    expect(cellValue(grid, 0, 'amount')).to.equal(5);
+    expect(cellValue(grid, 1, 'score')).to.equal(8);
+    expect(grid.canUndo).to.be.true;
+
+    grid.undo();
+    await grid.updateComplete;
+    // One undo reverts the entire pasted block.
+    expect(cellValue(grid, 0, 'amount')).to.equal(10);
+    expect(cellValue(grid, 0, 'score')).to.equal(100);
+    expect(cellValue(grid, 1, 'amount')).to.equal(20);
+    expect(cellValue(grid, 1, 'score')).to.equal(200);
+    expect(grid.canUndo).to.be.false;
+    expect(grid.canRedo).to.be.true;
+  });
+
   // --- fill handle --------------------------------------------------------
 
   it('fill copies a single source cell down the column', async () => {

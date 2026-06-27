@@ -141,6 +141,22 @@ export class NavigationController<T extends object> implements ReactiveControlle
   }
 
   public navigate(event: KeyboardEvent) {
+    // Undo / redo: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl/Cmd+Y. Only fires when the
+    // grid body (not an open editor) has focus, so a text editor's native undo
+    // is never hijacked.
+    if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+      const key = event.key.toLowerCase();
+      if (key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        this.host.undo();
+        return;
+      }
+      if ((key === 'z' && event.shiftKey) || key === 'y') {
+        event.preventDefault();
+        this.host.redo();
+        return;
+      }
+    }
     if (this.handlers.has(event.key)) {
       event.preventDefault();
       this.handlers.get(event.key)!.call(this);

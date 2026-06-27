@@ -236,6 +236,16 @@ export interface ApexCellValidationFailedEvent<T extends object> {
 }
 
 /**
+ * Event payload for the `historyChanged` event.
+ */
+export interface ApexHistoryChangedEvent {
+  /** Whether there is at least one command to undo. */
+  canUndo: boolean;
+  /** Whether there is at least one command to redo. */
+  canRedo: boolean;
+}
+
+/**
  * Event payload for the `rowEditStarted` event.
  */
 export interface ApexRowEditStartedEvent {
@@ -556,6 +566,14 @@ export interface ApexGridEventMap<T extends object> {
    * @event
    */
   cellValidationFailed: CustomEvent<ApexCellValidationFailedEvent<T>>;
+  /**
+   * Emitted after the undo / redo stacks change (a recorded edit, an undo, a
+   * redo, or a clear). Carries the current `canUndo` / `canRedo` so a toolbar
+   * can enable or disable its buttons.
+   *
+   * @event
+   */
+  historyChanged: CustomEvent<ApexHistoryChangedEvent>;
   /**
    * Emitted when a row enters edit mode (row edit mode only).
    *
@@ -1746,6 +1764,47 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     } else {
       editing.cancelCell();
     }
+  }
+
+  /**
+   * Whether there is a recorded edit to undo.
+   *
+   * @remarks
+   * Always `false` unless `editing.history.enabled` is set.
+   */
+  public get canUndo(): boolean {
+    return this.stateController.history.canUndo;
+  }
+
+  /**
+   * Whether there is a previously-undone edit to redo.
+   */
+  public get canRedo(): boolean {
+    return this.stateController.history.canRedo;
+  }
+
+  /**
+   * Reverts the most recent cell-data edit (single, row-mode, or bulk paste /
+   * fill commits each as one step). No-op when there is nothing to undo or
+   * history is disabled.
+   */
+  public undo(): void {
+    this.stateController.history.undo();
+  }
+
+  /**
+   * Re-applies the most recently undone edit. No-op when there is nothing to
+   * redo or history is disabled.
+   */
+  public redo(): void {
+    this.stateController.history.redo();
+  }
+
+  /**
+   * Clears the undo / redo stacks.
+   */
+  public clearHistory(): void {
+    this.stateController.history.clear();
   }
 
   /**

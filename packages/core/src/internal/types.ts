@@ -633,6 +633,24 @@ export interface GridExpansionConfiguration<T extends object> {
 }
 
 /**
+ * Undo / redo history configuration for cell-data edits.
+ */
+export interface EditingHistoryConfiguration {
+  /**
+   * Whether undo / redo tracking is enabled. When `true`, every committed cell
+   * edit (single, row-mode, and bulk paste / fill) is recorded and can be
+   * reversed via {@link ApexGrid.undo} / {@link ApexGrid.redo} or the keyboard
+   * (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y).
+   */
+  enabled: boolean;
+  /**
+   * Maximum number of commands retained on the undo stack. Older commands are
+   * evicted once the cap is exceeded. Defaults to `100`.
+   */
+  stackSize?: number;
+}
+
+/**
  * Grid-level editing configuration.
  */
 export interface GridEditingConfiguration {
@@ -650,6 +668,10 @@ export interface GridEditingConfiguration {
    * The interaction that opens an editor. Defaults to `'doubleClick'`.
    */
   trigger?: EditTrigger;
+  /**
+   * Undo / redo history for cell-data edits. Disabled when omitted.
+   */
+  history?: EditingHistoryConfiguration;
 }
 
 /**

@@ -10,6 +10,7 @@ import type {
   ValidatorContext,
 } from '../internal/types.js';
 import { runValidators } from '../internal/validators.js';
+import type { HistoryController } from './history.js';
 
 /**
  * The default editing configuration used when the grid has none set.
@@ -97,7 +98,10 @@ export class EditingController<T extends object> implements ReactiveController {
     return this.#validationVersion;
   }
 
-  constructor(protected host: GridHost<T>) {
+  constructor(
+    protected host: GridHost<T>,
+    protected history?: HistoryController<T>
+  ) {
     this.host.addController(this);
   }
 
@@ -248,6 +252,7 @@ export class EditingController<T extends object> implements ReactiveController {
 
     record[columnKey as string] = value;
     this.clearCellErrors(data, columnKey);
+    this.history?.record({ record: data, key: columnKey, rowIndex, oldValue, newValue: value });
     this.host.emitEvent('cellValueChanged', {
       detail: { key: columnKey, rowIndex, data, value },
     });
@@ -440,15 +445,21 @@ export class EditingController<T extends object> implements ReactiveController {
       return false;
     }
 
-    for (const [columnKey, candidate] of this.pending) {
-      // Validation already ran above; a cancelled cell aborts the whole row
-      // commit, leaving it in edit mode.
-      if (
-        this.applyCellEdit(rowIndex, columnKey, data, candidate, { validate: false }) ===
-        'cancelled'
-      ) {
-        return false;
+    // Coalesce the row's writes into one undo step.
+    this.history?.beginBatch();
+    try {
+      for (const [columnKey, candidate] of this.pending) {
+        // Validation already ran above; a cancelled cell aborts the whole row
+        // commit, leaving it in edit mode.
+        if (
+          this.applyCellEdit(rowIndex, columnKey, data, candidate, { validate: false }) ===
+          'cancelled'
+        ) {
+          return false;
+        }
       }
+    } finally {
+      this.history?.endBatch();
     }
 
     this.pending.clear();

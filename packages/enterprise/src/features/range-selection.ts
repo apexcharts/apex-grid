@@ -426,28 +426,34 @@ export class RangeSelectionController<T extends object>
     let lastRow = start.top;
     let lastCol = start.left;
 
-    for (let i = 0; i < matrix.length; i += 1) {
-      const row = start.top + i;
-      const record = items[row];
-      if (!record) continue;
-      for (let j = 0; j < matrix[i].length; j += 1) {
-        const colIndex = start.left + j;
-        const column = columns[colIndex];
-        if (!column) continue;
-        // Route through the editing choke point so paste participates in the
-        // cellValueChanging/cellValueChanged events (and, in turn, validation +
-        // undo). The pasted region still drives the selection regardless of
-        // whether a given cell's value actually changed.
-        this.state.editing.applyCellEdit(
-          row,
-          column.key,
-          record as T,
-          this.#coerce(matrix[i][j], column)
-        );
-        wrote = true;
-        lastRow = Math.max(lastRow, row);
-        lastCol = Math.max(lastCol, colIndex);
+    // Coalesce the whole paste into one undo step.
+    this.state.history.beginBatch();
+    try {
+      for (let i = 0; i < matrix.length; i += 1) {
+        const row = start.top + i;
+        const record = items[row];
+        if (!record) continue;
+        for (let j = 0; j < matrix[i].length; j += 1) {
+          const colIndex = start.left + j;
+          const column = columns[colIndex];
+          if (!column) continue;
+          // Route through the editing choke point so paste participates in the
+          // cellValueChanging/cellValueChanged events (and, in turn, validation +
+          // undo). The pasted region still drives the selection regardless of
+          // whether a given cell's value actually changed.
+          this.state.editing.applyCellEdit(
+            row,
+            column.key,
+            record as T,
+            this.#coerce(matrix[i][j], column)
+          );
+          wrote = true;
+          lastRow = Math.max(lastRow, row);
+          lastCol = Math.max(lastCol, colIndex);
+        }
       }
+    } finally {
+      this.state.history.endBatch();
     }
     if (!wrote) return;
 
@@ -602,47 +608,53 @@ export class RangeSelectionController<T extends object>
     const items = this.host.pageItems as Record<string, unknown>[];
     const vertical = preview.top < source.top || preview.bottom > source.bottom;
 
-    if (vertical) {
-      for (let col = source.left; col <= source.right; col += 1) {
-        const column = columns[col];
-        if (!column) continue;
-        const key = String(column.key);
-        const line: unknown[] = [];
-        for (let row = source.top; row <= source.bottom; row += 1) line.push(items[row]?.[key]);
-        for (let row = preview.top; row <= preview.bottom; row += 1) {
-          if (row >= source.top && row <= source.bottom) continue;
-          const record = items[row];
-          if (record) {
-            this.state.editing.applyCellEdit(
-              row,
-              column.key,
-              record as T,
-              this.#seriesValue(line, row - source.top)
-            );
-          }
-        }
-      }
-    } else {
-      for (let row = source.top; row <= source.bottom; row += 1) {
-        const record = items[row];
-        if (!record) continue;
-        const line: unknown[] = [];
+    // Coalesce the whole fill into one undo step.
+    this.state.history.beginBatch();
+    try {
+      if (vertical) {
         for (let col = source.left; col <= source.right; col += 1) {
-          line.push(columns[col] ? record[String(columns[col].key)] : undefined);
-        }
-        for (let col = preview.left; col <= preview.right; col += 1) {
-          if (col >= source.left && col <= source.right) continue;
           const column = columns[col];
-          if (column) {
-            this.state.editing.applyCellEdit(
-              row,
-              column.key,
-              record as T,
-              this.#seriesValue(line, col - source.left)
-            );
+          if (!column) continue;
+          const key = String(column.key);
+          const line: unknown[] = [];
+          for (let row = source.top; row <= source.bottom; row += 1) line.push(items[row]?.[key]);
+          for (let row = preview.top; row <= preview.bottom; row += 1) {
+            if (row >= source.top && row <= source.bottom) continue;
+            const record = items[row];
+            if (record) {
+              this.state.editing.applyCellEdit(
+                row,
+                column.key,
+                record as T,
+                this.#seriesValue(line, row - source.top)
+              );
+            }
+          }
+        }
+      } else {
+        for (let row = source.top; row <= source.bottom; row += 1) {
+          const record = items[row];
+          if (!record) continue;
+          const line: unknown[] = [];
+          for (let col = source.left; col <= source.right; col += 1) {
+            line.push(columns[col] ? record[String(columns[col].key)] : undefined);
+          }
+          for (let col = preview.left; col <= preview.right; col += 1) {
+            if (col >= source.left && col <= source.right) continue;
+            const column = columns[col];
+            if (column) {
+              this.state.editing.applyCellEdit(
+                row,
+                column.key,
+                record as T,
+                this.#seriesValue(line, col - source.left)
+              );
+            }
           }
         }
       }
+    } finally {
+      this.state.history.endBatch();
     }
   }
 

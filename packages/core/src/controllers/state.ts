@@ -17,6 +17,7 @@ import type { ActiveNode, GridHost } from '../internal/types.js';
 import { EditingController } from './editing.js';
 import { ExpansionController } from './expansion.js';
 import { FilterController } from './filter.js';
+import { HistoryController } from './history.js';
 import { NavigationController } from './navigation.js';
 import { PaginationController } from './pagination.js';
 import { ReorderController } from './reorder.js';
@@ -33,6 +34,7 @@ export class StateController<T extends object> implements ReactiveController {
   public pagination!: PaginationController<T>;
   public reordering!: ReorderController<T>;
   public editing!: EditingController<T>;
+  public history!: HistoryController<T>;
   public selection!: SelectionController<T>;
   public expansion!: ExpansionController<T>;
   public tree!: TreeController<T>;
@@ -122,7 +124,8 @@ export class StateController<T extends object> implements ReactiveController {
     this.resizing = new ResizeController(this.host);
     this.pagination = new PaginationController(this.host);
     this.reordering = new ReorderController(this.host);
-    this.editing = new EditingController(this.host);
+    this.history = new HistoryController(this.host);
+    this.editing = new EditingController(this.host, this.history);
     this.selection = new SelectionController(this.host);
     this.expansion = new ExpansionController(this.host);
     this.tree = new TreeController(this.host);
