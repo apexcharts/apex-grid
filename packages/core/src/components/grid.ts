@@ -5,6 +5,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 import { DataOperationsController } from '../controllers/data-operation.js';
 import { GridDOMController } from '../controllers/dom.js';
 import type { RowPinPosition } from '../controllers/row-pin.js';
+import type { RowDropPosition } from '../controllers/row-reorder.js';
 import { gridStateContext, StateController } from '../controllers/state.js';
 import { DEFAULT_COLUMN_CONFIG, PIPELINE } from '../internal/constants.js';
 import {
@@ -36,6 +37,7 @@ import type {
   GridEditingConfiguration,
   GridExpansionConfiguration,
   GridRowPinningConfiguration,
+  GridRowReorderingConfiguration,
   GridSelectionConfiguration,
   GridSortConfiguration,
   GridTreeConfiguration,
@@ -249,6 +251,19 @@ export interface ApexRowPinningEvent<T extends object> {
    * unpinning.
    */
   position: RowPinPosition | null;
+}
+
+/**
+ * Event payload for the cancellable `rowMoving` event and the follow-up
+ * `rowMoved` event.
+ */
+export interface ApexRowMovingEvent<T extends object> {
+  /** The moving row's view index before the move. */
+  from: number;
+  /** The target row's view index. */
+  to: number;
+  /** The row being moved (a live reference into {@link ApexGrid.data}). */
+  data: T;
 }
 
 /**
@@ -605,6 +620,21 @@ export interface ApexGridEventMap<T extends object> {
    * @event
    */
   rowPinned: CustomEvent<ApexRowPinningEvent<T>>;
+  /**
+   * Emitted before a row is moved via drag, keyboard, or {@link ApexGrid.moveRow}.
+   *
+   * @remarks
+   * Cancellable — `preventDefault()` aborts the move.
+   *
+   * @event
+   */
+  rowMoving: CustomEvent<ApexRowMovingEvent<T>>;
+  /**
+   * Emitted after a row has been moved.
+   *
+   * @event
+   */
+  rowMoved: CustomEvent<ApexRowMovingEvent<T>>;
   /**
    * Emitted when a row enters edit mode (row edit mode only).
    *
@@ -1081,6 +1111,23 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   @property({ attribute: false })
   public rowPinning?: GridRowPinningConfiguration;
+
+  /**
+   * Row-reordering configuration.
+   *
+   * @remarks
+   * Disabled by default. Set `enabled: true` to allow drag / keyboard reorder
+   * and {@link ApexGrid.moveRow}. A manual order is mutually exclusive with
+   * column sorting (applying a sort clears it). Set `applyToData: true` to also
+   * splice {@link ApexGrid.data} in place.
+   *
+   * @example
+   * ```ts
+   * grid.rowReordering = { enabled: true };
+   * ```
+   */
+  @property({ attribute: false })
+  public rowReordering?: GridRowReorderingConfiguration;
 
   /**
    * The currently expanded rows, in insertion order.
@@ -1897,6 +1944,23 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   public get pinnedRows(): { top: T[]; bottom: T[] } {
     return this.stateController.rowPin.pinnedRows;
+  }
+
+  /**
+   * Moves the row at view index `from` to land `position` (`'before'` /
+   * `'after'`) the row at view index `to`. Indices are into
+   * {@link ApexGrid.pageItems}.
+   *
+   * @remarks
+   * Requires `rowReordering.enabled`. Establishes a manual order (mutually
+   * exclusive with column sorting), goes through the cancellable `rowMoving`
+   * event, emits `rowMoved`, and animates the affected rows.
+   *
+   * @returns `true` when applied, `false` when disabled, out of range, or
+   * cancelled.
+   */
+  public moveRow(from: number, to: number, position: RowDropPosition = 'before'): boolean {
+    return this.stateController.rowReorder.moveRow(from, to, position);
   }
 
   /**

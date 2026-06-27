@@ -18,6 +18,7 @@ export type {
   ApexRowEditStartedEvent,
   ApexRowExpandedEvent,
   ApexRowExpandingEvent,
+  ApexRowMovingEvent,
   ApexRowPinningEvent,
   ApexRowSelectedEvent,
   ApexRowSelectingEvent,
@@ -27,6 +28,7 @@ export type {
 } from './components/grid.js';
 export { ApexGrid } from './components/grid.js';
 export type { RowPinPosition } from './controllers/row-pin.js';
+export type { RowDropPosition } from './controllers/row-reorder.js';
 export type {
   CSVExportOptions,
   ExportCellValue,
@@ -66,6 +68,7 @@ export type {
   GridEditingConfiguration,
   GridExpansionConfiguration,
   GridRowPinningConfiguration,
+  GridRowReorderingConfiguration,
   GridSelectionConfiguration,
   GridSortConfiguration,
   GridTreeConfiguration,

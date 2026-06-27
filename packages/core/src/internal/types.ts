@@ -662,6 +662,24 @@ export interface GridRowPinningConfiguration {
 }
 
 /**
+ * Grid-level row-reordering configuration.
+ */
+export interface GridRowReorderingConfiguration {
+  /**
+   * Whether rows can be reordered by drag, keyboard, or {@link ApexGrid.moveRow}.
+   * A manual order, once set, is mutually exclusive with column sorting
+   * (applying a sort clears it). Disabled when omitted.
+   */
+  enabled: boolean;
+  /**
+   * When `true`, a reorder also splices {@link ApexGrid.data} in place so the
+   * source array reflects the new order. Defaults to `false`: the order lives in
+   * the grid and the app persists it via the `rowMoved` event.
+   */
+  applyToData?: boolean;
+}
+
+/**
  * Grid-level editing configuration.
  */
 export interface GridEditingConfiguration {

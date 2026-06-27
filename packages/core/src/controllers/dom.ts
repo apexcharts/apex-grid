@@ -76,6 +76,8 @@ export class GridDOMController<T extends object> implements ReactiveController {
         .ariaRowOffset=${ariaRowOffset}
         .decorationVersion=${this.state.decorationVersion}
         .validationVersion=${this.state.editing.validationVersion}
+        .dragging=${this.state.rowReorder.dragging === data}
+        .grabbed=${this.state.rowReorder.grabbed === data}
       >
       </apex-grid-row>
     `;

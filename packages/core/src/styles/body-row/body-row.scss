@@ -63,6 +63,18 @@ $accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var
     background: color-mix(in srgb, var(--ag-brand) 14%, var(--ag-surface));
 }
 
+// --- Row reorder (F5) ------------------------------------------------------
+// Dimmed while pointer-dragging; brand outline while keyboard-grabbed. Inert
+// until a reorder is in progress.
+:host([dragging]) {
+    opacity: 0.5;
+}
+
+:host([grabbed]) {
+    box-shadow: inset 0 0 0 2px #{$accent};
+    cursor: grabbing;
+}
+
 // Built-in selection (checkbox) cell — always sits at the start of the row,
 // pinned so it stays put during horizontal scrolling.
 [part='selection-cell'] {

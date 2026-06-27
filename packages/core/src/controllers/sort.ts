@@ -159,8 +159,23 @@ export class SortController<T extends object> implements ReactiveController {
     key ? this.state.delete(key) : this.state.clear();
   }
 
+  get #rowReorder() {
+    // @ts-expect-error - protected member access
+    return this.host.stateController.rowReorder as
+      | { hasManualOrder: boolean; clearManualOrder(announce?: boolean): void }
+      | undefined;
+  }
+
   protected _sort(expressions: SortExpression<T> | SortExpression<T>[]) {
-    for (const expr of asArray(expressions)) {
+    const exprs = asArray(expressions);
+    // Applying a sort is mutually exclusive with a manual row order (F5):
+    // a real sort (any non-`none` direction) clears it, with an announcement.
+    const reorder = this.#rowReorder;
+    if (reorder?.hasManualOrder && exprs.some((expr) => expr.direction !== 'none')) {
+      reorder.clearManualOrder(true);
+    }
+
+    for (const expr of exprs) {
       this.#setExpression(expr);
     }
 

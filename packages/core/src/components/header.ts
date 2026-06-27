@@ -33,7 +33,9 @@ export default class ApexGridHeader<T extends object> extends LitElement {
   }
 
   protected get isSortable() {
-    return Boolean(this.column.sort);
+    // Sort affordances are hidden while a manual row order is active (F5):
+    // sorting and manual order are mutually exclusive.
+    return Boolean(this.column.sort) && !this.state?.rowReorder?.hasManualOrder;
   }
 
   protected get resizeController() {

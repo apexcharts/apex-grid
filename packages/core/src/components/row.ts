@@ -59,6 +59,14 @@ export default class ApexGridRow<T extends object> extends LitElement {
   @property({ type: Boolean, reflect: true })
   public expanded = false;
 
+  /** Reflects pointer-drag state (row reorder) so SCSS can dim the source. */
+  @property({ type: Boolean, reflect: true })
+  public dragging = false;
+
+  /** Reflects keyboard-grab state (row reorder) so SCSS can outline the row. */
+  @property({ type: Boolean, reflect: true })
+  public grabbed = false;
+
   /** The column key currently being edited in this row, or `null`. */
   @property({ attribute: false })
   public editingKey: Keys<T> | null = null;
@@ -87,10 +95,79 @@ export default class ApexGridRow<T extends object> extends LitElement {
    */
   #presented: PresentedRow | null = null;
 
+  /** Pixels the pointer must travel before a row drag engages. */
+  static readonly #DRAG_THRESHOLD_PX = 4;
+
+  #dragStartX = 0;
+  #dragStartY = 0;
+  #dragPointerId = -1;
+  #isDragging = false;
+
+  #handleReorderPointerDown = (event: PointerEvent) => {
+    const reorder = this.state?.rowReorder;
+    if (!reorder?.enabled || event.button !== 0 || !this.data) return;
+    // Pinned rows are not reorder sources (F4 scope).
+    if (this.state.rowPin.isPinned(this.data)) return;
+    // Don't arm a drag from an interactive sub-part (editor, checkbox, button).
+    const target = event.composedPath()[0];
+    if (
+      target instanceof Element &&
+      target.closest?.('input, button, a, select, textarea, [data-apex-editor]')
+    ) {
+      return;
+    }
+    this.#dragStartX = event.clientX;
+    this.#dragStartY = event.clientY;
+    this.#dragPointerId = event.pointerId;
+    this.addEventListener('pointermove', this.#handleReorderPointerMove);
+    this.addEventListener('pointerup', this.#handleReorderPointerUp);
+    this.addEventListener('pointercancel', this.#handleReorderPointerUp);
+  };
+
+  #handleReorderPointerMove = (event: PointerEvent) => {
+    if (event.pointerId !== this.#dragPointerId) return;
+    const reorder = this.state.rowReorder;
+    if (!this.#isDragging) {
+      const dx = event.clientX - this.#dragStartX;
+      const dy = event.clientY - this.#dragStartY;
+      if (Math.hypot(dx, dy) < ApexGridRow.#DRAG_THRESHOLD_PX) return;
+      this.#isDragging = true;
+      this.setPointerCapture(event.pointerId);
+      reorder.startDrag(this.data);
+    }
+    reorder.dragOver(event.clientY);
+  };
+
+  #handleReorderPointerUp = (event: PointerEvent) => {
+    if (event.pointerId !== this.#dragPointerId) return;
+    this.removeEventListener('pointermove', this.#handleReorderPointerMove);
+    this.removeEventListener('pointerup', this.#handleReorderPointerUp);
+    this.removeEventListener('pointercancel', this.#handleReorderPointerUp);
+    try {
+      if (this.hasPointerCapture(event.pointerId)) this.releasePointerCapture(event.pointerId);
+    } catch {
+      /* capture was already released */
+    }
+    if (this.#isDragging) {
+      this.#isDragging = false;
+      this.state.rowReorder.endDrag();
+    }
+    this.#dragPointerId = -1;
+  };
+
   public override connectedCallback(): void {
     super.connectedCallback();
     this.setAttribute('exportparts', 'cell');
     this.setAttribute('role', 'row');
+    this.addEventListener('pointerdown', this.#handleReorderPointerDown);
+  }
+
+  public override disconnectedCallback(): void {
+    this.removeEventListener('pointerdown', this.#handleReorderPointerDown);
+    this.removeEventListener('pointermove', this.#handleReorderPointerMove);
+    this.removeEventListener('pointerup', this.#handleReorderPointerUp);
+    this.removeEventListener('pointercancel', this.#handleReorderPointerUp);
+    super.disconnectedCallback();
   }
 
   /**

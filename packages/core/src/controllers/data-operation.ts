@@ -70,6 +70,11 @@ export class DataOperationsController<T extends object> implements ReactiveContr
       ? await this.customSort({ data: transformed, grid: this.host, type: 'sort' })
       : this.sorting.apply(transformed, sorting.state);
 
+    // Manual row order (drag-reorder) is applied after sort. Identity
+    // pass-through when no manual order is active, so the natural order is
+    // untouched.
+    transformed = state.rowReorder.apply(transformed);
+
     // Tree mode flattens the post-sort rows according to the current
     // expansion set. Disabled is a no-op pass-through, so flat tables keep
     // their existing behaviour untouched.

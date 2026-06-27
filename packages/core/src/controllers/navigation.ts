@@ -140,7 +140,65 @@ export class NavigationController<T extends object> implements ReactiveControlle
     this.state = NAVIGATION_STATE;
   }
 
+  protected get rowReorder() {
+    // @ts-expect-error - protected member access
+    return this.host.stateController.rowReorder as
+      | {
+          enabled: boolean;
+          isGrabbing: boolean;
+          grab(rowIndex: number): boolean;
+          moveGrabbed(direction: -1 | 1): number;
+          drop(): void;
+          cancelGrab(): void;
+        }
+      | undefined;
+  }
+
+  /**
+   * Keyboard row reorder: Space grabs the active row, arrows move it, Space /
+   * Enter drops, Escape cancels. Returns `true` when the event was consumed.
+   * Only active when `rowReordering.enabled` (so it never shadows Space-to-select
+   * on grids without reordering).
+   */
+  protected handleReorderKey(event: KeyboardEvent): boolean {
+    const reorder = this.rowReorder;
+    if (!reorder?.enabled) return false;
+
+    if (reorder.isGrabbing) {
+      switch (event.key) {
+        case 'ArrowUp':
+        case 'ArrowDown': {
+          event.preventDefault();
+          const next = reorder.moveGrabbed(event.key === 'ArrowDown' ? 1 : -1);
+          if (next >= 0) {
+            this.active = Object.assign(this.nextNode, { row: next });
+            this.virtualizer.element(next)?.scrollIntoView({ block: 'nearest' });
+          }
+          return true;
+        }
+        case ' ':
+        case 'Enter':
+          event.preventDefault();
+          reorder.drop();
+          return true;
+        case 'Escape':
+          event.preventDefault();
+          reorder.cancelGrab();
+          return true;
+        default:
+          return false;
+      }
+    }
+
+    if (event.key === ' ' && this.active.row >= 0) {
+      event.preventDefault();
+      return reorder.grab(this.active.row);
+    }
+    return false;
+  }
+
   public navigate(event: KeyboardEvent) {
+    if (this.handleReorderKey(event)) return;
     // Undo / redo: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl/Cmd+Y. Only fires when the
     // grid body (not an open editor) has focus, so a text editor's native undo
     // is never hijacked.
