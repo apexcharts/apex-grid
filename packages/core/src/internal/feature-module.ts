@@ -207,3 +207,41 @@ export function isCellInteractionHandler<T extends object>(
     typeof (controller as CellInteractionHandler<T>).handleCellInteraction === 'function'
   );
 }
+
+/**
+ * Optional capability a feature module's controller may implement so its state
+ * participates in grid-state snapshots ({@link StateController.serializeModuleState}
+ * / {@link StateController.restoreModuleState}, driven by `ApexGrid.getState` /
+ * `ApexGrid.setState`). The grid collects each implementer's
+ * {@link serializeState} output under the module's id and dispatches the
+ * matching value back via {@link restoreState} on restore.
+ *
+ * Controllers that don't implement this are skipped, so the community grid
+ * (which registers no modules) contributes nothing to a snapshot.
+ *
+ * @remarks Unstable; part of `apex-grid/internal`.
+ */
+export interface SerializableModule {
+  /**
+   * Return a JSON-serializable snapshot of this module's restorable state
+   * (e.g. grouping's `groupBy` + aggregations). Exclude transient/derived
+   * state and anything not JSON-safe (functions, DOM nodes).
+   */
+  serializeState(): unknown;
+  /**
+   * Restore module state from a value previously produced by
+   * {@link serializeState}. Implementations should tolerate partial or
+   * unexpected shapes (validate before applying) since the blob is opaque.
+   */
+  restoreState(data: unknown): void;
+}
+
+/** Runtime type-guard for {@link SerializableModule}. */
+export function isSerializableModule(controller: unknown): controller is SerializableModule {
+  return (
+    typeof controller === 'object' &&
+    controller !== null &&
+    typeof (controller as SerializableModule).serializeState === 'function' &&
+    typeof (controller as SerializableModule).restoreState === 'function'
+  );
+}

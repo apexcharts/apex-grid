@@ -16,6 +16,18 @@ import {
 import type { CellInteractionKind } from '../internal/feature-module.js';
 import { EventEmitterBase } from '../internal/mixins/event-emitter.js';
 import { registerComponent } from '../internal/register.js';
+import {
+  applyColumnLayout,
+  deserializeFilter,
+  type GetStateOptions,
+  type GridState,
+  resolveRowRefs,
+  type SetStateOptions,
+  serializeColumnLayout,
+  serializeFilter,
+  serializeRowRefs,
+  serializeSort,
+} from '../internal/state-snapshot.js';
 import { GRID_TAG } from '../internal/tags.js';
 import type {
   ColumnConfiguration,
@@ -727,6 +739,19 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   public data: Array<T> = [];
 
   /**
+   * Optional stable row-identity resolver.
+   *
+   * @remarks
+   * When provided, {@link ApexGrid.getState} captures selection / expansion /
+   * tree rows by the returned id, so they survive a wholesale {@link ApexGrid.data}
+   * reload. Without it those rows are captured by positional index into
+   * {@link ApexGrid.data}, which round-trips within a session but not across a
+   * data swap. The id must be unique per row and stable across reloads.
+   */
+  @property({ attribute: false })
+  public rowId?: (row: T) => string | number;
+
+  /**
    * Whether the grid will try to "resolve" its column configuration based on the passed
    * data source.
    *
@@ -1325,6 +1350,110 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   public sort(expressions: SortExpression<T> | SortExpression<T>[]) {
     this.stateController.sorting.sort(expressions);
+  }
+
+  /**
+   * Returns a serializable, JSON-safe snapshot of the grid's restorable state:
+   * column layout, sort, filter, quick-filter, pagination, selection, expansion,
+   * tree expansion, and any feature-module state. Functions and templates are
+   * omitted (see {@link GridState}).
+   *
+   * @remarks
+   * Pair with {@link ApexGrid.setState} to persist/restore views, drive an AI
+   * assistant, or implement save/restore. Set {@link ApexGrid.rowId} for
+   * selection/expansion to survive a wholesale data reload.
+   *
+   * @example
+   * ```ts
+   * const snapshot = grid.getState();
+   * localStorage.setItem('grid', JSON.stringify(snapshot));
+   * // later …
+   * grid.setState(JSON.parse(localStorage.getItem('grid')!));
+   * ```
+   */
+  public getState(options?: GetStateOptions<T>): GridState {
+    const rowId = options?.rowId ?? this.rowId;
+    return {
+      version: 1,
+      columns: serializeColumnLayout(this.columns),
+      sort: serializeSort(this.sortExpressions),
+      filter: serializeFilter(this.filterExpressions),
+      quickFilter: this.quickFilter,
+      pagination: { page: this.page, pageSize: this.pageSize },
+      selection: serializeRowRefs(this.selectedRows, this.data, rowId),
+      expansion: serializeRowRefs(this.expandedRows, this.data, rowId),
+      treeExpanded: serializeRowRefs([...this.stateController.tree.expanded], this.data, rowId),
+      treeExpandedKeys: [...this.stateController.tree.expandedKeys],
+      modules: this.stateController.serializeModuleState(),
+    };
+  }
+
+  /**
+   * Applies a (partial) state snapshot produced by {@link ApexGrid.getState}.
+   *
+   * @remarks
+   * Only the slices present on `state` are applied — omit a slice to leave it
+   * untouched (e.g. pass `{ sort }` to change only sorting). A present-but-empty
+   * `sort`/`filter` array clears that operation. Slices are applied in dependency
+   * order (columns → sort → filter → quick-filter → module structure → tree →
+   * expansion → selection → pagination) so row-referencing state resolves
+   * against the transformed view.
+   */
+  public setState(state: Partial<GridState>, options?: SetStateOptions<T>): void {
+    const rowId = options?.rowId ?? this.rowId;
+
+    if (state.columns) {
+      this.columns = applyColumnLayout(this.columns, state.columns);
+    }
+
+    if (state.sort) {
+      this.stateController.sorting.reset();
+      if (state.sort.length) {
+        this.sort(state.sort as unknown as SortExpression<T>[]);
+      }
+    }
+
+    if (state.filter) {
+      this.stateController.filtering.reset();
+      const expressions = deserializeFilter<T>(state.filter, (key) =>
+        this.getColumn(key as Keys<T>)
+      );
+      if (expressions.length) this.filter(expressions);
+    }
+
+    if (state.quickFilter !== undefined) {
+      this.quickFilter = state.quickFilter;
+    }
+
+    // Module structure (e.g. grouping / pivot) before the row-referencing slices,
+    // so the transformed view exists when selection / expansion are resolved.
+    if (state.modules) {
+      this.stateController.restoreModuleState(state.modules);
+    }
+
+    if (state.treeExpanded !== undefined || state.treeExpandedKeys !== undefined) {
+      const expanded = resolveRowRefs(state.treeExpanded ?? [], this.data, rowId);
+      this.stateController.tree.restoreExpansion(expanded, state.treeExpandedKeys ?? []);
+    }
+
+    if (state.expansion) {
+      this.expandedRows = resolveRowRefs(state.expansion, this.data, rowId);
+    }
+
+    if (state.selection) {
+      this.selectedRows = resolveRowRefs(state.selection, this.data, rowId);
+    }
+
+    if (state.pagination) {
+      if (typeof state.pagination.pageSize === 'number') {
+        this.pageSize = state.pagination.pageSize;
+      }
+      if (typeof state.pagination.page === 'number') {
+        this.page = state.pagination.page;
+      }
+    }
+
+    this.requestUpdate(PIPELINE);
   }
 
   /**

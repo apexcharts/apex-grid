@@ -33,13 +33,33 @@ export type {
   RowPresenter,
   RowPresenterContext,
   RowTransformer,
+  SerializableModule,
 } from './feature-module.js';
 export {
   isCellDecorator,
   isCellInteractionHandler,
   isRowPresenter,
   isRowTransformer,
+  isSerializableModule,
 } from './feature-module.js';
 export { registerComponent } from './register.js';
+export type {
+  ColumnLayoutState,
+  FilterStateSnapshot,
+  GetStateOptions,
+  GridState,
+  RowRef,
+  SetStateOptions,
+  SortStateSnapshot,
+} from './state-snapshot.js';
+export {
+  applyColumnLayout,
+  deserializeFilter,
+  resolveRowRefs,
+  serializeColumnLayout,
+  serializeFilter,
+  serializeRowRefs,
+  serializeSort,
+} from './state-snapshot.js';
 export type { ActiveNode, ColumnConfiguration, GridHost, Keys, ToolbarAction } from './types.js';
 export { getDisplayColumns } from './utils.js';

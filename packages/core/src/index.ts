@@ -31,6 +31,15 @@ export type {
   ExportSource,
 } from './internal/export.js';
 export type {
+  ColumnLayoutState,
+  FilterStateSnapshot,
+  GetStateOptions,
+  GridState,
+  RowRef,
+  SetStateOptions,
+  SortStateSnapshot,
+} from './internal/state-snapshot.js';
+export type {
   ApexCellContext,
   ApexDetailContext,
   ApexEditorContext,

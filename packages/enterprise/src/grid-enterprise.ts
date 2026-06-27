@@ -1,5 +1,5 @@
 import { LicenseManager } from 'apex-commons';
-import type { ColumnConfiguration } from 'apex-grid';
+import type { ColumnConfiguration, GetStateOptions, GridState, SetStateOptions } from 'apex-grid';
 import {
   ApexGrid,
   downloadBlob,
@@ -67,6 +67,18 @@ function toNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+/**
+ * Enterprise view state captured under `modules.enterprise` in a grid snapshot
+ * (see {@link ApexGridEnterprise.getState} / {@link ApexGridEnterprise.setState}).
+ */
+interface EnterpriseStateBlob {
+  groupBy?: string[];
+  aggregations?: AggregationConfig;
+  pivotOn?: string;
+  pivotRows?: string[];
+  pivotValues?: AggregationConfig;
 }
 
 /** Custom-element tag for the enterprise grid. */
@@ -280,6 +292,46 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   public getAggregations(): AggregationResults {
     const controller = this.stateController.module<AggregationController<T>>(AGGREGATION_MODULE_ID);
     return controller ? controller.compute(this.data, this.aggregations) : {};
+  }
+
+  /**
+   * Extends the core {@link ApexGrid.getState} snapshot with the enterprise view
+   * state (row grouping, aggregations, and pivoting), stored under
+   * `modules.enterprise`.
+   *
+   * @remarks
+   * These live as reactive properties on the enterprise grid (the controllers
+   * are synced from them), so they are captured here rather than through the
+   * per-module {@link SerializableModule} seam.
+   */
+  public override getState(options?: GetStateOptions<T>): GridState {
+    const base = super.getState(options);
+    const enterprise: EnterpriseStateBlob = {
+      groupBy: [...this.groupBy],
+      aggregations: { ...this.aggregations },
+      pivotOn: this.pivotOn,
+      pivotRows: [...this.pivotRows],
+      pivotValues: { ...this.pivotValues },
+    };
+    return { ...base, modules: { ...base.modules, enterprise } };
+  }
+
+  /**
+   * Restores the enterprise view state from `modules.enterprise` (if present),
+   * then applies the core slices via {@link ApexGrid.setState}. Enterprise
+   * structure (grouping / pivot) is set first so the transformed view is in
+   * place before the core pass resolves row-referencing slices.
+   */
+  public override setState(state: Partial<GridState>, options?: SetStateOptions<T>): void {
+    const enterprise = state.modules?.enterprise as EnterpriseStateBlob | undefined;
+    if (enterprise) {
+      if (enterprise.groupBy !== undefined) this.groupBy = [...enterprise.groupBy];
+      if (enterprise.aggregations !== undefined) this.aggregations = { ...enterprise.aggregations };
+      if (enterprise.pivotOn !== undefined) this.pivotOn = enterprise.pivotOn;
+      if (enterprise.pivotRows !== undefined) this.pivotRows = [...enterprise.pivotRows];
+      if (enterprise.pivotValues !== undefined) this.pivotValues = { ...enterprise.pivotValues };
+    }
+    super.setState(state, options);
   }
 
   protected override willUpdate(changed: PropertyValues): void {

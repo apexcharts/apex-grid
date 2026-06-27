@@ -9,6 +9,7 @@ import {
   isCellInteractionHandler,
   isRowPresenter,
   isRowTransformer,
+  isSerializableModule,
   type PresentedRow,
   type RowPresenterContext,
 } from '../internal/feature-module.js';
@@ -222,6 +223,35 @@ export class StateController<T extends object> implements ReactiveController {
     for (const controller of this.modules.values()) {
       if (isCellInteractionHandler<T>(controller)) {
         controller.handleCellInteraction(interaction);
+      }
+    }
+  }
+
+  /**
+   * Collects per-module snapshot state from feature controllers implementing
+   * {@link SerializableModule}, keyed by module id. Returns an empty object for
+   * the community grid (no modules). Used by `ApexGrid.getState`.
+   */
+  public serializeModuleState(): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [id, controller] of this.modules) {
+      if (isSerializableModule(controller)) {
+        out[id] = controller.serializeState();
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Dispatches previously-serialized state back to the matching feature modules
+   * (by id) that implement {@link SerializableModule}. Missing ids and unknown
+   * modules are ignored. Used by `ApexGrid.setState`.
+   */
+  public restoreModuleState(data: Record<string, unknown> | undefined): void {
+    if (!data) return;
+    for (const [id, controller] of this.modules) {
+      if (isSerializableModule(controller) && Object.hasOwn(data, id)) {
+        controller.restoreState(data[id]);
       }
     }
   }
