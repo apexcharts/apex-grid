@@ -72,6 +72,15 @@ export default class ApexGridRow<T extends object> extends LitElement {
   public decorationVersion = 0;
 
   /**
+   * Reactive token from {@link EditingController.validationVersion}, forwarded to
+   * each cell so a validation-only change re-renders the row's cells (toggling
+   * `aria-invalid` and the inline error node). Stays `0` until the first
+   * validation failure.
+   */
+  @property({ attribute: false, type: Number })
+  public validationVersion = 0;
+
+  /**
    * Result of the feature-module row presenter for the current update, or
    * `null` when no module renders this row full-width (the normal case).
    * Computed in {@link willUpdate} and consumed in {@link render}.
@@ -310,6 +319,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
             .value=${this.data[column.key]}
             .colindex=${ariaColindex}
             .decorationVersion=${this.decorationVersion}
+            .validationVersion=${this.validationVersion}
           ></apex-grid-cell>`;
         }
       )}

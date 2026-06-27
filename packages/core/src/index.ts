@@ -1,4 +1,5 @@
 export type {
+  ApexCellValidationFailedEvent,
   ApexCellValueChangedEvent,
   ApexCellValueChangingEvent,
   ApexColumnMovedEvent,
@@ -70,7 +71,10 @@ export type {
   PinPosition,
   PropertyType,
   SelectionMode,
+  Validator,
+  ValidatorContext,
 } from './internal/types.js';
+export { custom, max, min, pattern, required } from './internal/validators.js';
 export { BooleanOperands } from './operations/filter/operands/boolean.js';
 export { NumberOperands } from './operations/filter/operands/number.js';
 export { StringOperands } from './operations/filter/operands/string.js';

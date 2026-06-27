@@ -348,6 +348,46 @@ $star-size: #{rem(14px)};
     white-space: nowrap;
 }
 
+// --- Validation (invalid cell) ---------------------------------------------
+// Driven by `data-invalid` on the host (set by the cell when its column's
+// validators reject the candidate value). Reuses the `--ag-risk` palette so the
+// look follows the theme. Inert until a value fails validation.
+$invalid-color: var(--igx-cell-invalid-border-color, var(--ag-risk, #ef4444));
+
+:host([data-invalid]) {
+    box-shadow: inset 0 0 0 1px #{$invalid-color};
+}
+
+// Keep the invalid ring while editing (it would otherwise be replaced by the
+// active-cell outline) and let the error tooltip below escape the clip region.
+:host([data-invalid][editing]) {
+    box-shadow: inset 0 0 0 1px #{$invalid-color};
+    overflow: visible;
+}
+
+// Inline error message: a small tooltip anchored under the cell. An opaque
+// surface background keeps it readable over rows below; `title` on the host is a
+// reliable fallback when a scroll container clips this node.
+[part~='cell-error'] {
+    position: absolute;
+    inset-block-start: 100%;
+    inset-inline-start: 0;
+    z-index: calc(var(--z-index-base) + 11);
+    margin-block-start: #{rem(2px)};
+    padding: #{rem(2px)} #{rem(6px)};
+    max-inline-size: #{rem(220px)};
+    background: var(--ag-surface, #fff);
+    color: var(--ag-risk-text, #b91c1c);
+    border: #{rem(1px)} solid #{$invalid-color};
+    border-radius: var(--ag-radius-xs);
+    font-size: var(--ag-fs-cell-secondary);
+    font-weight: var(--ag-fw-regular);
+    line-height: 1.3;
+    white-space: normal;
+    pointer-events: none;
+    box-shadow: 0 #{rem(2px)} #{rem(6px)} rgb(0 0 0 / 12%);
+}
+
 // --- Cell-range decoration (CellDecorator seam) ----------------------------
 // Inert for the community grid (it registers no decorator module, so no cell
 // ever gets these attributes). A feature module (enterprise range selection)

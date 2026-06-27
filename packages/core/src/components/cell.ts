@@ -120,8 +120,23 @@ export default class ApexGridCell<T extends object> extends LitElement {
   @property({ attribute: false, type: Number })
   public decorationVersion = 0;
 
+  /**
+   * Reactive token forwarded from {@link EditingController.validationVersion}.
+   * Changing it re-runs {@link willUpdate} so the cell re-reads its validation
+   * errors and toggles `aria-invalid` / the inline error node. Stays `0` until
+   * the first validation failure.
+   */
+  @property({ attribute: false, type: Number })
+  public validationVersion = 0;
+
   /** Decoration attribute keys applied on the previous update, for cleanup. */
   #decoratedKeys: string[] = [];
+
+  /** DOM id of the inline error node, referenced by `aria-errormessage`. */
+  static readonly #ERROR_ID = 'apex-cell-error';
+
+  /** Validation errors resolved in {@link willUpdate}, consumed in render. */
+  #errors: readonly string[] | null = null;
 
   public override connectedCallback(): void {
     super.connectedCallback();
@@ -162,7 +177,49 @@ export default class ApexGridCell<T extends object> extends LitElement {
       this.removeAttribute('data-tree-expanded');
     }
 
+    this.#applyValidation();
     this.#applyDecoration();
+  }
+
+  /**
+   * Reflects the cell's validation state from the editing controller: stores the
+   * current error messages for {@link render} and toggles `aria-invalid` +
+   * `aria-errormessage` + `data-invalid` on the host. Inert for cells whose
+   * column has no validators (the lookup returns `null`).
+   */
+  #applyValidation(): void {
+    const errors =
+      this.state && this.row?.data
+        ? (this.editingController?.getCellErrors(this.row.data, this.column.key) ?? null)
+        : null;
+    this.#errors = errors && errors.length > 0 ? errors : null;
+
+    if (this.#errors) {
+      this.setAttribute('aria-invalid', 'true');
+      this.setAttribute('aria-errormessage', ApexGridCell.#ERROR_ID);
+      this.setAttribute('data-invalid', '');
+      this.setAttribute('title', this.#errors.join('; '));
+    } else {
+      this.removeAttribute('aria-invalid');
+      this.removeAttribute('aria-errormessage');
+      this.removeAttribute('data-invalid');
+      this.removeAttribute('title');
+    }
+  }
+
+  /**
+   * The inline error node surfaced when the cell is invalid. `role="alert"`
+   * announces the message when it appears, covering the cross-shadow gap where
+   * an `aria-errormessage` IDREF on the host can't reach this node.
+   */
+  protected renderError() {
+    if (!this.#errors) return null;
+    return html`<span
+      part="cell-error"
+      id=${ApexGridCell.#ERROR_ID}
+      role="alert"
+      >${this.#errors.join('; ')}</span
+    >`;
   }
 
   /**
@@ -495,14 +552,17 @@ export default class ApexGridCell<T extends object> extends LitElement {
   }
 
   protected override render() {
+    const error = this.renderError();
     if (this.isEditing) {
-      return this.renderEditor();
+      return html`${this.renderEditor()}${error}`;
     }
     const affordance = this.renderTreeAffordance();
     if (affordance) {
-      return html`${affordance}<span part="tree-cell-content">${this.renderCellBody()}</span>`;
+      return html`${affordance}<span part="tree-cell-content"
+          >${this.renderCellBody()}</span
+        >${error}`;
     }
-    return this.renderCellBody();
+    return html`${this.renderCellBody()}${error}`;
   }
 }
 

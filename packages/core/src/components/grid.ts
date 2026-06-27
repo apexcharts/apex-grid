@@ -209,6 +209,33 @@ export interface ApexCellValueChangedEvent<T extends object> {
 }
 
 /**
+ * Event payload for the `cellValidationFailed` event.
+ */
+export interface ApexCellValidationFailedEvent<T extends object> {
+  /**
+   * The column key of the rejected cell.
+   */
+  key: Keys<T>;
+  /**
+   * The view-relative row index of the rejected cell.
+   */
+  rowIndex: number;
+  /**
+   * The data record being edited (a live reference to the row in
+   * {@link ApexGrid.data}).
+   */
+  data: T;
+  /**
+   * The candidate value that failed validation.
+   */
+  value: unknown;
+  /**
+   * The collected validator error messages.
+   */
+  errors: readonly string[];
+}
+
+/**
  * Event payload for the `rowEditStarted` event.
  */
 export interface ApexRowEditStartedEvent {
@@ -520,6 +547,15 @@ export interface ApexGridEventMap<T extends object> {
    * @event
    */
   cellValueChanged: CustomEvent<ApexCellValueChangedEvent<T>>;
+  /**
+   * Emitted when a candidate cell value is rejected by one or more of the
+   * column's {@link BaseColumnConfiguration.validators}. The value is not
+   * written; in inline edit mode the editor stays open. Fires for single,
+   * row-mode, and bulk (paste / fill) edits.
+   *
+   * @event
+   */
+  cellValidationFailed: CustomEvent<ApexCellValidationFailedEvent<T>>;
   /**
    * Emitted when a row enters edit mode (row edit mode only).
    *

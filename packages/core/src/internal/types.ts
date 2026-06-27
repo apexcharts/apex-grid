@@ -287,6 +287,21 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    */
   editorTemplate?: (params: ApexEditorContext<T, K>) => TemplateResult | unknown;
   /**
+   * Declarative validators run before a candidate value is written to this
+   * column's cells.
+   *
+   * @remarks
+   * Each validator receives the candidate value and a {@link ValidatorContext}
+   * and returns an error message string (the cell is rejected) or `null` (it
+   * passes). All validators run and every message is collected, so a single
+   * failed commit can surface multiple errors. A failing commit keeps the
+   * inline editor open, marks the cell `aria-invalid`, and emits
+   * `cellValidationFailed`. Validation also covers bulk edits (paste / fill).
+   * Use the built-in factories ({@link required}, {@link min}, {@link max},
+   * {@link pattern}, {@link custom}) or supply your own function.
+   */
+  validators?: Validator<T, K>[];
+  /**
    * Option list for columns with `type: 'select'`.
    *
    * @remarks
@@ -365,6 +380,29 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
  */
 export type ColumnConfiguration<T extends object, K extends Keys<T> = Keys<T>> =
   K extends Keys<T> ? BaseColumnConfiguration<T, K> : never;
+
+/**
+ * Context passed to a {@link Validator} alongside the candidate value.
+ */
+export interface ValidatorContext<T extends object, K extends Keys<T> = Keys<T>> {
+  /** The column configuration the value is being validated against. */
+  column: ColumnConfiguration<T, K>;
+  /** The full data record being edited (a live reference). */
+  data: T;
+  /** The view-relative row index of the edited cell. */
+  rowIndex: number;
+}
+
+/**
+ * A single declarative validation rule for a column.
+ *
+ * @returns An error message string when the value is invalid, or `null` when
+ * it passes.
+ */
+export type Validator<T extends object, K extends Keys<T> = Keys<T>> = (
+  value: unknown,
+  context: ValidatorContext<T, K>
+) => string | null;
 
 export interface ActiveNode<T> {
   column: Keys<T>;

@@ -1,5 +1,5 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
-import type { ColumnConfiguration } from 'apex-grid';
+import { type ColumnConfiguration, max } from 'apex-grid';
 import {
   ApexGridEnterprise,
   enterpriseModules,
@@ -360,6 +360,37 @@ describe('Range selection', () => {
 
     expect(cellValue(grid, 0, 'amount')).to.equal(10); // cancelled — unchanged
     expect(cellValue(grid, 0, 'score')).to.equal(6); // applied
+  });
+
+  it('paste validates each cell — rejects invalid, applies valid (bulk validation)', async () => {
+    const validatedColumns: ColumnConfiguration<Row>[] = [
+      { key: 'id', type: 'number', headerText: 'ID' },
+      { key: 'name', type: 'string', headerText: 'Name' },
+      { key: 'amount', type: 'number', headerText: 'Amount', validators: [max(20)] },
+      { key: 'score', type: 'number', headerText: 'Score' },
+    ];
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise
+        .data=${data.map((row) => ({ ...row }))}
+        .columns=${validatedColumns}
+      ></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    await layoutComplete(grid);
+
+    const failed: string[] = [];
+    grid.addEventListener('cellValidationFailed', (event) => {
+      const detail = (event as CustomEvent<{ key: unknown; value: unknown }>).detail;
+      failed.push(`${String(detail.key)}=${detail.value}`);
+    });
+
+    grid.selectRange({ row: 0, column: 'amount' });
+    grid.pasteText('99\t6'); // amount[0]=99 (>max 20, rejected), score[0]=6 (applied)
+    await grid.updateComplete;
+
+    expect(cellValue(grid, 0, 'amount')).to.equal(10); // invalid — unchanged
+    expect(cellValue(grid, 0, 'score')).to.equal(6); // valid — applied
+    expect(failed).to.deep.equal(['amount=99']);
   });
 
   // --- fill handle --------------------------------------------------------
