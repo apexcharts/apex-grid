@@ -332,6 +332,36 @@ describe('Range selection', () => {
     expect(grid.getSelectionBounds()).to.eql({ top: 0, bottom: 1, left: 2, right: 3 });
   });
 
+  it('paste emits cellValueChanged for each changed cell (edit choke point)', async () => {
+    const grid = await mount();
+    const changed: string[] = [];
+    grid.addEventListener('cellValueChanged', (event) => {
+      const detail = (event as CustomEvent<{ key: unknown; value: unknown }>).detail;
+      changed.push(`${String(detail.key)}=${detail.value}`);
+    });
+
+    grid.selectRange({ row: 0, column: 'amount' });
+    grid.pasteText('5\t6'); // amount[0] 10->5, score[0] 100->6
+    await grid.updateComplete;
+
+    expect(changed).to.deep.equal(['amount=5', 'score=6']);
+  });
+
+  it('paste respects cellValueChanging cancellation (validation gate)', async () => {
+    const grid = await mount();
+    grid.addEventListener('cellValueChanging', (event) => {
+      const detail = (event as CustomEvent<{ key: unknown }>).detail;
+      if (String(detail.key) === 'amount') event.preventDefault();
+    });
+
+    grid.selectRange({ row: 0, column: 'amount' });
+    grid.pasteText('5\t6'); // amount blocked, score allowed
+    await grid.updateComplete;
+
+    expect(cellValue(grid, 0, 'amount')).to.equal(10); // cancelled — unchanged
+    expect(cellValue(grid, 0, 'score')).to.equal(6); // applied
+  });
+
   // --- fill handle --------------------------------------------------------
 
   it('fill copies a single source cell down the column', async () => {

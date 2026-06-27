@@ -28,6 +28,16 @@ interface ActiveCell<T> {
 }
 
 /**
+ * Outcome of a single committed cell edit routed through
+ * {@link EditingController.applyCellEdit}.
+ *
+ * - `'unchanged'` - the candidate equalled the current value; nothing happened.
+ * - `'cancelled'` - a `cellValueChanging` listener called `preventDefault()`.
+ * - `'applied'` - the value was written and `cellValueChanged` fired.
+ */
+export type CellEditResult = 'unchanged' | 'cancelled' | 'applied';
+
+/**
  * Reactive controller backing inline cell + row editing.
  *
  * @remarks
@@ -155,6 +165,43 @@ export class EditingController<T extends object> implements ReactiveController {
   }
 
   /**
+   * The single choke point for committing a cell value to the backing record.
+   * Short-circuits no-op writes, runs the cancellable `cellValueChanging` gate,
+   * writes the value through to {@link ApexGrid.data}, and emits
+   * `cellValueChanged`. Returns the {@link CellEditResult} so callers can manage
+   * their own UI state (active cell) and batch the render.
+   *
+   * @remarks
+   * Does **not** request a render — callers refresh (once per edit, or once per
+   * batch) so row-mode and bulk edits coalesce into a single pipeline pass.
+   * Every committed edit (single-cell, row-mode, and enterprise paste/fill)
+   * funnels through here so cross-cutting concerns (validation, undo/redo) have
+   * one place to hook the old/new values and the write.
+   */
+  public applyCellEdit(
+    rowIndex: number,
+    columnKey: Keys<T>,
+    data: T,
+    value: unknown
+  ): CellEditResult {
+    const record = data as Record<string, unknown>;
+    const oldValue = record[columnKey as string];
+    if (Object.is(value, oldValue)) return 'unchanged';
+
+    const proceed = this.host.emitEvent('cellValueChanging', {
+      detail: { key: columnKey, rowIndex, data, oldValue, newValue: value },
+      cancelable: true,
+    });
+    if (!proceed) return 'cancelled';
+
+    record[columnKey as string] = value;
+    this.host.emitEvent('cellValueChanged', {
+      detail: { key: columnKey, rowIndex, data, value },
+    });
+    return 'applied';
+  }
+
+  /**
    * Commits a candidate value for the currently editing cell. In cell mode the
    * value is written through to {@link ApexGrid.data}; in row mode it is staged
    * in {@link pending} until {@link commitRow} is called.
@@ -171,23 +218,17 @@ export class EditingController<T extends object> implements ReactiveController {
     const candidate = value === undefined ? oldValue : value;
 
     if (this.mode === 'cell') {
-      if (Object.is(candidate, oldValue)) {
-        this.activeCell = null;
-        this.host.requestUpdate();
-        return true;
-      }
-      const proceed = this.host.emitEvent('cellValueChanging', {
-        detail: { key: columnKey, rowIndex, data, oldValue, newValue: candidate },
-        cancelable: true,
-      });
-      if (!proceed) return false;
-      (data as Record<string, unknown>)[columnKey as string] = candidate;
+      const result = this.applyCellEdit(rowIndex, columnKey, data, candidate);
+      if (result === 'cancelled') return false;
+      // Both 'applied' and 'unchanged' close the editor; only an applied write
+      // needs the data pipeline to re-run.
       this.activeCell = null;
-      this.host.requestUpdate(PIPELINE);
-      await this.host.updateComplete;
-      this.host.emitEvent('cellValueChanged', {
-        detail: { key: columnKey, rowIndex, data, value: candidate },
-      });
+      if (result === 'applied') {
+        this.host.requestUpdate(PIPELINE);
+        await this.host.updateComplete;
+      } else {
+        this.host.requestUpdate();
+      }
       return true;
     }
 
@@ -219,19 +260,13 @@ export class EditingController<T extends object> implements ReactiveController {
     if (!column || !this.isEditable(column)) return false;
     const data = this.host.pageItems[rowIndex] as T | undefined;
     if (!data) return false;
-    const oldValue = (data as Record<string, unknown>)[columnKey as string];
-    if (Object.is(value, oldValue)) return true;
-    const proceed = this.host.emitEvent('cellValueChanging', {
-      detail: { key: columnKey, rowIndex, data, oldValue, newValue: value },
-      cancelable: true,
-    });
-    if (!proceed) return false;
-    (data as Record<string, unknown>)[columnKey as string] = value;
-    this.host.requestUpdate(PIPELINE);
-    await this.host.updateComplete;
-    this.host.emitEvent('cellValueChanged', {
-      detail: { key: columnKey, rowIndex, data, value },
-    });
+
+    const result = this.applyCellEdit(rowIndex, columnKey, data, value);
+    if (result === 'cancelled') return false;
+    if (result === 'applied') {
+      this.host.requestUpdate(PIPELINE);
+      await this.host.updateComplete;
+    }
     return true;
   }
 
@@ -263,17 +298,10 @@ export class EditingController<T extends object> implements ReactiveController {
     }
 
     for (const [columnKey, candidate] of this.pending) {
-      const oldValue = (data as Record<string, unknown>)[columnKey as string];
-      if (Object.is(candidate, oldValue)) continue;
-      const proceed = this.host.emitEvent('cellValueChanging', {
-        detail: { key: columnKey, rowIndex, data, oldValue, newValue: candidate },
-        cancelable: true,
-      });
-      if (!proceed) return false;
-      (data as Record<string, unknown>)[columnKey as string] = candidate;
-      this.host.emitEvent('cellValueChanged', {
-        detail: { key: columnKey, rowIndex, data, value: candidate },
-      });
+      // A cancelled cell aborts the whole row commit, leaving it in edit mode.
+      if (this.applyCellEdit(rowIndex, columnKey, data, candidate) === 'cancelled') {
+        return false;
+      }
     }
 
     this.pending.clear();

@@ -434,7 +434,16 @@ export class RangeSelectionController<T extends object>
         const colIndex = start.left + j;
         const column = columns[colIndex];
         if (!column) continue;
-        record[String(column.key)] = this.#coerce(matrix[i][j], column);
+        // Route through the editing choke point so paste participates in the
+        // cellValueChanging/cellValueChanged events (and, in turn, validation +
+        // undo). The pasted region still drives the selection regardless of
+        // whether a given cell's value actually changed.
+        this.state.editing.applyCellEdit(
+          row,
+          column.key,
+          record as T,
+          this.#coerce(matrix[i][j], column)
+        );
         wrote = true;
         lastRow = Math.max(lastRow, row);
         lastCol = Math.max(lastCol, colIndex);
@@ -603,7 +612,14 @@ export class RangeSelectionController<T extends object>
         for (let row = preview.top; row <= preview.bottom; row += 1) {
           if (row >= source.top && row <= source.bottom) continue;
           const record = items[row];
-          if (record) record[key] = this.#seriesValue(line, row - source.top);
+          if (record) {
+            this.state.editing.applyCellEdit(
+              row,
+              column.key,
+              record as T,
+              this.#seriesValue(line, row - source.top)
+            );
+          }
         }
       }
     } else {
@@ -617,7 +633,14 @@ export class RangeSelectionController<T extends object>
         for (let col = preview.left; col <= preview.right; col += 1) {
           if (col >= source.left && col <= source.right) continue;
           const column = columns[col];
-          if (column) record[String(column.key)] = this.#seriesValue(line, col - source.left);
+          if (column) {
+            this.state.editing.applyCellEdit(
+              row,
+              column.key,
+              record as T,
+              this.#seriesValue(line, col - source.left)
+            );
+          }
         }
       }
     }
