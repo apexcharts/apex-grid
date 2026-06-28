@@ -1,5 +1,11 @@
 import { LicenseManager } from 'apex-commons';
-import type { ColumnConfiguration, GetStateOptions, GridState, SetStateOptions } from 'apex-grid';
+import type {
+  ColumnConfiguration,
+  GetStateOptions,
+  GridState,
+  SetStateOptions,
+  SetStateResult,
+} from 'apex-grid';
 import {
   ApexGrid,
   downloadBlob,
@@ -328,7 +334,10 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * structure (grouping / pivot) is set first so the transformed view is in
    * place before the core pass resolves row-referencing slices.
    */
-  public override setState(state: Partial<GridState>, options?: SetStateOptions<T>): void {
+  public override setState(
+    state: Partial<GridState>,
+    options?: SetStateOptions<T>
+  ): SetStateResult {
     const enterprise = state.modules?.enterprise as EnterpriseStateBlob | undefined;
     if (enterprise) {
       if (enterprise.groupBy !== undefined) this.groupBy = [...enterprise.groupBy];
@@ -343,13 +352,15 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       }
     }
 
-    super.setState(state, options);
+    const result = super.setState(state, options);
 
     // Ranges last: their bounds are view coordinates into the freshly-restored
     // columns / rows, so resolve them against the post-restore view.
     if (enterprise?.ranges !== undefined) {
       this.#rangeController()?.restoreRanges(enterprise.ranges);
     }
+
+    return result;
   }
 
   protected override willUpdate(changed: PropertyValues): void {

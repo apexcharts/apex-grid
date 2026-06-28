@@ -99,6 +99,28 @@ export interface GetStateOptions<T extends object> {
 export interface SetStateOptions<T extends object> {
   /** Row-identity resolver; overrides `ApexGrid.rowId` for this call. */
   rowId?: (row: T) => string | number;
+  /**
+   * Throw on the first problem instead of degrading. Off by default: `setState`
+   * applies what it can and reports the rest via {@link SetStateResult.warnings}
+   * (the right behavior for LLM-produced or persisted-and-possibly-stale input).
+   * Turn on for tests / development to fail loudly.
+   */
+  strict?: boolean;
+}
+
+/**
+ * The outcome of an {@link SetStateOptions} apply. `setState` never throws on
+ * malformed input (unless `strict`): it applies recognized slices, skips the
+ * rest, and records human-readable {@link warnings} for anything dropped,
+ * clamped, or unresolved.
+ */
+export interface SetStateResult {
+  /** Slice names that were present and applied (e.g. `'sort'`, `'columns'`). */
+  applied: string[];
+  /** Known slice names that were absent (left untouched). */
+  skipped: string[];
+  /** What was dropped / clamped / unresolved, one message each. */
+  warnings: string[];
 }
 
 // --- columns ---------------------------------------------------------------
@@ -180,22 +202,30 @@ export function serializeFilter<T extends object>(
 /**
  * Rebuild filter expressions from a snapshot, resolving each operand name back
  * to a live {@link FilterOperation} via the target column's operand set.
- * Entries whose column or operand can't be resolved are dropped.
+ * Entries whose column or operand can't be resolved are dropped; `onDrop` (when
+ * given) is called with the dropped entry and a reason.
  */
 export function deserializeFilter<T extends object>(
   snapshots: ReadonlyArray<FilterStateSnapshot>,
-  getColumn: (key: string) => ColumnConfiguration<T> | undefined
+  getColumn: (key: string) => ColumnConfiguration<T> | undefined,
+  onDrop?: (snapshot: FilterStateSnapshot, reason: string) => void
 ): FilterExpression<T>[] {
   const expressions: FilterExpression<T>[] = [];
   for (const snapshot of snapshots) {
     const column = getColumn(snapshot.key);
-    if (!column) continue;
+    if (!column) {
+      onDrop?.(snapshot, 'unknown column');
+      continue;
+    }
     const operands = getFilterOperandsFor(column) as unknown as Record<
       string,
       FilterOperation<unknown>
     >;
     const condition = operands[snapshot.operand];
-    if (!condition) continue;
+    if (!condition) {
+      onDrop?.(snapshot, `unknown operand "${snapshot.operand}"`);
+      continue;
+    }
     expressions.push({
       key: snapshot.key as Keys<T>,
       condition,

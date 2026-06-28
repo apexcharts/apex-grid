@@ -20,11 +20,15 @@ import { EventEmitterBase } from '../internal/mixins/event-emitter.js';
 import { registerComponent } from '../internal/register.js';
 import {
   applyColumnLayout,
+  type ColumnLayoutState,
   deserializeFilter,
   type GetStateOptions,
   type GridState,
+  type RowRef,
   resolveRowRefs,
   type SetStateOptions,
+  type SetStateResult,
+  type SortStateSnapshot,
   serializeColumnLayout,
   serializeFilter,
   serializeRowRefs,
@@ -777,6 +781,21 @@ export interface ApexGridEventMap<T extends object> {
  *
  * @see {@link https://github.com/apexcharts/apex-grid/blob/main/packages/core/src/styles/_tokens.scss | _tokens.scss} for the complete `--ag-*` token list.
  */
+/** Known `setState` slice names, used to compute the `skipped` report. */
+const SET_STATE_SLICES = [
+  'columns',
+  'sort',
+  'filter',
+  'quickFilter',
+  'modules',
+  'rowOrder',
+  'tree',
+  'expansion',
+  'rowPinning',
+  'selection',
+  'pagination',
+] as const;
+
 export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMap<T>> {
   public static get tagName(): string {
     return GRID_TAG;
@@ -1604,82 +1623,189 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * state resolves against the transformed view. `rowOrder` is mutually exclusive
    * with an active `sort`: a snapshot carrying both keeps the sort and drops
    * `rowOrder`.
+   *
+   * **Defensive by design.** `setState` is written into by persisted blobs and
+   * LLM output, so it never throws on malformed input (unless
+   * {@link SetStateOptions.strict}): unknown columns / operands, out-of-range
+   * pages, unresolvable rows, and wrong-typed slices are dropped, clamped, or
+   * skipped, each recorded in the returned {@link SetStateResult}.
    */
-  public setState(state: Partial<GridState>, options?: SetStateOptions<T>): void {
+  public setState(state: Partial<GridState>, options?: SetStateOptions<T>): SetStateResult {
     const rowId = options?.rowId ?? this.rowId;
+    const strict = options?.strict ?? false;
+    const applied: string[] = [];
+    const warnings: string[] = [];
+    const warn = (message: string): void => {
+      if (strict) throw new Error(`[apex-grid] setState: ${message}`);
+      warnings.push(message);
+    };
 
-    if (state.columns) {
-      this.columns = applyColumnLayout(this.columns, state.columns);
-    }
-
-    if (state.sort) {
-      this.stateController.sorting.reset();
-      if (state.sort.length) {
-        this.sort(state.sort as unknown as SortExpression<T>[]);
+    // Defensive accessors: a wrong-typed slice is skipped with a warning rather
+    // than throwing mid-apply.
+    const asArray = <V>(value: unknown, label: string): V[] | null => {
+      if (value === undefined) return null;
+      if (!Array.isArray(value)) {
+        warn(`${label}: expected an array, got ${typeof value}; skipped`);
+        return null;
       }
+      return value as V[];
+    };
+    const resolveCounted = (refs: ReadonlyArray<RowRef>, label: string): T[] => {
+      const rows = resolveRowRefs(refs, this.data, rowId);
+      if (rows.length < refs.length) {
+        warn(
+          `${label}: ${refs.length - rows.length} of ${refs.length} row(s) could not be resolved`
+        );
+      }
+      return rows;
+    };
+
+    if (state.version !== undefined && state.version !== 1) {
+      warn(
+        `unsupported snapshot version ${String(state.version)}; applying recognized slices best-effort`
+      );
     }
 
-    if (state.filter) {
+    const columns = asArray<ColumnLayoutState>(state.columns, 'columns');
+    if (columns) {
+      this.columns = applyColumnLayout(this.columns, columns);
+      applied.push('columns');
+    }
+
+    const sort = asArray<SortStateSnapshot>(state.sort, 'sort');
+    if (sort) {
+      this.stateController.sorting.reset();
+      const valid: SortStateSnapshot[] = [];
+      for (const entry of sort) {
+        if (this.getColumn(entry.key as Keys<T>)) {
+          valid.push(entry);
+        } else {
+          warn(`sort: unknown column "${entry.key}"; dropped`);
+        }
+      }
+      if (valid.length) this.sort(valid as unknown as SortExpression<T>[]);
+      applied.push('sort');
+    }
+
+    const filter = asArray<GridState['filter'][number]>(state.filter, 'filter');
+    if (filter) {
       this.stateController.filtering.reset();
-      const expressions = deserializeFilter<T>(state.filter, (key) =>
-        this.getColumn(key as Keys<T>)
+      const expressions = deserializeFilter<T>(
+        filter,
+        (key) => this.getColumn(key as Keys<T>),
+        (snapshot, reason) => warn(`filter: "${snapshot.key}" dropped (${reason})`)
       );
       if (expressions.length) this.filter(expressions);
+      applied.push('filter');
     }
 
     if (state.quickFilter !== undefined) {
-      this.quickFilter = state.quickFilter;
+      if (typeof state.quickFilter === 'string') {
+        this.quickFilter = state.quickFilter;
+        applied.push('quickFilter');
+      } else {
+        warn(`quickFilter: expected a string, got ${typeof state.quickFilter}; skipped`);
+      }
     }
 
     // Module structure (e.g. grouping / pivot) before the row-referencing slices,
     // so the transformed view exists when selection / expansion are resolved.
-    if (state.modules) {
-      this.stateController.restoreModuleState(state.modules);
+    if (state.modules !== undefined) {
+      if (state.modules && typeof state.modules === 'object') {
+        this.stateController.restoreModuleState(state.modules);
+        applied.push('modules');
+      } else {
+        warn(`modules: expected an object, got ${typeof state.modules}; skipped`);
+      }
     }
 
     // Manual row order, applied after sort so the conflict is resolvable here:
-    // a manual order is mutually exclusive with sorting, so skip it when the
+    // a manual order is mutually exclusive with sorting, so drop it when the
     // restored state also carries an active sort (the sort wins).
     if (state.rowOrder !== undefined) {
       if (state.rowOrder === null) {
         this.stateController.rowReorder.restoreManualOrder(null);
-      } else if (!this.sortExpressions.length) {
-        this.stateController.rowReorder.restoreManualOrder(
-          resolveRowRefs(state.rowOrder, this.data, rowId)
-        );
+        applied.push('rowOrder');
+      } else {
+        const order = asArray<RowRef>(state.rowOrder, 'rowOrder');
+        if (order) {
+          if (this.sortExpressions.length) {
+            warn('rowOrder dropped: a manual order is mutually exclusive with an active sort');
+          } else {
+            this.stateController.rowReorder.restoreManualOrder(resolveCounted(order, 'rowOrder'));
+          }
+          applied.push('rowOrder');
+        }
       }
     }
 
     if (state.treeExpanded !== undefined || state.treeExpandedKeys !== undefined) {
-      const expanded = resolveRowRefs(state.treeExpanded ?? [], this.data, rowId);
-      this.stateController.tree.restoreExpansion(expanded, state.treeExpandedKeys ?? []);
+      const refs = asArray<RowRef>(state.treeExpanded, 'treeExpanded') ?? [];
+      const keys = asArray<string>(state.treeExpandedKeys, 'treeExpandedKeys') ?? [];
+      this.stateController.tree.restoreExpansion(resolveCounted(refs, 'treeExpanded'), keys);
+      applied.push('tree');
     }
 
-    if (state.expansion) {
-      this.expandedRows = resolveRowRefs(state.expansion, this.data, rowId);
+    const expansion = asArray<RowRef>(state.expansion, 'expansion');
+    if (expansion) {
+      this.expandedRows = resolveCounted(expansion, 'expansion');
+      applied.push('expansion');
     }
 
-    if (state.rowPinning) {
-      this.stateController.rowPin.restore(
-        resolveRowRefs(state.rowPinning.top ?? [], this.data, rowId),
-        resolveRowRefs(state.rowPinning.bottom ?? [], this.data, rowId)
-      );
-    }
-
-    if (state.selection) {
-      this.selectedRows = resolveRowRefs(state.selection, this.data, rowId);
-    }
-
-    if (state.pagination) {
-      if (typeof state.pagination.pageSize === 'number') {
-        this.pageSize = state.pagination.pageSize;
+    if (state.rowPinning !== undefined) {
+      const pinning = state.rowPinning;
+      if (pinning && typeof pinning === 'object') {
+        this.stateController.rowPin.restore(
+          resolveCounted(asArray<RowRef>(pinning.top, 'rowPinning.top') ?? [], 'rowPinning.top'),
+          resolveCounted(
+            asArray<RowRef>(pinning.bottom, 'rowPinning.bottom') ?? [],
+            'rowPinning.bottom'
+          )
+        );
+        applied.push('rowPinning');
+      } else {
+        warn(`rowPinning: expected an object, got ${typeof pinning}; skipped`);
       }
-      if (typeof state.pagination.page === 'number') {
-        this.page = state.pagination.page;
+    }
+
+    const selection = asArray<RowRef>(state.selection, 'selection');
+    if (selection) {
+      this.selectedRows = resolveCounted(selection, 'selection');
+      applied.push('selection');
+    }
+
+    if (state.pagination !== undefined) {
+      const pagination = state.pagination;
+      if (pagination && typeof pagination === 'object') {
+        const { page, pageSize } = pagination;
+        if (pageSize !== undefined) {
+          if (typeof pageSize === 'number' && Number.isFinite(pageSize) && pageSize > 0) {
+            this.pageSize = pageSize;
+          } else {
+            warn(`pagination: invalid pageSize ${String(pageSize)}; ignored`);
+          }
+        }
+        if (page !== undefined) {
+          if (typeof page === 'number' && Number.isFinite(page)) {
+            const requested = Math.trunc(page);
+            this.page = requested;
+            if (this.page !== requested) {
+              warn(`pagination: page ${requested} out of range; clamped to ${this.page}`);
+            }
+          } else {
+            warn(`pagination: invalid page ${String(page)}; ignored`);
+          }
+        }
+        applied.push('pagination');
+      } else {
+        warn(`pagination: expected an object, got ${typeof pagination}; skipped`);
       }
     }
 
     this.requestUpdate(PIPELINE);
+
+    const skipped = SET_STATE_SLICES.filter((slice) => !applied.includes(slice));
+    return { applied, skipped, warnings };
   }
 
   /**

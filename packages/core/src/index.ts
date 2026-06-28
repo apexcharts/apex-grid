@@ -43,6 +43,7 @@ export type {
   GridState,
   RowRef,
   SetStateOptions,
+  SetStateResult,
   SortStateSnapshot,
 } from './internal/state-snapshot.js';
 export type {
