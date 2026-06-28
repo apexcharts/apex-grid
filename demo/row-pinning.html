@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Row Pinning (Top / Bottom) - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .toolbar button {
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 13px;
+        border: 1px solid #d0d5dd;
+        background: #fff;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .toolbar button:hover {
+        background: #f7f9fc;
+      }
+      apex-grid {
+        min-height: 460px;
+        --ig-size: 2;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Row Pinning — Top / Bottom</h2>
+    <p class="subtitle">
+      Pin rows to a sticky top or bottom band that stays in view while the body scrolls. Pinned rows are lifted out of the scrollable set (no duplication) and rendered outside the virtualizer, so selection and styling work by data reference. Configure with <code>rowPinning = { enabled: true }</code> and call <code>grid.pinRow(row, 'top' | 'bottom')</code>.
+    </p>
+    <div class="toolbar">
+      <button data-id="2" data-pos="top">Pin #2 → top</button>
+      <button data-id="5" data-pos="top">Pin #5 → top</button>
+      <button data-id="9" data-pos="bottom">Pin #9 → bottom</button>
+      <button data-pos="unpin-all">Unpin all</button>
+    </div>
+    <apex-grid id="grid"></apex-grid>
+    <script type="module">
+      const data = [
+        { id: '1',  region: 'AMER', rep: 'Mira Patel',   deals: 18, revenue: 412000, quota: 0.94 },
+        { id: '2',  region: 'AMER', rep: 'Diego Rojas',  deals: 27, revenue: 631000, quota: 1.18 },
+        { id: '3',  region: 'EMEA', rep: 'Priya Iyer',   deals: 14, revenue: 288000, quota: 0.81 },
+        { id: '4',  region: 'EMEA', rep: 'Otis Brown',   deals: 21, revenue: 503000, quota: 1.02 },
+        { id: '5',  region: 'APAC', rep: 'Ana Costa',    deals: 30, revenue: 712000, quota: 1.31 },
+        { id: '6',  region: 'APAC', rep: 'Sven Eriksen', deals: 11, revenue: 197000, quota: 0.66 },
+        { id: '7',  region: 'AMER', rep: 'Yuki Tanaka',  deals: 23, revenue: 548000, quota: 1.09 },
+        { id: '8',  region: 'EMEA', rep: 'Kofi Mensah',  deals: 16, revenue: 339000, quota: 0.88 },
+        { id: '9',  region: 'APAC', rep: 'Lena Fischer', deals: 19, revenue: 421000, quota: 0.97 },
+        { id: '10', region: 'AMER', rep: 'Tom Becker',   deals: 25, revenue: 590000, quota: 1.14 },
+        { id: '11', region: 'EMEA', rep: 'Sara Nilsson', deals: 13, revenue: 264000, quota: 0.77 },
+        { id: '12', region: 'APAC', rep: 'Raj Malhotra', deals: 28, revenue: 668000, quota: 1.24 },
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'id',      headerText: 'ID' },
+        { key: 'region',  headerText: 'Region' },
+        { key: 'rep',     headerText: 'Sales Rep' },
+        { key: 'deals',   headerText: 'Deals',   type: 'number' },
+        { key: 'revenue', headerText: 'Revenue', type: 'number' },
+        { key: 'quota',   headerText: 'Quota %', type: 'number' },
+      ];
+      grid.data = data;
+      grid.rowPinning = { enabled: true };
+
+      const byId = (id) => grid.data.find((r) => r.id === id);
+
+      await customElements.whenDefined('apex-grid');
+      requestAnimationFrame(() => {
+        // Pin the two top performers to the top and the lowest to the bottom.
+        grid.pinRow(byId('2'), 'top');
+        grid.pinRow(byId('5'), 'top');
+        grid.pinRow(byId('6'), 'bottom');
+      });
+
+      document.querySelectorAll('.toolbar button').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const pos = btn.dataset.pos;
+          if (pos === 'unpin-all') {
+            const { top, bottom } = grid.pinnedRows;
+            for (const row of [...top, ...bottom]) grid.unpinRow(row);
+            return;
+          }
+          grid.pinRow(byId(btn.dataset.id), pos);
+        });
+      });
+    </script>
+  </body>
+</html>

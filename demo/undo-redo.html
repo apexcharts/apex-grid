@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Undo / Redo - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .toolbar button {
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 13px;
+        border: 1px solid #d0d5dd;
+        background: #fff;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .toolbar button:hover:not(:disabled) {
+        background: #f7f9fc;
+      }
+      .toolbar button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .log {
+        margin-top: 12px;
+        padding: 10px 14px;
+        background: #f7f9fc;
+        border-left: 3px solid #4f6ee0;
+        font-size: 12px;
+        font-family: 'Inter', sans-serif;
+        color: #1a1a2e;
+        max-height: 120px;
+        overflow-y: auto;
+      }
+      .log-entry {
+        line-height: 1.6;
+      }
+      apex-grid {
+        min-height: 420px;
+        --ig-size: 2;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Undo / Redo</h2>
+    <p class="subtitle">
+      Enable history with <code>editing.history = { enabled: true }</code>. Every committed cell edit is recorded; reverse it with the toolbar, <code>grid.undo()</code> / <code>grid.redo()</code>, or the keyboard (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y) while the grid body has focus. Double-click a cell to edit, then undo.
+    </p>
+    <div class="toolbar">
+      <button id="undo" disabled>↶ Undo</button>
+      <button id="redo" disabled>↷ Redo</button>
+      <button id="clear">Clear history</button>
+    </div>
+    <apex-grid id="grid"></apex-grid>
+    <div class="log" id="log"></div>
+    <script type="module">
+      const data = [
+        { id: '1', task: 'Design new onboarding flow',       owner: 'Mira Patel',   priority: 'High',   percent: 65  },
+        { id: '2', task: 'Migrate auth to OIDC',             owner: 'Diego Rojas',  priority: 'High',   percent: 90  },
+        { id: '3', task: 'Add CSV export to dashboard',      owner: 'Priya Iyer',   priority: 'Medium', percent: 100 },
+        { id: '4', task: 'Refactor pricing module',          owner: 'Otis Brown',   priority: 'Low',    percent: 0   },
+        { id: '5', task: 'Localize marketing site',          owner: 'Ana Costa',    priority: 'Medium', percent: 35  },
+        { id: '6', task: 'Set up CI runners',                owner: 'Sven Eriksen', priority: 'High',   percent: 55  },
+        { id: '7', task: 'Audit accessibility on settings',  owner: 'Yuki Tanaka',  priority: 'Medium', percent: 80  },
+        { id: '8', task: 'Write incident postmortem',        owner: 'Kofi Mensah',  priority: 'Low',    percent: 0   },
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'task',     headerText: 'Task',       editable: true },
+        { key: 'owner',    headerText: 'Owner',      editable: true },
+        { key: 'priority', headerText: 'Priority',   editable: true },
+        { key: 'percent',  headerText: '% Complete', editable: true, type: 'number' },
+      ];
+      grid.data = data;
+      grid.editing = { enabled: true, mode: 'cell', trigger: 'doubleClick', history: { enabled: true } };
+
+      const undoBtn = document.getElementById('undo');
+      const redoBtn = document.getElementById('redo');
+      const clearBtn = document.getElementById('clear');
+      const log = document.getElementById('log');
+      const append = (msg) => {
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        entry.textContent = msg;
+        log.prepend(entry);
+      };
+
+      const sync = () => {
+        undoBtn.disabled = !grid.canUndo;
+        redoBtn.disabled = !grid.canRedo;
+      };
+
+      undoBtn.addEventListener('click', () => grid.undo());
+      redoBtn.addEventListener('click', () => grid.redo());
+      clearBtn.addEventListener('click', () => grid.clearHistory());
+
+      grid.addEventListener('historyChanged', (e) => {
+        const { canUndo, canRedo } = e.detail;
+        undoBtn.disabled = !canUndo;
+        redoBtn.disabled = !canRedo;
+      });
+      grid.addEventListener('cellValueChanged', (e) => {
+        const { key, oldValue, newValue } = e.detail;
+        append(`${key}: ${oldValue} → ${newValue}`);
+        sync();
+      });
+
+      await customElements.whenDefined('apex-grid');
+      sync();
+    </script>
+  </body>
+</html>

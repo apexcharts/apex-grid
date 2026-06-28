@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cell Validation - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .log {
+        margin-top: 12px;
+        padding: 10px 14px;
+        background: #f7f9fc;
+        border-left: 3px solid #4f6ee0;
+        font-size: 12px;
+        font-family: 'Inter', sans-serif;
+        color: #1a1a2e;
+        max-height: 120px;
+        overflow-y: auto;
+      }
+      .log-entry {
+        line-height: 1.6;
+      }
+      .log-entry.rejected {
+        color: #b71c1c;
+      }
+      apex-grid {
+        min-height: 420px;
+        --ig-size: 2;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Cell Validation</h2>
+    <p class="subtitle">
+      Declarative <code>column.validators</code> run inside the commit path, before the cancellable <code>cellValueChanging</code> gate. Double-click a cell and enter an invalid value: the editor stays open, the cell turns red with an <code>aria-invalid</code> message, and a <code>cellValidationFailed</code> event fires (logged below). Try clearing <strong>Name</strong>, an out-of-range <strong>Age</strong> (18–99), or a malformed <strong>Email</strong>.
+    </p>
+    <apex-grid id="grid"></apex-grid>
+    <div class="log" id="log"></div>
+    <script type="module">
+      // Validators are plain `(value, ctx) => string | null` functions. The
+      // library also ships built-in factories (required / min / max / pattern /
+      // custom); these inline equivalents keep the demo self-contained.
+      const required = (msg) => (v) => (v == null || String(v).trim() === '' ? msg : null);
+      const range = (lo, hi, msg) => (v) => {
+        if (v == null || v === '') return null;
+        const n = Number(v);
+        return Number.isFinite(n) && n >= lo && n <= hi ? null : msg;
+      };
+      const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const matches = (re, msg) => (v) => (v == null || v === '' || re.test(String(v)) ? null : msg);
+
+      const data = [
+        { id: '1', name: 'Mira Patel',   email: 'mira.patel@acme.io',   age: 34, title: 'Design Lead'        },
+        { id: '2', name: 'Diego Rojas',  email: 'diego.rojas@acme.io',  age: 41, title: 'Staff Engineer'     },
+        { id: '3', name: 'Priya Iyer',   email: 'priya.iyer@acme.io',   age: 29, title: 'Senior Engineer'    },
+        { id: '4', name: 'Otis Brown',   email: 'otis.brown@acme.io',   age: 52, title: 'Finance Manager'    },
+        { id: '5', name: 'Ana Costa',    email: 'ana.costa@acme.io',    age: 38, title: 'Marketing Lead'     },
+        { id: '6', name: 'Sven Eriksen', email: 'sven.eriksen@acme.io', age: 45, title: 'Principal Engineer' },
+        { id: '7', name: 'Yuki Tanaka',  email: 'yuki.tanaka@acme.io',  age: 31, title: 'Product Designer'   },
+        { id: '8', name: 'Kofi Mensah',  email: 'kofi.mensah@acme.io',  age: 47, title: 'Ops Manager'        },
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'name',  headerText: 'Name',  editable: true, validators: [required('Name is required')] },
+        {
+          key: 'email', headerText: 'Email', editable: true,
+          validators: [required('Email is required'), matches(emailRe, 'Enter a valid email address')],
+        },
+        {
+          key: 'age', headerText: 'Age', editable: true, type: 'number',
+          validators: [required('Age is required'), range(18, 99, 'Age must be between 18 and 99')],
+        },
+        { key: 'title', headerText: 'Title', editable: true, validators: [required('Title is required')] },
+      ];
+      grid.data = data;
+      grid.editing = { enabled: true, mode: 'cell', trigger: 'doubleClick' };
+
+      const log = document.getElementById('log');
+      const append = (msg, rejected = false) => {
+        const entry = document.createElement('div');
+        entry.className = 'log-entry' + (rejected ? ' rejected' : '');
+        entry.textContent = msg;
+        log.prepend(entry);
+      };
+
+      grid.addEventListener('cellValidationFailed', (e) => {
+        const { key, errors } = e.detail;
+        append(`invalid ${key}: ${errors.join(', ')}`, true);
+      });
+      grid.addEventListener('cellValueChanged', (e) => {
+        const { key, oldValue, newValue } = e.detail;
+        append(`${key}: ${oldValue} → ${newValue}`);
+      });
+    </script>
+  </body>
+</html>
