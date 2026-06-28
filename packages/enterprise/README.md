@@ -23,6 +23,7 @@ configuration API, theming, and events are identical, plus the additions below.
 - **[Master / detail grids](#master--detail-grids)**: embed a child grid in each expandable row.
 - **[Integrated charts](#integrated-charts)**: render the grid's data as an ApexCharts chart.
 - **[Infinite (server-side) row model](#infinite-server-side-row-model)**: stream large remote datasets, block by block.
+- **[AI Toolkit](#ai-toolkit)**: natural-language grid control and read-only Q&A through a provider-agnostic adapter, with a first-class Claude reference adapter.
 
 ## Install
 
@@ -280,6 +281,116 @@ grid.refreshRows();     // refetch after a server-side mutation
 
 The grid emits `apex-rows-loaded` (`detail: { rowCount, exact, loadedBlocks,
 blockSize }`) so you can show live load status.
+
+## AI Toolkit
+
+Drive the grid in natural language. A prompt becomes a schema-validated state
+patch that is applied through `setState()` with a one-click undo, plus a
+read-only Q&A mode. The toolkit is provider-agnostic: you wire any LLM through a
+tiny adapter, and a first-class Anthropic/Claude reference adapter ships in the
+box. The whole toolkit is an enterprise feature; it builds on the community
+grid's `getSchema()` / `setState()` foundation.
+
+### The adapter
+
+An `AIAdapter` is any function from a request to a response:
+
+```ts
+type AIAdapter = (request: AIRequest) => Promise<AIResponse>;
+// request:  { schema, prompt, mode: 'control' | 'ask', data?, signal? }
+// response: { patch?, answer? }
+```
+
+`request.schema` is the grid's `getSchema()` descriptor (columns, capabilities,
+and current state), so the adapter has everything it needs to build a prompt and
+a valid patch. Assign one to the grid:
+
+```ts
+import { createClaudeAdapter } from 'apex-grid-enterprise';
+
+grid.aiAdapter = createClaudeAdapter({ endpoint: '/api/grid-ai' });
+```
+
+### Running a prompt
+
+```ts
+const result = await grid.runPrompt('group by region, then sort by revenue, highest first');
+if (result.mode === 'control') {
+  console.log(result.result.applied); // e.g. ['modules', 'sort']
+  console.log(result.warnings);       // anything dropped, each with a reason
+  result.undo();                      // one-click revert
+}
+
+// Read-only question; the grid is not changed.
+const answer = await grid.runPrompt('which region has the highest average revenue?', { mode: 'ask' });
+// answer.mode === 'ask'; answer.answer is the text reply
+```
+
+`runPrompt` validates the returned patch against the schema (dropping anything
+out of vocabulary, with a reported reason), applies it via the defensive
+`setState()`, and returns an idempotent `undo()` that restores the prior
+snapshot. Ask mode never mutates the grid.
+
+### Claude reference adapter
+
+`createClaudeAdapter` is the bundled Anthropic/Claude adapter, with two
+transports:
+
+```ts
+// Production: your backend holds the key and calls Anthropic; the browser never sees it.
+grid.aiAdapter = createClaudeAdapter({ endpoint: '/api/grid-ai' });
+
+// Development only: call Anthropic from the browser. This exposes the key to the page.
+grid.aiAdapter = createClaudeAdapter({ apiKey: '...', dangerouslyAllowBrowser: true });
+```
+
+The direct transport dynamically imports `@anthropic-ai/sdk` (an optional peer
+dependency), defaults to `claude-opus-4-8` (configurable), and uses tool use so
+the model returns a patch shaped by the grid's schema. The proxy transport POSTs
+`{ prompt, mode, schema, data }` to your endpoint, which returns
+`{ patch?, answer? }`. Prefer the proxy for production: it keeps the key on the
+server. Install the SDK only when you use the direct transport:
+
+```bash
+npm install @anthropic-ai/sdk
+```
+
+### Prompt panel
+
+`<apex-grid-ai>` is a ready-made prompt UI. Bind it to a grid and it drives
+`runPrompt` for you, showing what changed (with an Undo button), or the answer in
+ask mode.
+
+```html
+<apex-grid-ai mode="inline"></apex-grid-ai>
+```
+
+```ts
+document.querySelector('apex-grid-ai').grid = grid;
+```
+
+`mode="inline"` renders in place; `mode="dialog"` (the default) is a floating,
+draggable panel. The enterprise grid also adds an **"Ask AI"** toolbar button
+that opens the panel in a dialog (the `/define` entry registers the element).
+
+### Offline mock
+
+`createMockAdapter` is a deterministic, no-network adapter for demos and tests.
+It maps a small canned vocabulary (sort, group, filter, search, reset) to patches
+and answers simple data questions, with no key required.
+
+```ts
+import { createMockAdapter } from 'apex-grid-enterprise';
+
+grid.aiAdapter = createMockAdapter();
+```
+
+### How it stays safe
+
+The control path is guarded in layers: the model is constrained by the grid's
+schema (`toJSONSchema`), anything out of vocabulary is stripped before it is
+applied (each drop reported), the defensive `setState()` drops and reports the
+rest, and every change is one click undoable. Ask mode is read-only.
 
 ---
 

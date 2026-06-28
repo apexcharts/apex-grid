@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Toolkit (Enterprise) - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid-enterprise.min.js"></script>
+    <style>
+      body {
+        max-width: 1040px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .badge {
+        font-size: 13px;
+        font-weight: 500;
+        color: #92400e;
+        background: #fef3c7;
+        border: 1px solid #fde68a;
+        border-radius: 20px;
+        padding: 2px 10px;
+        vertical-align: middle;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        gap: 16px;
+        align-items: start;
+      }
+      apex-grid-enterprise {
+        height: 460px;
+        --ig-size: 2;
+      }
+      .examples {
+        margin: 0 0 8px 0;
+        font-size: 12px;
+        color: #475569;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 10px;
+      }
+      .chips button {
+        font: inherit;
+        font-size: 12px;
+        padding: 3px 9px;
+        border: 1px solid #d0d5dd;
+        background: #fff;
+        border-radius: 14px;
+        cursor: pointer;
+        color: #1f2328;
+      }
+      .chips button:hover {
+        background: #f7f9fc;
+      }
+      code {
+        background: #f1f1f1;
+        padding: 0 0.25rem;
+        border-radius: 3px;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid-enterprise');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>AI Toolkit <span class="badge">Enterprise</span></h2>
+    <p class="subtitle">
+      Type a request in plain language and the grid turns it into a change: <code>sort</code>,
+      <code>filter</code>, <code>group</code>, and more. The
+      <code>&lt;apex-grid-ai&gt;</code> panel sends your prompt through
+      <code>grid.runPrompt()</code>, which validates the returned patch against the grid's schema,
+      applies it with <code>setState()</code>, and offers a one-click <strong>Undo</strong>. Switch to
+      <strong>Ask a question</strong> for a read-only answer. This page uses a tiny offline mock so it
+      runs with no API key.
+    </p>
+    <div class="chips" id="chips">
+      <button data-prompt="group by department">Group by department</button>
+      <button data-prompt="sort by salary, highest first">Sort by salary (desc)</button>
+      <button data-prompt="filter department = Engineering">Filter to Engineering</button>
+      <button data-prompt="search Ava">Search "Ava"</button>
+      <button data-prompt="reset">Reset</button>
+    </div>
+    <div class="layout">
+      <apex-grid-enterprise id="grid"></apex-grid-enterprise>
+      <apex-grid-ai id="ai" mode="inline"></apex-grid-ai>
+    </div>
+    <script type="module">
+      const data = [
+        { id: 1, name: 'Ava Morgan', department: 'Engineering', salary: 96000, bonus: 12000 },
+        { id: 2, name: 'Liam Chen', department: 'Engineering', salary: 104000, bonus: 15000 },
+        { id: 3, name: 'Noah Patel', department: 'Engineering', salary: 88000, bonus: 9000 },
+        { id: 4, name: 'Emma Davis', department: 'Sales', salary: 72000, bonus: 7000 },
+        { id: 5, name: 'Olivia Rossi', department: 'Sales', salary: 69000, bonus: 6500 },
+        { id: 6, name: 'William Kim', department: 'Sales', salary: 81000, bonus: 8000 },
+        { id: 7, name: 'Sophia Nguyen', department: 'Marketing', salary: 64000, bonus: 5000 },
+        { id: 8, name: 'James Muller', department: 'Marketing', salary: 71000, bonus: 7500 },
+        { id: 9, name: 'Isabella Costa', department: 'Engineering', salary: 99000, bonus: 14000 },
+        { id: 10, name: 'Mateo Silva', department: 'Sales', salary: 75000, bonus: 8500 },
+        { id: 11, name: 'Mia Johnson', department: 'Marketing', salary: 68000, bonus: 6000 },
+        { id: 12, name: 'Lucas Brown', department: 'Engineering', salary: 91000, bonus: 11000 },
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'name', headerText: 'Name', filter: true },
+        { key: 'department', headerText: 'Department', sort: true, filter: true },
+        { key: 'salary', headerText: 'Salary', type: 'number', sort: true, filter: true },
+        { key: 'bonus', headerText: 'Bonus', type: 'number', sort: true, filter: true },
+      ];
+      grid.data = data;
+      grid.selection = { enabled: true, mode: 'multiple' };
+
+      // An AIAdapter is any `(request) => Promise<{ patch?, answer? }>`. In production you
+      // would use the bundled Claude reference adapter, with the key held by your backend:
+      //
+      //   import { createClaudeAdapter } from 'apex-grid-enterprise';
+      //   grid.aiAdapter = createClaudeAdapter({ endpoint: '/api/grid-ai' });           // proxy (recommended)
+      //   grid.aiAdapter = createClaudeAdapter({ apiKey, dangerouslyAllowBrowser: true }); // dev only
+      //
+      // This page wires a tiny offline mock instead, so it runs with no key.
+      grid.aiAdapter = async (request) => {
+        const columns = request.schema.columns;
+        const find = (name) =>
+          columns.find(
+            (c) =>
+              c.key.toLowerCase() === name.toLowerCase() ||
+              c.label.toLowerCase() === name.toLowerCase()
+          );
+        const text = request.prompt.trim();
+        const lower = text.toLowerCase();
+
+        if (request.mode === 'ask') {
+          const rows = request.data ?? [];
+          if (/how many|count|rows/.test(lower)) return { answer: `There are ${rows.length} rows.` };
+          const numCol = columns.find(
+            (c) =>
+              (c.dataType === 'number' || c.dataType === 'currency') &&
+              lower.includes(c.label.toLowerCase())
+          );
+          if (numCol) {
+            const values = rows.map((r) => Number(r[numCol.key])).filter(Number.isFinite);
+            const fmt = (n) => n.toLocaleString('en-US');
+            if (/highest|max|top|most/.test(lower)) return { answer: `Highest ${numCol.label}: ${fmt(Math.max(...values))}` };
+            if (/lowest|min|least/.test(lower)) return { answer: `Lowest ${numCol.label}: ${fmt(Math.min(...values))}` };
+            if (/average|avg|mean/.test(lower)) {
+              const avg = values.reduce((a, b) => a + b, 0) / values.length;
+              return { answer: `Average ${numCol.label}: ${fmt(Math.round(avg))}` };
+            }
+          }
+          return { answer: 'Try "highest salary", "how many rows", or switch to Change mode to sort, filter, or group.' };
+        }
+
+        let m;
+        if (/\b(reset|clear)\b/.test(lower))
+          return { patch: { sort: [], filter: [], quickFilter: '', modules: { enterprise: { groupBy: [] } } } };
+        if ((m = text.match(/group\s+(?:by\s+)?(\w+)/i))) {
+          const c = find(m[1]);
+          if (c) return { patch: { modules: { enterprise: { groupBy: [c.key] } } } };
+        }
+        if ((m = text.match(/sort\s+(?:by\s+)?(\w+)(.*)/i))) {
+          const c = find(m[1]);
+          if (c) {
+            const descending = /desc|high|large|top|most/i.test(m[2]);
+            return { patch: { sort: [{ key: c.key, direction: descending ? 'descending' : 'ascending' }] } };
+          }
+        }
+        if ((m = text.match(/filter\s+(\w+)\s*(?:=|is|equals?|contains)\s*(.+)/i))) {
+          const c = find(m[1]);
+          if (c) {
+            const operand = c.filterOperands.includes('equals') ? 'equals' : c.filterOperands[0];
+            const value = c.dataType === 'number' ? Number(m[2]) : m[2].trim();
+            return { patch: { filter: [{ key: c.key, operand, searchTerm: value }] } };
+          }
+        }
+        if ((m = text.match(/(?:search|find)\s+(.+)/i)))
+          return { patch: { quickFilter: m[1].replace(/^["']|["']$/g, '').trim() } };
+        return { patch: {} };
+      };
+
+      const ai = document.getElementById('ai');
+      ai.grid = grid;
+
+      // Example chips fill the prompt (the panel owns sending it).
+      document.getElementById('chips').addEventListener('click', (event) => {
+        const prompt = event.target.getAttribute('data-prompt');
+        if (!prompt) return;
+        const input = ai.renderRoot.querySelector('[part="input"]');
+        input.value = prompt;
+        input.dispatchEvent(new Event('input'));
+        input.focus();
+      });
+    </script>
+  </body>
+</html>
