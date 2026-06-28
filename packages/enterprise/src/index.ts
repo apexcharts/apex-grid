@@ -6,6 +6,17 @@ export type {
   AggregationResults,
 } from './features/aggregation.js';
 export { aggregationModule } from './features/aggregation.js';
+export type {
+  AIAdapter,
+  AIMode,
+  AIRequest,
+  AIResponse,
+  AIResult,
+  RunPromptOptions,
+} from './features/ai.js';
+export { sanitizePatch } from './features/ai.js';
+export type { JSONSchema, StatePatch } from './features/ai-schema.js';
+export { toJSONSchema } from './features/ai-schema.js';
 export {
   type ChartModel,
   type ChartSeries,

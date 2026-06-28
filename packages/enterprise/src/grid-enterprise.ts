@@ -34,6 +34,7 @@ import {
   type AggregationFn,
   type AggregationResults,
 } from './features/aggregation.js';
+import { type AIAdapter, type AIResult, type RunPromptOptions, runPrompt } from './features/ai.js';
 import {
   type ChartModel,
   type ChartSeries,
@@ -257,6 +258,15 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   @property({ attribute: false })
   public infiniteRowModel: InfiniteRowModelConfig<T> | null = null;
 
+  /**
+   * Adapter the AI Toolkit calls to turn a natural-language prompt into a grid
+   * change (or an answer). Provider-agnostic: assign `createClaudeAdapter(...)`
+   * for Anthropic/Claude, `createMockAdapter()` for a no-network demo, or your
+   * own `(request) => Promise<{ patch?, answer? }>`. Unset, {@link runPrompt}
+   * rejects. The entire AI Toolkit is an enterprise feature.
+   */
+  public aiAdapter: AIAdapter | null = null;
+
   #infiniteManager: InfiniteRowModelManager<T> | null = null;
   #infiniteNeedsStart = false;
 
@@ -395,6 +405,28 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     }
 
     return result;
+  }
+
+  /**
+   * Run a natural-language `prompt` against the grid via {@link aiAdapter}.
+   *
+   * - **`'control'` (default):** the adapter returns a state patch, which is
+   *   validated against {@link getSchema}, applied via {@link setState}, and made
+   *   reversible: the result carries an `undo()` that restores the prior snapshot.
+   * - **`'ask'`:** the adapter returns a text answer about the current view; the
+   *   grid is not mutated.
+   *
+   * Rejects when no {@link aiAdapter} is set. AI Toolkit is an enterprise feature.
+   *
+   * @example
+   * ```ts
+   * grid.aiAdapter = createMockAdapter();
+   * const result = await grid.runPrompt('sort by price, highest first');
+   * if (result.mode === 'control') result.undo(); // one-click revert
+   * ```
+   */
+  public runPrompt(prompt: string, options?: RunPromptOptions): Promise<AIResult> {
+    return runPrompt(this, prompt, options);
   }
 
   protected override willUpdate(changed: PropertyValues): void {
