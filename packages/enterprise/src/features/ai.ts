@@ -18,6 +18,12 @@ export interface AIRequest {
   mode: AIMode;
   /** Cooperative cancellation; {@link runPrompt} forwards an `AbortSignal`. */
   signal?: AbortSignal;
+  /**
+   * The grid's current rows, forwarded so an adapter can ground its answer or
+   * patch in the data. Adapters decide how much to use (the Claude adapter sends
+   * a bounded sample). Omitted when the host exposes no data.
+   */
+  data?: readonly unknown[];
 }
 
 /** What an {@link AIAdapter} returns. */
@@ -69,6 +75,8 @@ export interface AIHost {
   getSchema(): GridSchema;
   getState(): GridState;
   setState(patch: Partial<GridState>): SetStateResult;
+  /** The grid's current rows, forwarded to the adapter as {@link AIRequest.data}. */
+  data?: readonly unknown[];
 }
 
 /** Slices an AI patch may carry; anything else is dropped with a warning. */
@@ -349,7 +357,7 @@ export async function runPrompt(
 
   const mode: AIMode = options.mode ?? 'control';
   const schema = host.getSchema();
-  const response = await adapter({ schema, prompt, mode, signal: options.signal });
+  const response = await adapter({ schema, prompt, mode, signal: options.signal, data: host.data });
 
   if (mode === 'ask') {
     return { mode: 'ask', answer: response.answer ?? '' };

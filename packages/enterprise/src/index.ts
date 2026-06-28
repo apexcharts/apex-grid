@@ -15,6 +15,17 @@ export type {
   RunPromptOptions,
 } from './features/ai.js';
 export { sanitizePatch } from './features/ai.js';
+export {
+  buildAskRequest,
+  buildControlRequest,
+  type ClaudeAdapterConfig,
+  type ClaudeClient,
+  type ClaudeMessage,
+  createClaudeAdapter,
+  extractAnswer,
+  extractPatch,
+} from './features/ai-claude.js';
+export { createMockAdapter, type MockAdapterOptions, type MockRule } from './features/ai-mock.js';
 export type { JSONSchema, StatePatch } from './features/ai-schema.js';
 export { toJSONSchema } from './features/ai-schema.js';
 export {
