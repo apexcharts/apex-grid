@@ -15,10 +15,17 @@ A Lit-based, framework-agnostic web component data grid. Ships as a single custo
 - **Column pinning** — pin to start or end; visual reordering only, source `columns` array is preserved.
 - **Column reordering** — drag-and-drop with per-column opt-out, constrained to the column's pinning group.
 - **Column resizing** — pointer-driven, with a min-width safeguard.
+- **Column groups**: spanning multi-level headers over a flat `columns` array, respecting pin regions.
 - **Inline editing** — cell or row mode, click or double-click trigger, per-column opt-in.
+- **Cell validation**: declarative per-column `validators` (built-ins plus custom), surfaced with `aria-invalid` and an event.
+- **Undo / redo**: opt-in history for cell edits, with keyboard shortcuts (Ctrl/Cmd+Z, etc.).
 - **Row selection** — single or multiple, optional checkbox column, full programmatic API.
+- **Row pinning**: sticky top / bottom bands rendered outside the virtualizer.
+- **Row drag-reorder**: pointer and keyboard reordering with a manual order, mutually exclusive with sorting.
 - **Row expansion (master-detail)** — opt-in chevron column with a `detailTemplate`.
 - **Tree data (nested rows)** — `getDataPath` pattern over a flat array.
+- **State & persistence**: `getState()` / `setState()` snapshot round-trip, a `stateChanged` event, and a `getSchema()` capability descriptor.
+- **Localization (i18n)**: override any built-in string via `localeText`; bundled dictionaries (e.g. `esLocale`).
 - **CSV export** — programmatic method plus an optional toolbar dropdown. (Excel/XLSX export is in `apex-grid-enterprise`.)
 - **Toolbar** — opt-in `<apex-grid-toolbar>` with debounced quick filter and export menu.
 - **Templating** — slot-based templates for cells, headers, editors, and detail panels.
@@ -262,6 +269,23 @@ await grid.moveColumn('email', 'name', 'after');
 
 Per-column opt-out: `{ key: 'id', reorderable: false }`. Reordering is constrained to the column's own pinning group (start / unpinned / end). Events: `columnMoving` (cancellable), `columnMoved`. Attribute: `column-reordering`.
 
+### Column groups (spanning headers)
+
+```ts
+const columns = [
+  { key: 'first', group: 'name' },
+  { key: 'last',  group: 'name' },
+  { key: 'city',  group: 'address' },
+  { key: 'zip',   group: 'address' },
+];
+grid.columnGroups = [
+  { id: 'name',    headerText: 'Name' },
+  { id: 'address', headerText: 'Address' },
+];
+```
+
+A spanning header row renders above the column headers. `columns` stays flat, so width / pinning / resize / reorder are unaffected; membership is by reference (`column.group` points at a `columnGroups` entry). A group's members must be contiguous within one pin region (non-contiguous groups warn and skip the spanning cell); ungrouped columns get a blank spacer. Member reordering is confined to its group.
+
 ### Inline editing
 
 ```ts
@@ -279,6 +303,33 @@ grid.cancelEdit();
 
 `mode: 'row'` puts all editable cells in the row into edit together. Properties: `editingCell`, `editingRow`. Events: `cellValueChanging` (cancellable), `cellValueChanged`, plus `rowEditStarted` / `rowEditEnded` in row mode.
 
+### Cell validation
+
+```ts
+import { required, min, max, pattern, custom } from 'apex-grid';
+
+const columns = [
+  { key: 'name',  editable: true, validators: [required('Name is required')] },
+  { key: 'age',   editable: true, type: 'number', validators: [min(18), max(99)] },
+  { key: 'email', editable: true, validators: [pattern(/^[^@\s]+@[^@\s]+$/, 'Invalid email')] },
+];
+```
+
+Validators run inside the commit path, before the cancellable `cellValueChanging` gate. A failure keeps the editor open, marks the cell (`aria-invalid` + an error message node), and fires `cellValidationFailed { key, rowIndex, data, value, errors }`. Built-ins: `required`, `min`, `max`, `pattern`, `custom`, or any `(value, ctx) => string | null`. In row mode all pending cells are validated atomically (no partial write); enterprise paste / fill validate per cell.
+
+### Undo / redo
+
+```ts
+grid.editing = { enabled: true, mode: 'cell', history: { enabled: true } };
+
+grid.undo();          // or Ctrl/Cmd+Z
+grid.redo();          // or Ctrl/Cmd+Shift+Z / Ctrl+Y
+grid.clearHistory();
+grid.canUndo; grid.canRedo;
+```
+
+Opt in via `editing.history`. Every committed cell edit is recorded (single, row-mode, and enterprise paste / fill collapse to one step). Keyboard shortcuts work while the grid body has focus, so an open editor's native undo is untouched. The stack holds 100 commands by default (`history: { enabled: true, stackSize: 200 }`). Event: `historyChanged { canUndo, canRedo }`.
+
 ### Row selection
 
 ```ts
@@ -293,6 +344,29 @@ grid.selectedRows = [data[2]];      // replace selection (goes through `rowSelec
 ```
 
 Events: `rowSelecting` (cancellable), `rowSelected`.
+
+### Row pinning (top / bottom)
+
+```ts
+grid.rowPinning = { enabled: true };
+
+grid.pinRow(data[0], 'top');
+grid.pinRow(data[5], 'bottom');
+grid.unpinRow(data[0]);
+grid.pinnedRows;                    // { top: T[], bottom: T[] }
+```
+
+Pinned rows render in sticky top / bottom bands outside the virtualizer and are lifted out of the scrollable set (no duplication). Selection and styling work by row reference. Events: `rowPinning` (cancellable), `rowPinned`.
+
+### Row drag-reorder
+
+```ts
+grid.rowReordering = { enabled: true };   // add applyToData: true to splice grid.data in place
+
+grid.moveRow(0, 4, 'after');
+```
+
+Drag any row, or use the keyboard: focus a row, **Space** to grab, **Arrow** keys to move, **Space / Enter** to drop, **Esc** to cancel. The grid holds a manual order that is mutually exclusive with sorting (applying a sort clears it). By default the app persists the order via the `rowMoved` event; set `applyToData: true` to splice `grid.data` directly. Events: `rowMoving` (cancellable), `rowMoved { from, to, data }`.
 
 ### Row expansion (master-detail)
 
@@ -431,10 +505,16 @@ See [`demo/state-persistence.html`](../../demo/state-persistence.html) for a sav
 | `showQuickFilter` | `boolean` | `false` | Attr `show-quick-filter` |
 | `showExport` | `boolean` | `false` | Attr `show-export` |
 | `columnReordering` | `boolean` | `false` | Attr `column-reordering` |
-| `editing` | `GridEditingConfiguration` | — | |
+| `columnGroups` | `ColumnGroupConfiguration[]` | — | Spanning header groups (`column.group` references an `id`) |
+| `editing` | `GridEditingConfiguration` | — | Includes `history` for undo/redo; per-column `validators` |
 | `selection` | `GridSelectionConfiguration` | — | |
 | `expansion` | `GridExpansionConfiguration<T>` | — | |
 | `tree` | `GridTreeConfiguration<T>` | — | |
+| `rowPinning` | `GridRowPinningConfiguration` | — | `{ enabled }` |
+| `rowReordering` | `GridRowReorderingConfiguration` | — | `{ enabled, applyToData? }` |
+| `rowId` | `(row: T) => string \| number` | — | Durable row identity for `getState` / `setState` |
+| `localeText` | `GridLocaleText` | — | Override map for built-in strings (e.g. `esLocale`) |
+| `canUndo`, `canRedo` | `boolean` | — | Get (history) |
 | `sortExpressions` | `SortExpression<T>[]` | — | Get/set |
 | `filterExpressions` | `FilterExpression<T>[]` | — | Get/set |
 | `selectedRows` | `T[]` | — | Get/set |
@@ -479,6 +559,13 @@ expandAllRows(); collapseAllRows(); isRowExpanded(row)
 toggleTreeRow(row); expandTreeRow(row); collapseTreeRow(row)
 expandAllTreeRows(); collapseAllTreeRows(); isTreeRowExpanded(row)
 
+pinRow(row, 'top' | 'bottom'); unpinRow(row)   // pinnedRows getter
+moveRow(from, to, 'before' | 'after')
+
+undo(); redo(); clearHistory()                 // canUndo / canRedo getters
+
+localize(key, params?, fallback?): string      // resolve a locale string
+
 exportToCSV(options?): string
 exportAs(formatId, options?): void   // toolbar dispatch; 'csv' (community), 'xlsx' (enterprise)
 
@@ -500,8 +587,12 @@ All events bubble and are composed across shadow boundaries. Names ending in `-i
 | `columnPinning` / `columnPinned` | yes / no | `{ key, previous, next }` / `{ key, pinned }` |
 | `columnMoving` / `columnMoved` | yes / no | `{ key, fromIndex, toKey, position }` / `{ key, fromIndex, toIndex }` |
 | `cellValueChanging` / `cellValueChanged` | yes / no | `{ row, column, value, newValue }` |
+| `cellValidationFailed` | no | `{ key, rowIndex, data, value, errors }` |
 | `rowEditStarted` / `rowEditEnded` | no / no | row context |
+| `historyChanged` | no | `{ canUndo, canRedo }` |
 | `rowSelecting` / `rowSelected` | yes / no | `{ added, removed }` |
+| `rowPinning` / `rowPinned` | yes / no | `{ row, position }` |
+| `rowMoving` / `rowMoved` | yes / no | `{ from, to, data }` |
 | `rowExpanding` / `rowExpanded` | yes / no | row context |
 | `treeRowExpanding` / `treeRowExpanded` | yes / no | row context |
 | `stateChanged` | no | `{ state }` (debounced; only while listened) |
