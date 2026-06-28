@@ -1570,6 +1570,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   public getState(options?: GetStateOptions<T>): GridState {
     const rowId = options?.rowId ?? this.rowId;
+    const pinned = this.stateController.rowPin.pinnedRows;
+    const manualOrder = this.stateController.rowReorder.getManualOrder();
     return {
       version: 1,
       columns: serializeColumnLayout(this.columns),
@@ -1581,6 +1583,11 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       expansion: serializeRowRefs(this.expandedRows, this.data, rowId),
       treeExpanded: serializeRowRefs([...this.stateController.tree.expanded], this.data, rowId),
       treeExpandedKeys: [...this.stateController.tree.expandedKeys],
+      rowPinning: {
+        top: serializeRowRefs(pinned.top, this.data, rowId),
+        bottom: serializeRowRefs(pinned.bottom, this.data, rowId),
+      },
+      rowOrder: manualOrder ? serializeRowRefs(manualOrder, this.data, rowId) : null,
       modules: this.stateController.serializeModuleState(),
     };
   }
@@ -1592,9 +1599,11 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * Only the slices present on `state` are applied — omit a slice to leave it
    * untouched (e.g. pass `{ sort }` to change only sorting). A present-but-empty
    * `sort`/`filter` array clears that operation. Slices are applied in dependency
-   * order (columns → sort → filter → quick-filter → module structure → tree →
-   * expansion → selection → pagination) so row-referencing state resolves
-   * against the transformed view.
+   * order (columns → sort → filter → quick-filter → module structure → row order
+   * → tree → expansion → row pinning → selection → pagination) so row-referencing
+   * state resolves against the transformed view. `rowOrder` is mutually exclusive
+   * with an active `sort`: a snapshot carrying both keeps the sort and drops
+   * `rowOrder`.
    */
   public setState(state: Partial<GridState>, options?: SetStateOptions<T>): void {
     const rowId = options?.rowId ?? this.rowId;
@@ -1628,6 +1637,19 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       this.stateController.restoreModuleState(state.modules);
     }
 
+    // Manual row order, applied after sort so the conflict is resolvable here:
+    // a manual order is mutually exclusive with sorting, so skip it when the
+    // restored state also carries an active sort (the sort wins).
+    if (state.rowOrder !== undefined) {
+      if (state.rowOrder === null) {
+        this.stateController.rowReorder.restoreManualOrder(null);
+      } else if (!this.sortExpressions.length) {
+        this.stateController.rowReorder.restoreManualOrder(
+          resolveRowRefs(state.rowOrder, this.data, rowId)
+        );
+      }
+    }
+
     if (state.treeExpanded !== undefined || state.treeExpandedKeys !== undefined) {
       const expanded = resolveRowRefs(state.treeExpanded ?? [], this.data, rowId);
       this.stateController.tree.restoreExpansion(expanded, state.treeExpandedKeys ?? []);
@@ -1635,6 +1657,13 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
     if (state.expansion) {
       this.expandedRows = resolveRowRefs(state.expansion, this.data, rowId);
+    }
+
+    if (state.rowPinning) {
+      this.stateController.rowPin.restore(
+        resolveRowRefs(state.rowPinning.top ?? [], this.data, rowId),
+        resolveRowRefs(state.rowPinning.bottom ?? [], this.data, rowId)
+      );
     }
 
     if (state.selection) {

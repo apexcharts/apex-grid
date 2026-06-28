@@ -41,6 +41,19 @@ export interface GridState {
   treeExpanded: RowRef[];
   /** Expanded synthesized tree parents (path-keyed; already string-stable). */
   treeExpandedKeys: string[];
+  /**
+   * Pinned rows (F4) by {@link RowRef}, per band. Optional: absent on snapshots
+   * produced before row pinning existed; `getState` always emits it (empty bands
+   * when nothing is pinned).
+   */
+  rowPinning?: { top: RowRef[]; bottom: RowRef[] };
+  /**
+   * Manual drag-reorder order (F5) as a full {@link RowRef} list, or `null` for
+   * the derived (filter → sort) order. Optional for back-compat; `getState`
+   * always emits it (`null` when no manual order is active). Mutually exclusive
+   * with `sort`: a snapshot carrying both drops `rowOrder` on restore.
+   */
+  rowOrder?: RowRef[] | null;
   /** Per-module serialized state, keyed by module id. */
   modules: Record<string, unknown>;
 }

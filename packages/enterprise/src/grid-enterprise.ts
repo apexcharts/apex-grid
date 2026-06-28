@@ -79,6 +79,10 @@ interface EnterpriseStateBlob {
   pivotOn?: string;
   pivotRows?: string[];
   pivotValues?: AggregationConfig;
+  /** Per-group collapse overrides (group key → expanded). */
+  groupExpand?: Record<string, boolean>;
+  /** Range-selection rectangles (view coordinates; round-trip within a session). */
+  ranges?: RangeBounds[];
 }
 
 /** Custom-element tag for the enterprise grid. */
@@ -312,6 +316,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       pivotOn: this.pivotOn,
       pivotRows: [...this.pivotRows],
       pivotValues: { ...this.pivotValues },
+      groupExpand: this.#groupingController()?.getExpandOverrides() ?? {},
+      ranges: this.#rangeController()?.getRanges() ?? [],
     };
     return { ...base, modules: { ...base.modules, enterprise } };
   }
@@ -330,8 +336,20 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       if (enterprise.pivotOn !== undefined) this.pivotOn = enterprise.pivotOn;
       if (enterprise.pivotRows !== undefined) this.pivotRows = [...enterprise.pivotRows];
       if (enterprise.pivotValues !== undefined) this.pivotValues = { ...enterprise.pivotValues };
+      // Group-collapse overrides before the core pass: they must be in place when
+      // the pipeline rebuilds the (restored) group structure.
+      if (enterprise.groupExpand !== undefined) {
+        this.#groupingController()?.restoreExpandOverrides(enterprise.groupExpand);
+      }
     }
+
     super.setState(state, options);
+
+    // Ranges last: their bounds are view coordinates into the freshly-restored
+    // columns / rows, so resolve them against the post-restore view.
+    if (enterprise?.ranges !== undefined) {
+      this.#rangeController()?.restoreRanges(enterprise.ranges);
+    }
   }
 
   protected override willUpdate(changed: PropertyValues): void {

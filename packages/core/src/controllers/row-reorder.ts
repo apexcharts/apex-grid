@@ -88,6 +88,24 @@ export class RowReorderController<T extends object> implements ReactiveControlle
   }
 
   /**
+   * The current manual order as a copy of its row references, or `null` for the
+   * derived order. Consumed by `ApexGrid.getState`.
+   */
+  public getManualOrder(): T[] | null {
+    return this.#order ? [...this.#order] : null;
+  }
+
+  /**
+   * Restores a manual order from a list of row references (state restore). Pass
+   * `null` (or an empty list) to clear it. Silent: emits no `rowMoving` /
+   * `rowMoved` and does not animate; re-runs the pipeline.
+   */
+  public restoreManualOrder(order: T[] | null): void {
+    this.#order = order && order.length ? [...order] : null;
+    this.host.requestUpdate(PIPELINE);
+  }
+
+  /**
    * Clears the manual order (e.g. when a sort is applied). Re-runs the pipeline.
    */
   public clearManualOrder(announce = false): void {

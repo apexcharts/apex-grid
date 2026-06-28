@@ -280,6 +280,106 @@ describe('ApexGrid.getState / setState', () => {
   });
 });
 
+describe('ApexGrid.getState / setState — row pinning + manual order', () => {
+  afterEach(() => fixtureCleanup());
+
+  async function mount(): Promise<ApexGrid<TestData>> {
+    ApexGrid.register();
+    const grid = await fixture<ApexGrid<TestData>>(html`
+      <apex-grid
+        .data=${[...data]}
+        .columns=${columns}
+        .rowPinning=${{ enabled: true }}
+        .rowReordering=${{ enabled: true }}
+      ></apex-grid>
+    `);
+    await grid.updateComplete;
+    return grid;
+  }
+
+  it('captures pinned rows per band, by RowRef', async () => {
+    const grid = await mount();
+    grid.pinRow(data[1], 'top');
+    grid.pinRow(data[3], 'bottom');
+    await grid.updateComplete;
+
+    const snapshot = grid.getState();
+    expect(snapshot.rowPinning).to.deep.equal({ top: [{ index: 1 }], bottom: [{ index: 3 }] });
+    expect(() => JSON.stringify(snapshot)).to.not.throw();
+  });
+
+  it('round-trips pinned rows: capture → clear → restore', async () => {
+    const grid = await mount();
+    grid.pinRow(data[2], 'top');
+    grid.pinRow(data[5], 'bottom');
+    await grid.updateComplete;
+    const snapshot = grid.getState();
+
+    grid.unpinRow(data[2]);
+    grid.unpinRow(data[5]);
+    await grid.updateComplete;
+    expect(grid.pinnedRows.top).to.have.lengthOf(0);
+
+    grid.setState(snapshot);
+    await grid.updateComplete;
+    expect(grid.pinnedRows.top.map((r) => r.id)).to.deep.equal([3]);
+    expect(grid.pinnedRows.bottom.map((r) => r.id)).to.deep.equal([6]);
+  });
+
+  it('restores pinned rows across a data reload using rowId', async () => {
+    const grid = await mount();
+    grid.rowId = (row) => row.id;
+    grid.pinRow(data[0], 'top');
+    await grid.updateComplete;
+    const snapshot = grid.getState();
+    expect(snapshot.rowPinning?.top).to.deep.equal([{ id: 1 }]);
+
+    grid.data = data.map((r) => ({ ...r }));
+    await grid.updateComplete;
+
+    grid.setState(snapshot);
+    await grid.updateComplete;
+    expect(grid.pinnedRows.top.map((r) => r.id)).to.deep.equal([1]);
+  });
+
+  it('captures and round-trips a manual row order', async () => {
+    const grid = await mount();
+    // Move the first row to the end.
+    grid.moveRow(0, grid.pageItems.length - 1, 'after');
+    await grid.updateComplete;
+
+    const snapshot = grid.getState();
+    expect(snapshot.rowOrder).to.be.an('array');
+    const reordered = grid.dataView.map((r) => r.id);
+
+    // Clear the manual order by applying (then clearing) a sort.
+    grid.sort([{ key: 'id', direction: 'ascending' } as SortExpression<TestData>]);
+    await grid.updateComplete;
+
+    grid.setState(snapshot);
+    await grid.updateComplete;
+    expect(grid.dataView.map((r) => r.id)).to.deep.equal(reordered);
+    expect(grid.sortExpressions).to.have.lengthOf(0);
+  });
+
+  it('emits rowOrder = null when no manual order is active', async () => {
+    const grid = await mount();
+    expect(grid.getState().rowOrder).to.equal(null);
+  });
+
+  it('drops rowOrder when the same snapshot also carries an active sort', async () => {
+    const grid = await mount();
+    grid.setState({
+      sort: [{ key: 'id', direction: 'descending' }],
+      rowOrder: [{ index: 3 }, { index: 0 }, { index: 1 }],
+    });
+    await grid.updateComplete;
+
+    expect(stateOf(grid).rowReorder.hasManualOrder).to.equal(false);
+    expect(grid.sortExpressions[0]).to.include({ key: 'id', direction: 'descending' });
+  });
+});
+
 describe('SerializableModule seam', () => {
   afterEach(() => fixtureCleanup());
 

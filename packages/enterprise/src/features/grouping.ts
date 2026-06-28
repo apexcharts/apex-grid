@@ -269,6 +269,27 @@ export class GroupingController<T extends object>
     return [...this.#metaByKey.values()];
   }
 
+  /**
+   * The explicit per-group collapse overrides (group key → expanded), for state
+   * serialization. Groups using the {@link defaultExpanded} fallback are absent.
+   */
+  public getExpandOverrides(): Record<string, boolean> {
+    return Object.fromEntries(this.#overrides);
+  }
+
+  /**
+   * Restores per-group collapse overrides from a snapshot, replacing any current
+   * ones. Silent: emits no `groupExpanding` / `groupExpanded`; re-runs the
+   * pipeline so the next pass honors them.
+   */
+  public restoreExpandOverrides(overrides: Record<string, boolean>): void {
+    this.#overrides.clear();
+    for (const [key, expanded] of Object.entries(overrides)) {
+      this.#overrides.set(key, expanded);
+    }
+    this.host.requestUpdate(PIPELINE);
+  }
+
   #emit(type: string, detail: unknown, cancelable = true): boolean {
     return this.host.dispatchEvent(
       new CustomEvent(type, { detail, cancelable, bubbles: true, composed: true })

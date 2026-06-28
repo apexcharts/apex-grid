@@ -294,6 +294,28 @@ export class RangeSelectionController<T extends object>
     this.#commit();
   }
 
+  /**
+   * Restores selected rectangles from their {@link RangeBounds} (state restore).
+   * Bounds are view-coordinate (row indices into `pageItems`, column indices into
+   * the visible columns), so this round-trips within a session. The last range
+   * becomes the active one; earlier ranges restore as additional (Ctrl-click)
+   * selections. An empty list clears the selection.
+   */
+  public restoreRanges(ranges: ReadonlyArray<RangeBounds>): void {
+    if (!ranges.length) {
+      this.clearSelection();
+      return;
+    }
+    const active = ranges[ranges.length - 1];
+    this.#additional = ranges.slice(0, -1);
+    this.#anchor = { row: active.top, col: active.left };
+    this.#focus = { row: active.bottom, col: active.right };
+    this.#fillSource = null;
+    this.#fillPreview = null;
+    this.#mode = 'idle';
+    this.#commit();
+  }
+
   /** Whether any range is currently selected. */
   public hasSelection(): boolean {
     return this.#anchor !== null && this.#focus !== null;

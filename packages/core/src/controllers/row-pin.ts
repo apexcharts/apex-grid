@@ -97,6 +97,17 @@ export class RowPinController<T extends object> implements ReactiveController {
     this.host.requestUpdate();
   }
 
+  /**
+   * Restores pinned rows from explicit per-band reference lists (state restore),
+   * replacing any current pins. Silent: emits no `rowPinning` / `rowPinned` and
+   * preserves the given order within each band.
+   */
+  public restore(top: ReadonlyArray<T>, bottom: ReadonlyArray<T>): void {
+    this.#top = new Set(top);
+    this.#bottom = new Set(bottom);
+    this.host.requestUpdate();
+  }
+
   #emitPinning(row: T, position: RowPinPosition | null): boolean {
     return this.host.emitEvent('rowPinning', {
       detail: { row, position },

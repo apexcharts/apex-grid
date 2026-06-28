@@ -117,6 +117,48 @@ describe('ApexGridEnterprise — state snapshot', () => {
     expect(grid.pivotOn).to.equal('product');
   });
 
+  it('round-trips per-group collapse overrides', async () => {
+    const grid = await mount({ groupBy: ['region'] });
+    const emea = grid.getGroups().find((g) => g.value === 'EMEA')?.key as string;
+    grid.collapseGroup(emea);
+    await grid.updateComplete;
+    await nextFrame();
+    const collapsedRows = grid.pageItems.length;
+
+    const snapshot = grid.getState();
+    expect((snapshot.modules.enterprise as Record<string, unknown>).groupExpand).to.deep.equal({
+      [emea]: false,
+    });
+
+    grid.expandGroup(emea);
+    await grid.updateComplete;
+    await nextFrame();
+    expect(grid.pageItems.length).to.be.greaterThan(collapsedRows);
+
+    grid.setState(snapshot);
+    await grid.updateComplete;
+    await nextFrame();
+    expect(grid.pageItems.length).to.equal(collapsedRows);
+  });
+
+  it('round-trips range-selection rectangles', async () => {
+    const grid = await mount();
+    grid.selectRange({ row: 0, column: 'region' }, { row: 1, column: 'amount' });
+    await grid.updateComplete;
+
+    const bounds = { top: 0, bottom: 1, left: 0, right: 2 };
+    const snapshot = grid.getState();
+    expect((snapshot.modules.enterprise as Record<string, unknown>).ranges).to.deep.equal([bounds]);
+
+    grid.clearRangeSelection();
+    await grid.updateComplete;
+    expect(grid.getSelectionRanges()).to.have.lengthOf(0);
+
+    grid.setState(snapshot);
+    await grid.updateComplete;
+    expect(grid.getSelectionRanges()).to.deep.equal([bounds]);
+  });
+
   it('still captures the core slices (sort) alongside enterprise state', async () => {
     const grid = await mount({ groupBy: ['region'] });
     grid.sort([{ key: 'amount', direction: 'descending' }] as never);
