@@ -182,6 +182,13 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     super.disconnectedCallback();
   }
 
+  protected override updated(): void {
+    // The filter row follows the column header, shifted down by an optional
+    // group header row above it.
+    const depth = this.state?.host?.columnGroupDepth ?? 0;
+    this.setAttribute('aria-rowindex', String(depth + 2));
+  }
+
   @watch('active', { waitUntilFirstUpdate: true })
   protected activeChanged() {
     this.style.display = this.active ? 'flex' : '';

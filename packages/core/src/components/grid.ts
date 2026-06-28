@@ -33,6 +33,7 @@ import {
 import { GRID_TAG } from '../internal/tags.js';
 import type {
   ColumnConfiguration,
+  ColumnGroupConfiguration,
   DataPipelineConfiguration,
   GridEditingConfiguration,
   GridExpansionConfiguration,
@@ -59,6 +60,7 @@ import type { SortExpression } from '../operations/sort/types.js';
 import { styles as gridStyles } from '../styles/grid/grid.css.js';
 import ApexGridCell from './cell.js';
 import ApexFilterRow from './filter-row.js';
+import ApexGridGroupHeaderRow from './group-header-row.js';
 import ApexGridHeaderRow from './header-row.js';
 import ApexGridPaginator from './paginator.js';
 import ApexGridRow from './row.js';
@@ -797,6 +799,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       ApexGrid,
       ApexVirtualizer,
       ApexGridRow,
+      ApexGridGroupHeaderRow,
       ApexGridHeaderRow,
       ApexFilterRow,
       ApexGridPaginator,
@@ -1130,6 +1133,41 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   public rowReordering?: GridRowReorderingConfiguration;
 
   /**
+   * Column groups rendered as spanning headers above the column header row.
+   *
+   * @remarks
+   * A column joins a group via its {@link BaseColumnConfiguration.group} id.
+   * Members must be contiguous within one pin region. `columns` stays flat — all
+   * width / pin / resize / reorder machinery is unchanged; grouping is a
+   * presentational header layer. v1 ships static spanning headers (no collapse).
+   *
+   * @example
+   * ```ts
+   * grid.columnGroups = [{ id: 'name', headerText: 'Name' }];
+   * grid.columns = [{ key: 'first', group: 'name' }, { key: 'last', group: 'name' }];
+   * ```
+   */
+  @property({ attribute: false })
+  public columnGroups?: ColumnGroupConfiguration[];
+
+  /**
+   * Whether a group header row should render: at least one configured group has
+   * a visible member column.
+   */
+  public get hasColumnGroups(): boolean {
+    if (!this.columnGroups?.length) return false;
+    const ids = new Set(this.columnGroups.map((group) => group.id));
+    return this.columns.some((column) => !column.hidden && column.group && ids.has(column.group));
+  }
+
+  /**
+   * Number of group header rows above the column header (0 or 1 in v1).
+   */
+  public get columnGroupDepth(): number {
+    return this.hasColumnGroups ? 1 : 0;
+  }
+
+  /**
    * The currently expanded rows, in insertion order.
    *
    * @remarks
@@ -1460,12 +1498,10 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     // willUpdate via decorator wrapping — reading `pageItems` earlier would
     // see a stale (empty) `dataState`.
     this.setAttribute('role', this.stateController.tree.enabled ? 'treegrid' : 'grid');
-    const hasFilter = this.columns.some((column) => column.filter);
-    const headerRows = hasFilter ? 2 : 1;
     const pinned = this.stateController.rowPin.pinnedRows;
     this.setAttribute(
       'aria-rowcount',
-      String(headerRows + pinned.top.length + this.pageItems.length + pinned.bottom.length)
+      String(this.headerRowCount + pinned.top.length + this.pageItems.length + pinned.bottom.length)
     );
     const visibleColumns = this.columns.filter((column) => !column.hidden).length;
     const extras =
@@ -2140,6 +2176,18 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     });
   }
 
+  protected renderGroupHeaderRow() {
+    if (!this.hasColumnGroups) return nothing;
+    return html`
+      <apex-grid-group-header-row
+        style=${styleMap(this.DOM.columnSizes)}
+        .columns=${this.DOM.displayColumns}
+        .pinOffsets=${this.DOM.pinOffsets}
+        .groups=${this.columnGroups ?? []}
+      ></apex-grid-group-header-row>
+    `;
+  }
+
   protected renderHeaderRow() {
     return html`
       <apex-grid-header-row
@@ -2164,9 +2212,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     `;
   }
 
-  /** Number of chrome rows above the body (header + optional filter row). */
+  /** Number of chrome rows above the body (group header + header + optional filter). */
   protected get headerRowCount(): number {
-    return this.columns.some((column) => column.filter) ? 2 : 1;
+    return this.columnGroupDepth + 1 + (this.columns.some((column) => column.filter) ? 1 : 0);
   }
 
   protected renderPinnedTop() {
@@ -2246,6 +2294,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     return html`
       ${this.stateController.resizing.renderIndicator()}
       ${this.renderToolbar()}
+      ${this.renderGroupHeaderRow()}
       ${this.renderHeaderRow()}
       ${this.renderFilterRow()}
       ${this.renderPinnedTop()}

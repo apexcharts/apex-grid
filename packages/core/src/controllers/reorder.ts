@@ -76,7 +76,10 @@ export class ReorderController<T extends object> implements ReactiveController {
   public canDrop(source: ColumnConfiguration<T>, target: ColumnConfiguration<T>): boolean {
     if (source.key === target.key) return false;
     if (!this.isDraggable(source) || !this.isDraggable(target)) return false;
-    return (source.pinned ?? null) === (target.pinned ?? null);
+    if ((source.pinned ?? null) !== (target.pinned ?? null)) return false;
+    // Grouped columns reorder only within their own group; ungrouped only among
+    // ungrouped. Keeps a group's members contiguous (v1 has no group-level move).
+    return (source.group ?? null) === (target.group ?? null);
   }
 
   /**

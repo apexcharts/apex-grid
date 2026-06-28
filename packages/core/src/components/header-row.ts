@@ -53,6 +53,12 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
     this.setAttribute('aria-rowindex', '1');
   }
 
+  protected override updated(): void {
+    // The column header is row 1, or row 2 when a group header row precedes it.
+    const depth = this.state?.host?.columnGroupDepth ?? 0;
+    this.setAttribute('aria-rowindex', String(depth + 1));
+  }
+
   #activeFilterColumn(event: MouseEvent) {
     const header = event
       .composedPath()

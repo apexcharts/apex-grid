@@ -1,0 +1,64 @@
+@use '../common' as *;
+
+// Resolution chain mirrors the column header row so the two read as one unit.
+$header-background: var(--igx-header-background, var(--header-background, var(--ag-surface-elevated)));
+$header-text-color: var(--igx-header-text-color, var(--header-text-color, var(--ag-text-muted)));
+$header-border-color: var(--igx-header-border-color, var(--header-border-color, var(--ag-hairline)));
+
+:host {
+    display: grid;
+    grid-row: group-header-row;
+    min-height: var(--ag-header-h);
+    background: $header-background;
+    color: $header-text-color;
+    border-block-end: 1px solid $header-border-color;
+    z-index: calc(var(--z-index-base) + 4);
+
+    // The grid host owns vertical scrolling; the group header sits above the
+    // column header. `--apex-row-top-group` is the cumulative height of any rows
+    // above it (e.g. toolbar), maintained by GridDOMController.
+    position: sticky;
+    inset-block-start: var(--apex-row-top-group, 0);
+}
+
+[part~='group-header'] {
+    display: flex;
+    align-items: center;
+    min-inline-size: 0;
+    padding: 0 var(--ag-cell-pad-x);
+    border-inline-end: 1px solid $header-border-color;
+    font-size: var(--ag-fs-cell-secondary);
+    font-weight: var(--ag-fw-semibold);
+    letter-spacing: var(--ag-tracking-header);
+    text-transform: uppercase;
+    color: var(--ag-text-muted);
+}
+
+// Pinned group cells stay frozen during horizontal scroll, aligned to their
+// anchoring member's pin offset.
+[part~='group-header'][data-pinned='start'],
+[part~='group-header'][data-pinned='end'] {
+    position: sticky;
+    z-index: calc(var(--z-index-base) + 2);
+    background: inherit;
+}
+
+[part~='group-header'][data-pinned='start'] {
+    inset-inline-start: var(--apex-pin-offset, 0);
+}
+
+[part~='group-header'][data-pinned='end'] {
+    inset-inline-end: var(--apex-pin-offset, 0);
+}
+
+[part~='group-header-label'] {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+// Placeholder over chrome / ungrouped columns: blank, but carries the surface
+// background so pinned cells below don't bleed through on horizontal scroll.
+[part~='group-spacer'] {
+    background: inherit;
+}

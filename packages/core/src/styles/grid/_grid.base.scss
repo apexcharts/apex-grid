@@ -48,6 +48,7 @@ $grid-resize-line-color: var(--igx-grid-resize-line-color, var(--grid-resize-lin
     overflow: auto;
     grid-template-rows:
         [toolbar-row] max-content
+        [group-header-row] max-content
         [header-row] max-content
         [filter-row] max-content
         [pinned-top-row] max-content

@@ -50,11 +50,13 @@ export class GridDOMController<T extends object> implements ReactiveController {
   public pinOffsets = new Map<Keys<T>, number>();
 
   /**
-   * Number of chrome rows above the body for `aria-rowindex`: header is always
-   * row 1; a filter row (when any column configures a filter) sits at row 2.
+   * Number of chrome rows above the body for `aria-rowindex`: an optional group
+   * header row, the column header (always present), and an optional filter row.
    */
   protected get headerRowCount(): number {
-    return this.host.columns.some((column) => column.filter) ? 2 : 1;
+    return (
+      this.host.columnGroupDepth + 1 + (this.host.columns.some((column) => column.filter) ? 1 : 0)
+    );
   }
 
   public rowRenderer: RenderItemFunction<T> = (data: T, index: number) => {
@@ -253,6 +255,7 @@ export class GridDOMController<T extends object> implements ReactiveController {
     this.#observedHeaders = next;
   }
 
+  #lastGroupTop = -1;
   #lastHeaderTop = -1;
   #lastFilterTop = -1;
   #lastPinnedTop = -1;
@@ -274,18 +277,27 @@ export class GridDOMController<T extends object> implements ReactiveController {
     const root = (this.host as HTMLElement).shadowRoot;
     if (!root) return;
     const toolbar = root.querySelector('apex-grid-toolbar') as HTMLElement | null;
+    const groupHeader = root.querySelector('apex-grid-group-header-row') as HTMLElement | null;
     const header = root.querySelector('apex-grid-header-row') as HTMLElement | null;
     const filter = root.querySelector('apex-filter-row') as HTMLElement | null;
     const paginator = root.querySelector('apex-grid-paginator') as HTMLElement | null;
 
     const toolbarH = toolbar?.offsetHeight ?? 0;
+    const groupH = groupHeader?.offsetHeight ?? 0;
     const headerH = header?.offsetHeight ?? 0;
     const filterH = filter?.offsetHeight ?? 0;
     const paginatorH = paginator?.offsetHeight ?? 0;
-    const headerTop = toolbarH;
-    const filterTop = toolbarH + headerH;
-    const pinnedTop = toolbarH + headerH + filterH;
+    // The group header (when present) sits below the toolbar; the column header
+    // sits below the group header; filter below header; pinned-top below filter.
+    const groupTop = toolbarH;
+    const headerTop = toolbarH + groupH;
+    const filterTop = toolbarH + groupH + headerH;
+    const pinnedTop = toolbarH + groupH + headerH + filterH;
 
+    if (groupTop !== this.#lastGroupTop) {
+      this.host.style.setProperty('--apex-row-top-group', `${groupTop}px`);
+      this.#lastGroupTop = groupTop;
+    }
     if (headerTop !== this.#lastHeaderTop) {
       this.host.style.setProperty('--apex-row-top-header', `${headerTop}px`);
       this.#lastHeaderTop = headerTop;
@@ -308,6 +320,7 @@ export class GridDOMController<T extends object> implements ReactiveController {
     const root = (this.host as HTMLElement).shadowRoot;
     if (!root) return;
     const toolbar = root.querySelector('apex-grid-toolbar') as HTMLElement | null;
+    const groupHeader = root.querySelector('apex-grid-group-header-row') as HTMLElement | null;
     const header = root.querySelector('apex-grid-header-row') as HTMLElement | null;
     const filter = root.querySelector('apex-filter-row') as HTMLElement | null;
     const paginator = root.querySelector('apex-grid-paginator') as HTMLElement | null;
@@ -319,7 +332,7 @@ export class GridDOMController<T extends object> implements ReactiveController {
     }
 
     const next = new Set<Element>(
-      [toolbar, header, filter, paginator].filter((el): el is HTMLElement => !!el)
+      [toolbar, groupHeader, header, filter, paginator].filter((el): el is HTMLElement => !!el)
     );
     for (const element of this.#observedStickyRows) {
       if (!next.has(element)) this.#stickyRowObserver.unobserve(element);

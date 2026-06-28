@@ -264,6 +264,16 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    */
   headerTemplate?: (params: ApexHeaderContext<T>) => TemplateResult | unknown;
   /**
+   * The id of the {@link ColumnGroupConfiguration} this column belongs to.
+   *
+   * @remarks
+   * Columns sharing a `group` id render under a single spanning header cell in
+   * the group header row. Members must be **contiguous within one pin region**
+   * (the grid warns and skips the spanning cell otherwise). Has no effect unless
+   * {@link ApexGrid.columnGroups} defines a matching group.
+   */
+  group?: string;
+  /**
    * Cell template callback.
    */
   cellTemplate?: (params: ApexCellContext<T, K>) => TemplateResult | unknown;
@@ -380,6 +390,34 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
  */
 export type ColumnConfiguration<T extends object, K extends Keys<T> = Keys<T>> =
   K extends Keys<T> ? BaseColumnConfiguration<T, K> : never;
+
+/**
+ * Context passed to a {@link ColumnGroupConfiguration.headerTemplate}.
+ */
+export interface ApexColumnGroupContext {
+  /** The group configuration being rendered. */
+  group: ColumnGroupConfiguration;
+  /** Number of (visible) member columns the group spans. */
+  span: number;
+}
+
+/**
+ * Configuration for a spanning group header over a contiguous run of columns
+ * (see {@link BaseColumnConfiguration.group}).
+ */
+export interface ColumnGroupConfiguration {
+  /** Unique group id, referenced by a column's {@link BaseColumnConfiguration.group}. */
+  id: string;
+  /** Text rendered in the spanning group header cell. */
+  headerText: string;
+  /**
+   * Reserved for a future collapse affordance. Inert in v1 (static spanning
+   * headers only).
+   */
+  collapsible?: boolean;
+  /** Custom template for the group header cell, overriding `headerText`. */
+  headerTemplate?: (context: ApexColumnGroupContext) => TemplateResult | unknown;
+}
 
 /**
  * Context passed to a {@link Validator} alongside the candidate value.

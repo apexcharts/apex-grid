@@ -47,6 +47,7 @@ export type {
 } from './internal/state-snapshot.js';
 export type {
   ApexCellContext,
+  ApexColumnGroupContext,
   ApexDetailContext,
   ApexEditorContext,
   ApexHeaderContext,
@@ -57,6 +58,7 @@ export type {
   BasePropertyType,
   ColumnConfiguration,
   ColumnFilterConfiguration,
+  ColumnGroupConfiguration,
   ColumnSortConfiguration,
   DataPipelineConfiguration,
   DataPipelineHook,
