@@ -65,6 +65,7 @@ export const EN_LOCALE = {
   'toolbar.exportOptions': 'Export options',
   'toolbar.createChart': 'Create chart',
   'toolbar.exportXlsx': 'Export XLSX',
+  'toolbar.askAI': 'Ask AI',
 
   // Enterprise: set filter
   'setFilter.searchPlaceholder': 'Search values…',
@@ -140,6 +141,23 @@ export const EN_LOCALE = {
   // Enterprise: range selection
   'rangeSelection.copied': 'Copied selection to the clipboard',
   'rangeSelection.pasted': 'Pasted {rows} × {cols} cells',
+
+  // Enterprise: AI Toolkit
+  'ai.title': 'Ask AI',
+  'ai.placeholder': 'Ask the grid to sort, filter, group, or answer a question…',
+  'ai.modeControl': 'Change the grid',
+  'ai.modeAsk': 'Ask a question',
+  'ai.send': 'Send',
+  'ai.cancel': 'Cancel',
+  'ai.thinking': 'Thinking…',
+  'ai.undo': 'Undo',
+  'ai.applied': 'Applied',
+  'ai.noChanges': 'No changes were applied.',
+  'ai.warnings': 'Notes',
+  'ai.answer': 'Answer',
+  'ai.error': 'Something went wrong.',
+  'ai.noAdapter': 'No AI adapter configured. Set grid.aiAdapter to enable.',
+  'ai.close': 'Close',
 } as const;
 
 /**

@@ -1,4 +1,5 @@
 export { LicenseManager } from 'apex-commons';
+export { AI_TAG, ApexGridAI } from './ai-panel.js';
 export { ApexGridChart, CHART_TAG, type ChartSource } from './chart-panel.js';
 export type {
   AggregationConfig,

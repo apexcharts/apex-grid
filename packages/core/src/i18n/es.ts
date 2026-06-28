@@ -70,6 +70,7 @@ export const esLocale: GridLocaleText = {
   'toolbar.exportOptions': 'Opciones de exportación',
   'toolbar.createChart': 'Crear gráfico',
   'toolbar.exportXlsx': 'Exportar XLSX',
+  'toolbar.askAI': 'Preguntar a la IA',
 
   // Enterprise: filtro de conjunto
   'setFilter.searchPlaceholder': 'Buscar valores…',
@@ -145,4 +146,21 @@ export const esLocale: GridLocaleText = {
   // Enterprise: selección de rango
   'rangeSelection.copied': 'Selección copiada al portapapeles',
   'rangeSelection.pasted': 'Pegadas {rows} × {cols} celdas',
+
+  // Enterprise: kit de IA
+  'ai.title': 'Preguntar a la IA',
+  'ai.placeholder': 'Pide a la tabla ordenar, filtrar, agrupar o responder una pregunta…',
+  'ai.modeControl': 'Cambiar la tabla',
+  'ai.modeAsk': 'Hacer una pregunta',
+  'ai.send': 'Enviar',
+  'ai.cancel': 'Cancelar',
+  'ai.thinking': 'Pensando…',
+  'ai.undo': 'Deshacer',
+  'ai.applied': 'Aplicado',
+  'ai.noChanges': 'No se aplicaron cambios.',
+  'ai.warnings': 'Notas',
+  'ai.answer': 'Respuesta',
+  'ai.error': 'Algo salió mal.',
+  'ai.noAdapter': 'No hay adaptador de IA configurado. Asigne grid.aiAdapter para habilitarlo.',
+  'ai.close': 'Cerrar',
 };

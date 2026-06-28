@@ -26,6 +26,7 @@ import {
 } from 'apex-grid/internal';
 import { html, nothing, type PropertyValues } from 'lit';
 import { property } from 'lit/decorators.js';
+import type { ApexGridAI } from './ai-panel.js';
 import type { ApexGridChart, ChartSource } from './chart-panel.js';
 import {
   AGGREGATION_MODULE_ID,
@@ -939,7 +940,37 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
         label: this.localize('toolbar.createChart'),
         run: () => this.#openChartDialog(),
       },
+      {
+        id: 'ask-ai',
+        label: this.localize('toolbar.askAI'),
+        run: () => this.#openAIDialog(),
+      },
     ];
+  }
+
+  #aiDialog: ApexGridAI | null = null;
+
+  /**
+   * Adds an "Ask AI" button to the toolbar. Clicking it opens a floating
+   * `<apex-grid-ai mode="dialog">` bound to this grid, which drives
+   * {@link runPrompt} via the configured {@link aiAdapter}. Requires
+   * `<apex-grid-ai>` to be registered (the `/define` entry does so).
+   */
+  #openAIDialog(): void {
+    if (!this.#aiDialog) {
+      // createElement by tag (not an import) keeps the grid free of a runtime
+      // dependency on the element, so it tree-shakes when a consumer never asks.
+      const ai = document.createElement('apex-grid-ai') as ApexGridAI;
+      ai.mode = 'dialog';
+      ai.grid = this as unknown as ApexGridEnterprise<Record<string, unknown>>;
+      ai.addEventListener('apex-ai-closed', () => {
+        ai.remove();
+        this.#aiDialog = null;
+      });
+      document.body.appendChild(ai);
+      this.#aiDialog = ai;
+    }
+    this.#aiDialog.show();
   }
 
   #openChartDialog(options: { source?: ChartSource; type?: ChartType | 'auto' } = {}): void {

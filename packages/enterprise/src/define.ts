@@ -1,3 +1,4 @@
+import { ApexGridAI } from './ai-panel.js';
 import { ApexGridChart } from './chart-panel.js';
 import { ApexGridEnterprise } from './grid-enterprise.js';
 import { enterpriseModules } from './modules.js';
@@ -6,6 +7,7 @@ import { ApexGridStatusBar } from './status-bar.js';
 import { ApexGridToolPanel } from './tool-panel.js';
 
 export {
+  ApexGridAI,
   ApexGridChart,
   ApexGridEnterprise,
   ApexGridSetFilter,
@@ -23,3 +25,4 @@ ApexGridToolPanel.register();
 ApexGridStatusBar.register();
 ApexGridSetFilter.register();
 ApexGridChart.register();
+ApexGridAI.register();
