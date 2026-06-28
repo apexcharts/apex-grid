@@ -50,9 +50,17 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
 
   /**
    * The placeholder rendered in the search input.
+   *
+   * @remarks
+   * When unset, falls back to the grid's localized `toolbar.searchPlaceholder`
+   * text (see {@link ApexGrid.localeText}).
    */
   @property({ type: String })
-  public placeholder = 'Search…';
+  public placeholder = '';
+
+  protected get searchPlaceholder() {
+    return this.placeholder || this.state?.localize('toolbar.searchPlaceholder') || 'Search…';
+  }
 
   /**
    * Debounce window (ms) before {@link ApexGrid.quickFilter} updates.
@@ -222,8 +230,8 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
           part="search-input"
           type="search"
           role="searchbox"
-          aria-label=${this.placeholder}
-          placeholder=${this.placeholder}
+          aria-label=${this.searchPlaceholder}
+          placeholder=${this.searchPlaceholder}
           .value=${this.value}
           @input=${this.#handleInput}
           @keydown=${this.#handleKeydown}
@@ -239,7 +247,7 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
       <button
         type="button"
         part="export-trigger"
-        aria-label="Export"
+        aria-label=${this.state.localize('toolbar.export')}
         aria-haspopup="menu"
         aria-expanded=${open ? 'true' : 'false'}
         @click=${this.#toggleExportMenu}
@@ -251,7 +259,7 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
       <ul
         part="export-menu"
         role="menu"
-        aria-label="Export options"
+        aria-label=${this.state.localize('toolbar.exportOptions')}
         ?hidden=${!open}
         @keydown=${this.#handleMenuKeydown}
       >
@@ -287,8 +295,9 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
   }
 
   protected override render() {
+    if (!this.state) return nothing;
     return html`
-      <div part="toolbar" role="toolbar" aria-label="Grid toolbar">
+      <div part="toolbar" role="toolbar" aria-label=${this.state.localize('toolbar.label')}>
         ${this.renderQuickFilter()}
         <div part="toolbar-actions">${this.renderToolbarActions()}${this.renderExportMenu()}</div>
       </div>

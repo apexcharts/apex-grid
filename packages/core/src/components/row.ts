@@ -253,7 +253,9 @@ export default class ApexGridRow<T extends object> extends LitElement {
       <button
         type="button"
         part="expansion-toggle"
-        aria-label=${expanded ? 'Collapse row' : 'Expand row'}
+        aria-label=${
+          expanded ? this.state.localize('row.collapse') : this.state.localize('row.expand')
+        }
         aria-expanded=${expanded ? 'true' : 'false'}
         ?disabled=${!canExpand}
         @click=${handleClick}
@@ -288,7 +290,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
       rowIndex: this.index,
       parent: this.state.host,
     });
-    return html`<div part="detail-panel" role="region" aria-label="Row detail">${content}</div>`;
+    return html`<div part="detail-panel" role="region" aria-label=${this.state.localize('row.detail')}>${content}</div>`;
   }
 
   protected renderSelectionCell(colindex: number) {
@@ -334,7 +336,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
       <input
         type="checkbox"
         part="selection-checkbox"
-        aria-label="Select row"
+        aria-label=${this.state.localize('row.select')}
         .checked=${selected}
         @click=${handleClick}
         @change=${handleChange}

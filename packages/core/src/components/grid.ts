@@ -7,6 +7,12 @@ import { GridDOMController } from '../controllers/dom.js';
 import type { RowPinPosition } from '../controllers/row-pin.js';
 import type { RowDropPosition } from '../controllers/row-reorder.js';
 import { gridStateContext, StateController } from '../controllers/state.js';
+import {
+  type GridLocaleKey,
+  type GridLocaleText,
+  type LocaleParams,
+  localize as resolveLocaleText,
+} from '../i18n/index.js';
 import { DEFAULT_COLUMN_CONFIG, PIPELINE } from '../internal/constants.js';
 import {
   buildCSV,
@@ -281,6 +287,14 @@ export interface ApexHistoryChangedEvent {
   canUndo: boolean;
   /** Whether there is at least one command to redo. */
   canRedo: boolean;
+}
+
+/**
+ * Event payload for the `stateChanged` event.
+ */
+export interface ApexStateChangedEvent {
+  /** The grid's restorable state after the change, as captured by `getState`. */
+  state: GridState;
 }
 
 /**
@@ -612,6 +626,21 @@ export interface ApexGridEventMap<T extends object> {
    * @event
    */
   historyChanged: CustomEvent<ApexHistoryChangedEvent>;
+  /**
+   * Emitted (debounced, after the render pipeline settles) whenever the grid's
+   * restorable state changes, carrying the new {@link ApexGrid.getState}
+   * snapshot. The single signal for persistence (save the snapshot) or for
+   * re-prompting an AI layer. The payload is only computed while at least one
+   * `stateChanged` listener is attached, so it is zero-cost otherwise.
+   *
+   * @remarks
+   * Fires for programmatic changes (including `setState`) as well as user
+   * interaction. To avoid a save loop, compare the snapshot to your last-saved
+   * one before persisting (identical snapshots never fire a second time).
+   *
+   * @event
+   */
+  stateChanged: CustomEvent<ApexStateChangedEvent>;
   /**
    * Emitted before a row is pinned, moved between bands, or unpinned.
    *
@@ -989,6 +1018,44 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   @property({ type: Boolean, attribute: 'show-export' })
   public showExport = false;
+
+  /**
+   * Localization overrides for the grid's built-in UI text (pagination, filter
+   * operators and controls, row/selection labels, the toolbar, and so on).
+   *
+   * @remarks
+   * A (possibly partial) map of locale keys to translated strings. Any key you
+   * omit falls back to the built-in English default, so partial maps are valid.
+   * A ready-made Spanish dictionary ships as `esLocale`; community translations
+   * are just plain objects of the same shape.
+   *
+   * @example
+   * ```ts
+   * import { esLocale } from '@apexcharts/grid';
+   *
+   * // Whole-UI translation:
+   * grid.localeText = esLocale;
+   *
+   * // Or override a handful of strings:
+   * grid.localeText = { 'toolbar.searchPlaceholder': 'Buscar productos…' };
+   * ```
+   */
+  @property({ attribute: false })
+  public localeText?: GridLocaleText;
+
+  /**
+   * Resolves a built-in locale key to its display string, applying any
+   * {@link ApexGrid.localeText} override over the English default and
+   * interpolating `{placeholder}` tokens from `params`.
+   *
+   * @remarks
+   * Used internally by the grid's components. `fallback` is returned when the
+   * key is not part of the built-in set (for example a custom filter operand's
+   * own label).
+   */
+  public localize(key: GridLocaleKey, params?: LocaleParams, fallback?: string): string {
+    return resolveLocaleText(this.localeText, key, params, fallback);
+  }
 
   /**
    * Enables drag-and-drop column reordering on the column headers.
@@ -1528,6 +1595,82 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       (this.stateController.selection.showCheckboxColumn ? 1 : 0) +
       (this.stateController.expansion.showToggleColumn ? 1 : 0);
     this.setAttribute('aria-colcount', String(visibleColumns + extras));
+
+    this.#emitStateChangedIfNeeded();
+  }
+
+  /**
+   * Listener count for `stateChanged`, so the (potentially non-trivial) snapshot
+   * is only computed while something is actually listening.
+   */
+  #stateChangedListeners = 0;
+  /** Serialized last-emitted state, to fire `stateChanged` only on real changes. */
+  #lastStateJson: string | null = null;
+
+  public override addEventListener<
+    K extends keyof M,
+    M extends ApexGridEventMap<T> & HTMLElementEventMap,
+  >(
+    type: K,
+    listener: (this: HTMLElement, ev: M[K]) => unknown,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  public override addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions
+  ): void {
+    if (type === 'stateChanged') {
+      this.#stateChangedListeners += 1;
+      // Baseline at subscription time so the next real change is the first emit.
+      this.#lastStateJson = this.hasUpdated ? JSON.stringify(this.getState()) : null;
+    }
+    (
+      super.addEventListener as (
+        t: string,
+        l: EventListenerOrEventListenerObject,
+        o?: boolean | AddEventListenerOptions
+      ) => void
+    )(type, listener, options);
+  }
+
+  public override removeEventListener<
+    K extends keyof M,
+    M extends ApexGridEventMap<T> & HTMLElementEventMap,
+  >(
+    type: K,
+    listener: (this: HTMLElement, ev: M[K]) => unknown,
+    options?: boolean | EventListenerOptions
+  ): void;
+  public override removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions
+  ): void {
+    if (type === 'stateChanged') {
+      this.#stateChangedListeners = Math.max(0, this.#stateChangedListeners - 1);
+    }
+    (
+      super.removeEventListener as (
+        t: string,
+        l: EventListenerOrEventListenerObject,
+        o?: boolean | EventListenerOptions
+      ) => void
+    )(type, listener, options);
+  }
+
+  /**
+   * Emit `stateChanged` when the restorable state differs from the last emitted
+   * snapshot. No-op (and no snapshot computed) when nothing is listening. Called
+   * from `updated()`, so the snapshot reflects the settled post-pipeline view.
+   */
+  #emitStateChangedIfNeeded(): void {
+    if (this.#stateChangedListeners === 0) return;
+    const snapshot = this.getState();
+    const json = JSON.stringify(snapshot);
+    if (json === this.#lastStateJson) return;
+    this.#lastStateJson = json;
+    this.emitEvent('stateChanged', { detail: { state: snapshot } });
   }
 
   protected override firstUpdated(): void {

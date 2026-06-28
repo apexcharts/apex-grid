@@ -104,7 +104,11 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
       <button
         type="button"
         part="expansion-toggle"
-        aria-label=${someExpanded ? 'Collapse all rows' : 'Expand all rows'}
+        aria-label=${
+          someExpanded
+            ? this.state.localize('header.collapseAll')
+            : this.state.localize('header.expandAll')
+        }
         aria-expanded=${someExpanded ? 'true' : 'false'}
         @click=${handleClick}
       >
@@ -166,7 +170,7 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
       <input
         type="checkbox"
         part="selection-checkbox"
-        aria-label="Select all rows"
+        aria-label=${this.state.localize('header.selectAll')}
         .checked=${allChecked}
         ${ref(syncIndeterminate)}
         @change=${handleChange}

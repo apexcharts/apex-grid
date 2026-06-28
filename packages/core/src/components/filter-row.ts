@@ -3,6 +3,7 @@ import { html, LitElement, nothing } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
+import type { GridLocaleKey } from '../i18n/index.js';
 import { DEFAULT_COLUMN_CONFIG } from '../internal/constants.js';
 import { renderIcon } from '../internal/icons.js';
 import { registerComponent } from '../internal/register.js';
@@ -265,7 +266,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
       <button
         part="chip-remove"
         type="button"
-        aria-label="Remove filter"
+        aria-label=${this.state.localize('filter.removeFilter')}
         @click=${props.onRemove}
       >
         ${renderIcon('close')}
@@ -300,7 +301,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
         part="action"
         @click=${this.#handleResetClick}
       >
-        ${renderIcon('refresh')} Reset
+        ${renderIcon('refresh')} ${this.state.localize('filter.reset')}
       </button>
       <button
         id="close"
@@ -310,7 +311,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
           this.active = false;
         }}
       >
-        ${renderIcon('close')} Close
+        ${renderIcon('close')} ${this.state.localize('filter.close')}
       </button>
     `;
   }
@@ -319,7 +320,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     return html`<ul
       part="dropdown"
       role="listbox"
-      aria-label="Filter condition"
+      aria-label=${this.state.localize('filter.conditionList')}
       ?hidden=${!this.dropdownOpen}
       @click=${this.#handleDropdownItemClick}
     >
@@ -333,7 +334,13 @@ export default class ApexFilterRow<T extends object> extends LitElement {
             aria-selected=${this.condition.name === key}
             ?selected=${this.condition.name === key}
           >
-            ${renderIcon(key)}<span>${operand?.label ?? key}</span>
+            ${renderIcon(key)}<span
+              >${this.state.localize(
+                `filter.operator.${key}` as GridLocaleKey,
+                undefined,
+                operand?.label ?? key
+              )}</span
+            >
           </li>
         `
       )}
@@ -345,7 +352,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
       id="condition"
       type="button"
       part="condition-trigger"
-      aria-label="Change filter condition"
+      aria-label=${this.state.localize('filter.changeCondition')}
       aria-haspopup="listbox"
       aria-expanded=${this.dropdownOpen ? 'true' : 'false'}
       @click=${this.#openDropdownList}
@@ -361,7 +368,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
         part="filter-input"
         type="text"
         .value=${ifDefined(this.expression.searchTerm as string | undefined) as string}
-        placeholder="Add filter value"
+        placeholder=${this.state.localize('filter.inputPlaceholder')}
         ?readonly=${this.condition.unary}
         @input=${this.#handleInput}
         @keydown=${this.#handleKeydown}
@@ -415,7 +422,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
       data-column=${column.key}
       @click=${open}
     >
-      ${renderIcon('filter')}<span>Filter</span>${count}
+      ${renderIcon('filter')}<span>${this.state.localize('filter.filter')}</span>${count}
     </button>`;
 
     return partial ? this.renderInactiveChips(column, state) : chip;

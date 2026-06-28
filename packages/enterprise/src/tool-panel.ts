@@ -1,4 +1,4 @@
-import type { ColumnConfiguration } from 'apex-grid';
+import { type ColumnConfiguration, type GridLocaleKey, localize } from 'apex-grid';
 import { registerComponent } from 'apex-grid/internal';
 import { css, html, LitElement, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
@@ -168,6 +168,9 @@ export class ApexGridToolPanel extends LitElement {
   @state()
   public pivotMode = false;
 
+  /** Resolve a locale key against the bound grid's overrides (English when unbound). */
+  #t = (key: GridLocaleKey): string => localize(this.grid?.localeText, key);
+
   // --- column helpers ------------------------------------------------------
 
   #columns(): AnyColumn[] {
@@ -330,7 +333,7 @@ export class ApexGridToolPanel extends LitElement {
         ${
           keys.length
             ? keys.map(renderChip)
-            : html`<span part="zone-empty">Drag columns here</span>`
+            : html`<span part="zone-empty">${this.#t('toolPanel.dragColumns')}</span>`
         }
       </div>
     </div>`;
@@ -338,13 +341,13 @@ export class ApexGridToolPanel extends LitElement {
 
   #chip(label: string, onRemove: () => void): TemplateResult {
     return html`<span part="chip"
-      >${label}<button title="Remove" @click=${onRemove}>×</button></span
+      >${label}<button title=${this.#t('toolPanel.removeChip')} @click=${onRemove}>×</button></span
     >`;
   }
 
   protected override render() {
     if (!this.grid) {
-      return html`<div part="header">No grid connected</div>`;
+      return html`<div part="header">${this.#t('toolPanel.noGrid')}</div>`;
     }
     const term = this.search.trim().toLowerCase();
     const groupKeys = this.#groupKeys();
@@ -353,11 +356,11 @@ export class ApexGridToolPanel extends LitElement {
     );
 
     return html`
-      <div part="header">Columns</div>
+      <div part="header">${this.#t('toolPanel.columns')}</div>
       <input
         part="search"
         type="search"
-        placeholder="Search columns…"
+        placeholder=${this.#t('toolPanel.searchPlaceholder')}
         .value=${this.search}
         @input=${(event: Event) => {
           this.search = (event.target as HTMLInputElement).value;
@@ -384,19 +387,19 @@ export class ApexGridToolPanel extends LitElement {
             <span part="actions">
               <button
                 part="pin"
-                title="Pin column"
+                title=${this.#t('toolPanel.pinColumn')}
                 aria-pressed=${column.pinned ? 'true' : 'false'}
                 @click=${() => this.#cyclePin(column.key)}
               >
                 ${column.pinned ? PIN_GLYPH[column.pinned] : '⇆'}
               </button>
-              <button part="up" title="Move up" @click=${() => this.#move(column.key, -1)}>↑</button>
-              <button part="down" title="Move down" @click=${() => this.#move(column.key, 1)}>
+              <button part="up" title=${this.#t('toolPanel.moveUp')} @click=${() => this.#move(column.key, -1)}>↑</button>
+              <button part="down" title=${this.#t('toolPanel.moveDown')} @click=${() => this.#move(column.key, 1)}>
                 ↓
               </button>
               <button
                 part="group"
-                title="Group by this column"
+                title=${this.#t('toolPanel.groupByColumn')}
                 aria-pressed=${groupKeys.includes(String(column.key)) ? 'true' : 'false'}
                 @click=${() => this.toggleGroup(String(column.key))}
               >
@@ -416,18 +419,18 @@ export class ApexGridToolPanel extends LitElement {
             @change=${(event: Event) =>
               this.#setPivotMode((event.target as HTMLInputElement).checked)}
           />
-          Pivot mode
+          ${this.#t('toolPanel.pivotMode')}
         </label>
       </div>
 
       ${this.#renderZone(
-        this.pivotMode ? 'Row Groups (pivot rows)' : 'Row Groups',
+        this.pivotMode ? this.#t('toolPanel.rowGroupsPivot') : this.#t('toolPanel.rowGroups'),
         groupKeys,
         (key) => this.#addToGroups(key),
         (key) => this.#chip(this.#labelFor(key), () => this.#removeFromGroups(key))
       )}
       ${this.#renderZone(
-        'Values',
+        this.#t('toolPanel.values'),
         Object.keys(this.#valuesConfig()),
         (key) => this.#addToValues(key),
         (key) =>
@@ -438,7 +441,7 @@ export class ApexGridToolPanel extends LitElement {
       ${
         this.pivotMode
           ? this.#renderZone(
-              'Column Labels',
+              this.#t('toolPanel.columnLabels'),
               this.grid.pivotOn ? [this.grid.pivotOn] : [],
               (key) => this.#setColumnLabel(key),
               (key) => this.#chip(this.#labelFor(key), () => this.#clearColumnLabel())

@@ -1,5 +1,6 @@
 import { createContext } from '@lit/context';
 import type { ReactiveController } from 'lit';
+import type { GridLocaleKey, LocaleParams } from '../i18n/index.js';
 import {
   type CellDecoration,
   type CellDecoratorContext,
@@ -73,6 +74,15 @@ export class StateController<T extends object> implements ReactiveController {
     this.#announceToken = (this.#announceToken + 1) % 2;
     this.announcement = this.#announceToken ? message : `${message} `;
     this.host.requestUpdate();
+  }
+
+  /**
+   * Resolves a built-in locale key to its display string, honoring the host
+   * grid's {@link ApexGrid.localeText} overrides. Thin proxy to
+   * {@link ApexGrid.localize} so components can localize via `this.state`.
+   */
+  public localize(key: GridLocaleKey, params?: LocaleParams, fallback?: string): string {
+    return this.host.localize(key, params, fallback);
   }
 
   public get active() {

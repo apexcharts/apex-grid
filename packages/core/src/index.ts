@@ -22,6 +22,7 @@ export type {
   ApexRowPinningEvent,
   ApexRowSelectedEvent,
   ApexRowSelectingEvent,
+  ApexStateChangedEvent,
   ApexTreeRowExpandedEvent,
   ApexTreeRowExpandingEvent,
   ColumnDropPosition,
@@ -29,6 +30,15 @@ export type {
 export { ApexGrid } from './components/grid.js';
 export type { RowPinPosition } from './controllers/row-pin.js';
 export type { RowDropPosition } from './controllers/row-reorder.js';
+export {
+  EN_LOCALE,
+  esLocale,
+  type GridLocaleKey,
+  type GridLocaleText,
+  interpolate,
+  type LocaleParams,
+  localize,
+} from './i18n/index.js';
 export type {
   CSVExportOptions,
   ExportCellValue,

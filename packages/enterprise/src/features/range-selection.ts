@@ -410,7 +410,7 @@ export class RangeSelectionController<T extends object>
     if (!tsv) return false;
     try {
       await navigator.clipboard.writeText(tsv);
-      this.host.announce('Copied selection to the clipboard');
+      this.host.announce(this.host.localize('rangeSelection.copied'));
       return true;
     } catch {
       return false;
@@ -484,7 +484,12 @@ export class RangeSelectionController<T extends object>
     this.#focus = { row: lastRow, col: lastCol };
     this.host.requestUpdate(PIPELINE);
     this.#commit();
-    this.host.announce(`Pasted ${matrix.length} × ${matrix[0]?.length ?? 0} cells`);
+    this.host.announce(
+      this.host.localize('rangeSelection.pasted', {
+        rows: matrix.length,
+        cols: matrix[0]?.length ?? 0,
+      })
+    );
   }
 
   /**

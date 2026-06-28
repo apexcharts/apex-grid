@@ -188,31 +188,52 @@ export class ContextMenuController<T extends object> implements ReactiveControll
     const sortBy = (direction: 'ascending' | 'descending') =>
       this.host.sort([{ key, direction }] as unknown as SortExpression<T>[]);
     const items: ContextMenuItem<T>[] = [
-      { id: 'sort-asc', label: 'Sort ascending', run: () => sortBy('ascending') },
-      { id: 'sort-desc', label: 'Sort descending', run: () => sortBy('descending') },
-      { id: 'sort-clear', label: 'Clear sort', run: () => this.host.clearSort(key) },
+      {
+        id: 'sort-asc',
+        label: this.host.localize('contextMenu.sortAsc'),
+        run: () => sortBy('ascending'),
+      },
+      {
+        id: 'sort-desc',
+        label: this.host.localize('contextMenu.sortDesc'),
+        run: () => sortBy('descending'),
+      },
+      {
+        id: 'sort-clear',
+        label: this.host.localize('contextMenu.clearSort'),
+        run: () => this.host.clearSort(key),
+      },
       {
         id: 'pin-start',
-        label: 'Pin to start',
+        label: this.host.localize('contextMenu.pinStart'),
         separatorBefore: true,
         run: () => this.#repin(column, 'start'),
       },
-      { id: 'pin-end', label: 'Pin to end', run: () => this.#repin(column, 'end') },
+      {
+        id: 'pin-end',
+        label: this.host.localize('contextMenu.pinEnd'),
+        run: () => this.#repin(column, 'end'),
+      },
       {
         id: 'unpin',
-        label: 'Unpin',
+        label: this.host.localize('contextMenu.unpin'),
         disabled: !column.pinned,
         run: () => this.#repin(column, null),
       },
       {
         id: 'hide',
-        label: 'Hide column',
+        label: this.host.localize('contextMenu.hideColumn'),
         separatorBefore: true,
         run: () => this.#setHidden(column),
       },
     ];
     if (target.kind === 'cell') {
-      items.push({ id: 'copy', label: 'Copy', separatorBefore: true, run: (t) => this.#copy(t) });
+      items.push({
+        id: 'copy',
+        label: this.host.localize('contextMenu.copy'),
+        separatorBefore: true,
+        run: (t) => this.#copy(t),
+      });
     }
     return items;
   }

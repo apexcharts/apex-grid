@@ -52,12 +52,20 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
 
   /**
    * Accessible label for the rows-per-page selector.
+   *
+   * @remarks
+   * When unset, falls back to the grid's localized `pagination.rowsPerPage`
+   * text (see {@link ApexGrid.localeText}).
    */
   @property({ type: String, attribute: 'page-size-label' })
-  public pageSizeLabel = 'Rows per page';
+  public pageSizeLabel?: string;
 
   protected get controller() {
     return this.state.pagination;
+  }
+
+  protected get sizeLabel() {
+    return this.pageSizeLabel ?? this.state.localize('pagination.rowsPerPage');
   }
 
   #handleSizeChange = (event: Event) => {
@@ -72,9 +80,9 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
     const current = this.controller.pageSize;
     return html`
       <label part="paginator-size">
-        <span class="visually-hidden">${this.pageSizeLabel}</span>
+        <span class="visually-hidden">${this.sizeLabel}</span>
         <select
-          aria-label=${this.pageSizeLabel}
+          aria-label=${this.sizeLabel}
           .value=${String(current)}
           @change=${this.#handleSizeChange}
         >
@@ -90,11 +98,15 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
   protected renderInfo() {
     const { page, pageSize, totalItems } = this.controller.state;
     if (totalItems === 0) {
-      return html`<span part="paginator-info" aria-live="polite">0 of 0</span>`;
+      return html`<span part="paginator-info" aria-live="polite"
+        >${this.state.localize('pagination.summaryEmpty')}</span
+      >`;
     }
     const start = page * pageSize + 1;
     const end = Math.min(totalItems, (page + 1) * pageSize);
-    return html`<span part="paginator-info" aria-live="polite">${start}–${end} of ${totalItems}</span>`;
+    return html`<span part="paginator-info" aria-live="polite"
+      >${this.state.localize('pagination.summary', { start, end, total: totalItems })}</span
+    >`;
   }
 
   protected renderButton(opts: {
@@ -138,20 +150,20 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
       <div
         part="paginator-controls"
         role="group"
-        aria-label="Pagination controls"
+        aria-label=${this.state.localize('pagination.controls')}
         @keydown=${this.#handleControlsKeydown}
       >
         ${this.renderButton({
           id: 'first',
           icon: 'page-first',
-          label: 'Go to first page',
+          label: this.state.localize('pagination.firstPage'),
           disabled: onFirst,
           onClick: () => this.controller.firstPage(),
         })}
         ${this.renderButton({
           id: 'previous',
           icon: 'page-previous',
-          label: 'Go to previous page',
+          label: this.state.localize('pagination.previousPage'),
           disabled: onFirst,
           onClick: () => this.controller.previousPage(),
         })}
@@ -159,14 +171,14 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
         ${this.renderButton({
           id: 'next',
           icon: 'page-next',
-          label: 'Go to next page',
+          label: this.state.localize('pagination.nextPage'),
           disabled: onLast,
           onClick: () => this.controller.nextPage(),
         })}
         ${this.renderButton({
           id: 'last',
           icon: 'page-last',
-          label: 'Go to last page',
+          label: this.state.localize('pagination.lastPage'),
           disabled: onLast,
           onClick: () => this.controller.lastPage(),
         })}
@@ -177,7 +189,7 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
   protected override render() {
     if (!this.state) return nothing;
     return html`
-      <div part="paginator" role="navigation" aria-label="Grid pagination">
+      <div part="paginator" role="navigation" aria-label=${this.state.localize('pagination.label')}>
         ${this.renderSizeSelect()} ${this.renderInfo()} ${this.renderControls()}
       </div>
     `;

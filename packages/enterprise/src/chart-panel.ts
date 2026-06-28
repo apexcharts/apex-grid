@@ -1,3 +1,4 @@
+import { type GridLocaleKey, localize } from 'apex-grid';
 import { registerComponent } from 'apex-grid/internal';
 import type ApexCharts from 'apexcharts';
 import { html, LitElement, nothing } from 'lit';
@@ -94,6 +95,10 @@ export class ApexGridChart extends LitElement {
   /** The enterprise grid to chart. Setting it (re)binds the live listeners. */
   @property({ attribute: false })
   public grid: ApexGridEnterprise<Record<string, unknown>> | null = null;
+
+  /** Resolve a locale key against the bound grid's overrides (English when unbound). */
+  #t = (key: GridLocaleKey, fallback?: string): string =>
+    localize(this.grid?.localeText, key, undefined, fallback);
 
   /** `'inline'` renders in place; `'dialog'` (default) is a floating, draggable panel. */
   @property({ reflect: true })
@@ -575,7 +580,12 @@ export class ApexGridChart extends LitElement {
                 @pointerup=${this.#onHeaderPointerUp}
               >
                 <span>${this.heading}</span>
-                <button part="close" type="button" aria-label="Close" @click=${() => this.close()}>
+                <button
+                  part="close"
+                  type="button"
+                  aria-label=${this.#t('chart.close')}
+                  @click=${() => this.close()}
+                >
                   ✕
                 </button>
               </div>`
@@ -589,26 +599,24 @@ export class ApexGridChart extends LitElement {
               aria-pressed=${this.type === entry.type ? 'true' : 'false'}
               @click=${() => this.#selectType(entry.type)}
             >
-              ${entry.label}
+              ${this.#t(`chart.type.${entry.type}` as GridLocaleKey, entry.label)}
             </button>`
           )}
           <label class="agc-theme">
             <select
-              aria-label="Chart theme"
+              aria-label=${this.#t('chart.theme')}
               .value=${this.theme}
               @change=${(event: Event) => {
                 this.theme = (event.target as HTMLSelectElement).value as typeof this.theme;
               }}
             >
-              <option value="grid">Grid theme</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
+              <option value="grid">${this.#t('chart.themeGrid')}</option>
+              <option value="light">${this.#t('chart.themeLight')}</option>
+              <option value="dark">${this.#t('chart.themeDark')}</option>
             </select>
           </label>
         </div>
-        <div part="placeholder" ?hidden=${!empty}>
-          Select cells, or group/pivot the grid, to chart it.
-        </div>
+        <div part="placeholder" ?hidden=${!empty}>${this.#t('chart.placeholder')}</div>
         <div part="canvas" ?hidden=${empty}></div>
       </div>`;
   }

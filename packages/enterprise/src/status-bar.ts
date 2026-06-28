@@ -1,3 +1,4 @@
+import { type GridLocaleKey, localize } from 'apex-grid';
 import { registerComponent } from 'apex-grid/internal';
 import { css, html, LitElement, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
@@ -127,21 +128,24 @@ export class ApexGridStatusBar extends LitElement {
     >`;
   }
 
+  /** Resolve a locale key against the bound grid's overrides (English when unbound). */
+  #t = (key: GridLocaleKey): string => localize(this.grid?.localeText, key);
+
   protected override render() {
     const stats = this.stats;
     if (!stats || stats.count === 0) {
       return html`<div part="status-bar">
-        <span part="hint">Select a range of cells</span>
+        <span part="hint">${this.#t('statusBar.selectRange')}</span>
       </div>`;
     }
     return html`<div part="status-bar">
-      ${this.#renderStat('Count', formatNumber(stats.count))}
+      ${this.#renderStat(this.#t('statusBar.count'), formatNumber(stats.count))}
       ${
         stats.numericCount > 0
-          ? html`${this.#renderStat('Sum', formatNumber(stats.sum))}
-          ${this.#renderStat('Avg', formatNumber(stats.average))}
-          ${this.#renderStat('Min', formatNumber(stats.min))}
-          ${this.#renderStat('Max', formatNumber(stats.max))}`
+          ? html`${this.#renderStat(this.#t('statusBar.sum'), formatNumber(stats.sum))}
+          ${this.#renderStat(this.#t('statusBar.average'), formatNumber(stats.average))}
+          ${this.#renderStat(this.#t('statusBar.min'), formatNumber(stats.min))}
+          ${this.#renderStat(this.#t('statusBar.max'), formatNumber(stats.max))}`
           : nothing
       }
     </div>`;

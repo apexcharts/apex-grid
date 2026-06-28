@@ -110,7 +110,10 @@ export class GroupingController<T extends object>
         key,
         field,
         value,
-        label: stringifyValue(value),
+        label:
+          value === null || value === undefined || value === ''
+            ? this.host.localize('grouping.blank')
+            : String(value),
         depth,
         count: leaves.length,
         leaves,
@@ -164,7 +167,11 @@ export class GroupingController<T extends object>
       <button
         part="group-toggle"
         type="button"
-        aria-label=${expanded ? 'Collapse group' : 'Expand group'}
+        aria-label=${
+          expanded
+            ? this.host.localize('grouping.collapseGroup')
+            : this.host.localize('grouping.expandGroup')
+        }
         aria-expanded=${expanded ? 'true' : 'false'}
         style="display:inline-flex;align-items:center;border:0;background:none;cursor:pointer;padding:0;color:inherit"
         @click=${(event: Event) => {
@@ -248,7 +255,11 @@ export class GroupingController<T extends object>
     this.host.requestUpdate(PIPELINE);
     this.#emit('groupExpanded', { key, expanded, meta }, false);
     if (meta) {
-      this.host.announce(`${expanded ? 'Expanded' : 'Collapsed'} group ${meta.label}`);
+      this.host.announce(
+        this.host.localize(expanded ? 'grouping.announceExpanded' : 'grouping.announceCollapsed', {
+          label: meta.label,
+        })
+      );
     }
   }
 

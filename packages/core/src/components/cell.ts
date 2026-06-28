@@ -491,7 +491,9 @@ export default class ApexGridCell<T extends object> extends LitElement {
       ? html`<button
           type="button"
           part="tree-toggle"
-          aria-label=${expanded ? 'Collapse row' : 'Expand row'}
+          aria-label=${
+            expanded ? this.state.localize('row.collapse') : this.state.localize('row.expand')
+          }
           aria-expanded=${expanded ? 'true' : 'false'}
           @click=${handleClick}
         >

@@ -3,6 +3,7 @@ import type {
   ColumnConfiguration,
   DataType,
   GetStateOptions,
+  GridLocaleKey,
   GridSchema,
   GridState,
   SetStateOptions,
@@ -437,11 +438,11 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     ];
     return {
       id: 'chart-range',
-      label: 'Chart range',
+      label: this.localize('chart.chartRange'),
       separatorBefore: true,
       submenu: types.map(({ type, label }) => ({
         id: `chart-${type}`,
-        label,
+        label: this.localize(`chart.type.${type}` as GridLocaleKey, undefined, label),
         run: () => this.#openChartDialog({ source: 'selection', type }),
       })),
     };
@@ -868,7 +869,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     const categories = [...totals.keys()];
     const series: ChartSeries[] = [
       {
-        name: valueCol ? getColumnLabel(valueCol) : 'Count',
+        name: valueCol ? getColumnLabel(valueCol) : this.localize('chart.countSeries'),
         data: categories.map((c) => totals.get(c) ?? 0),
       },
     ];
@@ -901,7 +902,11 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   public override get toolbarActions(): ReadonlyArray<ToolbarAction> {
     return [
       ...super.toolbarActions,
-      { id: 'create-chart', label: 'Create chart', run: () => this.#openChartDialog() },
+      {
+        id: 'create-chart',
+        label: this.localize('toolbar.createChart'),
+        run: () => this.#openChartDialog(),
+      },
     ];
   }
 
@@ -929,7 +934,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * export is an enterprise feature; CSV stays in the community package.
    */
   public override get exportFormats(): ReadonlyArray<ExportFormat> {
-    return [...super.exportFormats, { id: 'xlsx', label: 'Export XLSX' }];
+    return [...super.exportFormats, { id: 'xlsx', label: this.localize('toolbar.exportXlsx') }];
   }
 
   public override exportAs(formatId: string, options: ExportOptions<T> = {}): void {
