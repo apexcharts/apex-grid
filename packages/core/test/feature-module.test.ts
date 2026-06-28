@@ -35,6 +35,24 @@ function deepQueryAll(root: ShadowRoot | Element, selector: string): Element[] {
   return out;
 }
 
+/**
+ * Poll `deepQueryAll` across frames until it returns a match (or a frame budget
+ * is exhausted). The virtualizer paints rows asynchronously over a variable
+ * number of frames, so a fixed `nextFrame()` count is flaky on contended runs.
+ */
+async function deepQueryAllEventually(
+  root: ShadowRoot | Element,
+  selector: string,
+  frames = 30
+): Promise<Element[]> {
+  for (let i = 0; i < frames; i += 1) {
+    const found = deepQueryAll(root, selector);
+    if (found.length > 0) return found;
+    await nextFrame();
+  }
+  return deepQueryAll(root, selector);
+}
+
 describe('Feature module seam', () => {
   afterEach(() => fixtureCleanup());
 
@@ -222,10 +240,8 @@ describe('Row transform + presenter seams', () => {
 
   it('renders the presented row full-width in the body', async () => {
     const grid = await mount();
-    await nextFrame();
-    await nextFrame();
 
-    const groupRows = deepQueryAll(grid.shadowRoot!, '[part="group-row"]');
+    const groupRows = await deepQueryAllEventually(grid.shadowRoot!, '[part="group-row"]');
     expect(groupRows.length, 'a full-width group row is rendered').to.be.greaterThan(0);
     expect(groupRows[0].textContent ?? '').to.contain('Group');
   });
