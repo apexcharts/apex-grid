@@ -1,7 +1,9 @@
 import { LicenseManager } from 'apex-commons';
 import type {
   ColumnConfiguration,
+  DataType,
   GetStateOptions,
+  GridSchema,
   GridState,
   SetStateOptions,
   SetStateResult,
@@ -28,6 +30,7 @@ import {
   AGGREGATION_MODULE_ID,
   type AggregationConfig,
   type AggregationController,
+  type AggregationFn,
   type AggregationResults,
 } from './features/aggregation.js';
 import {
@@ -64,6 +67,9 @@ import {
 import { buildXLSX, type XLSXExportOptions } from './features/xlsx.js';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Aggregation functions advertised by {@link ApexGridEnterprise.getSchema}. */
+const AGGREGATION_FUNCS: AggregationFn[] = ['sum', 'avg', 'min', 'max', 'count'];
 
 /** Coerce a cell value to a finite number, or `null` if it is not numeric. */
 function toNumber(value: unknown): number | null {
@@ -326,6 +332,33 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       ranges: this.#rangeController()?.getRanges() ?? [],
     };
     return { ...base, modules: { ...base.modules, enterprise } };
+  }
+
+  /**
+   * Extends the core {@link ApexGrid.getSchema} descriptor with enterprise
+   * capabilities: marks every column groupable / pivotable, numeric columns
+   * aggregatable (with the supported aggregation functions), and advertises
+   * grouping / pivot / aggregation at the grid level.
+   */
+  public override getSchema(): GridSchema {
+    const base = super.getSchema();
+    const numeric = (type: DataType): boolean => type === 'number' || type === 'currency';
+    return {
+      ...base,
+      columns: base.columns.map((column) => ({
+        ...column,
+        groupable: true,
+        pivotable: true,
+        aggregatable: numeric(column.dataType),
+        aggFuncs: numeric(column.dataType) ? [...AGGREGATION_FUNCS] : undefined,
+      })),
+      capabilities: {
+        ...base.capabilities,
+        grouping: true,
+        pivot: true,
+        aggregation: { funcs: [...AGGREGATION_FUNCS] },
+      },
+    };
   }
 
   /**

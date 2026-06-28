@@ -18,6 +18,7 @@ import {
 import type { CellInteractionKind } from '../internal/feature-module.js';
 import { EventEmitterBase } from '../internal/mixins/event-emitter.js';
 import { registerComponent } from '../internal/register.js';
+import { columnSchema, type GridSchema, operandsByType } from '../internal/state-schema.js';
 import {
   applyColumnLayout,
   type ColumnLayoutState,
@@ -1608,6 +1609,37 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       },
       rowOrder: manualOrder ? serializeRowRefs(manualOrder, this.data, rowId) : null,
       modules: this.stateController.serializeModuleState(),
+    };
+  }
+
+  /**
+   * A machine-readable description of the grid: its columns and data types, the
+   * operations available per column (sort directions, filter operands), the
+   * grid-level capabilities, and the current {@link ApexGrid.getState} snapshot.
+   *
+   * @remarks
+   * This is the contract an AI layer hands to an LLM (to constrain its output)
+   * and validates a returned patch against before {@link ApexGrid.setState}, but
+   * it is AI-agnostic: it equally drives a view-editor UI or documentation. It is
+   * a descriptor, not a JSON-Schema document. The enterprise grid extends it with
+   * grouping / pivot / aggregation availability.
+   */
+  public getSchema(): GridSchema {
+    return {
+      version: 1,
+      columns: this.columns.map((column) => columnSchema(column)),
+      capabilities: {
+        sort: {
+          directions: ['ascending', 'descending'],
+          multi: Boolean(this.sortConfiguration?.multiple),
+        },
+        filter: { operandsByType: operandsByType(this.columns) },
+        pagination: Boolean(this.pagination?.enabled),
+        selection: this.selection?.enabled ? (this.selection.mode ?? 'multiple') : false,
+        rowPinning: Boolean(this.rowPinning?.enabled),
+        rowReordering: Boolean(this.rowReordering?.enabled),
+      },
+      state: this.getState(),
     };
   }
 

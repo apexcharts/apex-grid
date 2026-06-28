@@ -159,6 +159,24 @@ describe('ApexGridEnterprise — state snapshot', () => {
     expect(grid.getSelectionRanges()).to.deep.equal([bounds]);
   });
 
+  it('extends getSchema with grouping / pivot / aggregation capabilities', async () => {
+    const grid = await mount();
+    const schema = grid.getSchema();
+
+    expect(schema.capabilities.grouping).to.equal(true);
+    expect(schema.capabilities.pivot).to.equal(true);
+    expect(schema.capabilities.aggregation).to.deep.equal({
+      funcs: ['sum', 'avg', 'min', 'max', 'count'],
+    });
+
+    const byKey = Object.fromEntries(schema.columns.map((c) => [c.key, c]));
+    // Every column is groupable / pivotable; only numeric columns are aggregatable.
+    expect(byKey.region).to.include({ groupable: true, pivotable: true, aggregatable: false });
+    expect(byKey.amount).to.include({ aggregatable: true });
+    expect(byKey.amount.aggFuncs).to.deep.equal(['sum', 'avg', 'min', 'max', 'count']);
+    expect(byKey.region.aggFuncs).to.equal(undefined);
+  });
+
   it('still captures the core slices (sort) alongside enterprise state', async () => {
     const grid = await mount({ groupBy: ['region'] });
     grid.sort([{ key: 'amount', direction: 'descending' }] as never);

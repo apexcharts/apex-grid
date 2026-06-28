@@ -37,6 +37,11 @@ export type {
   ExportSource,
 } from './internal/export.js';
 export type {
+  ColumnSchema,
+  GridCapabilities,
+  GridSchema,
+} from './internal/state-schema.js';
+export type {
   ColumnLayoutState,
   FilterStateSnapshot,
   GetStateOptions,
