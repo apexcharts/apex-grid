@@ -8,29 +8,29 @@ A Lit-based, framework-agnostic web component data grid. Ships as a single custo
 
 ## Features
 
-- **Row virtualization** via `@lit-labs/virtualizer` — only ~20 rows in the DOM at any time, regardless of dataset size.
-- **Sorting** — single or multi-column, tri-state (asc / desc / none), per-column comparers.
-- **Filtering** — per-column filter chips with string / number / boolean / date operands, plus a quick-filter (global search) input.
-- **Pagination** — local slicing or remote mode with a `pageChanging` / `pageChanged` event pair; built-in `<apex-grid-paginator>`.
-- **Column pinning** — pin to start or end; visual reordering only, source `columns` array is preserved.
-- **Column reordering** — drag-and-drop with per-column opt-out, constrained to the column's pinning group.
-- **Column resizing** — pointer-driven, with a min-width safeguard.
+- **Row virtualization** via `@lit-labs/virtualizer`: only ~20 rows in the DOM at any time, regardless of dataset size.
+- **Sorting**: single or multi-column, tri-state (asc / desc / none), per-column comparers.
+- **Filtering**: per-column filter chips with string / number / boolean / date operands, plus a quick-filter (global search) input.
+- **Pagination**: local slicing or remote mode with a `pageChanging` / `pageChanged` event pair; built-in `<apex-grid-paginator>`.
+- **Column pinning**: pin to start or end; visual reordering only, source `columns` array is preserved.
+- **Column reordering**: drag-and-drop with per-column opt-out, constrained to the column's pinning group.
+- **Column resizing**: pointer-driven, with a min-width safeguard.
 - **Column groups**: spanning multi-level headers over a flat `columns` array, respecting pin regions.
-- **Inline editing** — cell or row mode, click or double-click trigger, per-column opt-in.
+- **Inline editing**: cell or row mode, click or double-click trigger, per-column opt-in.
 - **Cell validation**: declarative per-column `validators` (built-ins plus custom), surfaced with `aria-invalid` and an event.
 - **Undo / redo**: opt-in history for cell edits, with keyboard shortcuts (Ctrl/Cmd+Z, etc.).
-- **Row selection** — single or multiple, optional checkbox column, full programmatic API.
+- **Row selection**: single or multiple, optional checkbox column, full programmatic API.
 - **Row pinning**: sticky top / bottom bands rendered outside the virtualizer.
 - **Row drag-reorder**: pointer and keyboard reordering with a manual order, mutually exclusive with sorting.
-- **Row expansion (master-detail)** — opt-in chevron column with a `detailTemplate`.
-- **Tree data (nested rows)** — `getDataPath` pattern over a flat array.
+- **Row expansion (master-detail)**: opt-in chevron column with a `detailTemplate`.
+- **Tree data (nested rows)**: `getDataPath` pattern over a flat array.
 - **State & persistence**: `getState()` / `setState()` snapshot round-trip, a `stateChanged` event, and a `getSchema()` capability descriptor.
 - **Localization (i18n)**: override any built-in string via `localeText`; bundled dictionaries (e.g. `esLocale`).
-- **CSV export** — programmatic method plus an optional toolbar dropdown. (Excel/XLSX export is in `apex-grid-enterprise`.)
-- **Toolbar** — opt-in `<apex-grid-toolbar>` with debounced quick filter and export menu.
-- **Templating** — slot-based templates for cells, headers, editors, and detail panels.
-- **Theming** — styled out-of-the-box; fully customizable through `--ag-*` CSS custom properties (no theme import or build step). Auto-matches an `igniteui-webcomponents` host app when one is present.
-- **Accessibility** — WCAG 2.2 AA semantics (`role="grid"` / `role="treegrid"`, `aria-rowcount`, `aria-colcount`, focus + keyboard navigation).
+- **CSV export**: programmatic method plus an optional toolbar dropdown. (Excel/XLSX export is in `apex-grid-enterprise`.)
+- **Toolbar**: opt-in `<apex-grid-toolbar>` with debounced quick filter and export menu.
+- **Templating**: slot-based templates for cells, headers, editors, and detail panels.
+- **Theming**: styled out-of-the-box; fully customizable through `--ag-*` CSS custom properties (no theme import or build step). Auto-matches an `igniteui-webcomponents` host app when one is present.
+- **Accessibility**: WCAG 2.2 AA semantics (`role="grid"` / `role="treegrid"`, `aria-rowcount`, `aria-colcount`, focus + keyboard navigation).
 - **Provenance-signed npm releases** with OIDC trusted publishing.
 
 ---
@@ -45,7 +45,7 @@ import { setup } from 'apex-grid';
 setup();
 ```
 
-That single call registers `<apex-grid>` and adopts a default host stylesheet (`height: 100%; min-height: 240px`). The grid is styled out-of-the-box — no theme CSS import is required.
+That single call registers `<apex-grid>` and adopts a default host stylesheet (`height: 100%; min-height: 240px`). The grid is styled out-of-the-box; no theme CSS import is required.
 
 ### Render the grid
 
@@ -94,7 +94,7 @@ If you'd rather not use `setup()`, this is what it does under the hood. Skipping
 npm install apex-grid lit
 ```
 
-`igniteui-webcomponents` ships as a transitive dependency — no separate install.
+`igniteui-webcomponents` ships as a transitive dependency; no separate install.
 
 ### 2. Register the custom element
 
@@ -113,7 +113,7 @@ Without this, `<apex-grid>` is an inert unknown element.
 
 ### 3. (Optional) Customize the look
 
-The grid is styled out-of-the-box — there is no theme to import. Customize it by overriding the `--ag-*` CSS custom properties on `apex-grid` (or any ancestor); a one-line brand override cascades to every tint:
+The grid is styled out-of-the-box; there is no theme to import. Customize it by overriding the `--ag-*` CSS custom properties on `apex-grid` (or any ancestor); a one-line brand override cascades to every tint:
 
 ```css
 apex-grid {
@@ -126,14 +126,14 @@ apex-grid {
 
 See [`src/styles/_tokens.scss`](src/styles/_tokens.scss) for the full token list (brand, surfaces, text, semantic state colors, typography, spacing, motion).
 
-**Grid edge / shadow.** By default the grid shows a flat 1px hairline edge (no drop shadow). Control it with the `--ag-grid-shadow` hook — this is an opt-in override, not one of the `_tokens.scss` defaults:
+**Grid edge / shadow.** By default the grid shows a flat 1px hairline edge (no drop shadow). Control it with the `--ag-grid-shadow` hook, an opt-in override that is not one of the `_tokens.scss` defaults:
 
 ```css
 apex-grid { --ag-grid-shadow: var(--ag-shadow-card); } /* elevated floating-card look */
 apex-grid { --ag-grid-shadow: none; }                  /* remove the edge entirely */
 ```
 
-If you embed the grid alongside `igniteui-webcomponents`, the brand tokens automatically re-tint from the igniteui palette (`--ig-primary-500`) — no configuration needed.
+If you embed the grid alongside `igniteui-webcomponents`, the brand tokens automatically re-tint from the igniteui palette (`--ig-primary-500`); no configuration needed.
 
 ### 4. Size the host
 
@@ -159,22 +159,22 @@ With the element registered and the host sized, you should see:
 - **Sort arrows** (↕) next to each header when `sort: true`.
 - A **filter row** below the headers with a "Filter" chip per column when `filter: true`.
 - **Hover state** on rows.
-- **Smooth scrolling** — DevTools shows only ~20 `<apex-grid-row>` elements at any time.
+- **Smooth scrolling**: DevTools shows only ~20 `<apex-grid-row>` elements at any time.
 
 ### Troubleshooting
 
 | What you see | Likely cause |
 |---|---|
-| Want a different look / brand color | Step 3 — override the `--ag-*` CSS variables |
-| Only ~3 rows visible regardless of data size | Step 4 — no bounded height, **or** consumer CSS sets `display` on `<apex-grid>` (check console for the warning) |
-| `<apex-grid>` blank tag in DOM | Step 2 — element not registered |
-| Columns shown as literal `[object Object]` | `columns=` used as an attribute — must be a **property** (`.columns=${...}` in Lit, `[columns]=` in Angular, `:columns.prop=` in Vue, `el.columns = ...` in vanilla JS) |
+| Want a different look / brand color | Step 3: override the `--ag-*` CSS variables |
+| Only ~3 rows visible regardless of data size | Step 4: no bounded height, **or** consumer CSS sets `display` on `<apex-grid>` (check console for the warning) |
+| `<apex-grid>` blank tag in DOM | Step 2: element not registered |
+| Columns shown as literal `[object Object]` | `columns=` used as an attribute; must be a **property** (`.columns=${...}` in Lit, `[columns]=` in Angular, `:columns.prop=` in Vue, `el.columns = ...` in vanilla JS) |
 
 ---
 
 ## Features in depth
 
-Each feature below is fully opt-in — you only pay for what you turn on. Snippets assume `const grid = document.querySelector('apex-grid')!`.
+Each feature below is fully opt-in: you only pay for what you turn on. Snippets assume `const grid = document.querySelector('apex-grid')!`.
 
 ### Sorting
 
@@ -253,7 +253,7 @@ await grid.pinColumn('name', 'start');
 await grid.unpinColumn('name');                 // or pinColumn('name', null)
 ```
 
-The source `columns` array is **not** reordered — only the visual render order changes. Read `grid.displayColumns` for the render order. Events: `columnPinning` (cancellable), `columnPinned`.
+The source `columns` array is **not** reordered; only the visual render order changes. Read `grid.displayColumns` for the render order. Events: `columnPinning` (cancellable), `columnPinned`.
 
 ### Column reordering
 
@@ -388,7 +388,7 @@ Events: `rowExpanding` (cancellable), `rowExpanded`.
 
 ### Tree data (nested rows)
 
-The data array stays **flat**. The grid derives the hierarchy from a `getDataPath(row)` callback that returns the path from root to that row — the flat-array "tree data" pattern.
+The data array stays **flat**. The grid derives the hierarchy from a `getDataPath(row)` callback that returns the path from root to that row, the flat-array "tree data" pattern.
 
 ```ts
 type Person = { id: number; name: string; title: string; path: string[] };
@@ -402,7 +402,7 @@ const data: Person[] = [
 grid.tree = {
   enabled: true,
   getDataPath: (row) => row.path,
-  defaultExpanded: 1,              // boolean | number — depth to expand
+  defaultExpanded: 1,              // boolean | number, depth to expand
   groupColumnKey: 'name',          // which column shows the chevron + indent
   childIndent: 20,                 // px per depth level
 };
@@ -423,7 +423,7 @@ grid.exportToCSV({ filename: 'users', source: 'selected' });
 const text = grid.exportToCSV({ filename: '' });               // no download, returns the string
 ```
 
-`source` can be `'view'` (default — post-filter/post-sort), `'page'`, `'selected'`, or `'all'`. Per-column opt-out: `{ key: 'secret', exportable: false }`.
+`source` can be `'view'` (default, post-filter/post-sort), `'page'`, `'selected'`, or `'all'`. Per-column opt-out: `{ key: 'secret', exportable: false }`.
 
 > **XLSX (Excel) export** moved to [`apex-grid-enterprise`](https://www.npmjs.com/package/apex-grid-enterprise) in v3. `<apex-grid-enterprise>` adds `grid.exportToXLSX(...)` and an "Export XLSX" entry to this same toolbar menu. CSV stays free.
 
@@ -454,7 +454,7 @@ Search input has a `debounce` attribute (default `200`ms).
 
 ### Theming
 
-The grid styles itself through `--ag-*` CSS custom properties — override them on `apex-grid` (or any ancestor) to rebrand; see [`src/styles/_tokens.scss`](src/styles/_tokens.scss) for the full list. When `igniteui-webcomponents` is present, the brand tokens auto-tint from its palette.
+The grid styles itself through `--ag-*` CSS custom properties; override them on `apex-grid` (or any ancestor) to rebrand; see [`src/styles/_tokens.scss`](src/styles/_tokens.scss) for the full list. When `igniteui-webcomponents` is present, the brand tokens auto-tint from its palette.
 
 Style with CSS parts on the grid, paginator, and toolbar:
 
@@ -499,32 +499,32 @@ See [`demo/state-persistence.html`](../../demo/state-persistence.html) for a sav
 | `columns` | `ColumnConfiguration<T>[]` | `[]` | Column configuration (property only) |
 | `autoGenerate` | `boolean` | `false` | Infer columns from `data[0]` keys. Attr `auto-generate` |
 | `sortConfiguration` | `GridSortConfiguration` | `{ multiple, triState }` | |
-| `dataPipelineConfiguration` | `DataPipelineConfiguration<T>` | — | Custom sort/filter/pagination hooks |
-| `pagination` | `PaginationConfiguration` | — | |
+| `dataPipelineConfiguration` | `DataPipelineConfiguration<T>` |  | Custom sort/filter/pagination hooks |
+| `pagination` | `PaginationConfiguration` |  | |
 | `quickFilter` | `string` | `''` | Attr `quick-filter` |
 | `showQuickFilter` | `boolean` | `false` | Attr `show-quick-filter` |
 | `showExport` | `boolean` | `false` | Attr `show-export` |
 | `columnReordering` | `boolean` | `false` | Attr `column-reordering` |
-| `columnGroups` | `ColumnGroupConfiguration[]` | — | Spanning header groups (`column.group` references an `id`) |
-| `editing` | `GridEditingConfiguration` | — | Includes `history` for undo/redo; per-column `validators` |
-| `selection` | `GridSelectionConfiguration` | — | |
-| `expansion` | `GridExpansionConfiguration<T>` | — | |
-| `tree` | `GridTreeConfiguration<T>` | — | |
-| `rowPinning` | `GridRowPinningConfiguration` | — | `{ enabled }` |
-| `rowReordering` | `GridRowReorderingConfiguration` | — | `{ enabled, applyToData? }` |
-| `rowId` | `(row: T) => string \| number` | — | Durable row identity for `getState` / `setState` |
-| `localeText` | `GridLocaleText` | — | Override map for built-in strings (e.g. `esLocale`) |
-| `canUndo`, `canRedo` | `boolean` | — | Get (history) |
-| `sortExpressions` | `SortExpression<T>[]` | — | Get/set |
-| `filterExpressions` | `FilterExpression<T>[]` | — | Get/set |
-| `selectedRows` | `T[]` | — | Get/set |
-| `expandedRows` | `T[]` | — | Get/set |
-| `page`, `pageSize`, `pageCount`, `totalItems` | `number` | — | |
-| `pageItems` | `readonly T[]` | — | Currently rendered slice |
-| `dataView` | `readonly T[]` | — | Post-filter, post-sort |
-| `displayColumns` | `readonly ColumnConfiguration<T>[]` | — | Render order (pinned start → unpinned → pinned end) |
-| `editingCell` | `{ rowIndex, columnKey } \| null` | — | |
-| `editingRow` | `number \| null` | — | Row-mode only |
+| `columnGroups` | `ColumnGroupConfiguration[]` |  | Spanning header groups (`column.group` references an `id`) |
+| `editing` | `GridEditingConfiguration` |  | Includes `history` for undo/redo; per-column `validators` |
+| `selection` | `GridSelectionConfiguration` |  | |
+| `expansion` | `GridExpansionConfiguration<T>` |  | |
+| `tree` | `GridTreeConfiguration<T>` |  | |
+| `rowPinning` | `GridRowPinningConfiguration` |  | `{ enabled }` |
+| `rowReordering` | `GridRowReorderingConfiguration` |  | `{ enabled, applyToData? }` |
+| `rowId` | `(row: T) => string \| number` |  | Durable row identity for `getState` / `setState` |
+| `localeText` | `GridLocaleText` |  | Override map for built-in strings (e.g. `esLocale`) |
+| `canUndo`, `canRedo` | `boolean` |  | Get (history) |
+| `sortExpressions` | `SortExpression<T>[]` |  | Get/set |
+| `filterExpressions` | `FilterExpression<T>[]` |  | Get/set |
+| `selectedRows` | `T[]` |  | Get/set |
+| `expandedRows` | `T[]` |  | Get/set |
+| `page`, `pageSize`, `pageCount`, `totalItems` | `number` |  | |
+| `pageItems` | `readonly T[]` |  | Currently rendered slice |
+| `dataView` | `readonly T[]` |  | Post-filter, post-sort |
+| `displayColumns` | `readonly ColumnConfiguration<T>[]` |  | Render order (pinned start → unpinned → pinned end) |
+| `editingCell` | `{ rowIndex, columnKey } \| null` |  | |
+| `editingRow` | `number \| null` |  | Row-mode only |
 
 ### Methods
 
@@ -597,7 +597,7 @@ All events bubble and are composed across shadow boundaries. Names ending in `-i
 | `treeRowExpanding` / `treeRowExpanded` | yes / no | row context |
 | `stateChanged` | no | `{ state }` (debounced; only while listened) |
 
-Programmatic `sort()` / `filter()` calls are silent — only UI-initiated changes emit `sorting` / `filtering`.
+Programmatic `sort()` / `filter()` calls are silent; only UI-initiated changes emit `sorting` / `filtering`.
 
 ### Attributes
 
@@ -643,11 +643,11 @@ npm run build         # builds dist/ + custom-elements.json + typedoc
 
 Releases are automated by [.github/workflows/publish.yml](.github/workflows/publish.yml):
 
-1. Bump `"version"` in [package.json](package.json) — the single source of truth. The build injects it into `dist/package.json`.
+1. Bump `"version"` in [package.json](package.json), the single source of truth. The build injects it into `dist/package.json`.
 2. Commit with a message starting with `release:` and the same version, e.g. `release: 2.0.0` or `release: 2.0.0-rc.1`.
 3. Push to `main`.
 
-The workflow then verifies the version triple-match, runs lint + tests + build, publishes `dist/` to npm with `--provenance` (OIDC trusted publishing — no token in secrets), and creates a `vX.Y.Z` git tag and GitHub Release with auto-generated notes. Pre-release versions (containing `-`) publish under the `next` dist-tag; stable versions under `latest`.
+The workflow then verifies the version triple-match, runs lint + tests + build, publishes `dist/` to npm with `--provenance` (OIDC trusted publishing, no token in secrets), and creates a `vX.Y.Z` git tag and GitHub Release with auto-generated notes. Pre-release versions (containing `-`) publish under the `next` dist-tag; stable versions under `latest`.
 
 Any push whose head commit does not start with `release:` is a no-op for the workflow.
 

@@ -239,7 +239,7 @@ const chart = grid.createRangeChart(container, {
 
 A built-in chart panel with a type gallery that **live-redraws** as the selection or
 view changes. Set its `grid` property; choose `mode="inline"` (embedded) or
-`mode="dialog"` (a floating, draggable panel — the default). It renders in light DOM
+`mode="dialog"` (a floating, draggable panel, the default). It renders in light DOM
 (ApexCharts cannot render inside a shadow root).
 
 ```html
