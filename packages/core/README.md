@@ -389,6 +389,30 @@ apex-grid::part(paginator) { background: var(--surface-2); }
 apex-grid-toolbar::part(search-input) { font-family: var(--font-mono); }
 ```
 
+### State & persistence
+
+`getState()` returns a JSON-safe snapshot of the grid's restorable view and `setState()` applies one back. The snapshot covers column layout (order, width, pinning, visibility), sort, filter, quick filter, pagination, selection, expansion, tree expansion, pinned rows, the manual drag-reorder order, and any feature-module state (enterprise grouping / pivot / aggregation / ranges). Functions and templates are never serialized: sort comparers, filter condition functions, and cell/header/editor templates re-bind from the live `columns` config on restore (filter conditions are captured by operand name).
+
+```js
+// Save and restore a view.
+localStorage.setItem('view', JSON.stringify(grid.getState()));
+grid.setState(JSON.parse(localStorage.getItem('view')));
+
+// Persist automatically: stateChanged fires (debounced) after every settled
+// change, and only while something is listening.
+grid.addEventListener('stateChanged', (e) =>
+  localStorage.setItem('view', JSON.stringify(e.detail.state))
+);
+```
+
+**Row identity.** Selection, expansion, pinned rows, and the manual order are captured as row references. Set `grid.rowId = (row) => row.id` for durable references that survive a data reload; without it, rows are referenced by position (index), which round-trips within a session but not across a reload.
+
+**`setState` is defensive.** It is meant to accept persisted-and-possibly-stale blobs and AI output, so it never throws on bad input (unless you pass `{ strict: true }`): unknown columns / operands are dropped, out-of-range pages clamped, unresolvable rows skipped, and a wrong snapshot `version` applied best-effort. It returns a `SetStateResult` (`{ applied, skipped, warnings }`) so you can see exactly what happened. `setState` is partial: pass only the slices you want to change.
+
+**`getSchema()`** returns a machine-readable description of the grid (columns + data types, available sort directions and filter operands per column, grid-level capabilities) with the current state embedded. It is the contract an AI layer feeds an LLM and validates a patch against, but it equally drives a view-editor UI or documentation.
+
+See [`demo/state-persistence.html`](../../demo/state-persistence.html) for a save / restore / live-snapshot example.
+
 ---
 
 ## API Reference
@@ -457,6 +481,10 @@ expandAllTreeRows(); collapseAllTreeRows(); isTreeRowExpanded(row)
 
 exportToCSV(options?): string
 exportAs(formatId, options?): void   // toolbar dispatch; 'csv' (community), 'xlsx' (enterprise)
+
+getState(options?): GridState
+setState(state, options?): SetStateResult   // partial + defensive; never throws unless { strict: true }
+getSchema(): GridSchema                      // machine-readable capability descriptor
 ```
 
 ### Events
@@ -476,6 +504,7 @@ All events bubble and are composed across shadow boundaries. Names ending in `-i
 | `rowSelecting` / `rowSelected` | yes / no | `{ added, removed }` |
 | `rowExpanding` / `rowExpanded` | yes / no | row context |
 | `treeRowExpanding` / `treeRowExpanded` | yes / no | row context |
+| `stateChanged` | no | `{ state }` (debounced; only while listened) |
 
 Programmatic `sort()` / `filter()` calls are silent — only UI-initiated changes emit `sorting` / `filtering`.
 

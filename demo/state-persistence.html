@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>State Persistence (getState / setState) - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+      .toolbar button {
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 13px;
+        border: 1px solid #d0d5dd;
+        background: #fff;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .toolbar button:hover {
+        background: #f7f9fc;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        gap: 16px;
+        align-items: start;
+      }
+      apex-grid {
+        min-height: 420px;
+        --ig-size: 2;
+      }
+      .snapshot {
+        margin: 0;
+        padding: 10px 12px;
+        background: #0f172a;
+        color: #cbd5e1;
+        border-radius: 6px;
+        font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 11px;
+        line-height: 1.5;
+        max-height: 460px;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .panel-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: #475569;
+        margin: 0 0 6px 0;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>State Persistence — getState / setState</h2>
+    <p class="subtitle">
+      The grid serializes its restorable view (column layout, sort, filter, pagination, selection, pinned rows, manual order) with <code>getState()</code> and restores it with <code>setState()</code>. The <code>stateChanged</code> event fires after every settled change, so saving to <code>localStorage</code> is a one-liner. Reorder/sort/filter/select, then reload the page — your view is restored.
+    </p>
+    <div class="toolbar">
+      <button id="save">Save view</button>
+      <button id="restore">Restore saved</button>
+      <button id="reset">Reset to default</button>
+    </div>
+    <div class="layout">
+      <apex-grid id="grid"></apex-grid>
+      <div>
+        <p class="panel-title">Live snapshot (getState)</p>
+        <pre class="snapshot" id="snapshot"></pre>
+      </div>
+    </div>
+    <script type="module">
+      const KEY = 'apex-grid:saved-view';
+      const data = [
+        { id: '1', name: 'Wireless Headphones', category: 'Audio',        price: 299.00, stock: 14 },
+        { id: '2', name: 'USB-C Hub',           category: 'Connectivity', price: 49.99,  stock: 28 },
+        { id: '3', name: 'Mechanical Keyboard', category: 'Input',        price: 189.00, stock: 5  },
+        { id: '4', name: 'Ergonomic Mouse',     category: 'Input',        price: 79.95,  stock: 22 },
+        { id: '5', name: 'Monitor Stand',       category: 'Furniture',    price: 59.99,  stock: 17 },
+        { id: '6', name: '4K Webcam',           category: 'Video',        price: 149.00, stock: 9  },
+        { id: '7', name: 'Laptop Sleeve',       category: 'Accessories',  price: 34.99,  stock: 31 },
+        { id: '8', name: 'Desk Lamp',           category: 'Furniture',    price: 44.50,  stock: 12 },
+      ];
+
+      // A sensible starting view, applied on first load (empty storage). Pins a
+      // row to the top and sorts by price so the snapshot panel is illustrative.
+      const DEFAULT_VIEW = {
+        sort: [{ key: 'price', direction: 'descending' }],
+        rowPinning: { top: [{ index: 0 }], bottom: [] },
+        selection: [{ index: 2 }],
+      };
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'id',       headerText: 'ID' },
+        { key: 'name',     headerText: 'Name',     sort: true, filter: true },
+        { key: 'category', headerText: 'Category', sort: true, filter: true },
+        { key: 'price',    headerText: 'Price',    sort: true, type: 'number' },
+        { key: 'stock',    headerText: 'Stock',    sort: true, type: 'number' },
+      ];
+      grid.data = data;
+      grid.selection = { enabled: true, mode: 'multiple' };
+      grid.rowPinning = { enabled: true };
+      grid.rowReordering = { enabled: true };
+
+      const snapshotEl = document.getElementById('snapshot');
+      const render = () => {
+        snapshotEl.textContent = JSON.stringify(grid.getState(), null, 2);
+      };
+
+      document.getElementById('save').addEventListener('click', () => {
+        localStorage.setItem(KEY, JSON.stringify(grid.getState()));
+      });
+      document.getElementById('restore').addEventListener('click', () => {
+        const saved = localStorage.getItem(KEY);
+        if (saved) grid.setState(JSON.parse(saved));
+      });
+      document.getElementById('reset').addEventListener('click', () => {
+        localStorage.removeItem(KEY);
+        grid.setState(DEFAULT_VIEW);
+      });
+
+      await customElements.whenDefined('apex-grid');
+      // Apply the saved (or default) view after the grid's first render settles,
+      // so it isn't clobbered by the initial data/columns pipeline.
+      await grid.updateComplete;
+      const saved = localStorage.getItem(KEY);
+      grid.setState(saved ? JSON.parse(saved) : DEFAULT_VIEW);
+      await grid.updateComplete;
+      render();
+
+      // Persistence in one line: save the snapshot whenever state settles. Wired
+      // after the initial view is in place so it captures real user changes.
+      grid.addEventListener('stateChanged', (e) => {
+        localStorage.setItem(KEY, JSON.stringify(e.detail.state));
+        render();
+      });
+    </script>
+  </body>
+</html>
