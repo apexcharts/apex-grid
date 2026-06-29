@@ -297,6 +297,18 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    */
   editorTemplate?: (params: ApexEditorContext<T, K>) => TemplateResult | unknown;
   /**
+   * Allows cells in this column to hold spreadsheet-style formulas.
+   *
+   * @remarks
+   * An enterprise feature: the free core only carries this flag. With the
+   * enterprise formula module active and the column also
+   * {@link BaseColumnConfiguration.editable}, a cell whose edited text starts
+   * with `=` is parsed, stored as a formula, and its computed result becomes the
+   * cell value (so sorting, filtering, and aggregation keep working on the
+   * value). Has no effect without that module. Default `false`.
+   */
+  allowFormula?: boolean;
+  /**
    * Declarative validators run before a candidate value is written to this
    * column's cells.
    *

@@ -61,7 +61,7 @@ describe('ApexGridEnterprise row grouping', () => {
   it('registers the grouping module alongside aggregation', async () => {
     const grid = await mount([]);
     const { modules } = stateOf(grid);
-    expect(modules.size).to.equal(5);
+    expect(modules.size).to.equal(6);
     expect(modules.has('grouping')).to.be.true;
     expect(modules.has('aggregation')).to.be.true;
     expect(modules.has('pivot')).to.be.true;

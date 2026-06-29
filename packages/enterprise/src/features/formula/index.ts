@@ -5,6 +5,14 @@
  * on this barrel and the package's `index.ts` re-exports the user-facing parts.
  */
 
+// Cell editor (F4).
+export {
+  FORMULA_EDITOR_TAG,
+  FormulaCellEditor,
+  type FormulaEditorContext,
+  type FormulaEditorController,
+  formulaEditorTemplate,
+} from './editor.js';
 // Value model + error values (F1).
 export {
   type CellValue,
@@ -22,17 +30,14 @@ export {
   toText,
   valueError,
 } from './errors.js';
-
 // Evaluator (F1).
 export { evaluate, type FormulaContext } from './evaluator.js';
-
 // Function registry (F1).
 export {
   BUILTIN_FUNCTION_NAMES,
   createFunctionRegistry,
   type FormulaFn,
 } from './functions.js';
-
 // Parser + AST (F1).
 export {
   type BinaryNode,
@@ -50,7 +55,6 @@ export {
   type UnaryNode,
   type UnaryOperator,
 } from './parser.js';
-
 // Reference model (F2).
 export {
   buildColumnLetters,
@@ -66,7 +70,6 @@ export {
   type RangeAddress,
   rangeCells,
 } from './refs.js';
-
 // Store + dependency graph + recalc (F3).
 export {
   FORMULA_MODULE_ID,

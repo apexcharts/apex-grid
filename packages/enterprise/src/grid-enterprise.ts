@@ -50,6 +50,11 @@ import {
   type ContextMenuItem,
 } from './features/context-menu.js';
 import {
+  FORMULA_MODULE_ID,
+  type FormulaController,
+  formulaEditorTemplate,
+} from './features/formula/index.js';
+import {
   GROUPING_MODULE_ID,
   type GroupingController,
   type GroupRowMeta,
@@ -440,6 +445,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.#syncContextMenu(changed);
     this.#syncMasterDetail(changed);
     this.#syncInfiniteRowModel(changed);
+    this.#injectFormulaEditors(changed);
     super.willUpdate(changed);
   }
 
@@ -642,6 +648,37 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   #rangeController(): RangeSelectionController<T> | undefined {
     return this.stateController.module<RangeSelectionController<T>>(RANGE_SELECTION_MODULE_ID);
+  }
+
+  #formulaController(): FormulaController<T> | undefined {
+    return this.stateController.module<FormulaController<T>>(FORMULA_MODULE_ID);
+  }
+
+  /**
+   * Give every `allowFormula` + `editable` column the formula cell editor,
+   * unless the user supplied their own `editorTemplate`. Idempotent: once a
+   * column has an `editorTemplate` it is left alone, so re-running over the
+   * rewritten columns is a no-op and never loops.
+   */
+  #injectFormulaEditors(changed: PropertyValues): void {
+    if (!changed.has('columns')) {
+      return;
+    }
+    const controller = this.#formulaController();
+    if (!controller) {
+      return;
+    }
+    let injected = false;
+    const next = this.columns.map((column) => {
+      if (column.allowFormula && column.editable && !column.editorTemplate) {
+        injected = true;
+        return { ...column, editorTemplate: formulaEditorTemplate(controller) };
+      }
+      return column;
+    });
+    if (injected) {
+      this.columns = next;
+    }
   }
 
   /**
