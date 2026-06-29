@@ -302,3 +302,45 @@ describe('offsetReferences (Tier 2)', () => {
     expect(shift('=SUM(A1:A3)+10', 1, 0)).to.equal('=SUM(A2:A4)+10');
   });
 });
+
+describe('broader function library (Tier 2, P6)', () => {
+  it('math: MOD, POWER, SQRT, INT, SIGN', () => {
+    expect(ev('=MOD(5,3)')).to.equal(2);
+    expect(ev('=MOD(-3,2)')).to.equal(1); // Excel takes the sign of the divisor
+    expect(ev('=POWER(2,10)')).to.equal(1024);
+    expect(ev('=SQRT(16)')).to.equal(4);
+    expect(ev('=INT(4.9)')).to.equal(4);
+    expect(ev('=INT(-4.1)')).to.equal(-5);
+    expect(ev('=SIGN(-8)')).to.equal(-1);
+    expect(ev('=SIGN(0)')).to.equal(0);
+  });
+
+  it('MOD by zero is #DIV/0! and SQRT of a negative is an error', () => {
+    expect(errCode(ev('=MOD(5,0)'))).to.equal('#DIV/0!');
+    expect(isFormulaError(ev('=SQRT(-1)'))).to.be.true;
+  });
+
+  it('rounding: ROUNDUP rounds the magnitude up, ROUNDDOWN toward zero', () => {
+    expect(ev('=ROUNDUP(2.1,0)')).to.equal(3);
+    expect(ev('=ROUNDDOWN(2.9,0)')).to.equal(2);
+    expect(ev('=ROUNDUP(2.345,2)')).to.equal(2.35);
+    expect(ev('=ROUNDDOWN(2.345,2)')).to.equal(2.34);
+    expect(ev('=ROUNDDOWN(-2.9,0)')).to.equal(-2);
+  });
+
+  it('text: LEN, LEFT, RIGHT, MID, TRIM, UPPER, LOWER, CONCATENATE', () => {
+    expect(ev('=LEN("hello")')).to.equal(5);
+    expect(ev('=LEFT("hello",2)')).to.equal('he');
+    expect(ev('=RIGHT("hello",2)')).to.equal('lo');
+    expect(ev('=MID("hello",2,3)')).to.equal('ell');
+    expect(ev('=TRIM("  a   b  ")')).to.equal('a b');
+    expect(ev('=UPPER("abc")')).to.equal('ABC');
+    expect(ev('=LOWER("ABC")')).to.equal('abc');
+    expect(ev('=CONCATENATE("a","b","c")')).to.equal('abc');
+  });
+
+  it('LEFT / RIGHT default to a single character', () => {
+    expect(ev('=LEFT("hello")')).to.equal('h');
+    expect(ev('=RIGHT("hello")')).to.equal('o');
+  });
+});

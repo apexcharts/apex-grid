@@ -1,7 +1,10 @@
 import { LicenseManager } from 'apex-commons';
 import type {
+  ApexCellContext,
   ColumnConfiguration,
+  CSVExportOptions,
   DataType,
+  ExportCellValue,
   GetStateOptions,
   GridLocaleKey,
   GridSchema,
@@ -147,6 +150,33 @@ const WATERMARK_STYLE = [
   'background-repeat:repeat',
 ].join(';');
 
+/** Tags a `cellTemplate` injected by `showFormulas`, so the toggle can revert it. */
+const FORMULA_DISPLAY = Symbol('apex-formula-display');
+
+/** Whether a `cellTemplate` is the one `showFormulas` injected (vs. a user's own). */
+function isFormulaDisplay(template: unknown): boolean {
+  return (
+    typeof template === 'function' &&
+    (template as { [FORMULA_DISPLAY]?: boolean })[FORMULA_DISPLAY] === true
+  );
+}
+
+/** A display `cellTemplate` showing a cell's formula source, or its value when it has none. */
+function formulaDisplayTemplate<T extends object>(
+  controller: FormulaController<T>
+): (ctx: ApexCellContext<T>) => unknown {
+  const template = (ctx: ApexCellContext<T>): unknown =>
+    controller.getFormula(ctx.row.data, ctx.column.key as keyof T & string) ?? ctx.value;
+  (template as { [FORMULA_DISPLAY]?: boolean })[FORMULA_DISPLAY] = true;
+  return template;
+}
+
+/** Enterprise export option: emit each formula cell's `=...` source instead of its value. */
+export interface FormulaExportOptions {
+  /** When true, cells holding a formula export their source; others export normally. */
+  formulas?: boolean;
+}
+
 /**
  * Pro-licensed grid. Extends the community {@link ApexGrid} and registers as
  * `<apex-grid-enterprise>`, reusing the full grid template/DOM and layering in
@@ -248,6 +278,16 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    */
   @property({ type: Boolean, attribute: 'range-selection' })
   public rangeSelection = true;
+
+  /**
+   * Show the stored formula source in `allowFormula` cells instead of their
+   * computed values (a spreadsheet "show formulas" view). Toggle with the
+   * `show-formulas` attribute or the property; the computed values are
+   * untouched, so turning it off restores the normal display. A user-provided
+   * `cellTemplate` is respected (never overridden).
+   */
+  @property({ type: Boolean, attribute: 'show-formulas' })
+  public showFormulas = false;
 
   /**
    * Right-click context menu on cells and headers (sort / pin / hide / copy, plus "Chart range").
@@ -502,6 +542,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.#syncMasterDetail(changed);
     this.#syncInfiniteRowModel(changed);
     this.#injectFormulaEditors(changed);
+    this.#injectFormulaDisplays(changed);
     super.willUpdate(changed);
   }
 
@@ -778,6 +819,43 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       return column;
     });
     if (injected) {
+      this.columns = next;
+    }
+  }
+
+  /**
+   * Reflect {@link showFormulas} into the `allowFormula` columns: when on, give
+   * each a display `cellTemplate` that renders the stored formula source (or the
+   * value when a cell has none); when off, strip the template we injected. The
+   * injected template is tagged so toggling is reversible and a user-supplied
+   * `cellTemplate` is never touched.
+   */
+  #injectFormulaDisplays(changed: PropertyValues): void {
+    if (!changed.has('showFormulas') && !changed.has('columns')) {
+      return;
+    }
+    const controller = this.#formulaController();
+    if (!controller) {
+      return;
+    }
+    let mutated = false;
+    const next = this.columns.map((column) => {
+      const injected = isFormulaDisplay(column.cellTemplate);
+      if (this.showFormulas && column.allowFormula && (!column.cellTemplate || injected)) {
+        if (injected) {
+          return column; // already showing formulas
+        }
+        mutated = true;
+        return { ...column, cellTemplate: formulaDisplayTemplate(controller) };
+      }
+      if (injected) {
+        mutated = true;
+        const { cellTemplate, ...rest } = column;
+        return rest as typeof column;
+      }
+      return column;
+    });
+    if (mutated) {
       this.columns = next;
     }
   }
@@ -1147,6 +1225,44 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   /**
+   * CSV export with the enterprise `formulas` option: when set, `allowFormula`
+   * cells export their formula source (`=A1*B1`) rather than the computed value.
+   * Otherwise identical to the community {@link ApexGrid.exportToCSV}.
+   */
+  public override exportToCSV(options: CSVExportOptions<T> & FormulaExportOptions = {}): string {
+    return super.exportToCSV(this.#withFormulaFormatter(options));
+  }
+
+  /**
+   * When `options.formulas` is set, return a copy of the options whose
+   * `formatter` emits each formula cell's source; cells without a formula fall
+   * back to the user's formatter or the default formatting (via
+   * {@link resolveExportValue} over the original options). A no-op when the
+   * option is off or no formula module is registered.
+   */
+  #withFormulaFormatter<O extends ExportOptions<T>>(options: O & FormulaExportOptions): O {
+    const controller = this.#formulaController();
+    if (!options.formulas || !controller) {
+      return options;
+    }
+    const base = options; // keeps any user-supplied formatter for non-formula cells
+    const formatter = (
+      column: ColumnConfiguration<T>,
+      _value: unknown,
+      row: T
+    ): ExportCellValue => {
+      if (column.allowFormula) {
+        const src = controller.getFormula(row, column.key as keyof T & string);
+        if (src !== undefined) {
+          return src;
+        }
+      }
+      return resolveExportValue(column, row, base);
+    };
+    return { ...options, formatter } as O;
+  }
+
+  /**
    * Exports the current grid contents as an `.xlsx` workbook and (in a browser
    * context) triggers a download.
    *
@@ -1164,16 +1280,17 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * grid.exportToXLSX({ filename: 'users', sheetName: 'Users' });
    * ```
    */
-  public exportToXLSX(options: XLSXExportOptions<T> = {}): Uint8Array {
-    const columns = resolveExportColumns(this, options);
-    const rows = resolveExportRows(this, options.source);
-    const includeHeader = options.includeHeader ?? true;
+  public exportToXLSX(options: XLSXExportOptions<T> & FormulaExportOptions = {}): Uint8Array {
+    const opts = this.#withFormulaFormatter(options);
+    const columns = resolveExportColumns(this, opts);
+    const rows = resolveExportRows(this, opts.source);
+    const includeHeader = opts.includeHeader ?? true;
     const bytes = buildXLSX({
-      name: options.sheetName ?? 'Sheet1',
+      name: opts.sheetName ?? 'Sheet1',
       headers: includeHeader ? columns.map((column) => getColumnLabel(column)) : [],
-      rows: rows.map((row) => columns.map((column) => resolveExportValue(column, row, options))),
+      rows: rows.map((row) => columns.map((column) => resolveExportValue(column, row, opts))),
     });
-    const filename = options.filename;
+    const filename = opts.filename;
     if (filename) {
       downloadBlob(`${filename}.xlsx`, bytes, XLSX_MIME);
     } else if (filename === undefined) {

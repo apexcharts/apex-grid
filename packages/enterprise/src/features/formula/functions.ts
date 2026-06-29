@@ -171,6 +171,168 @@ const CONCAT: FormulaFn = (args) => {
   return out;
 };
 
+// --- broader flat-argument library (Tier 2, P6) ----------------------------
+// All take their arguments already flattened, so the public FormulaFn calling
+// convention is unchanged. Range+criteria functions (SUMIF, ...) are deferred:
+// they would need a different argument-grouping convention.
+
+/** A unary numeric function with the standard error-propagation + arity guard. */
+function unaryNumeric(name: string, compute: (n: number) => CellValue): FormulaFn {
+  return (args) => {
+    const error = firstError(args);
+    if (error) {
+      return error;
+    }
+    if (args.length !== 1) {
+      return valueError(`${name} requires one argument`);
+    }
+    const n = toNumber(args[0]);
+    return isFormulaError(n) ? n : compute(n);
+  };
+}
+
+/** A unary text function with the standard error-propagation + arity guard. */
+function unaryText(name: string, compute: (text: string) => CellValue): FormulaFn {
+  return (args) => {
+    const error = firstError(args);
+    if (error) {
+      return error;
+    }
+    if (args.length !== 1) {
+      return valueError(`${name} requires one argument`);
+    }
+    const text = toText(args[0]);
+    return isFormulaError(text) ? text : compute(text);
+  };
+}
+
+const MOD: FormulaFn = (args) => {
+  const error = firstError(args);
+  if (error) {
+    return error;
+  }
+  if (args.length !== 2) {
+    return valueError('MOD requires two arguments');
+  }
+  const a = toNumber(args[0]);
+  if (isFormulaError(a)) {
+    return a;
+  }
+  const b = toNumber(args[1]);
+  if (isFormulaError(b)) {
+    return b;
+  }
+  // Excel MOD takes the sign of the divisor (unlike JS `%`).
+  return b === 0 ? divZeroError('MOD by zero') : a - b * Math.floor(a / b);
+};
+
+const POWER: FormulaFn = (args) => {
+  const error = firstError(args);
+  if (error) {
+    return error;
+  }
+  if (args.length !== 2) {
+    return valueError('POWER requires two arguments');
+  }
+  const base = toNumber(args[0]);
+  if (isFormulaError(base)) {
+    return base;
+  }
+  const exponent = toNumber(args[1]);
+  return isFormulaError(exponent) ? exponent : base ** exponent;
+};
+
+/** ROUND variant: `mode` rounds the magnitude up (ceil) or down (trunc). */
+function roundWith(name: string, mode: 'up' | 'down'): FormulaFn {
+  return (args) => {
+    const error = firstError(args);
+    if (error) {
+      return error;
+    }
+    if (args.length === 0) {
+      return valueError(`${name} requires a number`);
+    }
+    const value = toNumber(args[0]);
+    if (isFormulaError(value)) {
+      return value;
+    }
+    const digitsArg = args.length > 1 ? toNumber(args[1]) : 0;
+    if (isFormulaError(digitsArg)) {
+      return digitsArg;
+    }
+    const factor = 10 ** Math.trunc(digitsArg);
+    const scaled = Math.abs(value) * factor;
+    const rounded = mode === 'up' ? Math.ceil(scaled) : Math.floor(scaled);
+    return (Math.sign(value) * rounded) / factor;
+  };
+}
+
+const LEFT: FormulaFn = (args) => {
+  const error = firstError(args);
+  if (error) {
+    return error;
+  }
+  if (args.length === 0) {
+    return valueError('LEFT requires text');
+  }
+  const text = toText(args[0]);
+  if (isFormulaError(text)) {
+    return text;
+  }
+  const count = args.length > 1 ? toNumber(args[1]) : 1;
+  if (isFormulaError(count)) {
+    return count;
+  }
+  return text.slice(0, Math.max(0, Math.trunc(count)));
+};
+
+const RIGHT: FormulaFn = (args) => {
+  const error = firstError(args);
+  if (error) {
+    return error;
+  }
+  if (args.length === 0) {
+    return valueError('RIGHT requires text');
+  }
+  const text = toText(args[0]);
+  if (isFormulaError(text)) {
+    return text;
+  }
+  const count = args.length > 1 ? toNumber(args[1]) : 1;
+  if (isFormulaError(count)) {
+    return count;
+  }
+  const n = Math.max(0, Math.trunc(count));
+  return n === 0 ? '' : text.slice(Math.max(0, text.length - n));
+};
+
+const MID: FormulaFn = (args) => {
+  const error = firstError(args);
+  if (error) {
+    return error;
+  }
+  if (args.length !== 3) {
+    return valueError('MID requires three arguments');
+  }
+  const text = toText(args[0]);
+  if (isFormulaError(text)) {
+    return text;
+  }
+  const start = toNumber(args[1]);
+  if (isFormulaError(start)) {
+    return start;
+  }
+  const count = toNumber(args[2]);
+  if (isFormulaError(count)) {
+    return count;
+  }
+  if (start < 1) {
+    return valueError('MID start position is 1-based');
+  }
+  const from = Math.trunc(start) - 1;
+  return text.slice(from, from + Math.max(0, Math.trunc(count)));
+};
+
 const BUILTINS: ReadonlyArray<readonly [string, FormulaFn]> = [
   ['SUM', SUM],
   ['AVERAGE', AVERAGE],
@@ -180,11 +342,29 @@ const BUILTINS: ReadonlyArray<readonly [string, FormulaFn]> = [
   ['COUNT', COUNT],
   ['COUNTA', COUNTA],
   ['ROUND', ROUND],
+  ['ROUNDUP', roundWith('ROUNDUP', 'up')],
+  ['ROUNDDOWN', roundWith('ROUNDDOWN', 'down')],
   ['ABS', ABS],
+  ['MOD', MOD],
+  ['POWER', POWER],
+  [
+    'SQRT',
+    unaryNumeric('SQRT', (n) => (n < 0 ? valueError('SQRT of a negative number') : Math.sqrt(n))),
+  ],
+  ['INT', unaryNumeric('INT', (n) => Math.floor(n))],
+  ['SIGN', unaryNumeric('SIGN', (n) => Math.sign(n))],
   ['AND', AND],
   ['OR', OR],
   ['NOT', NOT],
   ['CONCAT', CONCAT],
+  ['CONCATENATE', CONCAT],
+  ['LEN', unaryText('LEN', (text) => text.length)],
+  ['LEFT', LEFT],
+  ['RIGHT', RIGHT],
+  ['MID', MID],
+  ['TRIM', unaryText('TRIM', (text) => text.replace(/\s+/g, ' ').trim())],
+  ['UPPER', unaryText('UPPER', (text) => text.toUpperCase())],
+  ['LOWER', unaryText('LOWER', (text) => text.toLowerCase())],
 ];
 
 /**
