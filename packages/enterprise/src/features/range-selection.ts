@@ -12,6 +12,7 @@ import {
   type StateController,
 } from 'apex-grid/internal';
 import type { ReactiveController } from 'lit';
+import { FORMULA_MODULE_ID, type FormulaController } from './formula/store.js';
 
 export const RANGE_SELECTION_MODULE_ID = 'range-selection';
 
@@ -120,6 +121,16 @@ export class RangeSelectionController<T extends object>
   /** Fill-drag state: the source range and the live preview region. */
   #fillSource: RangeBounds | null = null;
   #fillPreview: RangeBounds | null = null;
+
+  /**
+   * Last copied selection, remembered so an immediate in-grid paste of the same
+   * clipboard text can re-offset source formulas (a plain-TSV clipboard cannot
+   * carry them). `#copiedTSV` gates the match; `#copiedFormulaSource` holds the
+   * source row objects + column keys (robust to a later sort/filter). `null`
+   * when nothing was copied here or the copy spanned multiple ranges.
+   */
+  #copiedTSV: string | null = null;
+  #copiedFormulaSource: { rows: T[]; keys: string[] } | null = null;
 
   constructor(
     private host: GridHost<T>,
@@ -410,11 +421,36 @@ export class RangeSelectionController<T extends object>
     if (!tsv) return false;
     try {
       await navigator.clipboard.writeText(tsv);
+      this.#rememberCopiedSource(tsv);
       this.host.announce(this.host.localize('rangeSelection.copied'));
       return true;
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Remember the just-copied single range so an immediate in-grid paste of the
+   * same clipboard text can re-offset any source formulas. Source row objects +
+   * column keys are captured (not view indices), so a later sort/filter does not
+   * misalign them. A multi-range copy disables formula-aware paste.
+   */
+  #rememberCopiedSource(tsv: string): void {
+    this.#copiedTSV = tsv;
+    const bounds = this.#additional.length === 0 ? this.#activeBounds() : null;
+    if (!bounds) {
+      this.#copiedFormulaSource = null;
+      return;
+    }
+    const columns = this.#visibleColumns();
+    const items = this.host.pageItems as T[];
+    const rows: T[] = [];
+    for (let row = bounds.top; row <= bounds.bottom; row += 1) rows.push(items[row]);
+    const keys: string[] = [];
+    for (let col = bounds.left; col <= bounds.right; col += 1) {
+      if (columns[col]) keys.push(String(columns[col].key));
+    }
+    this.#copiedFormulaSource = { rows, keys };
   }
 
   /**
@@ -448,6 +484,11 @@ export class RangeSelectionController<T extends object>
     let lastRow = start.top;
     let lastCol = start.left;
 
+    // When the clipboard still holds exactly what we copied here, re-offset the
+    // source cells' formulas instead of pasting their computed values.
+    const formulas = this.#formulaController();
+    const internal = text === this.#copiedTSV ? this.#copiedFormulaSource : null;
+
     // Coalesce the whole paste into one undo step.
     this.state.history.beginBatch();
     try {
@@ -459,6 +500,24 @@ export class RangeSelectionController<T extends object>
           const colIndex = start.left + j;
           const column = columns[colIndex];
           if (!column) continue;
+          const sourceRow = internal?.rows[i];
+          const sourceKey = internal?.keys[j];
+          if (
+            formulas &&
+            sourceRow !== undefined &&
+            sourceKey !== undefined &&
+            formulas.fillFormula(
+              sourceRow,
+              sourceKey as keyof T & string,
+              record as T,
+              column.key as keyof T & string
+            )
+          ) {
+            wrote = true;
+            lastRow = Math.max(lastRow, row);
+            lastCol = Math.max(lastCol, colIndex);
+            continue;
+          }
           // Route through the editing choke point so paste participates in the
           // cellValueChanging/cellValueChanged events (and, in turn, validation +
           // undo). The pasted region still drives the selection regardless of
@@ -548,6 +607,11 @@ export class RangeSelectionController<T extends object>
     return this.#visibleColumns().findIndex((candidate) => candidate.key === column.key);
   }
 
+  /** The formula controller, when the formula module is registered on this grid. */
+  #formulaController(): FormulaController<T> | undefined {
+    return this.state.module<FormulaController<T>>(FORMULA_MODULE_ID);
+  }
+
   /** The 2-D value matrix for a bounds (clipped to existing rows/columns). */
   #matrix(bounds: RangeBounds): unknown[][] {
     const columns = this.#visibleColumns().slice(bounds.left, bounds.right + 1);
@@ -629,16 +693,23 @@ export class RangeSelectionController<T extends object>
     return sourceLine[((position % m) + m) % m];
   }
 
-  /** Write the extrapolated/tiled values into the extension cells of `preview`. */
+  /**
+   * Write the extrapolated/tiled values into the extension cells of `preview`.
+   * A source cell that holds a formula is filled as an offset formula (relative
+   * references shift by the data-row/column delta); everything else extrapolates
+   * or tiles its literal value as before.
+   */
   #applyFill(source: RangeBounds, preview: RangeBounds): void {
     const columns = this.#visibleColumns();
     const items = this.host.pageItems as Record<string, unknown>[];
     const vertical = preview.top < source.top || preview.bottom > source.bottom;
+    const formulas = this.#formulaController();
 
     // Coalesce the whole fill into one undo step.
     this.state.history.beginBatch();
     try {
       if (vertical) {
+        const height = source.bottom - source.top + 1;
         for (let col = source.left; col <= source.right; col += 1) {
           const column = columns[col];
           if (!column) continue;
@@ -648,17 +719,32 @@ export class RangeSelectionController<T extends object>
           for (let row = preview.top; row <= preview.bottom; row += 1) {
             if (row >= source.top && row <= source.bottom) continue;
             const record = items[row];
-            if (record) {
-              this.state.editing.applyCellEdit(
-                row,
-                column.key,
+            if (!record) continue;
+            const offset = row - source.top;
+            // The tiled source cell (same column, wrapped within the source block).
+            const sourceRecord = items[source.top + (((offset % height) + height) % height)];
+            if (
+              formulas &&
+              sourceRecord &&
+              formulas.fillFormula(
+                sourceRecord as T,
+                column.key as keyof T & string,
                 record as T,
-                this.#seriesValue(line, row - source.top)
-              );
+                column.key as keyof T & string
+              )
+            ) {
+              continue;
             }
+            this.state.editing.applyCellEdit(
+              row,
+              column.key,
+              record as T,
+              this.#seriesValue(line, offset)
+            );
           }
         }
       } else {
+        const width = source.right - source.left + 1;
         for (let row = source.top; row <= source.bottom; row += 1) {
           const record = items[row];
           if (!record) continue;
@@ -669,14 +755,28 @@ export class RangeSelectionController<T extends object>
           for (let col = preview.left; col <= preview.right; col += 1) {
             if (col >= source.left && col <= source.right) continue;
             const column = columns[col];
-            if (column) {
-              this.state.editing.applyCellEdit(
-                row,
-                column.key,
+            if (!column) continue;
+            const offset = col - source.left;
+            // The tiled source cell (same row, wrapped within the source block).
+            const sourceColumn = columns[source.left + (((offset % width) + width) % width)];
+            if (
+              formulas &&
+              sourceColumn &&
+              formulas.fillFormula(
                 record as T,
-                this.#seriesValue(line, col - source.left)
-              );
+                sourceColumn.key as keyof T & string,
+                record as T,
+                column.key as keyof T & string
+              )
+            ) {
+              continue;
             }
+            this.state.editing.applyCellEdit(
+              row,
+              column.key,
+              record as T,
+              this.#seriesValue(line, offset)
+            );
           }
         }
       }

@@ -28,6 +28,25 @@ export interface RangeAddress {
   end: CellAddress;
 }
 
+/**
+ * Per-axis `$`-absoluteness of a reference (Tier 2). A bare `A1` is relative on
+ * both axes; `$A$1` is absolute on both, `$A1` on the column only, `A$1` on the
+ * row only. The resolved {@link CellAddress} is the same either way (relative
+ * semantics manifest only when fill/copy rewrites the formula), so these flags
+ * ride alongside the address and never reach the evaluator or dependency graph.
+ */
+export interface CellRefFlags {
+  /** The column axis is fixed (`$A`): fill/copy never shifts it. */
+  colAbsolute: boolean;
+  /** The row axis is fixed (`$1`): fill/copy never shifts it. */
+  rowAbsolute: boolean;
+}
+
+/** A parsed cell reference: its resolved address plus per-axis absoluteness. */
+export interface ParsedCellRef extends CellRefFlags {
+  address: CellAddress;
+}
+
 /** Maps between a column's data key and its stable A1 letter. */
 export interface ColumnLetterMaps {
   /** Column key (stringified) to its A1 letter, e.g. `price` to `C`. */
@@ -36,7 +55,7 @@ export interface ColumnLetterMaps {
   toKey: Map<string, string>;
 }
 
-const CELL_PATTERN = /^([A-Za-z]+)([0-9]+)$/;
+const CELL_PATTERN = /^(\$?)([A-Za-z]+)(\$?)([0-9]+)$/;
 const LETTER_A = 'A'.charCodeAt(0);
 
 /** Type guard distinguishing a {@link RangeAddress} from a {@link CellAddress}. */
@@ -71,16 +90,30 @@ export function indexToColumnLetter(index: number): string {
   return letters;
 }
 
-function parseCell(token: string, position: number): CellAddress {
+/**
+ * Parse a single A1 cell token into its resolved address plus per-axis
+ * `$`-absoluteness ({@link ParsedCellRef}). `$A$1`, `$A1`, `A$1`, and `A1` all
+ * resolve to the same address; the `$` markers populate {@link CellRefFlags}.
+ * Throws {@link ParseError} on malformed input.
+ */
+export function parseCellRef(token: string, position = 0): ParsedCellRef {
   const match = CELL_PATTERN.exec(token);
   if (!match) {
     throw new ParseError(`invalid cell reference "${token}"`, position);
   }
-  const row = Number(match[2]) - 1;
+  const row = Number(match[4]) - 1;
   if (row < 0) {
     throw new ParseError(`invalid row number in "${token}" (rows are 1-based)`, position);
   }
-  return { row, col: columnLetterToIndex(match[1]) };
+  return {
+    address: { row, col: columnLetterToIndex(match[2]) },
+    colAbsolute: match[1] === '$',
+    rowAbsolute: match[3] === '$',
+  };
+}
+
+function parseCell(token: string, position: number): CellAddress {
+  return parseCellRef(token, position).address;
 }
 
 /**
@@ -99,9 +132,33 @@ export function parseA1(token: string, position = 0): CellAddress | RangeAddress
   return { start, end };
 }
 
-/** Format a single cell address as A1 text, e.g. `{ row: 1, col: 2 }` to `C2`. */
-export function formatCell(addr: CellAddress): string {
-  return `${indexToColumnLetter(addr.col)}${addr.row + 1}`;
+/**
+ * Format a single cell address as A1 text, e.g. `{ row: 1, col: 2 }` to `C2`.
+ * When `flags` mark an axis absolute, the corresponding `$` is emitted (`$C$2`).
+ */
+export function formatCell(addr: CellAddress, flags?: Partial<CellRefFlags>): string {
+  const column = `${flags?.colAbsolute ? '$' : ''}${indexToColumnLetter(addr.col)}`;
+  const row = `${flags?.rowAbsolute ? '$' : ''}${addr.row + 1}`;
+  return `${column}${row}`;
+}
+
+/**
+ * Shift an address by (`dRow`, `dCol`), moving only the axes that `flags` leave
+ * relative; absolute axes keep their value. Results are clamped at 0 so the
+ * address stays well-formed; a target beyond the data surfaces as `#REF!` at
+ * evaluation, exactly as an out-of-range literal reference would. Used by fill
+ * and intra-grid paste to relocate a formula's references.
+ */
+export function offsetAddress(
+  addr: CellAddress,
+  dRow: number,
+  dCol: number,
+  flags?: Partial<CellRefFlags>
+): CellAddress {
+  return {
+    row: flags?.rowAbsolute ? addr.row : Math.max(0, addr.row + dRow),
+    col: flags?.colAbsolute ? addr.col : Math.max(0, addr.col + dCol),
+  };
 }
 
 /** Format a cell or range address as A1 text (`C2` or `A1:C3`). */

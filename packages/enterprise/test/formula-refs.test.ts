@@ -4,11 +4,14 @@ import {
   type CellAddress,
   columnLetterToIndex,
   formatA1,
+  formatCell,
   indexToColumnLetter,
   isRangeAddress,
   normalizeRange,
+  offsetAddress,
   ParseError,
   parseA1,
+  parseCellRef,
   type RangeAddress,
   rangeCells,
 } from '../src/features/formula/index.js';
@@ -117,6 +120,66 @@ describe('formula reference model (F2)', () => {
         { row: 1, col: 0 },
         { row: 1, col: 1 },
       ] satisfies CellAddress[]);
+    });
+  });
+
+  describe('relative / absolute references (Tier 2)', () => {
+    it('parseCellRef resolves the address plus per-axis $ flags', () => {
+      expect(parseCellRef('A1')).to.deep.equal({
+        address: { row: 0, col: 0 },
+        colAbsolute: false,
+        rowAbsolute: false,
+      });
+      expect(parseCellRef('$A$1')).to.deep.equal({
+        address: { row: 0, col: 0 },
+        colAbsolute: true,
+        rowAbsolute: true,
+      });
+      expect(parseCellRef('$A1')).to.deep.equal({
+        address: { row: 0, col: 0 },
+        colAbsolute: true,
+        rowAbsolute: false,
+      });
+      expect(parseCellRef('A$1')).to.deep.equal({
+        address: { row: 0, col: 0 },
+        colAbsolute: false,
+        rowAbsolute: true,
+      });
+    });
+
+    it('formatCell emits $ only for the axes marked absolute', () => {
+      const address: CellAddress = { row: 1, col: 2 }; // C2
+      expect(formatCell(address)).to.equal('C2');
+      expect(formatCell(address, { colAbsolute: true, rowAbsolute: true })).to.equal('$C$2');
+      expect(formatCell(address, { colAbsolute: true })).to.equal('$C2');
+      expect(formatCell(address, { rowAbsolute: true })).to.equal('C$2');
+    });
+
+    it('round-trips parseCellRef -> formatCell preserving markers', () => {
+      for (const token of ['A1', '$A$1', '$A1', 'A$1', '$Z$9', 'AA$100']) {
+        const ref = parseCellRef(token);
+        expect(formatCell(ref.address, ref)).to.equal(token);
+      }
+    });
+
+    it('offsetAddress shifts only the relative axes', () => {
+      const a1: CellAddress = { row: 0, col: 0 };
+      expect(offsetAddress(a1, 2, 3)).to.deep.equal({ row: 2, col: 3 });
+      expect(offsetAddress(a1, 2, 3, { rowAbsolute: true })).to.deep.equal({ row: 0, col: 3 });
+      expect(offsetAddress(a1, 2, 3, { colAbsolute: true })).to.deep.equal({ row: 2, col: 0 });
+      expect(offsetAddress(a1, 2, 3, { colAbsolute: true, rowAbsolute: true })).to.deep.equal({
+        row: 0,
+        col: 0,
+      });
+    });
+
+    it('offsetAddress clamps at 0 instead of producing a negative index', () => {
+      expect(offsetAddress({ row: 1, col: 1 }, -5, -5)).to.deep.equal({ row: 0, col: 0 });
+    });
+
+    it('parseA1 / formatA1 stay relative (no markers) for back-compat', () => {
+      expect(formatCell({ row: 0, col: 0 })).to.equal('A1');
+      expect(formatA1(parseA1('B2'))).to.equal('B2');
     });
   });
 

@@ -15,7 +15,14 @@
  *   primary     number | string | boolean | reference | range | call | ( expr )
  */
 import { ParseError } from './errors.js';
-import { type CellAddress, parseA1, type RangeAddress } from './refs.js';
+import {
+  type CellAddress,
+  type CellRefFlags,
+  formatCell,
+  offsetAddress,
+  parseCellRef,
+  type RangeAddress,
+} from './refs.js';
 
 /** Binary operators, by category: arithmetic, concat, and comparison. */
 export type BinaryOperator =
@@ -48,13 +55,17 @@ export interface BooleanLiteralNode {
   type: 'boolean';
   value: boolean;
 }
-export interface ReferenceNode {
+export interface ReferenceNode extends CellRefFlags {
   type: 'ref';
   address: CellAddress;
 }
 export interface RangeNode {
   type: 'range';
   range: RangeAddress;
+  /** `$`-absoluteness of the start (`A1`) corner. */
+  startFlags: CellRefFlags;
+  /** `$`-absoluteness of the end (`C3`) corner. */
+  endFlags: CellRefFlags;
 }
 export interface UnaryNode {
   type: 'unary';
@@ -111,7 +122,7 @@ interface Token {
   position: number;
 }
 
-const CELL_TOKEN = /^[A-Za-z]+[0-9]+$/;
+const CELL_REF = /\$?[A-Za-z]+\$?[0-9]+/y;
 const WORD = /[A-Za-z]+[0-9]*/y;
 const NUMBER = /[0-9]+(?:\.[0-9]+)?|\.[0-9]+/y;
 
@@ -164,20 +175,24 @@ function tokenize(input: string): Token[] {
       continue;
     }
 
-    // Word: a cell reference (letters then digits), a boolean, or a name.
+    // Cell reference, optionally with `$` absolute markers (A1, $A1, A$1, $A$1).
+    // Tried before a bare word so a leading or embedded `$` is consumed as one
+    // token (a word stops at `$`, which would otherwise split `A$1`).
+    CELL_REF.lastIndex = i;
+    const cellMatch = CELL_REF.exec(input);
+    if (cellMatch && cellMatch.index === i) {
+      tokens.push({ type: 'cell', value: cellMatch[0], position: i });
+      i += cellMatch[0].length;
+      continue;
+    }
+
+    // Word: a boolean literal or a function name (cell tokens were handled above).
     WORD.lastIndex = i;
     const wordMatch = WORD.exec(input);
     if (wordMatch && wordMatch.index === i) {
       const word = wordMatch[0];
       const upper = word.toUpperCase();
-      let type: TokenType;
-      if (upper === 'TRUE' || upper === 'FALSE') {
-        type = 'boolean';
-      } else if (CELL_TOKEN.test(word)) {
-        type = 'cell';
-      } else {
-        type = 'name';
-      }
+      const type: TokenType = upper === 'TRUE' || upper === 'FALSE' ? 'boolean' : 'name';
       tokens.push({ type, value: word, position: i });
       i += word.length;
       continue;
@@ -356,14 +371,24 @@ class Parser {
 
   private parseReference(): ReferenceNode | RangeNode {
     const startToken = this.next();
-    const start = parseA1(startToken.value, startToken.position) as CellAddress;
+    const start = parseCellRef(startToken.value, startToken.position);
     if (this.peek().type === 'colon') {
       this.next();
       const endToken = this.expect('cell', 'a cell reference after ":"');
-      const end = parseA1(endToken.value, endToken.position) as CellAddress;
-      return { type: 'range', range: { start, end } };
+      const end = parseCellRef(endToken.value, endToken.position);
+      return {
+        type: 'range',
+        range: { start: start.address, end: end.address },
+        startFlags: { colAbsolute: start.colAbsolute, rowAbsolute: start.rowAbsolute },
+        endFlags: { colAbsolute: end.colAbsolute, rowAbsolute: end.rowAbsolute },
+      };
     }
-    return { type: 'ref', address: start };
+    return {
+      type: 'ref',
+      address: start.address,
+      colAbsolute: start.colAbsolute,
+      rowAbsolute: start.rowAbsolute,
+    };
   }
 
   private parseCall(): CallNode {
@@ -432,4 +457,135 @@ export function formulaReferences(ast: FormulaAst): RefList {
 
   walk(ast);
   return { cells, ranges };
+}
+
+// --- Serialization + reference offsetting (Tier 2) -------------------------
+
+/** Operator binding strength, mirroring the parser's grammar levels. */
+const BINARY_PRECEDENCE: Record<BinaryOperator, number> = {
+  '=': 1,
+  '<>': 1,
+  '<': 1,
+  '>': 1,
+  '<=': 1,
+  '>=': 1,
+  '&': 2,
+  '+': 3,
+  '-': 3,
+  '*': 4,
+  '/': 4,
+  '%': 4,
+  '^': 6,
+};
+const UNARY_PRECEDENCE = 5;
+const ATOM_PRECEDENCE = 100;
+
+function nodePrecedence(node: FormulaAst): number {
+  if (node.type === 'binary') return BINARY_PRECEDENCE[node.operator];
+  if (node.type === 'unary') return UNARY_PRECEDENCE;
+  return ATOM_PRECEDENCE;
+}
+
+/** Stringify a child, wrapping in parentheses only when precedence requires it. */
+function stringifyChild(
+  child: FormulaAst,
+  parentPrecedence: number,
+  wrapWhenEqual: boolean
+): string {
+  const text = stringifyNode(child);
+  const precedence = nodePrecedence(child);
+  const needsParens =
+    precedence < parentPrecedence || (precedence === parentPrecedence && wrapWhenEqual);
+  return needsParens ? `(${text})` : text;
+}
+
+function stringifyNode(node: FormulaAst): string {
+  switch (node.type) {
+    case 'number':
+      return String(node.value);
+    case 'string':
+      return `"${node.value.replace(/"/g, '""')}"`;
+    case 'boolean':
+      return node.value ? 'TRUE' : 'FALSE';
+    case 'ref':
+      return formatCell(node.address, node);
+    case 'range':
+      return `${formatCell(node.range.start, node.startFlags)}:${formatCell(
+        node.range.end,
+        node.endFlags
+      )}`;
+    case 'unary':
+      // The operand was parsed at unary level, so only a lower-precedence
+      // parenthesized expression (e.g. `-(a+b)`) needs its parentheses back.
+      return `${node.operator}${stringifyChild(node.operand, UNARY_PRECEDENCE, false)}`;
+    case 'binary': {
+      const precedence = BINARY_PRECEDENCE[node.operator];
+      // `^` is right-associative; every other binary operator is left-associative.
+      const rightAssociative = node.operator === '^';
+      const left = stringifyChild(node.left, precedence, rightAssociative);
+      const right = stringifyChild(node.right, precedence, !rightAssociative);
+      return `${left}${node.operator}${right}`;
+    }
+    case 'call':
+      return `${node.name}(${node.args.map(stringifyNode).join(',')})`;
+  }
+}
+
+/**
+ * Serialize an AST back to canonical formula source, including the leading `=`.
+ * References emit their `$` absolute markers; the minimum parentheses needed to
+ * round-trip the operator precedence are kept. Pure.
+ */
+export function stringifyFormula(ast: FormulaAst): string {
+  return `=${stringifyNode(ast)}`;
+}
+
+/**
+ * Return a copy of the AST with every **relative** reference shifted by
+ * (`dRow`, `dCol`); axes marked absolute with `$` are left untouched. Fill and
+ * intra-grid paste use this to relocate a formula. Because each reference still
+ * resolves to a concrete absolute address (decision DT1), the evaluator and the
+ * dependency graph need no knowledge of relative-ness. Pure.
+ */
+export function offsetReferences(ast: FormulaAst, dRow: number, dCol: number): FormulaAst {
+  switch (ast.type) {
+    case 'ref':
+      return {
+        type: 'ref',
+        address: offsetAddress(ast.address, dRow, dCol, ast),
+        colAbsolute: ast.colAbsolute,
+        rowAbsolute: ast.rowAbsolute,
+      };
+    case 'range':
+      return {
+        type: 'range',
+        range: {
+          start: offsetAddress(ast.range.start, dRow, dCol, ast.startFlags),
+          end: offsetAddress(ast.range.end, dRow, dCol, ast.endFlags),
+        },
+        startFlags: { ...ast.startFlags },
+        endFlags: { ...ast.endFlags },
+      };
+    case 'unary':
+      return {
+        type: 'unary',
+        operator: ast.operator,
+        operand: offsetReferences(ast.operand, dRow, dCol),
+      };
+    case 'binary':
+      return {
+        type: 'binary',
+        operator: ast.operator,
+        left: offsetReferences(ast.left, dRow, dCol),
+        right: offsetReferences(ast.right, dRow, dCol),
+      };
+    case 'call':
+      return {
+        type: 'call',
+        name: ast.name,
+        args: ast.args.map((arg) => offsetReferences(arg, dRow, dCol)),
+      };
+    default:
+      return { ...ast };
+  }
 }

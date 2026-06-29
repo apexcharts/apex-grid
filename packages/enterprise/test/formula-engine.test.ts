@@ -9,10 +9,12 @@ import {
   formatA1,
   formulaReferences,
   isFormulaError,
+  offsetReferences,
   ParseError,
   parseFormula,
   rangeCells,
   refError,
+  stringifyFormula,
   valueError,
 } from '../src/features/formula/index.js';
 
@@ -232,5 +234,71 @@ describe('formula engine (F1)', () => {
       expect(refs.cells).to.be.empty;
       expect(refs.ranges).to.be.empty;
     });
+  });
+});
+
+describe('stringifyFormula (Tier 2)', () => {
+  const roundTrip = (src: string): string => stringifyFormula(parseFormula(src));
+
+  it('round-trips simple formulas', () => {
+    expect(roundTrip('=A1+B1')).to.equal('=A1+B1');
+    expect(roundTrip('=SUM(A1:A3)')).to.equal('=SUM(A1:A3)');
+    expect(roundTrip('=A1*B1+C1')).to.equal('=A1*B1+C1');
+  });
+
+  it('preserves $ absolute markers', () => {
+    expect(roundTrip('=$A$1')).to.equal('=$A$1');
+    expect(roundTrip('=$A1+A$1')).to.equal('=$A1+A$1');
+    expect(roundTrip('=SUM($A$1:$A$3)')).to.equal('=SUM($A$1:$A$3)');
+  });
+
+  it('keeps only the parentheses precedence requires', () => {
+    expect(roundTrip('=(A1+B1)*C1')).to.equal('=(A1+B1)*C1');
+    expect(roundTrip('=A1+B1*C1')).to.equal('=A1+B1*C1');
+    expect(roundTrip('=A1*(B1+C1)')).to.equal('=A1*(B1+C1)');
+    expect(roundTrip('=-(A1+B1)')).to.equal('=-(A1+B1)');
+  });
+
+  it('preserves associativity-sensitive grouping', () => {
+    expect(roundTrip('=A1-B1-C1')).to.equal('=A1-B1-C1');
+    expect(roundTrip('=A1-(B1-C1)')).to.equal('=A1-(B1-C1)');
+    expect(roundTrip('=A1^B1^C1')).to.equal('=A1^B1^C1');
+    expect(roundTrip('=(A1^B1)^C1')).to.equal('=(A1^B1)^C1');
+  });
+
+  it('serializes literals, strings, and booleans', () => {
+    expect(roundTrip('=1+2')).to.equal('=1+2');
+    expect(roundTrip('="a"&"b"')).to.equal('="a"&"b"');
+    expect(roundTrip('=TRUE')).to.equal('=TRUE');
+  });
+});
+
+describe('offsetReferences (Tier 2)', () => {
+  const shift = (src: string, dRow: number, dCol: number): string =>
+    stringifyFormula(offsetReferences(parseFormula(src), dRow, dCol));
+
+  it('shifts relative references by the delta', () => {
+    expect(shift('=A1', 1, 0)).to.equal('=A2');
+    expect(shift('=A1', 0, 1)).to.equal('=B1');
+    expect(shift('=A1*B1', 2, 0)).to.equal('=A3*B3');
+  });
+
+  it('leaves absolute axes fixed', () => {
+    expect(shift('=$A$1', 5, 5)).to.equal('=$A$1');
+    expect(shift('=$A1', 2, 3)).to.equal('=$A3'); // column fixed, row shifts
+    expect(shift('=A$1', 2, 3)).to.equal('=D$1'); // row fixed, column shifts
+  });
+
+  it('shifts both corners of a range, preserving each corner markers', () => {
+    expect(shift('=SUM(A1:B2)', 1, 1)).to.equal('=SUM(B2:C3)');
+    expect(shift('=SUM($A$1:B2)', 1, 1)).to.equal('=SUM($A$1:C3)');
+  });
+
+  it('clamps at the grid edge rather than going negative', () => {
+    expect(shift('=B2', -5, -5)).to.equal('=A1');
+  });
+
+  it('does not touch literals or function names', () => {
+    expect(shift('=SUM(A1:A3)+10', 1, 0)).to.equal('=SUM(A2:A4)+10');
   });
 });

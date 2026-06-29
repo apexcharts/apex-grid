@@ -38,7 +38,7 @@ export {
   createFunctionRegistry,
   type FormulaFn,
 } from './functions.js';
-// Parser + AST (F1).
+// Parser + AST (F1; stringify + offset are Tier 2).
 export {
   type BinaryNode,
   type BinaryOperator,
@@ -47,18 +47,21 @@ export {
   type FormulaAst,
   formulaReferences,
   type NumberLiteralNode,
+  offsetReferences,
   parseFormula,
   type RangeNode,
   type ReferenceNode,
   type RefList,
   type StringLiteralNode,
+  stringifyFormula,
   type UnaryNode,
   type UnaryOperator,
 } from './parser.js';
-// Reference model (F2).
+// Reference model (F2; $-flags + offsetAddress are Tier 2).
 export {
   buildColumnLetters,
   type CellAddress,
+  type CellRefFlags,
   type ColumnLetterMaps,
   columnLetterToIndex,
   formatA1,
@@ -66,7 +69,10 @@ export {
   indexToColumnLetter,
   isRangeAddress,
   normalizeRange,
+  offsetAddress,
+  type ParsedCellRef,
   parseA1,
+  parseCellRef,
   type RangeAddress,
   rangeCells,
 } from './refs.js';

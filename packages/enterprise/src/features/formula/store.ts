@@ -23,7 +23,13 @@ import type { ReactiveController } from 'lit';
 import { type CellValue, cycleError, refError } from './errors.js';
 import { evaluate, type FormulaContext } from './evaluator.js';
 import { createFunctionRegistry, type FormulaFn } from './functions.js';
-import { type FormulaAst, formulaReferences, parseFormula } from './parser.js';
+import {
+  type FormulaAst,
+  formulaReferences,
+  offsetReferences,
+  parseFormula,
+  stringifyFormula,
+} from './parser.js';
 import { type CellAddress, formatCell, rangeCells } from './refs.js';
 
 export const FORMULA_MODULE_ID = 'formula';
@@ -412,6 +418,37 @@ export class FormulaController<T extends object> implements ReactiveController, 
     if (address) {
       this.#settle(this.#store.clear(address));
     }
+  }
+
+  /**
+   * Copy the formula from a source cell to a target cell, shifting its
+   * **relative** references by the data-row / column-letter delta between the
+   * two cells; absolute (`$`) axes are preserved. Returns `false` without
+   * writing when the source holds no formula, so a caller (the fill handle or an
+   * intra-grid paste) can fall back to copying the literal value.
+   */
+  public fillFormula(
+    sourceRow: T,
+    sourceKey: keyof T & string,
+    targetRow: T,
+    targetKey: keyof T & string
+  ): boolean {
+    const source = this.#addressOf(sourceRow, sourceKey);
+    const target = this.#addressOf(targetRow, targetKey);
+    if (!source || !target) {
+      return false;
+    }
+    const src = this.#store.get(source);
+    if (src === undefined) {
+      return false;
+    }
+    const shifted = offsetReferences(
+      parseFormula(src),
+      target.row - source.row,
+      target.col - source.col
+    );
+    this.#settle(this.#store.set(target, stringifyFormula(shifted)));
+    return true;
   }
 
   /** Recompute every stored formula. */
