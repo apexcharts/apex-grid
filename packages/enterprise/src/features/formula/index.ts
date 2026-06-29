@@ -66,3 +66,13 @@ export {
   type RangeAddress,
   rangeCells,
 } from './refs.js';
+
+// Store + dependency graph + recalc (F3).
+export {
+  FORMULA_MODULE_ID,
+  FormulaController,
+  type FormulaEngineHost,
+  FormulaStore,
+  formulaModule,
+  type RecalcChange,
+} from './store.js';
