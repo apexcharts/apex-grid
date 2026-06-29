@@ -24,7 +24,7 @@ configuration API, theming, and events are identical, plus the additions below.
 - **[Integrated charts](#integrated-charts)**: render the grid's data as an ApexCharts chart.
 - **[Infinite (server-side) row model](#infinite-server-side-row-model)**: stream large remote datasets, block by block.
 - **[AI Toolkit](#ai-toolkit)**: natural-language grid control and read-only Q&A through a provider-agnostic adapter, with a first-class Claude reference adapter.
-- **[Formulas](#formulas)**: spreadsheet-style cell formulas (A1 references, a built-in function set, custom functions) with dependency-graph recalculation.
+- **[Formulas](#formulas)**: spreadsheet-style cell formulas with relative/absolute A1 references, drag-to-fill, editor autocomplete and click-to-insert, a broad built-in function set (plus custom functions), dependency-graph recalculation, a show-formulas view, and formula-aware export.
 
 ## Install
 
@@ -425,17 +425,50 @@ second data row, second column. References bind to the data, not the rendered
 view, so a formula keeps its meaning across sort, filter, column reorder, and
 paging. Ranges (`A1:B3`) expand to value lists for functions.
 
+References are **relative** by default; a `$` fixes an axis (`$A$1` fixes both,
+`$A1` the column only, `A$1` the row only). Relative references shift when a
+formula is filled or pasted to another cell; absolute axes stay put. A reference
+always resolves to a concrete cell, so recalculation itself is unaffected by
+relative-ness.
+
 Identity: formula attachment is durable when you set a grid `rowId` (it survives
-reload through `getState` / `setState`); without one it is positional. A1
-references inside a formula are absolute in v1; relative-reference rewriting on
-row reorder is on the roadmap.
+reload through `getState` / `setState`); without one it is positional.
+
+### Authoring
+
+While editing a formula (after typing `=`):
+
+- **Autocomplete**: typing a function name shows a suggestion list (built-ins +
+  your custom functions). Up/Down to move, Enter/Tab or click to accept (inserts
+  `NAME()` with the caret between the parentheses), Escape to dismiss.
+- **Click-to-insert**: click any grid cell to insert its reference at the caret;
+  Shift-click inserts an absolute `$A$1`.
+
+**Drag-to-fill and paste** rewrite a formula's relative references by the
+row/column delta to the new cell (absolute `$` axes are preserved):
+
+```ts
+// Drag the fill handle, or do it in code: copy total[0]'s formula down.
+grid.selectRange({ row: 0, column: 'total' });
+grid.fillTo({ row: 4, column: 'total' }); // =B1*C1 becomes =B2*C2, =B3*C3, ...
+```
+
+Copying a range and pasting it back inside the same grid re-offsets the source
+formulas (a plain-text clipboard cannot carry formulas, so cross-app paste stays
+literal).
 
 ### Functions
 
-Built in: `SUM`, `AVERAGE` (alias `AVG`), `MIN`, `MAX`, `COUNT`, `COUNTA`, `IF`,
-`ROUND`, `ABS`, `AND`, `OR`, `NOT`, `CONCAT`. Operators: `+ - * / ^ %`,
-comparisons `= <> < > <= >=`, and text concatenation with `&`. `IF`
-short-circuits, so `IF(B1=0, 0, A1/B1)` is safe. Register your own:
+Built in:
+
+- Math: `SUM`, `AVERAGE` (alias `AVG`), `MIN`, `MAX`, `COUNT`, `COUNTA`, `ROUND`,
+  `ROUNDUP`, `ROUNDDOWN`, `ABS`, `MOD`, `POWER`, `SQRT`, `INT`, `SIGN`.
+- Logical: `IF`, `AND`, `OR`, `NOT`.
+- Text: `CONCAT` (alias `CONCATENATE`), `LEN`, `LEFT`, `RIGHT`, `MID`, `TRIM`,
+  `UPPER`, `LOWER`.
+
+Operators: `+ - * / ^ %`, comparisons `= <> < > <= >=`, and text concatenation
+with `&`. `IF` short-circuits, so `IF(B1=0, 0, A1/B1)` is safe. Register your own:
 
 ```ts
 grid.registerFormulaFunction('TAX', (args) =>
@@ -458,11 +491,33 @@ real dependency graph with cycle detection, not a full sweep); undo or redo of a
 value edit recomputes too. Formulas serialize under `modules.enterprise.formulas`
 in `getState()` and restore (and recompute) on `setState()`.
 
-### Roadmap (Tier 2)
+### Show formulas
 
-Function autocomplete, click-to-insert references, drag-to-fill of formulas, a
-"show formulas" toggle, a broader Excel function library, and relative
-references (`$A$1`).
+Set `showFormulas` (the `show-formulas` attribute or the property) to display
+each `allowFormula` cell's source instead of its computed value, the spreadsheet
+"show formulas" view. The computed values are untouched, so turning it off
+restores the normal display; a user-provided `cellTemplate` is never overridden.
+
+```ts
+grid.showFormulas = true; // reveal sources; set back to false to restore
+```
+
+### Export formulas
+
+`exportToCSV` and `exportToXLSX` accept a `formulas` option: when set, cells that
+hold a formula export their source (`=A1*B1`) rather than the computed value;
+other cells export normally.
+
+```ts
+grid.exportToCSV({ filename: 'budget', formulas: true });
+grid.exportToXLSX({ filename: 'budget', formulas: true });
+```
+
+### Deferred
+
+Range+criteria functions (`SUMIF` / `COUNTIF` / `AVERAGEIF`) need a different
+argument-grouping convention and are deferred to a later tier, along with array
+formulas and cross-sheet references.
 
 ---
 

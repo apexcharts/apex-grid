@@ -43,6 +43,26 @@
         padding: 0 0.25rem;
         border-radius: 3px;
       }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .toolbar button {
+        font: inherit;
+        font-size: 13px;
+        padding: 6px 12px;
+        border: 1px solid #d0d5dd;
+        border-radius: 6px;
+        background: #fff;
+        color: #1f2937;
+        cursor: pointer;
+      }
+      .toolbar button[aria-pressed='true'] {
+        background: #eef2ff;
+        border-color: #6366f1;
+        color: #1d4ed8;
+      }
       apex-grid-enterprise {
         min-height: 360px;
         --ig-size: 2;
@@ -61,13 +81,19 @@
   <body>
     <h2>Spreadsheet Formulas <span class="badge">Enterprise</span></h2>
     <p class="subtitle">
-      The <strong>Total</strong> column is <code>allowFormula</code>: each cell holds a formula
-      (<code>=qty*price</code>), and the last row totals the column with <code>=SUM(D1:D5)</code>.
-      Double-click a <strong>Qty</strong> or <strong>Unit Price</strong> cell and edit it: the row total and
-      the grand total recalculate automatically. Double-click a Total cell to see or change its formula
-      (type a leading <code>=</code>); references are highlighted and errors like <code>#DIV/0!</code>
-      show inline. The computed value stays the cell value, so sorting and aggregation keep working.
+      The <strong>Total</strong> column is <code>allowFormula</code>: each row uses a
+      <strong>relative</strong> formula (<code>=B1*C1</code>, <code>=B2*C2</code>, and so on), and the
+      last row totals the column with <code>=ROUND(SUM(D1:D5),2)</code>. Double-click a
+      <strong>Qty</strong> or <strong>Unit Price</strong> cell to edit it and watch the totals
+      recalculate. Double-click a Total cell to author a formula: type <code>=</code> then a function
+      name for autocomplete, click another cell to insert its reference (Shift-click for an absolute
+      <code>$A$1</code>), or drag the fill handle to copy a formula down (relative references shift per
+      row). Toggle <em>Show formulas</em> to reveal the sources.
     </p>
+    <div class="toolbar">
+      <button id="toggle-formulas" type="button" aria-pressed="false">Show formulas</button>
+      <button id="export-formulas" type="button">Export formulas (CSV)</button>
+    </div>
     <apex-grid-enterprise id="grid"></apex-grid-enterprise>
     <script type="module">
       // Columns map to A1 letters by order: item=A, qty=B, price=C, total=D.
@@ -90,16 +116,28 @@
       grid.data = data;
       grid.editing = { enabled: true, mode: 'cell', trigger: 'doubleClick' };
 
+      // Toolbar: toggle the show-formulas view and export the formula sources.
+      const toggle = document.getElementById('toggle-formulas');
+      toggle.addEventListener('click', () => {
+        grid.showFormulas = !grid.showFormulas;
+        toggle.setAttribute('aria-pressed', String(grid.showFormulas));
+      });
+      document.getElementById('export-formulas').addEventListener('click', () => {
+        grid.exportToCSV({ filename: 'budget-formulas', formulas: true });
+      });
+
       // Seed formulas once the grid (and its injected formula editors) are ready.
       (async () => {
         await grid.updateComplete;
         await new Promise((r) => requestAnimationFrame(r));
-        // Per-row line total: qty (col B) * unit price (col C).
+        // Per-row line total with relative references (qty * unit price). Drag the
+        // fill handle on a Total cell to copy one down: the relative refs shift per
+        // row, so =B1*C1 becomes =B2*C2, =B3*C3, and so on.
         for (let i = 0; i < 5; i++) {
           grid.setFormula(data[i], 'total', `=B${i + 1}*C${i + 1}`);
         }
-        // Grand total: sum of the five line totals (col D, rows 1-5).
-        grid.setFormula(data[5], 'total', '=SUM(D1:D5)');
+        // Grand total: sum of the five line totals, rounded to cents.
+        grid.setFormula(data[5], 'total', '=ROUND(SUM(D1:D5),2)');
       })();
     </script>
   </body>
