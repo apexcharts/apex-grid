@@ -462,6 +462,28 @@ export class FormulaController<T extends object> implements ReactiveController, 
     this.functions.set(name.toUpperCase(), fn);
   }
 
+  /**
+   * Every available function name (built-ins + custom + `IF`), upper-case and
+   * sorted, for the editor's autocomplete. `IF` is added explicitly because the
+   * evaluator implements it directly rather than via the registry.
+   */
+  public functionNames(): string[] {
+    return [...new Set([...this.functions.keys(), 'IF'])].sort();
+  }
+
+  /**
+   * The A1 reference for a cell, resolved over the grid data and the stable
+   * letter order. `absolute` emits a fully-absolute `$A$1` (shift-click insert);
+   * otherwise a relative `A1`. Returns `undefined` when the row or column is not
+   * in the grid. Used by the editor's click-to-insert.
+   */
+  public referenceFor(row: T, columnKey: keyof T & string, absolute = false): string | undefined {
+    const address = this.#addressOf(row, columnKey);
+    return address
+      ? formatCell(address, { colAbsolute: absolute, rowAbsolute: absolute })
+      : undefined;
+  }
+
   /** Localize a grid string (delegates to the host), used by the editor. */
   public localize(key: GridLocaleKey): string {
     return this.#host.localize(key);

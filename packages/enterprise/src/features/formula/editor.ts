@@ -39,6 +39,10 @@ export interface FormulaEditorController {
   clearFormula(row: object, key: string): void;
   /** Optional localizer (the real controller delegates to the grid). */
   localize?(key: string): string;
+  /** Available function names (built-ins + custom), for autocomplete. */
+  functionNames?(): string[];
+  /** Resolve a clicked cell to its A1 reference, for click-to-insert. */
+  referenceFor?(row: object, key: string, absolute?: boolean): string | undefined;
 }
 
 const REFERENCE = /[A-Za-z]+[0-9]+(?::[A-Za-z]+[0-9]+)?/g;
@@ -122,6 +126,23 @@ export class FormulaCellEditor extends LitElement {
       font-weight: 600;
       white-space: normal;
     }
+    [part~='suggestions'] {
+      margin: 0;
+      padding: 2px 0;
+      list-style: none;
+      color: inherit;
+      max-block-size: 9em;
+      overflow-y: auto;
+    }
+    [part~='suggestion'] {
+      padding: 2px 8px;
+      cursor: pointer;
+      color: #1f2937;
+    }
+    [part~='suggestion'][aria-selected='true'] {
+      background: #eef2ff;
+      color: #1d4ed8;
+    }
   `;
 
   /** The grid-provided editor context. */
@@ -134,9 +155,16 @@ export class FormulaCellEditor extends LitElement {
 
   @state() private text = '';
   @state() private error = '';
+  /** Function-name autocomplete: the current matches and the highlighted one. */
+  @state() private suggestions: string[] = [];
+  @state() private activeSuggestion = 0;
 
   #initialized = false;
   #done = false;
+  /** Caret position to restore after a programmatic text change (insert/accept). */
+  #caretToRestore: number | null = null;
+  /** The grid host the click-to-insert listener is attached to (for teardown). */
+  #gridHost: HTMLElement | null = null;
 
   public override willUpdate(): void {
     if (this.#initialized || !this.ctx) {
@@ -150,6 +178,21 @@ export class FormulaCellEditor extends LitElement {
   public override firstUpdated(): void {
     this.#input?.focus();
     this.#input?.select();
+    this.#attachClickToInsert();
+  }
+
+  public override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.#gridHost?.removeEventListener('pointerdown', this.#onGridPointerDown, true);
+    this.#gridHost = null;
+  }
+
+  public override updated(): void {
+    if (this.#caretToRestore !== null) {
+      const caret = this.#caretToRestore;
+      this.#caretToRestore = null;
+      this.#input?.setSelectionRange(caret, caret);
+    }
   }
 
   public override render(): unknown {
@@ -168,16 +211,26 @@ export class FormulaCellEditor extends LitElement {
         @blur=${this.#onBlur}
       />
       ${
-        this.error
-          ? html`<div part="popover formula-error" role="alert">${this.error}</div>`
-          : isFormula
-            ? html`<div part="popover" aria-hidden="true">${highlightSegments(this.text).map(
-                (segment) =>
-                  segment.kind === 'ref'
-                    ? html`<span part="formula-ref">${segment.text}</span>`
-                    : segment.text
-              )}</div>`
-            : nothing
+        this.suggestions.length
+          ? html`<ul part="popover suggestions" role="listbox">${this.suggestions.map(
+              (name, index) =>
+                html`<li
+                  part="suggestion"
+                  role="option"
+                  aria-selected=${index === this.activeSuggestion ? 'true' : 'false'}
+                  @pointerdown=${(event: Event) => this.#onSuggestionPointerDown(event, name)}
+                >${name}</li>`
+            )}</ul>`
+          : this.error
+            ? html`<div part="popover formula-error" role="alert">${this.error}</div>`
+            : isFormula
+              ? html`<div part="popover" aria-hidden="true">${highlightSegments(this.text).map(
+                  (segment) =>
+                    segment.kind === 'ref'
+                      ? html`<span part="formula-ref">${segment.text}</span>`
+                      : segment.text
+                )}</div>`
+              : nothing
       }
     `;
   }
@@ -199,15 +252,45 @@ export class FormulaCellEditor extends LitElement {
   }
 
   #onInput = (event: Event): void => {
-    this.text = (event.target as HTMLInputElement).value;
+    const input = event.target as HTMLInputElement;
+    this.text = input.value;
     this.error = '';
     const trimmed = this.text.trim();
     if (trimmed.startsWith('=')) {
       this.error = this.#parseError(trimmed) ?? '';
     }
+    this.#updateSuggestions(input.selectionStart ?? this.text.length);
   };
 
   #onKeydown = (event: KeyboardEvent): void => {
+    // While suggestions are open, the arrow / accept / dismiss keys drive the
+    // list rather than the edit, so they never reach commit / cancel.
+    if (this.suggestions.length) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        this.activeSuggestion = (this.activeSuggestion + 1) % this.suggestions.length;
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        this.activeSuggestion =
+          (this.activeSuggestion - 1 + this.suggestions.length) % this.suggestions.length;
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.#acceptSuggestion(this.suggestions[this.activeSuggestion]);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.suggestions = [];
+        return;
+      }
+    }
+
     if (event.key === 'Enter' || event.key === 'Tab') {
       event.preventDefault();
       event.stopPropagation();
@@ -223,6 +306,127 @@ export class FormulaCellEditor extends LitElement {
   #onBlur = (): void => {
     void this.#commit();
   };
+
+  // --- autocomplete ---------------------------------------------------------
+
+  /** Recompute function-name suggestions for the partial word before the caret. */
+  #updateSuggestions(caret: number): void {
+    const names = this.controller?.functionNames?.();
+    const partial = this.#partialNameBefore(caret);
+    if (!names || partial === null) {
+      this.suggestions = [];
+      return;
+    }
+    const upper = partial.toUpperCase();
+    this.suggestions = names.filter((name) => name.startsWith(upper) && name !== upper).slice(0, 8);
+    this.activeSuggestion = 0;
+  }
+
+  /**
+   * The function-name fragment immediately before the caret (letters only), or
+   * `null` when not in formula mode or there is no such fragment.
+   */
+  #partialNameBefore(caret: number): string | null {
+    if (!this.text.trim().startsWith('=')) {
+      return null;
+    }
+    const match = /([A-Za-z]+)$/.exec(this.text.slice(0, caret));
+    return match ? match[1] : null;
+  }
+
+  /** Replace the partial name before the caret with `NAME()`, caret inside the parens. */
+  #acceptSuggestion(name: string): void {
+    const caret = this.#input?.selectionStart ?? this.text.length;
+    const partial = this.#partialNameBefore(caret) ?? '';
+    const start = caret - partial.length;
+    const after = this.text.slice(caret);
+    this.text = `${this.text.slice(0, start)}${name}()${after}`;
+    this.#caretToRestore = start + name.length + 1; // between the parentheses
+    this.suggestions = [];
+    this.error = this.#parseError(this.text.trim()) ?? '';
+  }
+
+  #onSuggestionPointerDown(event: Event, name: string): void {
+    event.preventDefault(); // keep focus on the input (no blur -> no commit)
+    this.#acceptSuggestion(name);
+    this.#input?.focus();
+  }
+
+  // --- click-to-insert ------------------------------------------------------
+
+  /** While open, listen for cell clicks on the owning grid to insert references. */
+  #attachClickToInsert(): void {
+    if (!this.controller?.referenceFor) {
+      return;
+    }
+    const host = this.#resolveGridHost();
+    if (!host) {
+      return;
+    }
+    this.#gridHost = host;
+    host.addEventListener('pointerdown', this.#onGridPointerDown, true);
+  }
+
+  /**
+   * Climb out of the nested shadow roots (editor -> cell -> row -> grid) to the
+   * owning grid host, so a capture listener there sees clicks on every cell of
+   * this grid (and only this grid). Returns the outermost `apex-grid*` host.
+   */
+  #resolveGridHost(): HTMLElement | null {
+    let host: HTMLElement | null = null;
+    let node: Node | null = this;
+    for (let depth = 0; node && depth < 6; depth += 1) {
+      const root = node.getRootNode();
+      if (!(root instanceof ShadowRoot)) {
+        break;
+      }
+      const candidate = root.host as HTMLElement;
+      if (candidate.localName?.startsWith('apex-grid')) {
+        host = candidate;
+      }
+      node = candidate;
+    }
+    return host;
+  }
+
+  #onGridPointerDown = (event: PointerEvent): void => {
+    if (!this.controller?.referenceFor || !this.text.trim().startsWith('=')) {
+      return;
+    }
+    const path = event.composedPath();
+    if (path.includes(this)) {
+      return; // a click within our own editor
+    }
+    const ownCell = (this.getRootNode() as ShadowRoot | null)?.host;
+    const cell = path.find(
+      (el): el is HTMLElement => el instanceof HTMLElement && el.localName === 'apex-grid-cell'
+    ) as (HTMLElement & { row?: { data?: object }; column?: { key?: PropertyKey } }) | undefined;
+    if (!cell || cell === ownCell) {
+      return; // not a cell, or our own editing cell
+    }
+    const record = cell.row?.data;
+    const key = cell.column?.key;
+    if (!record || key == null) {
+      return;
+    }
+    const reference = this.controller.referenceFor(record, String(key), event.shiftKey);
+    if (!reference) {
+      return;
+    }
+    // Insert the reference instead of letting the grid select/edit that cell.
+    event.preventDefault();
+    event.stopPropagation();
+    this.#insertAtCaret(reference);
+  };
+
+  /** Insert `text` at the caret (or end), keeping focus and re-validating. */
+  #insertAtCaret(text: string): void {
+    const caret = this.#input?.selectionStart ?? this.text.length;
+    this.text = `${this.text.slice(0, caret)}${text}${this.text.slice(caret)}`;
+    this.#caretToRestore = caret + text.length;
+    this.error = this.#parseError(this.text.trim()) ?? '';
+    this.#input?.focus();
+  }
 
   async #commit(): Promise<void> {
     if (this.#done || !this.ctx) {
