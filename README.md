@@ -15,7 +15,7 @@ enterprise extension.
 | Package | npm | Description |
 | --- | --- | --- |
 | [`apex-grid`](packages/core) | [![npm](https://img.shields.io/npm/v/apex-grid.svg)](https://www.npmjs.com/package/apex-grid) | The community grid: virtualization, sorting, filtering, pagination, pinning, reordering, resizing, inline editing, selection, master/detail, tree data, CSV export, theming, and accessibility. **Free and open source.** |
-| [`apex-grid-enterprise`](packages/enterprise) | [![npm](https://img.shields.io/npm/v/apex-grid-enterprise.svg)](https://www.npmjs.com/package/apex-grid-enterprise) | A drop-in `<apex-grid-enterprise>` that layers pro-licensed features on top: column aggregations, row grouping, pivoting, set filter, Excel (XLSX) export, cell range selection, integrated charts, tool panel, status bar, master/detail grids, and the server-side row model. **Requires a license key for production.** |
+| [`apex-grid-enterprise`](packages/enterprise) | [![npm](https://img.shields.io/npm/v/apex-grid-enterprise.svg)](https://www.npmjs.com/package/apex-grid-enterprise) | A drop-in `<apex-grid-enterprise>` that layers pro-licensed features on top: column aggregations, row grouping, pivoting, set filter, Excel (XLSX) export, cell range selection, integrated charts, tool panel, status bar, master/detail grids, the server-side row model, spreadsheet formulas, and an AI toolkit. **Requires a license key for production.** |
 
 ## Quick start
 
