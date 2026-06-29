@@ -24,6 +24,7 @@ configuration API, theming, and events are identical, plus the additions below.
 - **[Integrated charts](#integrated-charts)**: render the grid's data as an ApexCharts chart.
 - **[Infinite (server-side) row model](#infinite-server-side-row-model)**: stream large remote datasets, block by block.
 - **[AI Toolkit](#ai-toolkit)**: natural-language grid control and read-only Q&A through a provider-agnostic adapter, with a first-class Claude reference adapter.
+- **[Formulas](#formulas)**: spreadsheet-style cell formulas (A1 references, a built-in function set, custom functions) with dependency-graph recalculation.
 
 ## Install
 
@@ -391,6 +392,77 @@ The control path is guarded in layers: the model is constrained by the grid's
 schema (`toJSONSchema`), anything out of vocabulary is stripped before it is
 applied (each drop reported), the defensive `setState()` drops and reports the
 rest, and every change is one click undoable. Ask mode is read-only.
+
+---
+
+## Formulas
+
+Spreadsheet-style formulas in a cell. Mark a column `allowFormula` (and
+`editable`); a cell whose edited text starts with `=` is parsed, stored, and its
+computed result becomes the cell value. Because the value stays canonical in
+`row[key]`, sorting, filtering, aggregation, export, and charts all keep working
+on the result.
+
+```ts
+grid.columns = [
+  { key: 'qty', headerText: 'Qty', type: 'number', editable: true },
+  { key: 'price', headerText: 'Price', type: 'currency', editable: true },
+  { key: 'total', headerText: 'Total', type: 'currency', editable: true, allowFormula: true },
+];
+
+// Type "=B1*C1" into a Total cell, or set it programmatically:
+grid.setFormula(grid.data[0], 'total', '=B1*C1');
+grid.getFormula(grid.data[0], 'total'); // '=B1*C1'
+grid.clearFormula(grid.data[0], 'total');
+grid.recalculateFormulas();
+```
+
+### References (A1 over the data)
+
+Columns map to letters by configuration order (`A` is the first column,
+including hidden ones); rows are 1-based over the source `data`. So `B2` is the
+second data row, second column. References bind to the data, not the rendered
+view, so a formula keeps its meaning across sort, filter, column reorder, and
+paging. Ranges (`A1:B3`) expand to value lists for functions.
+
+Identity: formula attachment is durable when you set a grid `rowId` (it survives
+reload through `getState` / `setState`); without one it is positional. A1
+references inside a formula are absolute in v1; relative-reference rewriting on
+row reorder is on the roadmap.
+
+### Functions
+
+Built in: `SUM`, `AVERAGE` (alias `AVG`), `MIN`, `MAX`, `COUNT`, `COUNTA`, `IF`,
+`ROUND`, `ABS`, `AND`, `OR`, `NOT`, `CONCAT`. Operators: `+ - * / ^ %`,
+comparisons `= <> < > <= >=`, and text concatenation with `&`. `IF`
+short-circuits, so `IF(B1=0, 0, A1/B1)` is safe. Register your own:
+
+```ts
+grid.registerFormulaFunction('TAX', (args) =>
+  typeof args[0] === 'number' ? args[0] * 0.2 : 0
+);
+// =TAX(B1)
+```
+
+### Error values
+
+Errors are first-class cell values that render as their code and are excluded
+from numeric aggregates: `#REF!` (bad reference), `#NAME?` (unknown function),
+`#DIV/0!`, `#VALUE!` (type error), and `#CYCLE!` (circular reference). An error
+operand propagates.
+
+### Recalculation and persistence
+
+Editing any referenced cell recomputes its dependents in dependency order (a
+real dependency graph with cycle detection, not a full sweep); undo or redo of a
+value edit recomputes too. Formulas serialize under `modules.enterprise.formulas`
+in `getState()` and restore (and recompute) on `setState()`.
+
+### Roadmap (Tier 2)
+
+Function autocomplete, click-to-insert references, drag-to-fill of formulas, a
+"show formulas" toggle, a broader Excel function library, and relative
+references (`$A$1`).
 
 ---
 

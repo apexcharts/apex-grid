@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spreadsheet Formulas (Enterprise) - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid-enterprise.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .badge {
+        font-size: 13px;
+        font-weight: 500;
+        color: #92400e;
+        background: #fef3c7;
+        border: 1px solid #fde68a;
+        border-radius: 20px;
+        padding: 2px 10px;
+        vertical-align: middle;
+      }
+      code {
+        background: #f1f1f1;
+        padding: 0 0.25rem;
+        border-radius: 3px;
+      }
+      apex-grid-enterprise {
+        min-height: 360px;
+        --ig-size: 2;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid-enterprise');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Spreadsheet Formulas <span class="badge">Enterprise</span></h2>
+    <p class="subtitle">
+      The <strong>Total</strong> column is <code>allowFormula</code>: each cell holds a formula
+      (<code>=qty*price</code>), and the last row totals the column with <code>=SUM(D1:D5)</code>.
+      Double-click a <strong>Qty</strong> or <strong>Unit Price</strong> cell and edit it: the row total and
+      the grand total recalculate automatically. Double-click a Total cell to see or change its formula
+      (type a leading <code>=</code>); references are highlighted and errors like <code>#DIV/0!</code>
+      show inline. The computed value stays the cell value, so sorting and aggregation keep working.
+    </p>
+    <apex-grid-enterprise id="grid"></apex-grid-enterprise>
+    <script type="module">
+      // Columns map to A1 letters by order: item=A, qty=B, price=C, total=D.
+      const data = [
+        { item: 'Widget', qty: 10, price: 2.5, total: 0 },
+        { item: 'Gadget', qty: 4, price: 12, total: 0 },
+        { item: 'Gizmo', qty: 7, price: 9, total: 0 },
+        { item: 'Sprocket', qty: 20, price: 1.75, total: 0 },
+        { item: 'Cog', qty: 12, price: 5, total: 0 },
+        { item: 'Total', qty: null, price: null, total: 0 },
+      ];
+
+      const grid = document.getElementById('grid');
+      grid.columns = [
+        { key: 'item', headerText: 'Item' },
+        { key: 'qty', headerText: 'Qty', type: 'number', editable: true },
+        { key: 'price', headerText: 'Unit Price', type: 'currency', editable: true },
+        { key: 'total', headerText: 'Total', type: 'currency', editable: true, allowFormula: true },
+      ];
+      grid.data = data;
+      grid.editing = { enabled: true, mode: 'cell', trigger: 'doubleClick' };
+
+      // Seed formulas once the grid (and its injected formula editors) are ready.
+      (async () => {
+        await grid.updateComplete;
+        await new Promise((r) => requestAnimationFrame(r));
+        // Per-row line total: qty (col B) * unit price (col C).
+        for (let i = 0; i < 5; i++) {
+          grid.setFormula(data[i], 'total', `=B${i + 1}*C${i + 1}`);
+        }
+        // Grand total: sum of the five line totals (col D, rows 1-5).
+        grid.setFormula(data[5], 'total', '=SUM(D1:D5)');
+      })();
+    </script>
+  </body>
+</html>
