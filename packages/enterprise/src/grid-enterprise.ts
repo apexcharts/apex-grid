@@ -17,11 +17,14 @@ import {
   type GridFeatureModule,
   getColumnLabel,
   PIPELINE,
+  type RowRef,
   registerComponent,
   resolveExportColumns,
   resolveExportRows,
   resolveExportValue,
+  resolveRowRefs,
   StateController,
+  serializeRowRefs,
   type ToolbarAction,
 } from 'apex-grid/internal';
 import { html, nothing, type PropertyValues } from 'lit';
@@ -52,6 +55,7 @@ import {
 import {
   FORMULA_MODULE_ID,
   type FormulaController,
+  type FormulaFn,
   formulaEditorTemplate,
 } from './features/formula/index.js';
 import {
@@ -103,6 +107,15 @@ interface EnterpriseStateBlob {
   groupExpand?: Record<string, boolean>;
   /** Range-selection rectangles (view coordinates; round-trip within a session). */
   ranges?: RangeBounds[];
+  /** Stored cell formulas (durable across reload when `rowId` is set, else positional). */
+  formulas?: FormulaStateEntry[];
+}
+
+/** A persisted cell formula: a durable row reference, the column key, and the source. */
+interface FormulaStateEntry {
+  row: RowRef;
+  column: string;
+  src: string;
 }
 
 /** Custom-element tag for the enterprise grid. */
@@ -347,8 +360,25 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       pivotValues: { ...this.pivotValues },
       groupExpand: this.#groupingController()?.getExpandOverrides() ?? {},
       ranges: this.#rangeController()?.getRanges() ?? [],
+      formulas: this.#serializeFormulas(),
     };
     return { ...base, modules: { ...base.modules, enterprise } };
+  }
+
+  /** Serialize stored formulas with a durable row reference (rowId when set). */
+  #serializeFormulas(): FormulaStateEntry[] {
+    const controller = this.#formulaController();
+    if (!controller) {
+      return [];
+    }
+    const entries: FormulaStateEntry[] = [];
+    for (const { row, columnKey, src } of controller.listFormulas()) {
+      const [ref] = serializeRowRefs([row], this.data, this.rowId);
+      if (ref) {
+        entries.push({ row: ref, column: columnKey, src });
+      }
+    }
+    return entries;
   }
 
   /**
@@ -360,6 +390,9 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   public override getSchema(): GridSchema {
     const base = super.getSchema();
     const numeric = (type: DataType): boolean => type === 'number' || type === 'currency';
+    const formulaColumns = new Set(
+      this.columns.filter((column) => column.allowFormula).map((column) => String(column.key))
+    );
     return {
       ...base,
       columns: base.columns.map((column) => ({
@@ -368,6 +401,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
         pivotable: true,
         aggregatable: numeric(column.dataType),
         aggFuncs: numeric(column.dataType) ? [...AGGREGATION_FUNCS] : undefined,
+        allowFormula: formulaColumns.has(column.key) || undefined,
       })),
       capabilities: {
         ...base.capabilities,
@@ -410,7 +444,29 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       this.#rangeController()?.restoreRanges(enterprise.ranges);
     }
 
+    // Formulas resolve their durable row references against the current data and
+    // recompute on restore.
+    if (enterprise?.formulas !== undefined) {
+      this.#restoreFormulas(enterprise.formulas);
+    }
+
     return result;
+  }
+
+  /** Resolve persisted formula row references against `data` and restore them. */
+  #restoreFormulas(formulas: ReadonlyArray<FormulaStateEntry>): void {
+    const controller = this.#formulaController();
+    if (!controller) {
+      return;
+    }
+    const entries: Array<{ row: T; columnKey: string; src: string }> = [];
+    for (const entry of formulas) {
+      const [row] = resolveRowRefs([entry.row], this.data, this.rowId);
+      if (row) {
+        entries.push({ row, columnKey: entry.column, src: entry.src });
+      }
+    }
+    controller.restoreFormulas(entries);
   }
 
   /**
@@ -636,6 +692,51 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       grouping.defaultExpanded = this.groupingOptions.defaultExpanded;
     }
     this.requestUpdate(PIPELINE);
+  }
+
+  /**
+   * Set a spreadsheet formula on a cell (enterprise formula module). The source
+   * may start with `=`; the computed result becomes the cell value and any
+   * dependent cells recompute. No-op if the formula module is not enabled or the
+   * row is not in {@link ApexGrid.data}.
+   *
+   * @example
+   * ```ts
+   * grid.setFormula(grid.data[0], 'total', '=B1*C1');
+   * ```
+   */
+  public setFormula(row: T, columnKey: keyof T & string, formula: string): void {
+    this.#formulaController()?.setFormula(row, columnKey, formula);
+  }
+
+  /** The formula source stored on a cell, or `undefined` if it holds a literal. */
+  public getFormula(row: T, columnKey: keyof T & string): string | undefined {
+    return this.#formulaController()?.getFormula(row, columnKey);
+  }
+
+  /** Remove a cell's formula; its dependents recompute against the literal left behind. */
+  public clearFormula(row: T, columnKey: keyof T & string): void {
+    this.#formulaController()?.clearFormula(row, columnKey);
+  }
+
+  /** Recompute every stored formula (e.g. after mutating data in place). */
+  public recalculateFormulas(): void {
+    this.#formulaController()?.recalculate();
+  }
+
+  /**
+   * Register a custom formula function (upper-cased) for this grid, callable from
+   * formulas as `NAME(args)`.
+   *
+   * @example
+   * ```ts
+   * grid.registerFormulaFunction('TAX', (args) =>
+   *   typeof args[0] === 'number' ? args[0] * 0.2 : 0
+   * );
+   * ```
+   */
+  public registerFormulaFunction(name: string, fn: FormulaFn): void {
+    this.#formulaController()?.registerFormulaFunction(name, fn);
   }
 
   #groupingController(): GroupingController<T> | undefined {

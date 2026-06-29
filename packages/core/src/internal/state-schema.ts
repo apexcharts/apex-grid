@@ -52,6 +52,8 @@ export interface ColumnSchema {
   aggregatable?: boolean;
   /** Enterprise: aggregation functions valid for this column, when `aggregatable`. */
   aggFuncs?: string[];
+  /** Enterprise: whether the column accepts spreadsheet formulas. Set by the enterprise grid. */
+  allowFormula?: boolean;
 }
 
 /** Grid-level operation availability for {@link GridSchema}. */

@@ -163,4 +163,13 @@ export const esLocale: GridLocaleText = {
   'ai.error': 'Algo salió mal.',
   'ai.noAdapter': 'No hay adaptador de IA configurado. Asigne grid.aiAdapter para habilitarlo.',
   'ai.close': 'Cerrar',
+
+  // Fórmulas (enterprise)
+  'formula.editorLabel': 'Fórmula',
+  'formula.invalid': 'Fórmula no válida',
+  'formula.error.ref': 'Referencia de celda no válida',
+  'formula.error.name': 'Función desconocida',
+  'formula.error.div0': 'División por cero',
+  'formula.error.value': 'Valor no válido',
+  'formula.error.cycle': 'Referencia circular',
 };

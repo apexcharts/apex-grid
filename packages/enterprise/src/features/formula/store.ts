@@ -17,6 +17,7 @@
  * computed value is the canonical cell value (decision D1), so display and every
  * value-reading feature work unchanged.
  */
+import type { GridLocaleKey } from 'apex-grid';
 import { type GridFeatureModule, type GridHost, PIPELINE } from 'apex-grid/internal';
 import type { ReactiveController } from 'lit';
 import { type CellValue, cycleError, refError } from './errors.js';
@@ -142,6 +143,12 @@ export class FormulaStore {
   /** Recompute every stored formula (e.g. after the data array is replaced). */
   public recalcAll(): RecalcChange[] {
     return this.recalc([...this.#entries.keys()].map(parseCellKey), true);
+  }
+
+  /** Drop every formula and dependency edge (values are left untouched). */
+  public clearAll(): void {
+    this.#entries.clear();
+    this.#dependents.clear();
   }
 
   /**
@@ -416,6 +423,36 @@ export class FormulaController<T extends object> implements ReactiveController, 
   /** Register a custom function (upper-cased) for this grid. */
   public registerFormulaFunction(name: string, fn: FormulaFn): void {
     this.functions.set(name.toUpperCase(), fn);
+  }
+
+  /** Localize a grid string (delegates to the host), used by the editor. */
+  public localize(key: GridLocaleKey): string {
+    return this.#host.localize(key);
+  }
+
+  /**
+   * The stored formulas as `(row object, column key, src)`, for state
+   * serialization. The grid maps each row object to a durable row reference.
+   */
+  public listFormulas(): Array<{ row: T; columnKey: string; src: string }> {
+    this.#syncColumns();
+    const out: Array<{ row: T; columnKey: string; src: string }> = [];
+    for (const { address, src } of this.#store.list()) {
+      const row = this.#host.data[address.row];
+      const columnKey = this.#letterOrder[address.col];
+      if (row !== undefined && columnKey !== undefined) {
+        out.push({ row, columnKey, src });
+      }
+    }
+    return out;
+  }
+
+  /** Replace all formulas with the given `(row object, column key, src)` entries. */
+  public restoreFormulas(entries: ReadonlyArray<{ row: T; columnKey: string; src: string }>): void {
+    this.#store.clearAll();
+    for (const { row, columnKey, src } of entries) {
+      this.setFormula(row, columnKey as keyof T & string, src);
+    }
   }
 
   /** The underlying store, for state serialization (F5). */

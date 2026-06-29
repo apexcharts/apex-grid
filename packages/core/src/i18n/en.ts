@@ -158,6 +158,15 @@ export const EN_LOCALE = {
   'ai.error': 'Something went wrong.',
   'ai.noAdapter': 'No AI adapter configured. Set grid.aiAdapter to enable.',
   'ai.close': 'Close',
+
+  // Formulas (enterprise)
+  'formula.editorLabel': 'Formula',
+  'formula.invalid': 'Invalid formula',
+  'formula.error.ref': 'Invalid cell reference',
+  'formula.error.name': 'Unknown function',
+  'formula.error.div0': 'Division by zero',
+  'formula.error.value': 'Invalid value',
+  'formula.error.cycle': 'Circular reference',
 } as const;
 
 /**

@@ -37,6 +37,8 @@ export interface FormulaEditorController {
   getFormula(row: object, key: string): string | undefined;
   setFormula(row: object, key: string, src: string): void;
   clearFormula(row: object, key: string): void;
+  /** Optional localizer (the real controller delegates to the grid). */
+  localize?(key: string): string;
 }
 
 const REFERENCE = /[A-Za-z]+[0-9]+(?::[A-Za-z]+[0-9]+)?/g;
@@ -159,6 +161,7 @@ export class FormulaCellEditor extends LitElement {
         spellcheck="false"
         autocomplete="off"
         .value=${this.text}
+        aria-label=${this.#label()}
         aria-invalid=${this.error ? 'true' : 'false'}
         @input=${this.#onInput}
         @keydown=${this.#onKeydown}
@@ -181,6 +184,10 @@ export class FormulaCellEditor extends LitElement {
 
   get #input(): HTMLInputElement | null {
     return this.renderRoot?.querySelector('input') ?? null;
+  }
+
+  #label(): string {
+    return this.controller?.localize?.('formula.editorLabel') ?? 'Formula';
   }
 
   #existingFormula(): string | undefined {
@@ -252,7 +259,7 @@ export class FormulaCellEditor extends LitElement {
       if (error instanceof ParseError) {
         return `${error.message} (position ${error.position})`;
       }
-      return 'Invalid formula';
+      return this.controller?.localize?.('formula.invalid') ?? 'Invalid formula';
     }
   }
 }

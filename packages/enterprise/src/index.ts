@@ -45,6 +45,23 @@ export {
   type ContextMenuTarget,
   contextMenuModule,
 } from './features/context-menu.js';
+export {
+  type CellAddress,
+  type CellValue,
+  createFunctionRegistry,
+  evaluate,
+  FORMULA_EDITOR_TAG,
+  FORMULA_MODULE_ID,
+  FormulaCellEditor,
+  type FormulaContext,
+  type FormulaController,
+  FormulaError,
+  type FormulaErrorCode,
+  type FormulaFn,
+  formulaModule,
+  parseFormula,
+  type RangeAddress,
+} from './features/formula/index.js';
 export type { GroupRowMeta } from './features/grouping.js';
 export { groupingModule } from './features/grouping.js';
 export type {
