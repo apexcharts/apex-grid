@@ -1,5 +1,6 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ApexCellContext, ColumnConfiguration } from 'apex-grid';
+import { render } from 'lit';
 import {
   FORMULA_MODULE_ID,
   type FormulaController,
@@ -61,8 +62,11 @@ describe('formula show-formulas + export (Tier 2, P4/P5)', () => {
     await grid.updateComplete;
     const column = grid.columns.find((c) => c.key === 'total');
     expect(column?.cellTemplate, 'a display template is injected').to.be.a('function');
-    // A formula cell shows its source; a cell without one shows its value.
-    expect(column?.cellTemplate?.(ctxFor(data[0], data[0].total))).to.equal('=A1*B1');
+    // A formula cell shows its source (left-aligned markup): render it and read the text.
+    const host = document.createElement('div');
+    render(column?.cellTemplate?.(ctxFor(data[0], data[0].total)), host);
+    expect(host.textContent).to.equal('=A1*B1');
+    // A cell without a formula shows its value unchanged.
     expect(column?.cellTemplate?.(ctxFor(data[1], data[1].total))).to.equal(data[1].total);
 
     grid.showFormulas = false;

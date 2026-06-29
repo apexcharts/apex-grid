@@ -424,6 +424,7 @@ export class FormulaCellEditor extends LitElement {
     const caret = this.#input?.selectionStart ?? this.text.length;
     this.text = `${this.text.slice(0, caret)}${text}${this.text.slice(caret)}`;
     this.#caretToRestore = caret + text.length;
+    this.suggestions = []; // an inserted reference dismisses any open autocomplete
     this.error = this.#parseError(this.text.trim()) ?? '';
     this.#input?.focus();
   }
