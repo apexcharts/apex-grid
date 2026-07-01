@@ -63,12 +63,26 @@ export class FilterController<T extends object> implements ReactiveController {
     key ? this.state.delete(key) : this.state.clear();
   }
 
-  public setActiveColumn(column?: ColumnConfiguration<T>) {
-    if (column?.filter && this.filterRow?.active) {
-      this.filterRow.column = column;
-      this.filterRow.expression = this.getDefaultExpression(column);
-      this.host.requestUpdate();
+  public setActiveColumn(column?: ColumnConfiguration<T>, triggerRect?: DOMRect) {
+    const filterRow = this.filterRow;
+    if (!filterRow) return;
+
+    if (!column?.filter) {
+      filterRow.active = false;
+      return;
     }
+
+    // Toggle: clicking the same column's filter while the panel is open closes it.
+    if (filterRow.active && filterRow.column?.key === column.key) {
+      filterRow.active = false;
+      return;
+    }
+
+    filterRow.triggerRect = triggerRect ?? null;
+    filterRow.column = column;
+    filterRow.expression = this.getDefaultExpression(column);
+    filterRow.active = true;
+    this.host.requestUpdate();
   }
 
   public getDefaultExpression(column: ColumnConfiguration<T>) {

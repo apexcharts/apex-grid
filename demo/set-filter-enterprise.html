@@ -59,6 +59,7 @@
         inset-block-start: 38px;
         inset-inline-start: 0;
         z-index: 20;
+        display: none;
       }
       code {
         background: #f1f1f1;
@@ -116,10 +117,14 @@
       const filter = document.getElementById('filter');
       filter.grid = grid;
 
-      // Toggle the popover from the column button.
+      // Toggle the popover from the column button. Starts hidden (CSS), so the
+      // first click opens it; an explicit flag avoids depending on the initial
+      // inline display.
       const toggle = document.getElementById('toggle');
+      let filterOpen = false;
       toggle.addEventListener('click', () => {
-        filter.style.display = filter.style.display === 'none' ? 'block' : 'none';
+        filterOpen = !filterOpen;
+        filter.style.display = filterOpen ? 'block' : 'none';
       });
 
       // Pre-filter (uncheck Sales) so the demo shows the checklist driving the grid.

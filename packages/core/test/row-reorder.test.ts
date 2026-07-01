@@ -169,6 +169,151 @@ describe('Row reorder — applyToData', () => {
   });
 });
 
+function pointerEvent(
+  type: 'pointerdown' | 'pointermove' | 'pointerup',
+  init: { clientX: number; clientY: number; pointerId?: number; button?: number }
+): PointerEvent {
+  return new PointerEvent(type, {
+    bubbles: true,
+    composed: true,
+    pointerId: init.pointerId ?? 1,
+    button: init.button ?? 0,
+    clientX: init.clientX,
+    clientY: init.clientY,
+  });
+}
+
+const rowEl = (fx: ReorderFixture<TestData>, index: number) =>
+  fx.grid.rows[index] as unknown as HTMLElement;
+
+describe('Row reorder — drag handle + ghost', () => {
+  beforeEach(async () => await TDD.setUp());
+  afterEach(() => TDD.tearDown());
+
+  it('defaults to handle mode: a grip + header spacer + leading 36px track', async () => {
+    const reorder = TDD.stateController.rowReorder;
+    expect(reorder.handleMode).to.be.true;
+    expect(reorder.showHandleColumn).to.be.true;
+
+    expect(rowEl(TDD, 0).shadowRoot?.querySelector('[part="reorder-handle"]')).to.exist;
+    expect(TDD.headerRow.shadowRoot?.querySelector('[part="reorder-handle-header"]')).to.exist;
+    expect((TDD.headerRow as unknown as HTMLElement).style.gridTemplateColumns).to.match(/^36px/);
+  });
+
+  it('handle:false drops the grip, spacer, and leading track (whole-row drag)', async () => {
+    TDD.grid.rowReordering = { enabled: true, handle: false };
+    await TDD.waitForUpdate();
+    const reorder = TDD.stateController.rowReorder;
+    expect(reorder.handleMode).to.be.false;
+    expect(reorder.showHandleColumn).to.be.false;
+
+    expect(rowEl(TDD, 0).shadowRoot?.querySelector('[part="reorder-handle-cell"]')).to.be.null;
+    expect(TDD.headerRow.shadowRoot?.querySelector('[part="reorder-handle-header"]')).to.be.null;
+    expect((TDD.headerRow as unknown as HTMLElement).style.gridTemplateColumns).to.not.match(
+      /^36px/
+    );
+  });
+
+  it('a press off the handle does not start a drag in handle mode', async () => {
+    const row0 = rowEl(TDD, 0);
+    const cell = row0.shadowRoot?.querySelector('apex-grid-cell') as HTMLElement;
+    const rect = cell.getBoundingClientRect();
+    cell.dispatchEvent(
+      pointerEvent('pointerdown', { clientX: rect.left + 8, clientY: rect.top + 8 })
+    );
+    row0.dispatchEvent(
+      pointerEvent('pointermove', { clientX: rect.left + 8, clientY: rect.top + 40 })
+    );
+    await TDD.waitForUpdate();
+
+    expect(TDD.stateController.rowReorder.dragging).to.be.null;
+    expect(TDD.stateController.rowReorder.ghost).to.be.null;
+  });
+
+  it('dragging the grip past the threshold starts a drag and exposes ghost state', async () => {
+    const row0 = rowEl(TDD, 0);
+    const handle = row0.shadowRoot?.querySelector('[part="reorder-handle"]') as HTMLElement;
+    const rect = row0.getBoundingClientRect();
+    handle.dispatchEvent(
+      pointerEvent('pointerdown', { clientX: rect.left + 8, clientY: rect.top + 8 })
+    );
+    row0.dispatchEvent(
+      pointerEvent('pointermove', { clientX: rect.left + 8, clientY: rect.top + 20 })
+    );
+    await TDD.waitForUpdate();
+
+    const reorder = TDD.stateController.rowReorder;
+    expect(reorder.dragging).to.equal(TDD.grid.pageItems[0]);
+    expect(reorder.ghost).to.not.be.null;
+    expect(reorder.ghost?.cells.length).to.be.greaterThan(0);
+    expect(reorder.ghost?.height).to.be.greaterThan(0);
+  });
+
+  it('a grip drag past the next row reorders, and dropping clears the ghost', async () => {
+    const row0 = rowEl(TDD, 0);
+    const handle = row0.shadowRoot?.querySelector('[part="reorder-handle"]') as HTMLElement;
+    const r0 = row0.getBoundingClientRect();
+    const r1 = rowEl(TDD, 1).getBoundingClientRect();
+
+    handle.dispatchEvent(
+      pointerEvent('pointerdown', { clientX: r0.left + 8, clientY: r0.top + 8 })
+    );
+    row0.dispatchEvent(
+      pointerEvent('pointermove', { clientX: r0.left + 8, clientY: r1.top + r1.height * 0.75 })
+    );
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([2, 1, 3, 4, 5, 6, 7, 8]);
+
+    // The pointer-up plumbing lives on the grid host, so even though the live-
+    // swap recycled the source row's DOM, the drop still ends the drag cleanly.
+    const reorder = TDD.stateController.rowReorder;
+    row0.dispatchEvent(
+      pointerEvent('pointerup', { clientX: r0.left + 8, clientY: r1.top + r1.height * 0.75 })
+    );
+    expect(reorder.ghost).to.be.null;
+    expect(reorder.dragging).to.be.null;
+  });
+
+  it('whole-row mode: a press on the row body starts a drag', async () => {
+    TDD.grid.rowReordering = { enabled: true, handle: false };
+    await TDD.waitForUpdate();
+    const row0 = rowEl(TDD, 0);
+    const cell = row0.shadowRoot?.querySelector('apex-grid-cell') as HTMLElement;
+    const rect = row0.getBoundingClientRect();
+    cell.dispatchEvent(
+      pointerEvent('pointerdown', { clientX: rect.left + 20, clientY: rect.top + 8 })
+    );
+    row0.dispatchEvent(
+      pointerEvent('pointermove', { clientX: rect.left + 20, clientY: rect.top + 20 })
+    );
+    await TDD.waitForUpdate();
+
+    expect(TDD.stateController.rowReorder.dragging).to.equal(TDD.grid.pageItems[0]);
+    expect(TDD.stateController.rowReorder.ghost).to.not.be.null;
+  });
+
+  it('moveGhost tracks the cursor; endDrag clears the ghost', () => {
+    const reorder = TDD.stateController.rowReorder;
+    const rect = { left: 100, top: 50, width: 400, height: 36 } as DOMRect;
+    reorder.startDrag(TDD.grid.pageItems[0], {
+      rect,
+      clientX: 120,
+      clientY: 60,
+      cells: [{ text: '1', width: 60, align: 'right' }],
+    });
+    expect(reorder.ghost?.pointerOffsetX).to.equal(20);
+    expect(reorder.ghost?.pointerOffsetY).to.equal(10);
+
+    reorder.moveGhost(200, 140);
+    expect(reorder.ghost?.x).to.equal(180); // 200 - 20
+    expect(reorder.ghost?.y).to.equal(130); // 140 - 10
+
+    reorder.endDrag();
+    expect(reorder.ghost).to.be.null;
+    expect(reorder.dragging).to.be.null;
+  });
+});
+
 class PinnedReorderFixture<T extends TestData> extends ReorderFixture<T> {
   public override rowPinning: GridRowPinningConfiguration = { enabled: true };
 }

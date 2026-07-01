@@ -85,26 +85,18 @@ $editor-background: var(--igx-cell-editor-background, var(--ag-surface));
     content: '';
     position: absolute;
     inset-block: 0;
-    width: 14px;
+    inline-size: 1px;
+    background: var(--ag-pin-line);
     pointer-events: none;
+    z-index: 1;
 }
 
 :host([data-pin-edge='start'])::after {
-    inset-inline-end: -14px;
-    background: linear-gradient(
-        90deg,
-        color-mix(in srgb, var(--ag-brand) 6%, transparent) 0%,
-        color-mix(in srgb, var(--ag-brand) 0%, transparent) 100%
-    );
+    inset-inline-end: 0;
 }
 
 :host([data-pin-edge='end'])::after {
-    inset-inline-start: -14px;
-    background: linear-gradient(
-        270deg,
-        color-mix(in srgb, var(--ag-brand) 6%, transparent) 0%,
-        color-mix(in srgb, var(--ag-brand) 0%, transparent) 100%
-    );
+    inset-inline-start: 0;
 }
 
 // Inline editor — chromeless `<input>` painted across the cell. The cell host
@@ -450,4 +442,42 @@ $invalid-color: var(--igx-cell-invalid-border-color, var(--ag-risk, #ef4444));
     border: 1px solid var(--ag-surface, #fff);
     z-index: 4;
     pointer-events: none;
+}
+
+// --- Formula reference highlight (CellDecorator seam) ----------------------
+// Inert for the community grid. The enterprise formula editor reflects
+// `data-formula-ref="<slot>"` onto each cell its formula references while that
+// formula is being edited, cycling a small palette so distinct references read
+// as distinct colors (spreadsheet-style). A faint fill plus a 1px inset ring
+// drawn with `box-shadow` so it never shifts the content box. Each slot resolves
+// `--apex-formula-ref` (themable via the per-slot `--apex-formula-ref-N` tokens).
+:host([data-formula-ref]) {
+    --apex-formula-ref: var(--ag-brand);
+
+    background: color-mix(in srgb, var(--apex-formula-ref) 14%, transparent);
+    box-shadow: inset 0 0 0 1px var(--apex-formula-ref);
+}
+
+:host([data-formula-ref='0']) {
+    --apex-formula-ref: var(--apex-formula-ref-0, #2563eb);
+}
+
+:host([data-formula-ref='1']) {
+    --apex-formula-ref: var(--apex-formula-ref-1, #16a34a);
+}
+
+:host([data-formula-ref='2']) {
+    --apex-formula-ref: var(--apex-formula-ref-2, #d97706);
+}
+
+:host([data-formula-ref='3']) {
+    --apex-formula-ref: var(--apex-formula-ref-3, #db2777);
+}
+
+:host([data-formula-ref='4']) {
+    --apex-formula-ref: var(--apex-formula-ref-4, #7c3aed);
+}
+
+:host([data-formula-ref='5']) {
+    --apex-formula-ref: var(--apex-formula-ref-5, #0891b2);
 }

@@ -6,6 +6,49 @@ import type { GridHost } from '../internal/types.js';
 /** Where a moved row lands relative to its target. */
 export type RowDropPosition = 'before' | 'after';
 
+/** Pixels the pointer must travel before a row drag engages. */
+const DRAG_THRESHOLD_PX = 4;
+
+/** A single cell snapshot used to paint the floating row ghost. */
+export interface RowGhostCell {
+  /** The cell's rendered text at grab time. */
+  text: string;
+  /** The cell's rendered width (px), so the ghost matches the column layout. */
+  width: number;
+  /** The cell's computed `text-align`, so numbers stay right-aligned in the ghost. */
+  align: string;
+}
+
+/** Everything the row hands the controller to seed the floating ghost. */
+export interface RowGhostInit {
+  /** The source row's bounding rect at grab time. */
+  rect: DOMRect;
+  /** Pointer position at grab time (to keep the grab point under the cursor). */
+  clientX: number;
+  clientY: number;
+  /** Per-cell snapshot of the row's visible content. */
+  cells: RowGhostCell[];
+}
+
+/**
+ * Live state for the floating "ghost" row that trails the cursor during a
+ * pointer drag. Mirrors {@link ReorderController}'s column ghost: the source
+ * row stays in the grid (and live-swaps), the ghost is a purely visual proxy.
+ */
+export interface RowGhostState {
+  /** Ghost position (viewport-relative top-left, in CSS pixels). */
+  x: number;
+  y: number;
+  /** Ghost size, fixed at the source row's initial bounding rect. */
+  width: number;
+  height: number;
+  /** Cursor offset within the ghost so the grab point stays under the cursor. */
+  pointerOffsetX: number;
+  pointerOffsetY: number;
+  /** Snapshot of the row's visible cells. */
+  cells: ReadonlyArray<RowGhostCell>;
+}
+
 /**
  * Reactive controller backing row drag-reorder and a manual row order.
  *
@@ -37,14 +80,39 @@ export class RowReorderController<T extends object> implements ReactiveControlle
   /** The row currently being pointer-dragged, or `null`. */
   public dragging: T | null = null;
 
+  /**
+   * Live floating-ghost state during a pointer drag, or `null`. Surfaced to the
+   * grid, which renders the ghost at the top of its shadow tree (outside the
+   * virtualizer) so `position: fixed` tracks the viewport cleanly.
+   */
+  public ghost: RowGhostState | null = null;
+
   /** The row currently grabbed for keyboard reorder, or `null`. */
   public grabbed: T | null = null;
 
   /** Re-entrancy guard so a slow swap can't trigger a second mid-drag. */
   #swapping = false;
 
+  /**
+   * In-flight pointer-drag gesture. The move/up listeners live on the **grid
+   * host** (a stable element), not the row, so a live-swap that recycles the
+   * source row's DOM can't tear the drag down mid-gesture.
+   */
+  #pending: {
+    data: T;
+    getGhost: () => RowGhostInit;
+    startX: number;
+    startY: number;
+    pointerId: number;
+  } | null = null;
+
   constructor(protected host: GridHost<T>) {
     this.host.addController(this);
+  }
+
+  /** The grid host as a DOM event target (it is always an `HTMLElement`). */
+  get #hostElement(): HTMLElement {
+    return this.host as unknown as HTMLElement;
   }
 
   public hostConnected() {}
@@ -52,6 +120,23 @@ export class RowReorderController<T extends object> implements ReactiveControlle
   /** Whether row reordering is enabled at the grid level. */
   public get enabled(): boolean {
     return Boolean(this.host.rowReordering?.enabled);
+  }
+
+  /**
+   * Whether a pointer drag must start from the dedicated grip handle (the
+   * default), rather than from anywhere on the row. Driven by
+   * `rowReordering.handle` (defaults to `true`).
+   */
+  public get handleMode(): boolean {
+    return this.enabled && this.host.rowReordering?.handle !== false;
+  }
+
+  /**
+   * Whether the leading grip-handle column is rendered. Only in handle mode, and
+   * only while reordering is enabled.
+   */
+  public get showHandleColumn(): boolean {
+    return this.handleMode;
   }
 
   /** Whether moves also splice {@link ApexGrid.data} in place. */
@@ -132,10 +217,36 @@ export class RowReorderController<T extends object> implements ReactiveControlle
 
   // --- pointer drag -------------------------------------------------------
 
-  /** Begins a pointer drag from `source`. */
-  public startDrag(source: T): void {
+  /**
+   * Begins a pointer drag from `source`. When `ghost` is supplied (the pointer
+   * path always does), seeds the floating ghost from the source row's rect and
+   * the grab point so it stays anchored under the cursor.
+   */
+  public startDrag(source: T, ghost?: RowGhostInit): void {
     if (!this.enabled) return;
     this.dragging = source;
+    this.ghost = ghost
+      ? {
+          x: ghost.rect.left,
+          y: ghost.rect.top,
+          width: ghost.rect.width,
+          height: ghost.rect.height,
+          pointerOffsetX: ghost.clientX - ghost.rect.left,
+          pointerOffsetY: ghost.clientY - ghost.rect.top,
+          cells: ghost.cells,
+        }
+      : null;
+    this.host.requestUpdate();
+  }
+
+  /** Moves the floating ghost to track the cursor. No-op without an active ghost. */
+  public moveGhost(clientX: number, clientY: number): void {
+    if (!this.ghost) return;
+    this.ghost = {
+      ...this.ghost,
+      x: clientX - this.ghost.pointerOffsetX,
+      y: clientY - this.ghost.pointerOffsetY,
+    };
     this.host.requestUpdate();
   }
 
@@ -170,8 +281,69 @@ export class RowReorderController<T extends object> implements ReactiveControlle
   public endDrag(): void {
     if (!this.dragging) return;
     this.dragging = null;
+    this.ghost = null;
     this.host.requestUpdate();
   }
+
+  /**
+   * Arms a pointer drag from a row press. Called by the row on `pointerdown`
+   * (from the grip in handle mode, or anywhere in whole-row mode). The move /
+   * up / cancel listeners are bound to the **grid host**, so the gesture is
+   * immune to the source row's DOM being recycled by a live-swap. `getGhost` is
+   * a thunk the controller invokes once, the instant the drag engages, to
+   * snapshot the row's cells (the row is still in place then).
+   */
+  public armPointerDrag(data: T, getGhost: () => RowGhostInit, event: PointerEvent): void {
+    const pinned = this.host.pinnedRows;
+    if (!this.enabled || pinned.top.includes(data) || pinned.bottom.includes(data)) return;
+    this.#pending = {
+      data,
+      getGhost,
+      startX: event.clientX,
+      startY: event.clientY,
+      pointerId: event.pointerId,
+    };
+    const host = this.#hostElement;
+    host.addEventListener('pointermove', this.#onHostPointerMove);
+    host.addEventListener('pointerup', this.#onHostPointerUp);
+    host.addEventListener('pointercancel', this.#onHostPointerUp);
+  }
+
+  #onHostPointerMove = (event: PointerEvent): void => {
+    const pending = this.#pending;
+    if (!pending || event.pointerId !== pending.pointerId) return;
+    if (!this.dragging) {
+      const dx = event.clientX - pending.startX;
+      const dy = event.clientY - pending.startY;
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+      // Capture on the stable host so moves keep arriving even when the cursor
+      // leaves the grid, and so the source row reflowing can't drop the pointer.
+      try {
+        this.#hostElement.setPointerCapture(pending.pointerId);
+      } catch {
+        /* a synthetic pointer id may not be capturable; hit-testing still works */
+      }
+      this.startDrag(pending.data, pending.getGhost());
+    }
+    this.moveGhost(event.clientX, event.clientY);
+    this.dragOver(event.clientY);
+  };
+
+  #onHostPointerUp = (event: PointerEvent): void => {
+    const pending = this.#pending;
+    if (!pending || event.pointerId !== pending.pointerId) return;
+    const host = this.#hostElement;
+    host.removeEventListener('pointermove', this.#onHostPointerMove);
+    host.removeEventListener('pointerup', this.#onHostPointerUp);
+    host.removeEventListener('pointercancel', this.#onHostPointerUp);
+    try {
+      if (host.hasPointerCapture(pending.pointerId)) host.releasePointerCapture(pending.pointerId);
+    } catch {
+      /* capture was never taken or already released */
+    }
+    this.#pending = null;
+    this.endDrag();
+  };
 
   async #dragSwap(target: T, position: RowDropPosition): Promise<void> {
     if (this.#swapping) return;

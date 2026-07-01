@@ -77,14 +77,26 @@
     <apex-grid id="grid"></apex-grid>
     <script type="module">
       const data = [
-        { id: '1',  name: 'Wireless Headphones',  category: 'Audio',     vendor: 'Sony',    sku: 'WH-1000XM5', price: 299.00, sold: 82,  rating: 4.5, stock: 14 },
-        { id: '2',  name: 'USB-C Hub',            category: 'Connectivity', vendor: 'Anker', sku: 'USB-C-HUB',  price: 49.99,  sold: 35,  rating: 3.8, stock: 28 },
-        { id: '3',  name: 'Mechanical Keyboard',  category: 'Input',     vendor: 'Keychron', sku: 'KB-MEC',    price: 189.00, sold: 64,  rating: 4.7, stock: 5  },
-        { id: '4',  name: 'Ergonomic Mouse',      category: 'Input',     vendor: 'Logitech', sku: 'MOUSE-ERG', price: 79.95,  sold: 91,  rating: 4.2, stock: 22 },
-        { id: '5',  name: 'Monitor Stand',        category: 'Furniture', vendor: 'Vivo',    sku: 'MNT-STAND',  price: 59.99,  sold: 47,  rating: 3.5, stock: 17 },
-        { id: '6',  name: '4K Webcam',            category: 'Video',     vendor: 'Logitech', sku: 'CAM-4K',    price: 149.00, sold: 28,  rating: 4.0, stock: 9  },
-        { id: '7',  name: 'Laptop Sleeve',        category: 'Accessories', vendor: 'tomtoc', sku: 'LP-SLV',    price: 34.99,  sold: 110, rating: 4.3, stock: 31 },
-        { id: '8',  name: 'Desk Lamp',            category: 'Furniture', vendor: 'BenQ',    sku: 'LAMP-DESK',  price: 44.50,  sold: 73,  rating: 3.9, stock: 12 },
+        { id: '1',  name: 'Wireless Headphones',  category: 'Audio',        vendor: 'Sony',     sku: 'WH-1000XM5',  price: 299.00, sold: 82,  rating: 4.5, stock: 14 },
+        { id: '2',  name: 'USB-C Hub',            category: 'Connectivity', vendor: 'Anker',    sku: 'USB-C-HUB',   price: 49.99,  sold: 35,  rating: 3.8, stock: 28 },
+        { id: '3',  name: 'Mechanical Keyboard',  category: 'Input',        vendor: 'Keychron', sku: 'KB-MEC',      price: 189.00, sold: 64,  rating: 4.7, stock: 5  },
+        { id: '4',  name: 'Ergonomic Mouse',      category: 'Input',        vendor: 'Logitech', sku: 'MOUSE-ERG',   price: 79.95,  sold: 91,  rating: 4.2, stock: 22 },
+        { id: '5',  name: 'Monitor Stand',        category: 'Furniture',    vendor: 'Vivo',     sku: 'MNT-STAND',   price: 59.99,  sold: 47,  rating: 3.5, stock: 17 },
+        { id: '6',  name: '4K Webcam',            category: 'Video',        vendor: 'Logitech', sku: 'CAM-4K',      price: 149.00, sold: 28,  rating: 4.0, stock: 9  },
+        { id: '7',  name: 'Laptop Sleeve',        category: 'Accessories',  vendor: 'tomtoc',   sku: 'LP-SLV',      price: 34.99,  sold: 110, rating: 4.3, stock: 31 },
+        { id: '8',  name: 'Desk Lamp',            category: 'Furniture',    vendor: 'BenQ',     sku: 'LAMP-DESK',   price: 44.50,  sold: 73,  rating: 3.9, stock: 12 },
+        { id: '9',  name: 'True Wireless Earbuds',category: 'Audio',        vendor: 'Apple',    sku: 'AIRPODS-PRO', price: 249.00, sold: 143, rating: 4.6, stock: 20 },
+        { id: '10', name: 'Portable Charger',     category: 'Connectivity', vendor: 'Anker',    sku: 'CHG-20K',     price: 39.99,  sold: 88,  rating: 4.1, stock: 45 },
+        { id: '11', name: 'Ultrawide Monitor',    category: 'Video',        vendor: 'Samsung',  sku: 'MON-UW34',    price: 649.00, sold: 19,  rating: 4.4, stock: 6  },
+        { id: '12', name: 'Noise-Cancelling Headset', category: 'Audio',   vendor: 'Jabra',    sku: 'EVO-65',      price: 219.00, sold: 52,  rating: 4.3, stock: 11 },
+        { id: '13', name: 'Wireless Charging Pad',category: 'Connectivity', vendor: 'Belkin',   sku: 'CHG-PAD15',   price: 29.99,  sold: 67,  rating: 3.7, stock: 38 },
+        { id: '14', name: 'LED Desk Light',       category: 'Furniture',    vendor: 'Philips',  sku: 'LED-DK55',    price: 54.99,  sold: 41,  rating: 4.0, stock: 24 },
+        { id: '15', name: 'Laptop Stand',         category: 'Accessories',  vendor: 'Vivo',     sku: 'LP-STD-ALU',  price: 49.99,  sold: 76,  rating: 4.2, stock: 18 },
+        { id: '16', name: 'Compact Keyboard',     category: 'Input',        vendor: 'Apple',    sku: 'KB-MAGIC',    price: 99.00,  sold: 58,  rating: 4.4, stock: 13 },
+        { id: '17', name: 'USB-C Docking Station',category: 'Connectivity', vendor: 'Dell',     sku: 'DOCK-UD22',   price: 199.00, sold: 33,  rating: 4.1, stock: 8  },
+        { id: '18', name: 'Trackball Mouse',      category: 'Input',        vendor: 'Logitech', sku: 'MXERGO2',     price: 119.99, sold: 44,  rating: 4.5, stock: 16 },
+        { id: '19', name: 'Monitor Light Bar',    category: 'Furniture',    vendor: 'BenQ',     sku: 'SCRNBAR-PRO', price: 79.00,  sold: 61,  rating: 4.6, stock: 21 },
+        { id: '20', name: 'Phone Mount for Desk', category: 'Accessories',  vendor: 'Belkin',   sku: 'PH-MNT-DSK',  price: 24.99,  sold: 95,  rating: 3.6, stock: 50 },
       ];
 
       const grid = document.getElementById('grid');

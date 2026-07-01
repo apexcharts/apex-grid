@@ -142,8 +142,8 @@
         getDetailData: (order) => order.items,
       };
 
-      document.getElementById('expand').addEventListener('click', () => grid.expandAll());
-      document.getElementById('collapse').addEventListener('click', () => grid.collapseAll());
+      document.getElementById('expand').addEventListener('click', () => grid.expandAllRows());
+      document.getElementById('collapse').addEventListener('click', () => grid.collapseAllRows());
 
       // Expand the first order so the nested grid is visible on load.
       await grid.updateComplete;

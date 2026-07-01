@@ -1,9 +1,9 @@
 import { consume } from '@lit/context';
 import { html, LitElement, nothing } from 'lit';
-import { property } from 'lit/decorators.js';
+import { property, state } from 'lit/decorators.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
 import { MIN_COL_RESIZE_WIDTH } from '../internal/constants.js';
-import { renderSortArrows } from '../internal/icons.js';
+import { renderIcon, renderSortArrows } from '../internal/icons.js';
 import { partNameMap } from '../internal/part-map.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_HEADER_TAG } from '../internal/tags.js';
@@ -38,6 +38,14 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     return Boolean(this.column.sort) && !this.state?.rowReorder?.hasManualOrder;
   }
 
+  protected get isFilterable() {
+    return Boolean(this.column.filter);
+  }
+
+  protected get hasActiveFilter() {
+    return Boolean(this.state?.filtering?.state.has(this.column.key));
+  }
+
   protected get resizeController() {
     return this.state.resizing;
   }
@@ -60,6 +68,16 @@ export default class ApexGridHeader<T extends object> extends LitElement {
   /** 1-based column index passed in by the parent header row for `aria-colindex`. */
   @property({ attribute: false, type: Number })
   public colindex = 0;
+
+  /**
+   * Spreadsheet column letter (A, B, C, ...) shown as a prefix while formula
+   * coordinate hints are active. Empty string hides it.
+   */
+  @property({ attribute: false })
+  public coordinateLetter = '';
+
+  @state()
+  protected menuOpen = false;
 
   #addResizeEventHandlers() {
     const config: AddEventListenerOptions = { once: true };
@@ -125,11 +143,15 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     if (!this.isDraggable) return;
     if (event.button !== 0) return;
     // Skip if the user grabbed an interactive sub-part of the header — the
-    // resize handle or the sort/action icons. Those have their own handlers
-    // and should not arm a drag.
+    // resize handle, sort/action icons, filter button, menu button, or the
+    // column menu dropdown. Those have their own handlers and should not arm
+    // a drag.
     const path = event.composedPath();
     const target = path[0];
-    if (target instanceof Element && target.closest?.('[part~="resizable"], [part~="action"]')) {
+    if (
+      target instanceof Element &&
+      target.closest?.('[part~="resizable"], [part~="action"], [part~="col-menu"]')
+    ) {
       return;
     }
     this.#dragStartX = event.clientX;
@@ -183,6 +205,27 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     this.#dragPointerId = -1;
   };
 
+  // --- Filter button --------------------------------------------------
+
+  #handleFilterClick = (e: MouseEvent) => {
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    this.state.filtering.setActiveColumn(this.column, rect);
+  };
+
+  // --- Column menu button ---------------------------------------------
+
+  #handleMenuClick = (e: MouseEvent) => {
+    e.stopPropagation();
+    this.menuOpen = !this.menuOpen;
+  };
+
+  #handleMenuOutside = (e: PointerEvent) => {
+    if (!this.menuOpen) return;
+    if (e.composedPath().includes(this)) return;
+    this.menuOpen = false;
+  };
+
   protected override updated() {
     // Mirror the column's data type onto the host so the header label can match
     // the body cell alignment by default (numeric/currency cells right-align,
@@ -219,10 +262,12 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     super.connectedCallback();
     this.setAttribute('role', 'columnheader');
     this.addEventListener('pointerdown', this.#handleReorderPointerDown);
+    document.addEventListener('pointerdown', this.#handleMenuOutside, true);
   }
 
   public override disconnectedCallback(): void {
     this.removeEventListener('pointerdown', this.#handleReorderPointerDown);
+    document.removeEventListener('pointerdown', this.#handleMenuOutside, true);
     super.disconnectedCallback();
   }
 
@@ -266,12 +311,95 @@ export default class ApexGridHeader<T extends object> extends LitElement {
       : nothing;
   }
 
+  protected renderFilterButton() {
+    if (!this.isFilterable) return nothing;
+    const count = this.state?.filtering?.state.get(this.column.key)?.length ?? 0;
+    return html`<button
+      type="button"
+      part=${partNameMap({ action: true, 'filter-btn': true, 'filter-active': this.hasActiveFilter })}
+      aria-label="Filter column"
+      @click=${this.#handleFilterClick}
+    >
+      ${renderIcon('filter')}
+      ${count > 1 ? html`<span part="filter-count">${count}</span>` : nothing}
+    </button>`;
+  }
+
+  protected renderMenuButton() {
+    const hasMenuItems = this.isSortable || this.column.resizable;
+    if (!hasMenuItems) return nothing;
+    return html`<button
+      type="button"
+      part=${partNameMap({ action: true, 'menu-btn': true })}
+      aria-label="Column menu"
+      aria-expanded=${this.menuOpen ? 'true' : 'false'}
+      aria-haspopup="menu"
+      @click=${this.#handleMenuClick}
+    >
+      ${renderIcon('more-vert')}
+    </button>`;
+  }
+
+  protected renderColumnMenu() {
+    if (!this.menuOpen) return nothing;
+    return html`<div part="col-menu" role="menu">
+      ${
+        this.isSortable
+          ? html`
+            <button
+              type="button"
+              part="col-menu-item"
+              role="menuitem"
+              @click=${() => {
+                this.state.sorting.sort({ key: this.column.key, direction: 'ascending' } as any);
+                this.menuOpen = false;
+              }}
+            >
+              ${renderIcon('sort-asc')} Sort Ascending
+            </button>
+            <button
+              type="button"
+              part="col-menu-item"
+              role="menuitem"
+              @click=${() => {
+                this.state.sorting.sort({ key: this.column.key, direction: 'descending' } as any);
+                this.menuOpen = false;
+              }}
+            >
+              ${renderIcon('sort-desc')} Sort Descending
+            </button>
+          `
+          : nothing
+      }
+      ${
+        this.column.resizable
+          ? html`<button
+            type="button"
+            part="col-menu-item"
+            role="menuitem"
+            @click=${() => {
+              this.state.resizing.autosize(this.column, this);
+              this.menuOpen = false;
+            }}
+          >
+            ${renderIcon('arrow-upward')} Autosize Column
+          </button>`
+          : nothing
+      }
+    </div>`;
+  }
+
   protected renderContentPart() {
     const defaultContent = this.column.headerText ?? this.column.key;
     const template = this.column.headerTemplate;
 
     return html`
       <span part="title">
+        ${
+          this.coordinateLetter
+            ? html`<span part="coord-letter" aria-hidden="true">${this.coordinateLetter}</span>`
+            : nothing
+        }
         <span>${template ? template(this.context) : html`${defaultContent}`}</span>
       </span>
     `;
@@ -297,9 +425,14 @@ export default class ApexGridHeader<T extends object> extends LitElement {
         })}
       >
         ${this.renderContentPart()}
-        <div part="actions">${this.renderSortPart()}</div>
+        <div part="actions">
+          ${this.renderSortPart()}
+          ${this.renderFilterButton()}
+          ${this.renderMenuButton()}
+        </div>
       </div>
       ${this.renderResizePart()}
+      ${this.renderColumnMenu()}
     `;
   }
 }

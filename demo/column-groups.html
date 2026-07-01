@@ -51,14 +51,26 @@
     <apex-grid id="grid"></apex-grid>
     <script type="module">
       const data = [
-        { id: 'E-1001', name: 'Mira Patel',    email: 'mira.patel@acme.io',    location: 'London',     salary: 92000,  bonus: 12000, department: 'Design'      },
-        { id: 'E-1002', name: 'Diego Rojas',   email: 'diego.rojas@acme.io',   location: 'Madrid',     salary: 105000, bonus: 18000, department: 'Engineering' },
-        { id: 'E-1003', name: 'Priya Iyer',    email: 'priya.iyer@acme.io',    location: 'Bengaluru',  salary: 98000,  bonus: 14000, department: 'Engineering' },
-        { id: 'E-1004', name: 'Otis Brown',    email: 'otis.brown@acme.io',    location: 'Chicago',    salary: 87000,  bonus: 9000,  department: 'Finance'     },
-        { id: 'E-1005', name: 'Ana Costa',     email: 'ana.costa@acme.io',     location: 'Lisbon',     salary: 76000,  bonus: 8000,  department: 'Marketing'   },
-        { id: 'E-1006', name: 'Sven Eriksen',  email: 'sven.eriksen@acme.io',  location: 'Stockholm',  salary: 112000, bonus: 21000, department: 'Engineering' },
-        { id: 'E-1007', name: 'Yuki Tanaka',   email: 'yuki.tanaka@acme.io',   location: 'Tokyo',      salary: 101000, bonus: 16000, department: 'Design'      },
-        { id: 'E-1008', name: 'Kofi Mensah',   email: 'kofi.mensah@acme.io',   location: 'Accra',      salary: 83000,  bonus: 7500,  department: 'Operations'  },
+        { id: 'E-1001', name: 'Mira Patel',       email: 'mira.patel@acme.io',       location: 'London',     salary: 92000,  bonus: 12000, department: 'Design'      },
+        { id: 'E-1002', name: 'Diego Rojas',      email: 'diego.rojas@acme.io',      location: 'Madrid',     salary: 105000, bonus: 18000, department: 'Engineering' },
+        { id: 'E-1003', name: 'Priya Iyer',       email: 'priya.iyer@acme.io',       location: 'Bengaluru',  salary: 98000,  bonus: 14000, department: 'Engineering' },
+        { id: 'E-1004', name: 'Otis Brown',       email: 'otis.brown@acme.io',       location: 'Chicago',    salary: 87000,  bonus: 9000,  department: 'Finance'     },
+        { id: 'E-1005', name: 'Ana Costa',        email: 'ana.costa@acme.io',        location: 'Lisbon',     salary: 76000,  bonus: 8000,  department: 'Marketing'   },
+        { id: 'E-1006', name: 'Sven Eriksen',     email: 'sven.eriksen@acme.io',     location: 'Stockholm',  salary: 112000, bonus: 21000, department: 'Engineering' },
+        { id: 'E-1007', name: 'Yuki Tanaka',      email: 'yuki.tanaka@acme.io',      location: 'Tokyo',      salary: 101000, bonus: 16000, department: 'Design'      },
+        { id: 'E-1008', name: 'Kofi Mensah',      email: 'kofi.mensah@acme.io',      location: 'Accra',      salary: 83000,  bonus: 7500,  department: 'Operations'  },
+        { id: 'E-1009', name: 'Lena Hoffmann',    email: 'lena.hoffmann@acme.io',    location: 'Berlin',     salary: 97000,  bonus: 13500, department: 'Design'      },
+        { id: 'E-1010', name: 'Ravi Sharma',      email: 'ravi.sharma@acme.io',      location: 'Mumbai',     salary: 119000, bonus: 22000, department: 'Engineering' },
+        { id: 'E-1011', name: 'Fatima Al-Rashid', email: 'fatima.al-rashid@acme.io', location: 'Dubai',      salary: 73000,  bonus: 6500,  department: 'HR'          },
+        { id: 'E-1012', name: 'Marcus Williams',  email: 'marcus.williams@acme.io',  location: 'New York',   salary: 124000, bonus: 25000, department: 'Product'     },
+        { id: 'E-1013', name: 'Sofia Rossi',      email: 'sofia.rossi@acme.io',      location: 'Milan',      salary: 88000,  bonus: 10500, department: 'Design'      },
+        { id: 'E-1014', name: 'Chen Wei',         email: 'chen.wei@acme.io',         location: 'Shanghai',   salary: 102000, bonus: 17000, department: 'Engineering' },
+        { id: 'E-1015', name: 'Amara Diallo',     email: 'amara.diallo@acme.io',     location: 'Paris',      salary: 71000,  bonus: 6000,  department: 'Marketing'   },
+        { id: 'E-1016', name: 'James O\'Brien',   email: 'james.obrien@acme.io',     location: 'Dublin',     salary: 109000, bonus: 19500, department: 'Legal'       },
+        { id: 'E-1017', name: 'Nadia Petrov',     email: 'nadia.petrov@acme.io',     location: 'Warsaw',     salary: 79000,  bonus: 8500,  department: 'HR'          },
+        { id: 'E-1018', name: 'Luis Herrera',     email: 'luis.herrera@acme.io',     location: 'Mexico City', salary: 85000, bonus: 11000, department: 'Engineering' },
+        { id: 'E-1019', name: 'Aisha Okonkwo',    email: 'aisha.okonkwo@acme.io',    location: 'Lagos',      salary: 91000,  bonus: 13000, department: 'Product'     },
+        { id: 'E-1020', name: 'Erik Lindqvist',   email: 'erik.lindqvist@acme.io',   location: 'Oslo',       salary: 116000, bonus: 23500, department: 'Engineering' },
       ];
 
       const grid = document.getElementById('grid');

@@ -35,6 +35,8 @@
     // grid reads as a calm, neutral table; `--ag-brand` is reserved for genuine
     // state (selection, focus, checkboxes, active sort) and accents (chips).
     --ag-hairline: rgba(15, 23, 42, 0.08); // header / structural gridlines
+    --ag-border: rgba(15, 23, 42, 0.08); // row separators — same weight as hairline
+    --ag-pin-line: rgba(15, 23, 42, 0.18); // 1px vertical line at pinned-column edge
     --ag-row-hover: color-mix(in srgb, #0f172a 5%, var(--ag-surface)); // neutral hover wash (opaque)
 
     // ── Surfaces ─────────────────────────────────────────────────────────
@@ -47,15 +49,10 @@
     // gradient while sticky surfaces stay flat/opaque. Dark themes override it
     // with a flat color. The host paints THIS, so dark mode is impossible
     // without it being a token.
-    --ag-grid-bg: linear-gradient(
-        155deg,
-        rgba(255, 255, 255, 0.96) 0%,
-        rgba(252, 253, 255, 0.92) 50%,
-        rgba(248, 250, 254, 0.94) 100%
-    );
+    --ag-grid-bg: #ffffff; // flat white — gradients are dated in modern data grids
     --ag-surface: #fff; // grid card background
-    --ag-surface-alt: #f9fafb; // alternating row tint (neutral, opaque)
-    --ag-surface-elevated: linear-gradient(180deg, #fbfcfd 0%, #f6f7f8 100%); // header bg (neutral, opaque)
+    --ag-surface-alt: var(--ag-surface); // no zebra stripes — rely on hover + hairline borders
+    --ag-surface-elevated: #f8f9fb; // flat header/toolbar/footer surface
 
     // ── Text ─────────────────────────────────────────────────────────────
     --ag-text: #111827; // primary
@@ -63,8 +60,6 @@
     --ag-text-muted: #6b7280; // roles, labels
     --ag-text-subtle: #9ca3af; // placeholder, ellipsis
     --ag-text-on-brand: #fff;
-
-    --ag-border: rgba(15, 23, 42, 0.05); // row separators
 
     // ── State ────────────────────────────────────────────────────────────
     --ag-good: #10b981; // health > 80, Active
@@ -88,8 +83,8 @@
 
     // ── Typography ───────────────────────────────────────────────────────
     --ag-font: 'Inter', -apple-system, blinkmacsystemfont, sans-serif;
-    --ag-fs-cell: 12px;
-    --ag-fs-cell-secondary: 10.5px; // role line, header labels
+    --ag-fs-cell: 13px;
+    --ag-fs-cell-secondary: 11.5px; // role line, header labels
     --ag-fs-tiny: 10px; // tags, page ellipsis
     --ag-fw-regular: 500;
     --ag-fw-semibold: 600;
@@ -101,10 +96,10 @@
     // ── Spacing & sizing ─────────────────────────────────────────────────
     --ag-cell-pad-x: 10px;
     --ag-row-h: 36px; // dense but readable
-    --ag-header-h: 36px;
+    --ag-header-h: 40px; // taller than rows to accommodate 3-icon header
     --ag-toolbar-pad: 12px 14px;
     --ag-footer-pad: 10px 14px;
-    --ag-radius: 18px; // outer card
+    --ag-radius: 8px; // outer card — tighter matches modern table libraries
     --ag-radius-sm: 6px; // chips, page buttons
     --ag-radius-xs: 4px; // checkboxes, expand button
     --ag-radius-pill: 20px; // status badges
@@ -135,13 +130,14 @@
     // ── Surfaces ── flat, opaque slate (sticky regions paint these).
     --ag-grid-bg: #0f172a; // host card (flat in dark)
     --ag-surface: #0f172a; // grid body / row bg
-    --ag-surface-alt: #172033; // alternating row tint (subtle lift)
-    --ag-surface-elevated: #1e293b; // header / footer / toolbar
+    --ag-surface-alt: var(--ag-surface); // no stripes in dark mode either
+    --ag-surface-elevated: #1e2532; // header / footer / toolbar — slightly lifted
 
     // ── Chrome ── light-on-dark gridlines + a hover wash that mixes toward
     // white (the light default mixes toward #0f172a, which is invisible here).
     --ag-hairline: rgba(255, 255, 255, 0.12); // structural gridlines
-    --ag-border: rgba(255, 255, 255, 0.07); // row separators
+    --ag-border: rgba(255, 255, 255, 0.12); // row separators — same weight as hairline
+    --ag-pin-line: rgba(255, 255, 255, 0.28); // 1px vertical line at pinned-column edge
     --ag-row-hover: color-mix(in srgb, #ffffff 7%, var(--ag-surface));
 
     // ── Text ──

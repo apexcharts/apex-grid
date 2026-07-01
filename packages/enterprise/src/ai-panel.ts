@@ -296,6 +296,8 @@ export class ApexGridAI extends LitElement {
     };
     panel.style.left = `${rect.left}px`;
     panel.style.top = `${rect.top}px`;
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
     (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
   };
 

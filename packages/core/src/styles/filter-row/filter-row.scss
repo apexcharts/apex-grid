@@ -1,113 +1,27 @@
 @use '../common' as *;
 
 // Resolution chain: igniteui override → current semantic var → premium default.
-$filtering-row-background: var(--igx-filtering-row-background, var(--filtering-row-background, transparent));
 $filtering-row-text-color: var(--igx-filtering-row-text-color, var(--filtering-row-text-color, var(--ag-text-body)));
 $header-background: var(--igx-header-background, var(--header-background, var(--ag-surface-elevated)));
-$header-text-color: var(--igx-header-text-color, var(--header-text-color, var(--ag-text-muted)));
-$header-border-width: var(--igx-header-border-width, var(--header-border-width, 1px));
-$header-border-style: var(--igx-header-border-style, var(--header-border-style, solid));
 $header-border-color: var(--igx-header-border-color, var(--header-border-color, var(--ag-hairline)));
 $accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var(--ag-brand)));
 
+// Hidden by default; becomes a fixed-position floating panel when [data-active]
+// is set by the component's activeChanged() watcher.
 :host {
-    --ig-size: 1;
-
-    display: grid;
-    grid-row: filter-row;
-    min-height: $ig-cells-min-height;
-    background: $header-background;
-    color: $header-text-color;
-    border-block-end: $header-border-width $header-border-style $header-border-color;
-    z-index: calc(var(--z-index-base) + 2);
-    position: sticky;
-    inset-block-start: var(--apex-row-top-filter, 0);
+    display: none;
+    position: fixed;
+    top: var(--fp-top, 0);
+    left: var(--fp-left, 0);
+    inline-size: rem(240px);
+    z-index: calc(var(--z-index-base) + 20);
 }
 
-[part='filter-row-preview'] {
-    display: flex;
-    align-items: center;
-    overflow: hidden;
-    padding: 0 $ig-cells-padding;
-    background: $filtering-row-background;
-    color: $filtering-row-text-color;
-    border-inline-end: $header-border-width $header-border-style $header-border-color;
+:host([data-active]) {
+    display: block;
 }
 
-[part~='active-state'] {
-    background: $filtering-row-background;
-    color: $filtering-row-text-color;
-    min-height: $ig-cells-min-height;
-    display: flex;
-    align-items: center;
-    gap: rem(8px);
-    margin-block-start: rem(-1px);
-
-    // Span every grid track in the host so an enabled selection column
-    // doesn't squeeze the active filter editor into a narrow 44px slot.
-    grid-column: 1 / -1;
-
-    // Pin the editor to the visible viewport and clamp its width to the grid's
-    // client width (written to `--apex-host-width` by the DOM controller) — the
-    // same pattern the toolbar and paginator use. Without this the row stretches
-    // across the full scrollable content width, pushing the Reset/Close actions
-    // far off to the right, reachable only by scrolling horizontally.
-    position: sticky;
-    inset-inline-start: 0;
-    width: var(--apex-host-width, 100%);
-    max-width: var(--apex-host-width, 100%);
-}
-
-[part='filter-row-preview']:last-of-type {
-    border-inline-end: none;
-}
-
-[part='filter-row-preview'][data-pinned='start'],
-[part='filter-row-preview'][data-pinned='end'] {
-    position: sticky;
-    z-index: calc(var(--z-index-base) + 1);
-    background: $header-background;
-}
-
-[part='filter-row-preview'][data-pinned='start'] {
-    inset-inline-start: var(--apex-pin-offset, 0);
-}
-
-[part='filter-row-preview'][data-pinned='end'] {
-    inset-inline-end: var(--apex-pin-offset, 0);
-}
-
-[part='filter-row-preview'][data-pin-edge='start'] {
-    border-inline-end: $header-border-width $header-border-style $header-border-color;
-    box-shadow: rem(2px) 0 rem(4px) rgb(0 0 0 / 6%);
-}
-
-[part='filter-row-preview'][data-pin-edge='end'] {
-    border-inline-start: $header-border-width $header-border-style $header-border-color;
-    box-shadow: rem(-2px) 0 rem(4px) rgb(0 0 0 / 6%);
-}
-
-[part~='filter-row-input'] {
-    padding-inline-start: $ig-cells-padding;
-}
-
-[part~='filter-row-actions'] {
-    padding-inline-end: $ig-cells-padding;
-}
-
-[part~='filter-row-input'],
-[part~='filter-row-filters'],
-[part~='filter-row-actions'] {
-    display: flex;
-    align-items: center;
-}
-
-[part~='filter-row-filters'] {
-    flex: 1;
-    overflow: hidden;
-}
-
-// Default inline-SVG sizing for icons used across the filter row chrome.
+// Inline-SVG sizing for icons used inside the panel.
 svg {
     inline-size: rem(16px);
     block-size: rem(16px);
@@ -117,27 +31,70 @@ svg {
     flex-shrink: 0;
 }
 
-[part='filter-field'] {
+// ---- Panel container -------------------------------------------------------
+
+[part='panel'] {
+    background: $header-background;
+    color: $filtering-row-text-color;
+    border: rem(1px) solid $header-border-color;
+    border-radius: rem(8px);
+    box-shadow: 0 rem(4px) rem(16px) rgb(0 0 0 / 14%);
+    overflow: visible;
+}
+
+// ---- Condition selector row ------------------------------------------------
+
+[part='condition-row'] {
     position: relative;
-    display: inline-flex;
+    padding: rem(8px) rem(8px) 0;
+}
+
+[part='condition-trigger'] {
+    appearance: none;
+    display: flex;
     align-items: center;
-    block-size: rem(28px);
+    justify-content: space-between;
     inline-size: 100%;
-    padding: 0 rem(6px);
-    gap: rem(4px);
+    padding: rem(6px) rem(8px);
+    gap: rem(6px);
     background: transparent;
     border: rem(1px) solid var(--ag-brand-line);
-    border-radius: rem(8px);
+    border-radius: rem(4px);
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+    font-size: rem(13px);
+    line-height: 1.2;
     box-sizing: border-box;
     transition:
         border-color var(--ag-dur-fast) var(--ag-ease),
         box-shadow var(--ag-dur-fast) var(--ag-ease);
 
-    &:focus-within {
+    &:hover {
         border-color: color-mix(in srgb, var(--ag-brand) 50%, transparent);
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--ag-brand) 14%, transparent);
+    }
+
+    &:focus-visible {
+        outline: rem(2px) solid $accent;
+        outline-offset: rem(-2px);
+        border-radius: rem(4px);
+    }
+
+    span {
+        flex: 1;
+        text-align: start;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    svg {
+        opacity: 0.6;
+        flex-shrink: 0;
     }
 }
+
+// ---- Condition dropdown list ------------------------------------------------
 
 [part~='dropdown'] {
     position: absolute;
@@ -146,7 +103,7 @@ svg {
     margin: 0;
     padding: rem(4px) 0;
     list-style: none;
-    background: var(--igx-content-background, var(--content-background, white));
+    background: $header-background;
     color: inherit;
     border: rem(1px) solid $header-border-color;
     border-radius: rem(4px);
@@ -187,69 +144,67 @@ svg {
     }
 }
 
+// ---- Input row -------------------------------------------------------------
+
+[part='panel-input-row'] {
+    padding: rem(6px) rem(8px) 0;
+}
+
 [part='filter-input'] {
-    flex: 1;
-    min-inline-size: 0;
+    display: block;
+    inline-size: 100%;
     appearance: none;
     background: transparent;
     color: inherit;
-    border: 0;
+    border: rem(1px) solid var(--ag-brand-line);
+    border-radius: rem(4px);
     outline: 0;
-    padding: 0;
+    padding: rem(6px) rem(8px);
     margin: 0;
     font: inherit;
     font-size: rem(13px);
-    line-height: 1;
+    line-height: 1.2;
+    box-sizing: border-box;
+    transition:
+        border-color var(--ag-dur-fast) var(--ag-ease),
+        box-shadow var(--ag-dur-fast) var(--ag-ease);
 
     &::placeholder {
         color: inherit;
-        opacity: 0.55;
+        opacity: 0.45;
     }
 
-    &:read-only {
-        cursor: default;
-    }
-}
-
-[part='condition-trigger'] {
-    appearance: none;
-    background: transparent;
-    border: 0;
-    padding: rem(2px);
-    margin: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    color: inherit;
-    line-height: 0;
-    border-radius: rem(3px);
-
-    &:hover {
-        background: hsl(from currentcolor h s l / 8%);
-    }
-
-    &:focus-visible {
-        outline: rem(2px) solid $accent;
-        outline-offset: rem(-2px);
+    &:focus {
+        border-color: color-mix(in srgb, var(--ag-brand) 50%, transparent);
+        box-shadow: 0 0 0 rem(3px) color-mix(in srgb, var(--ag-brand) 14%, transparent);
     }
 }
 
-[part='action'],
+// ---- Expression chips row --------------------------------------------------
+
+[part='chips-row'] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: rem(4px);
+    padding: rem(6px) rem(8px) 0;
+
+    &:empty {
+        display: none;
+    }
+}
+
 [part='criteria'] {
     appearance: none;
     background: transparent;
-    color: inherit;
+    color: $accent;
     border: 0;
     border-radius: rem(3px);
-    padding: rem(3px) rem(8px);
+    padding: rem(2px) rem(6px);
     margin: 0;
     font: inherit;
-    font-size: rem(12px);
+    font-size: rem(11px);
+    font-weight: 600;
     line-height: 1;
-    display: inline-flex;
-    align-items: center;
-    gap: rem(4px);
     cursor: pointer;
     text-transform: uppercase;
     letter-spacing: rem(0.5px);
@@ -257,70 +212,9 @@ svg {
     &:hover {
         background: hsl(from currentcolor h s l / 8%);
     }
-
-    &:focus-visible {
-        outline: rem(2px) solid $accent;
-        outline-offset: rem(1px);
-    }
 }
 
-[part='criteria'] {
-    color: $accent;
-    font-weight: 600;
-}
-
-// The column-level "Filter" chip rendered in the inactive state for each column.
-// It's the entry point to opening the active filter row.
-[part='filter-chip'] {
-    appearance: none;
-    display: inline-flex;
-    align-items: center;
-    gap: rem(4px);
-    background: transparent;
-    color: var(--ag-text-muted);
-    border: rem(1px) solid var(--ag-hairline);
-    border-radius: var(--ag-radius-sm);
-    padding: rem(2px) rem(10px) rem(2px) rem(8px);
-    font: inherit;
-    font-size: rem(12px);
-    line-height: 1.6;
-    cursor: pointer;
-    transition:
-        background-color var(--ag-dur-fast) var(--ag-ease),
-        color var(--ag-dur-fast) var(--ag-ease);
-
-    &:hover {
-        background: hsl(from currentcolor h s l / 8%);
-        color: var(--ag-text-body);
-    }
-
-    &:focus-visible {
-        outline: rem(2px) solid $accent;
-        outline-offset: rem(1px);
-    }
-
-    svg {
-        opacity: 0.8;
-    }
-}
-
-[part='filter-chip-count'] {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-inline-size: rem(16px);
-    block-size: rem(16px);
-    padding: 0 rem(4px);
-    border-radius: rem(8px);
-    background: $accent;
-    color: var(--igx-primary-500-contrast, white);
-    font-size: rem(10px);
-    font-weight: 600;
-    margin-inline-start: rem(2px);
-}
-
-// Selectable + removable chip rendered for each active filter expression in the
-// active row. Body is the select target; trailing button removes the expression.
+// Selectable + removable chip rendered for each active filter expression.
 [part='expression-chip'] {
     display: inline-flex;
     align-items: stretch;
@@ -380,8 +274,6 @@ svg {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-
-    // Touch target: 24x24 minimum (WCAG 2.5.8).
     min-inline-size: rem(24px);
     min-block-size: rem(24px);
     opacity: 0.55;
@@ -402,5 +294,45 @@ svg {
     svg {
         inline-size: rem(12px);
         block-size: rem(12px);
+    }
+}
+
+// ---- Footer ----------------------------------------------------------------
+
+[part='panel-footer'] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: rem(4px);
+    padding: rem(6px) rem(8px);
+    margin-block-start: rem(6px);
+    border-block-start: rem(1px) solid $header-border-color;
+}
+
+[part='action'] {
+    appearance: none;
+    background: transparent;
+    color: inherit;
+    border: 0;
+    border-radius: rem(3px);
+    padding: rem(3px) rem(8px);
+    margin: 0;
+    font: inherit;
+    font-size: rem(12px);
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: rem(4px);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: rem(0.5px);
+
+    &:hover {
+        background: hsl(from currentcolor h s l / 8%);
+    }
+
+    &:focus-visible {
+        outline: rem(2px) solid $accent;
+        outline-offset: rem(1px);
     }
 }

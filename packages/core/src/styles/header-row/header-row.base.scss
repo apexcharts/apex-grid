@@ -32,6 +32,30 @@ $accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var
     background: $filtering-header-background;
 }
 
+// Corner spacer over the body's row-number gutter (formula coordinate hints).
+[part='row-number-header'] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: calc(var(--z-index-base) + 2);
+    background: inherit;
+    border-inline-end: 1px solid $header-border-color;
+    color: var(--ag-text-subtle);
+    font-size: var(--ag-fs-cell-secondary);
+}
+
+// Empty corner spacer aligning the header with the body's leading grip-handle
+// column (row-reorder handle mode). Pinned start so it stays put during
+// horizontal scrolling.
+[part='reorder-handle-header'] {
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: calc(var(--z-index-base) + 2);
+    background: inherit;
+}
+
 // Built-in selection header cell — pinned start so it stays aligned with the
 // selection checkbox column in the body rows.
 [part='selection-header'] {

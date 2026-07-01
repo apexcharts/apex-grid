@@ -77,7 +77,7 @@ export default class GridTestFixture<T extends object> {
 
   public get filterRow() {
     // @ts-expect-error - Protected member access
-    return new FilterRowFixture(this.grid.filterRow);
+    return new FilterRowFixture(this.grid.filterRow, this.headerRow);
   }
 
   public get gridBody() {

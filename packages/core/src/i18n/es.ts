@@ -115,10 +115,6 @@ export const esLocale: GridLocaleText = {
 
   // Enterprise: gráficos
   'chart.close': 'Cerrar',
-  'chart.theme': 'Tema del gráfico',
-  'chart.themeGrid': 'Tema de la tabla',
-  'chart.themeLight': 'Claro',
-  'chart.themeDark': 'Oscuro',
   'chart.placeholder': 'Seleccione celdas, o agrupe/pivote la tabla, para graficarla.',
   'chart.chartRange': 'Graficar rango',
   'chart.countSeries': 'Recuento',

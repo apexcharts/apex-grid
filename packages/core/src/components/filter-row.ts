@@ -1,7 +1,6 @@
 import { consume } from '@lit/context';
 import { html, LitElement, nothing } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
-import { ifDefined } from 'lit/directives/if-defined.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
 import type { GridLocaleKey } from '../i18n/index.js';
 import { DEFAULT_COLUMN_CONFIG } from '../internal/constants.js';
@@ -9,9 +8,8 @@ import { renderIcon } from '../internal/icons.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_FILTER_ROW_TAG } from '../internal/tags.js';
 import type { ColumnConfiguration } from '../internal/types.js';
-import { getDisplayColumns, getFilterOperandsFor, getPinEdge } from '../internal/utils.js';
+import { getFilterOperandsFor } from '../internal/utils.js';
 import { watch } from '../internal/watch.js';
-import type { FilterExpressionTree } from '../operations/filter/tree.js';
 import type { FilterExpression, FilterOperation, OperandKeys } from '../operations/filter/types.js';
 import { styles } from '../styles/filter-row/filter-row.css.js';
 
@@ -52,6 +50,10 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   @property({ attribute: false })
   public active = false;
 
+  /** Bounding rect of the filter icon that opened this panel. Used for positioning. */
+  @property({ attribute: false })
+  public triggerRect: DOMRect | null = null;
+
   @query('input')
   public input!: HTMLInputElement;
 
@@ -78,20 +80,13 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     this.filterController.removeExpression(expression);
   }
 
-  async #show() {
-    this.active = true;
-
-    await this.updateComplete;
-    this.input?.select();
-  }
-
   #applyCondition(key: OperandKeys<T[typeof this.column.key]>) {
     // XXX: Types
     this.expression.condition = (getFilterOperandsFor(this.column) as any)[key] as FilterOperation<
       T[keyof T]
     >;
 
-    if (this.input.value || this.expression.condition.unary) {
+    if (this.input?.value || this.expression.condition.unary) {
       this.filterController.filterWithEvent(this.expression, 'modify');
     }
 
@@ -109,17 +104,35 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   };
 
   #handleOutsidePointer = (event: PointerEvent) => {
-    if (!this.dropdownOpen) return;
     const path = event.composedPath();
-    if (path.includes(this.dropdown) || path.includes(this.conditionElement)) return;
-    this.dropdownOpen = false;
+
+    // Close the condition dropdown if clicking outside it.
+    if (this.dropdownOpen) {
+      if (!path.includes(this.dropdown) && !path.includes(this.conditionElement)) {
+        this.dropdownOpen = false;
+      }
+      return;
+    }
+
+    // Close the whole panel if clicking outside it.
+    if (this.active && !path.includes(this)) {
+      this.active = false;
+    }
   };
 
   #handleDocumentKey = (event: KeyboardEvent) => {
-    if (this.dropdownOpen && event.key === 'Escape') {
+    if (event.key !== 'Escape') return;
+
+    if (this.dropdownOpen) {
       event.stopPropagation();
       this.dropdownOpen = false;
       this.conditionElement?.focus();
+      return;
+    }
+
+    if (this.active) {
+      event.stopPropagation();
+      this.active = false;
     }
   };
 
@@ -135,7 +148,6 @@ export default class ApexFilterRow<T extends object> extends LitElement {
 
     if (shouldUpdate) {
       this.expression.searchTerm = value as any;
-
       this.filterController.filterWithEvent(this.expression, type);
     } else {
       this.#removeExpression(this.expression);
@@ -149,7 +161,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
 
     switch (event.key) {
       case 'Enter':
-        this.input.value = '';
+        if (this.input) this.input.value = '';
         this.#setDefaultExpression();
         return;
       case 'Escape':
@@ -162,6 +174,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
 
   #handleResetClick() {
     this.filterController.removeAllExpressions(this.column.key);
+    this.#setDefaultExpression();
     this.requestUpdate();
   }
 
@@ -171,8 +184,6 @@ export default class ApexFilterRow<T extends object> extends LitElement {
 
   public override connectedCallback(): void {
     super.connectedCallback();
-    this.setAttribute('role', 'row');
-    this.setAttribute('aria-rowindex', '2');
     document.addEventListener('pointerdown', this.#handleOutsidePointer, true);
     document.addEventListener('keydown', this.#handleDocumentKey, true);
   }
@@ -183,18 +194,25 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     super.disconnectedCallback();
   }
 
-  protected override updated(): void {
-    // The filter row follows the column header, shifted down by an optional
-    // group header row above it.
-    const depth = this.state?.host?.columnGroupDepth ?? 0;
-    this.setAttribute('aria-rowindex', String(depth + 2));
-  }
-
   @watch('active', { waitUntilFirstUpdate: true })
-  protected activeChanged() {
-    this.style.display = this.active ? 'flex' : '';
-
-    if (!this.active) {
+  protected async activeChanged() {
+    if (this.active && this.triggerRect) {
+      const panelWidth = 240;
+      const viewportWidth = window.innerWidth;
+      let left = this.triggerRect.left;
+      // Clamp so the panel doesn't overflow the right edge of the viewport.
+      if (left + panelWidth > viewportWidth - 8) {
+        left = Math.max(8, viewportWidth - panelWidth - 8);
+      }
+      this.style.setProperty('--fp-top', `${this.triggerRect.bottom + 4}px`);
+      this.style.setProperty('--fp-left', `${left}px`);
+      this.setAttribute('data-active', '');
+      await this.updateComplete;
+      this.input?.select();
+    } else {
+      this.removeAttribute('data-active');
+      this.style.removeProperty('--fp-top');
+      this.style.removeProperty('--fp-left');
       this.column = DEFAULT_COLUMN_CONFIG as ColumnConfiguration<T>;
     }
 
@@ -204,7 +222,6 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   #chipCriteriaFor(expression: FilterExpression<T>) {
     return async (e: Event) => {
       e.stopPropagation();
-
       expression.criteria = expression.criteria === 'and' ? 'or' : 'and';
       this.filterController.filterWithEvent(expression, 'modify');
       this.requestUpdate();
@@ -228,7 +245,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
       if (this.active && this.expression === expression) {
         this.#setDefaultExpression();
         await this.updateComplete;
-        this.input.focus();
+        this.input?.focus();
       }
 
       this.requestUpdate();
@@ -348,6 +365,11 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   }
 
   protected renderDropdownTarget() {
+    const conditionLabel = this.state.localize(
+      `filter.operator.${this.condition.name}` as GridLocaleKey,
+      undefined,
+      (this.condition as FilterOperation<T>).label ?? this.condition.name
+    );
     return html`<button
       id="condition"
       type="button"
@@ -357,110 +379,41 @@ export default class ApexFilterRow<T extends object> extends LitElement {
       aria-expanded=${this.dropdownOpen ? 'true' : 'false'}
       @click=${this.#openDropdownList}
     >
-      ${renderIcon(this.condition.name)}
+      <span>${conditionLabel}</span>
+      ${renderIcon('chevron-down')}
     </button>`;
-  }
-
-  protected renderInputArea() {
-    return html`<div part="filter-field">
-      ${this.renderDropdownTarget()}
-      <input
-        part="filter-input"
-        type="text"
-        .value=${ifDefined(this.expression.searchTerm as string | undefined) as string}
-        placeholder=${this.state.localize('filter.inputPlaceholder')}
-        ?readonly=${this.condition.unary}
-        @input=${this.#handleInput}
-        @keydown=${this.#handleKeydown}
-      />
-      ${this.renderDropdown()}
-    </div>`;
   }
 
   protected renderActiveState() {
-    return html`<div part="active-state">
-      <div part="filter-row-input">${this.renderInputArea()}</div>
-      <div part="filter-row-filters">${this.renderActiveChips()}</div>
-      <div part="filter-row-actions">${this.renderFilterActions()}</div>
-    </div> `;
-  }
-
-  protected renderInactiveChips(column: ColumnConfiguration<T>, state: FilterExpressionTree<T>) {
-    return Array.from(state).map((expression, idx) => {
-      const props: ExpressionChipProps<T> = {
-        expression,
-        selected: false,
-        onRemove: this.#chipRemoveFor(expression),
-        onSelect: async (e: Event) => {
-          e.stopPropagation();
-          this.column = column;
-          this.expression = expression;
-          this.#show();
-        },
-      };
-
-      return html`${this.renderCriteriaButton(expression, idx)}${this.renderExpressionChip(props)}`;
-    });
-  }
-
-  protected renderFilterState(column: ColumnConfiguration<T>) {
-    const state = this.filterController.get(column.key);
-
-    const partial = state && state.length < 3;
-    const hidden = state && state.length >= 3;
-
-    const open = () => {
-      this.column = column;
-      this.#setDefaultExpression();
-      this.#show();
-    };
-
-    const count = hidden ? html`<span part="filter-chip-count">${state.length}</span>` : nothing;
-    const chip = html`<button
-      part="filter-chip"
-      type="button"
-      data-column=${column.key}
-      @click=${open}
-    >
-      ${renderIcon('filter')}<span>${this.state.localize('filter.filter')}</span>${count}
-    </button>`;
-
-    return partial ? this.renderInactiveChips(column, state) : chip;
-  }
-
-  protected renderInactiveState() {
-    const pinOffsets = this.state.pinOffsets;
-    const displayColumns = getDisplayColumns(this.state.host.columns);
-    // Reserve a track to align with the row's selection checkbox column.
-    const selectionPlaceholder = this.state.selection.showCheckboxColumn
-      ? html`<div part="filter-row-preview" data-pinned="start"></div>`
-      : nothing;
-    // And another for the row's expansion chevron column.
-    const expansionPlaceholder = this.state.expansion.showToggleColumn
-      ? html`<div part="filter-row-preview" data-pinned="start"></div>`
-      : nothing;
-
-    return html`${selectionPlaceholder}${expansionPlaceholder}${displayColumns.map(
-      (column, index) => {
-        if (column.hidden) return nothing;
-        const offset = pinOffsets.get(column.key);
-        const pinStyle =
-          column.pinned && typeof offset === 'number' ? `--apex-pin-offset:${offset}px` : '';
-        const edge = getPinEdge(displayColumns, index);
-        return html`<div
-          part="filter-row-preview"
-          data-pinned=${column.pinned ?? 'none'}
-          data-pin-edge=${edge ?? 'none'}
-          style=${pinStyle}
-        >
-          ${column.filter ? this.renderFilterState(column) : nothing}
-        </div>`;
-      }
-    )}`;
+    const hasChips = Boolean(this.filterController.get(this.column.key)?.length);
+    return html`
+      <div part="panel">
+        <div part="condition-row">
+          ${this.renderDropdownTarget()}
+          ${this.renderDropdown()}
+        </div>
+        ${
+          !this.condition.unary
+            ? html`<div part="panel-input-row">
+              <input
+                part="filter-input"
+                type="text"
+                .value=${(this.expression?.searchTerm as string) ?? ''}
+                placeholder=${this.state.localize('filter.inputPlaceholder')}
+                @input=${this.#handleInput}
+                @keydown=${this.#handleKeydown}
+              />
+            </div>`
+            : nothing
+        }
+        ${hasChips ? html`<div part="chips-row">${this.renderActiveChips()}</div>` : nothing}
+        <div part="panel-footer">${this.renderFilterActions()}</div>
+      </div>
+    `;
   }
 
   protected override render() {
-    return html`${this.active ? this.renderActiveState() : this.renderInactiveState()}`;
+    return html`${this.active ? this.renderActiveState() : nothing}`;
   }
 }
 

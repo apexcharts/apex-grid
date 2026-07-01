@@ -43,28 +43,8 @@ export interface FormulaEditorController {
   functionNames?(): string[];
   /** Resolve a clicked cell to its A1 reference, for click-to-insert. */
   referenceFor?(row: object, key: string, absolute?: boolean): string | undefined;
-}
-
-const REFERENCE = /[A-Za-z]+[0-9]+(?::[A-Za-z]+[0-9]+)?/g;
-
-/** Split formula text into reference and plain segments, for highlighting. */
-function highlightSegments(text: string): Array<{ text: string; kind: 'ref' | 'plain' }> {
-  const segments: Array<{ text: string; kind: 'ref' | 'plain' }> = [];
-  let last = 0;
-  REFERENCE.lastIndex = 0;
-  let match = REFERENCE.exec(text);
-  while (match !== null) {
-    if (match.index > last) {
-      segments.push({ text: text.slice(last, match.index), kind: 'plain' });
-    }
-    segments.push({ text: match[0], kind: 'ref' });
-    last = match.index + match[0].length;
-    match = REFERENCE.exec(text);
-  }
-  if (last < text.length) {
-    segments.push({ text: text.slice(last), kind: 'plain' });
-  }
-  return segments;
+  /** Highlight (or clear) the cells the formula being edited references. */
+  highlightReferences?(src: string | null): void;
 }
 
 /** Coerce committed literal text: empty to null, numeric to number, else text. */
@@ -102,42 +82,49 @@ export class FormulaCellEditor extends LitElement {
       background: transparent;
       color: inherit;
     }
-    [part='popover'] {
+    /* Floating dropdown for autocomplete + parse errors. Positioned 'fixed' (the
+       editor sets left/top/width in JS from the input's rect) so it escapes the
+       cell's clipping and never grows the row — a proper overlay, not in-flow.
+       Token-matched ([part~=]) because the elements carry 'popover suggestions'
+       / 'popover formula-error'. */
+    [part~='popover'] {
       position: absolute;
-      inset-block-start: 100%;
+      inset-block-start: calc(100% + 2px);
       inset-inline-start: 0;
-      z-index: 5;
+      z-index: 30;
       min-inline-size: 100%;
       box-sizing: border-box;
       background: #fff;
       border: 1px solid #d0d5dd;
-      border-radius: 0 0 4px 4px;
-      padding: 3px 6px;
+      border-radius: 6px;
+      box-shadow:
+        0 2px 6px rgba(0, 0, 0, 0.1),
+        0 8px 22px rgba(0, 0, 0, 0.16);
+      padding: 4px;
       font: 0.85em/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
       white-space: pre;
       color: #6b7280;
     }
-    [part='formula-ref'] {
-      color: #1d4ed8;
-      font-weight: 600;
-    }
-    [part='formula-error'] {
+    [part~='formula-error'] {
       color: #b42318;
       font-weight: 600;
       white-space: normal;
+      padding: 4px 8px;
+      max-inline-size: 260px;
     }
     [part~='suggestions'] {
       margin: 0;
-      padding: 2px 0;
+      padding: 2px;
       list-style: none;
       color: inherit;
-      max-block-size: 9em;
+      max-block-size: 11em;
       overflow-y: auto;
     }
     [part~='suggestion'] {
-      padding: 2px 8px;
+      padding: 3px 8px;
       cursor: pointer;
       color: #1f2937;
+      border-radius: 4px;
     }
     [part~='suggestion'][aria-selected='true'] {
       background: #eef2ff;
@@ -177,14 +164,38 @@ export class FormulaCellEditor extends LitElement {
 
   public override firstUpdated(): void {
     this.#input?.focus();
-    this.#input?.select();
+    // Caret at the END (not select-all): a fully-selected field made
+    // click-to-insert prepend the reference (corrupting the formula). With the
+    // caret at the end, clicking a cell appends / inserts at the caret.
+    const end = this.#input?.value.length ?? 0;
+    this.#input?.setSelectionRange(end, end);
     this.#attachClickToInsert();
+    this.#updateHighlights();
+    this.#allowCellOverflow(true);
   }
 
   public override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.#gridHost?.removeEventListener('pointerdown', this.#onGridPointerDown, true);
     this.#gridHost = null;
+    this.controller?.highlightReferences?.(null);
+    this.#allowCellOverflow(false);
+  }
+
+  /**
+   * Let the host cell's clip region open while editing so the dropdown (which
+   * extends below the cell) is visible, then restore it. The cell clips by
+   * default (`:host([editing]) { overflow: hidden }`).
+   */
+  #hostCell: HTMLElement | null = null;
+  #allowCellOverflow(on: boolean): void {
+    if (on) {
+      this.#hostCell = this.#hostCellEl;
+      if (this.#hostCell) this.#hostCell.style.overflow = 'visible';
+    } else if (this.#hostCell) {
+      this.#hostCell.style.overflow = '';
+      this.#hostCell = null;
+    }
   }
 
   public override updated(): void {
@@ -195,8 +206,13 @@ export class FormulaCellEditor extends LitElement {
     }
   }
 
+  /** The host cell this editor lives in (its shadow-root host), or null. */
+  get #hostCellEl(): HTMLElement | null {
+    const root = this.getRootNode();
+    return root instanceof ShadowRoot ? (root.host as HTMLElement) : null;
+  }
+
   public override render(): unknown {
-    const isFormula = this.text.trim().startsWith('=');
     return html`
       <input
         part="editor"
@@ -223,14 +239,7 @@ export class FormulaCellEditor extends LitElement {
             )}</ul>`
           : this.error
             ? html`<div part="popover formula-error" role="alert">${this.error}</div>`
-            : isFormula
-              ? html`<div part="popover" aria-hidden="true">${highlightSegments(this.text).map(
-                  (segment) =>
-                    segment.kind === 'ref'
-                      ? html`<span part="formula-ref">${segment.text}</span>`
-                      : segment.text
-                )}</div>`
-              : nothing
+            : nothing
       }
     `;
   }
@@ -260,6 +269,7 @@ export class FormulaCellEditor extends LitElement {
       this.error = this.#parseError(trimmed) ?? '';
     }
     this.#updateSuggestions(input.selectionStart ?? this.text.length);
+    this.#updateHighlights();
   };
 
   #onKeydown = (event: KeyboardEvent): void => {
@@ -344,6 +354,7 @@ export class FormulaCellEditor extends LitElement {
     this.#caretToRestore = start + name.length + 1; // between the parentheses
     this.suggestions = [];
     this.error = this.#parseError(this.text.trim()) ?? '';
+    this.#updateHighlights();
   }
 
   #onSuggestionPointerDown(event: Event, name: string): void {
@@ -419,14 +430,33 @@ export class FormulaCellEditor extends LitElement {
     this.#insertAtCaret(reference);
   };
 
-  /** Insert `text` at the caret (or end), keeping focus and re-validating. */
+  /**
+   * Insert `text` over the current selection (or at the caret), keeping focus
+   * and re-validating. Replacing the selection means a click-to-insert while a
+   * range is selected swaps it, and with the caret collapsed it just inserts.
+   */
   #insertAtCaret(text: string): void {
-    const caret = this.#input?.selectionStart ?? this.text.length;
-    this.text = `${this.text.slice(0, caret)}${text}${this.text.slice(caret)}`;
-    this.#caretToRestore = caret + text.length;
+    const input = this.#input;
+    const start = input?.selectionStart ?? this.text.length;
+    const end = input?.selectionEnd ?? start;
+    this.text = `${this.text.slice(0, start)}${text}${this.text.slice(end)}`;
+    this.#caretToRestore = start + text.length;
     this.suggestions = []; // an inserted reference dismisses any open autocomplete
     this.error = this.#parseError(this.text.trim()) ?? '';
+    this.#updateHighlights();
     this.#input?.focus();
+  }
+
+  /**
+   * Push the cells referenced by the current formula to the grid so they light
+   * up while editing (reference highlighting). Cleared when the text is not a
+   * formula. Row-number + column-letter coordinates are shown by default when
+   * the grid has formula columns (see the enterprise grid), so the editor no
+   * longer toggles them — that avoided a jarring layout shift on each edit.
+   */
+  #updateHighlights(): void {
+    const text = this.text.trim();
+    this.controller?.highlightReferences?.(text.startsWith('=') ? text : null);
   }
 
   async #commit(): Promise<void> {

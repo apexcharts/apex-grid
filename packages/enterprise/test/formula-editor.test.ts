@@ -134,15 +134,6 @@ describe('formula cell editor (F4)', () => {
     expect(state.canceled).to.be.false;
   });
 
-  it('highlights cell references in the preview', async () => {
-    const { controller } = makeController();
-    const { ctx } = makeCtx(0);
-    const el = await mountEditor(ctx, controller);
-    await type(el, '=A1+B2');
-    const refs = [...el.renderRoot.querySelectorAll('[part~="formula-ref"]')];
-    expect(refs.map((node) => node.textContent)).to.eql(['A1', 'B2']);
-  });
-
   // --- autocomplete (Tier 2, P3) -------------------------------------------
 
   const suggestionTexts = (el: FormulaCellEditor) =>

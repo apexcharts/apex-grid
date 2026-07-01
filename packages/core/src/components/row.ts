@@ -2,6 +2,7 @@ import { consume } from '@lit/context';
 import { html, LitElement, nothing } from 'lit';
 import { property, queryAll } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
+import type { RowGhostInit } from '../controllers/row-reorder.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
 import type { PresentedRow } from '../internal/feature-module.js';
 import { registerComponent } from '../internal/register.js';
@@ -10,6 +11,22 @@ import type { ActiveNode, ColumnConfiguration, Keys } from '../internal/types.js
 import { getPinEdge } from '../internal/utils.js';
 import { styles } from '../styles/body-row/body-row.css.js';
 import ApexGridCell from './cell.js';
+
+/** The six-dot grip drawn inside the row-reorder drag handle. */
+const GRIP_ICON = html`<svg
+  part="reorder-grip"
+  viewBox="0 0 16 16"
+  width="16"
+  height="16"
+  aria-hidden="true"
+>
+  <circle cx="6" cy="3.5" r="1.25" />
+  <circle cx="10" cy="3.5" r="1.25" />
+  <circle cx="6" cy="8" r="1.25" />
+  <circle cx="10" cy="8" r="1.25" />
+  <circle cx="6" cy="12.5" r="1.25" />
+  <circle cx="10" cy="12.5" r="1.25" />
+</svg>`;
 
 /**
  * Component representing the DOM row in the Apex grid.
@@ -67,6 +84,10 @@ export default class ApexGridRow<T extends object> extends LitElement {
   @property({ type: Boolean, reflect: true })
   public grabbed = false;
 
+  /** Reveal the spreadsheet row-number gutter cell (transient formula coordinate hint). */
+  @property({ type: Boolean })
+  public coordinateHints = false;
+
   /** The column key currently being edited in this row, or `null`. */
   @property({ attribute: false })
   public editingKey: Keys<T> | null = null;
@@ -95,65 +116,75 @@ export default class ApexGridRow<T extends object> extends LitElement {
    */
   #presented: PresentedRow | null = null;
 
-  /** Pixels the pointer must travel before a row drag engages. */
-  static readonly #DRAG_THRESHOLD_PX = 4;
-
   #dragStartX = 0;
   #dragStartY = 0;
-  #dragPointerId = -1;
-  #isDragging = false;
 
+  /**
+   * Arms a row drag. In handle mode only the grip starts one; in whole-row mode
+   * a press anywhere except an interactive sub-part does. The move / up plumbing
+   * lives on the grid host (see {@link RowReorderController.armPointerDrag}), so
+   * a live-swap that recycles this row's DOM can't break the gesture.
+   */
   #handleReorderPointerDown = (event: PointerEvent) => {
     const reorder = this.state?.rowReorder;
     if (!reorder?.enabled || event.button !== 0 || !this.data) return;
     // Pinned rows are not reorder sources (F4 scope).
     if (this.state.rowPin.isPinned(this.data)) return;
-    // Don't arm a drag from an interactive sub-part (editor, checkbox, button).
-    const target = event.composedPath()[0];
-    if (
-      target instanceof Element &&
-      target.closest?.('input, button, a, select, textarea, [data-apex-editor]')
-    ) {
-      return;
+
+    const path = event.composedPath();
+    const onHandle = path.some(
+      (node) =>
+        node instanceof Element && (node.getAttribute?.('part') ?? '').includes('reorder-handle')
+    );
+
+    if (reorder.handleMode) {
+      // Handle mode: only the grip starts a drag. The rest of the row stays free
+      // for selection / editing / text selection.
+      if (!onHandle) return;
+      // Own the gesture: keep the grid's body handler from treating the press as
+      // a cell interaction, and suppress native text/element drag-selection.
+      event.preventDefault();
+      event.stopPropagation();
+    } else {
+      // Whole-row mode: a drag begins anywhere except an interactive sub-part
+      // (editor, checkbox, button).
+      const target = path[0];
+      if (
+        target instanceof Element &&
+        target.closest?.('input, button, a, select, textarea, [data-apex-editor]')
+      ) {
+        return;
+      }
     }
+
     this.#dragStartX = event.clientX;
     this.#dragStartY = event.clientY;
-    this.#dragPointerId = event.pointerId;
-    this.addEventListener('pointermove', this.#handleReorderPointerMove);
-    this.addEventListener('pointerup', this.#handleReorderPointerUp);
-    this.addEventListener('pointercancel', this.#handleReorderPointerUp);
+    // The controller snapshots the ghost the instant the drag engages (the row
+    // is still in place then), seeded from the original press point.
+    reorder.armPointerDrag(
+      this.data,
+      () => this.#captureGhost(this.#dragStartX, this.#dragStartY),
+      event
+    );
   };
 
-  #handleReorderPointerMove = (event: PointerEvent) => {
-    if (event.pointerId !== this.#dragPointerId) return;
-    const reorder = this.state.rowReorder;
-    if (!this.#isDragging) {
-      const dx = event.clientX - this.#dragStartX;
-      const dy = event.clientY - this.#dragStartY;
-      if (Math.hypot(dx, dy) < ApexGridRow.#DRAG_THRESHOLD_PX) return;
-      this.#isDragging = true;
-      this.setPointerCapture(event.pointerId);
-      reorder.startDrag(this.data);
-    }
-    reorder.dragOver(event.clientY);
-  };
-
-  #handleReorderPointerUp = (event: PointerEvent) => {
-    if (event.pointerId !== this.#dragPointerId) return;
-    this.removeEventListener('pointermove', this.#handleReorderPointerMove);
-    this.removeEventListener('pointerup', this.#handleReorderPointerUp);
-    this.removeEventListener('pointercancel', this.#handleReorderPointerUp);
-    try {
-      if (this.hasPointerCapture(event.pointerId)) this.releasePointerCapture(event.pointerId);
-    } catch {
-      /* capture was already released */
-    }
-    if (this.#isDragging) {
-      this.#isDragging = false;
-      this.state.rowReorder.endDrag();
-    }
-    this.#dragPointerId = -1;
-  };
+  /**
+   * Snapshots the row's visible cells (text, width, alignment) and bounding rect
+   * so the controller can paint a faithful floating ghost. Invoked once, at the
+   * moment the drag engages.
+   */
+  #captureGhost(clientX: number, clientY: number): RowGhostInit {
+    const rect = this.getBoundingClientRect();
+    const cells = this.cells.map((cell) => {
+      const el = cell as unknown as HTMLElement;
+      return {
+        text: (el.textContent ?? '').replace(/\s+/g, ' ').trim(),
+        width: el.getBoundingClientRect().width,
+        align: getComputedStyle(el).textAlign,
+      };
+    });
+    return { rect, clientX, clientY, cells };
+  }
 
   public override connectedCallback(): void {
     super.connectedCallback();
@@ -164,9 +195,6 @@ export default class ApexGridRow<T extends object> extends LitElement {
 
   public override disconnectedCallback(): void {
     this.removeEventListener('pointerdown', this.#handleReorderPointerDown);
-    this.removeEventListener('pointermove', this.#handleReorderPointerMove);
-    this.removeEventListener('pointerup', this.#handleReorderPointerUp);
-    this.removeEventListener('pointercancel', this.#handleReorderPointerUp);
     super.disconnectedCallback();
   }
 
@@ -232,6 +260,35 @@ export default class ApexGridRow<T extends object> extends LitElement {
         this.removeAttribute('aria-expanded');
       }
     }
+  }
+
+  /**
+   * Leading row-number gutter cell (transient spreadsheet coordinate hint). Shown
+   * only while `coordinateHints` is on; pinned rows render an empty spacer (their
+   * band-local index is not a meaningful A1 row number) so the track stays
+   * aligned. Presentational: the accessible row index is `aria-rowindex`.
+   */
+  protected renderRowNumber() {
+    if (!this.coordinateHints) return nothing;
+    const pinned = Boolean(this.state?.rowPin?.isPinned(this.data));
+    return html`<div part="row-number-cell" data-pinned="start" aria-hidden="true">
+      ${pinned ? nothing : html`<span part="row-number">${this.index + 1}</span>`}
+    </div>`;
+  }
+
+  /**
+   * Leading drag-handle (grip) cell. Rendered only in handle mode; pinned rows
+   * get an empty spacer so the grid track stays aligned. The cell is
+   * presentational (`aria-hidden`) — the accessible reorder path is the keyboard
+   * grab flow, not this pointer affordance.
+   */
+  protected renderReorderHandle() {
+    const reorder = this.state?.rowReorder;
+    if (!reorder?.showHandleColumn) return nothing;
+    const draggable = !this.state?.rowPin?.isPinned(this.data);
+    return html`<div part="reorder-handle-cell" data-pinned="start" aria-hidden="true">
+      ${draggable ? html`<span part="reorder-handle">${GRIP_ICON}</span>` : nothing}
+    </div>`;
   }
 
   protected renderExpansionToggle(colindex: number) {
@@ -372,6 +429,8 @@ export default class ApexGridRow<T extends object> extends LitElement {
     // column through a reorder swap — required for the column-reorder FLIP
     // animation in ReorderController to track motion per cell.
     return html`
+      ${this.renderRowNumber()}
+      ${this.renderReorderHandle()}
       ${this.renderSelectionCell(selectionCol)}
       ${this.renderExpansionToggle(expansionCol)}
       ${repeat(

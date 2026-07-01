@@ -51,12 +51,11 @@ export class GridDOMController<T extends object> implements ReactiveController {
 
   /**
    * Number of chrome rows above the body for `aria-rowindex`: an optional group
-   * header row, the column header (always present), and an optional filter row.
+   * header row and the column header (always present). The filter panel is a
+   * floating overlay rather than a table row, so it is not counted here.
    */
   protected get headerRowCount(): number {
-    return (
-      this.host.columnGroupDepth + 1 + (this.host.columns.some((column) => column.filter) ? 1 : 0)
-    );
+    return this.host.columnGroupDepth + 1;
   }
 
   public rowRenderer: RenderItemFunction<T> = (data: T, index: number) => {
@@ -80,6 +79,7 @@ export class GridDOMController<T extends object> implements ReactiveController {
         .validationVersion=${this.state.editing.validationVersion}
         .dragging=${this.state.rowReorder.dragging === data}
         .grabbed=${this.state.rowReorder.grabbed === data}
+        .coordinateHints=${Boolean(this.host.coordinateHints)}
       >
       </apex-grid-row>
     `;
@@ -108,6 +108,7 @@ export class GridDOMController<T extends object> implements ReactiveController {
         .ariaRowOffset=${ariaRowOffset}
         .decorationVersion=${this.state.decorationVersion}
         .validationVersion=${this.state.editing.validationVersion}
+        .coordinateHints=${Boolean(this.host.coordinateHints)}
       >
       </apex-grid-row>
     `;
@@ -175,6 +176,8 @@ export class GridDOMController<T extends object> implements ReactiveController {
     this.columnSizes = applyColumnWidths(this.displayColumns, {
       showSelectionColumn: this.state.selection.showCheckboxColumn,
       showExpansionColumn: this.state.expansion.showToggleColumn,
+      showReorderHandle: this.state.rowReorder.showHandleColumn,
+      showRowNumbers: Boolean(this.host.coordinateHints),
     });
   }
 

@@ -3,7 +3,7 @@
 // Resolution chain: igniteui override → current semantic var → premium default.
 $filtering-header-background: var(--igx-filtering-header-background, var(--filtering-header-background, transparent));
 $header-border-color: var(--igx-header-border-color, var(--header-border-color, var(--ag-hairline)));
-$header-text-color: var(--igx-header-text-color, var(--header-text-color, var(--ag-text-muted)));
+$header-text-color: var(--igx-header-text-color, var(--header-text-color, var(--ag-text-body)));
 $active-header-icon-color: var(--igx-sorted-header-icon-color, var(--sorted-header-icon-color, var(--ag-brand)));
 $header-hover: color-mix(in srgb, var(--ag-brand) 4%, transparent);
 
@@ -46,33 +46,25 @@ $header-hover: color-mix(in srgb, var(--ag-brand) 4%, transparent);
     inset-inline-end: var(--apex-pin-offset, 0);
 }
 
-// Frozen-column edge: a soft brand fade (not a hard 1px separator). The fade
-// sits just outside the pinned cell and dissipates into the scroll region.
+// Frozen-column edge: a crisp 1px vertical line spanning the full column
+// height, sitting at the boundary between pinned and scrollable content.
 :host([data-pin-edge='start'])::after,
 :host([data-pin-edge='end'])::after {
     content: '';
     position: absolute;
     inset-block: 0;
-    width: 14px;
+    inline-size: 1px;
+    background: var(--ag-pin-line);
     pointer-events: none;
+    z-index: 1;
 }
 
 :host([data-pin-edge='start'])::after {
-    inset-inline-end: -14px;
-    background: linear-gradient(
-        90deg,
-        color-mix(in srgb, var(--ag-brand) 6%, transparent) 0%,
-        color-mix(in srgb, var(--ag-brand) 0%, transparent) 100%
-    );
+    inset-inline-end: 0;
 }
 
 :host([data-pin-edge='end'])::after {
-    inset-inline-start: -14px;
-    background: linear-gradient(
-        270deg,
-        color-mix(in srgb, var(--ag-brand) 6%, transparent) 0%,
-        color-mix(in srgb, var(--ag-brand) 0%, transparent) 100%
-    );
+    inset-inline-start: 0;
 }
 
 [part~='content'] {
@@ -86,14 +78,14 @@ $header-hover: color-mix(in srgb, var(--ag-brand) 4%, transparent);
     user-select: none;
 }
 
-// Numeric and currency columns right-align their body cells, so the header
-// label should sit flush with the values below it. Reversing the content row
-// pins the label to the trailing edge (matching the cells) and tucks the sort
-// affordance to its left.
-:host([data-cell-type='number']) [part~='content'],
-:host([data-cell-type='currency']) [part~='content'] {
-    flex-direction: row-reverse;
-    justify-content: flex-start;
+// Numeric and currency columns right-align their body cells. The title fills
+// available space and right-aligns its text so the label sits flush with the
+// values below it. Action icons stay on the trailing edge (same as every other
+// column type) so they don't crowd the left side.
+:host([data-cell-type='number']) [part~='title'],
+:host([data-cell-type='currency']) [part~='title'] {
+    flex: 1;
+    text-align: end;
 }
 
 [part~='title'] {
@@ -109,6 +101,19 @@ $header-hover: color-mix(in srgb, var(--ag-brand) 4%, transparent);
     font-weight: var(--ag-fw-semibold);
     letter-spacing: var(--ag-tracking-header);
     color: $header-text-color;
+}
+
+// Spreadsheet column-letter chip (transient formula coordinate hint), shown as
+// a small brand-tinted prefix before the header label.
+[part~='coord-letter'] {
+    display: inline-block;
+    margin-inline-end: 0.4em;
+    padding: 0 0.3em;
+    border-radius: var(--ag-radius-xs);
+    background: var(--ag-brand-soft);
+    color: var(--ag-brand-strong);
+    font-weight: var(--ag-fw-bold);
+    text-transform: none;
 }
 
 // Active sort column: the label lifts to the strong brand color.
@@ -163,32 +168,33 @@ $header-hover: color-mix(in srgb, var(--ag-brand) 4%, transparent);
     }
 }
 
-// Stacked sort chevrons. Both dim at 0.45 by default; hovering the header lifts
-// the inactive direction to 0.65; the active direction is full-opacity brand.
+// Stacked sort chevrons (Lucide ChevronsUpDown, stroke-based). Both dim at
+// rest; hover lifts the inactive one; the active direction gets full-opacity
+// brand color. The SVG carries its own width/height so no override needed.
 [part~='sort-arrows'] {
     display: block;
-    inline-size: 6px;
-    block-size: 9px;
+    flex-shrink: 0;
 }
 
 [part~='sort-up'],
 [part~='sort-down'] {
-    fill: currentcolor;
-    opacity: 0.45;
+    stroke: currentcolor;
+    fill: none;
+    opacity: 0.5;
     transition:
         opacity var(--ag-dur-fast) var(--ag-ease),
-        fill var(--ag-dur-fast) var(--ag-ease);
+        stroke var(--ag-dur-fast) var(--ag-ease);
 }
 
 :host(:hover) [part~='sort-up'],
 :host(:hover) [part~='sort-down'] {
-    opacity: 0.65;
+    opacity: 0.75;
 }
 
 [part~='action'][data-sort-active='ascending'] [part~='sort-up'],
 [part~='action'][data-sort-active='descending'] [part~='sort-down'] {
     opacity: 1;
-    fill: var(--ag-brand);
+    stroke: var(--ag-brand);
 }
 
 [part~='filtered'] {
@@ -218,17 +224,121 @@ $header-hover: color-mix(in srgb, var(--ag-brand) 4%, transparent);
     background: color-mix(in srgb, var(--ag-brand) 28%, transparent);
 }
 
-[part~='filter'] {
+// Filter icon button — always visible when the column has filtering enabled.
+[part~='filter-btn'] {
+    opacity: 0.55;
+    transition: opacity var(--ag-dur-fast) var(--ag-ease), color var(--ag-dur-fast) var(--ag-ease);
     position: relative;
 }
 
+:host(:hover) [part~='filter-btn'],
+[part~='filter-btn']:focus-visible {
+    opacity: 0.9;
+}
+
+// When the column has an active filter expression the icon is fully visible and
+// painted in the brand color.
+[part~='filter-btn'][part~='filter-active'] {
+    opacity: 1;
+    color: var(--ag-brand);
+}
+
+// Small count badge overlapping the filter icon for multi-expression columns.
 [part~='filter-count'] {
     position: absolute;
-    top: -5px;
+    top: -4px;
     inset-inline-end: -1px;
+    min-inline-size: rem(14px);
+    block-size: rem(14px);
+    padding: 0 rem(3px);
+    border-radius: rem(7px);
+    background: var(--ag-brand);
+    color: white;
     font-size: var(--ag-fs-tiny);
-    text-align: end;
-    line-height: 1;
+    font-weight: 600;
+    line-height: rem(14px);
+    text-align: center;
     font-variant-numeric: tabular-nums;
-    color: currentcolor;
+    box-sizing: border-box;
+}
+
+// Explicit SVG sizes for the filter and menu icon buttons. The sort button's
+// SVG has its own template-level width/height (6×9) that must not be touched.
+[part~='filter-btn'] svg {
+    inline-size: rem(16px);
+    block-size: rem(16px);
+    display: block;
+    flex-shrink: 0;
+}
+
+// Three-dots column menu button — shown on hover to keep the header clean.
+[part~='menu-btn'] {
+    opacity: 0;
+    transition: opacity var(--ag-dur-fast) var(--ag-ease);
+}
+
+:host(:hover) [part~='menu-btn'],
+[part~='menu-btn']:focus-visible {
+    opacity: 0.6;
+}
+
+:host(:hover) [part~='menu-btn']:hover {
+    opacity: 1;
+}
+
+[part~='menu-btn'] svg {
+    inline-size: rem(15px);
+    block-size: rem(15px);
+    display: block;
+    flex-shrink: 0;
+}
+
+// Column context menu dropdown — absolutely positioned at host level.
+[part='col-menu'] {
+    position: absolute;
+    inset-block-start: 100%;
+    inset-inline-end: 0;
+    z-index: calc(var(--z-index-base) + 15);
+    background: var(--igx-header-background, var(--header-background, var(--ag-surface-elevated)));
+    border: rem(1px) solid var(--igx-header-border-color, var(--header-border-color, var(--ag-hairline)));
+    border-radius: rem(6px);
+    box-shadow: 0 rem(4px) rem(12px) rgb(0 0 0 / 12%);
+    min-inline-size: rem(180px);
+    padding: rem(4px) 0;
+    overflow: hidden;
+}
+
+[part='col-menu-item'] {
+    display: flex;
+    align-items: center;
+    gap: rem(8px);
+    inline-size: 100%;
+    padding: rem(8px) rem(12px);
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    font-size: rem(13px);
+    line-height: 1.2;
+    text-align: start;
+    cursor: pointer;
+    white-space: nowrap;
+    box-sizing: border-box;
+
+    svg {
+        inline-size: rem(16px);
+        block-size: rem(16px);
+        flex-shrink: 0;
+        opacity: 0.6;
+    }
+
+    &:hover {
+        background: hsl(from currentcolor h s l / 8%);
+    }
+
+    &:focus-visible {
+        outline: rem(2px) solid var(--igx-sorted-header-icon-color, var(--sorted-header-icon-color, var(--ag-brand)));
+        outline-offset: rem(-2px);
+    }
 }

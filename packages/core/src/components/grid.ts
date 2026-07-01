@@ -1220,6 +1220,16 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   public rowReordering?: GridRowReorderingConfiguration;
 
   /**
+   * Transient spreadsheet coordinate hints: when `true`, a leading row-number
+   * gutter (1, 2, 3, ...) and A / B / C column letters are revealed so cell
+   * references are discoverable. Enterprise toggles this while a formula cell is
+   * being edited; it can also be set directly for a persistent spreadsheet look.
+   * Reflected so styling / tests can observe it on the host.
+   */
+  @property({ type: Boolean, reflect: true, attribute: 'coordinate-hints' })
+  public coordinateHints = false;
+
+  /**
    * Column groups rendered as spanning headers above the column header row.
    *
    * @remarks
@@ -2524,6 +2534,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       style=${styleMap(this.DOM.columnSizes)}
       .columns=${this.DOM.displayColumns}
       .pinOffsets=${this.DOM.pinOffsets}
+      .coordinateHints=${this.coordinateHints}
       ></apex-grid-header-row>
     `;
   }
@@ -2571,8 +2582,11 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   protected renderFilterRow() {
+    // The filter row is a floating panel overlay (position: fixed), not a grid
+    // row. It must stay in the shadow root so the @query selector can find it,
+    // but it takes up no layout space when inactive.
     return this.columns.some((column) => column.filter)
-      ? html`<apex-filter-row style=${styleMap(this.DOM.columnSizes)}></apex-filter-row>`
+      ? html`<apex-filter-row></apex-filter-row>`
       : nothing;
   }
 
@@ -2620,6 +2634,44 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     </div>`;
   }
 
+  /**
+   * Floating "ghost" of the row being pointer-dragged for reorder. Rendered at
+   * the top of the shadow tree (outside the virtualizer) so its `position: fixed`
+   * tracks the viewport, and painted from the cell snapshot captured at grab
+   * time so it mirrors the row's visible content and column widths.
+   */
+  protected renderRowDragGhost() {
+    const ghost = this.stateController.rowReorder.ghost;
+    if (!ghost) return nothing;
+    return html`<div
+      part="row-drag-ghost"
+      style=${styleMap({
+        left: `${ghost.x}px`,
+        top: `${ghost.y}px`,
+        height: `${ghost.height}px`,
+      })}
+    >
+      <span part="row-drag-ghost-grip" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="16" height="16">
+          <circle cx="6" cy="3.5" r="1.25" />
+          <circle cx="10" cy="3.5" r="1.25" />
+          <circle cx="6" cy="8" r="1.25" />
+          <circle cx="10" cy="8" r="1.25" />
+          <circle cx="6" cy="12.5" r="1.25" />
+          <circle cx="10" cy="12.5" r="1.25" />
+        </svg>
+      </span>
+      ${ghost.cells.map(
+        (cell) =>
+          html`<span
+            part="row-drag-ghost-cell"
+            style=${styleMap({ width: `${cell.width}px`, textAlign: cell.align })}
+            >${cell.text}</span
+          >`
+      )}
+    </div>`;
+  }
+
   protected override render() {
     return html`
       ${this.stateController.resizing.renderIndicator()}
@@ -2632,6 +2684,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       ${this.renderPinnedBottom()}
       ${this.renderPaginator()}
       ${this.renderLiveRegion()}
+      ${this.renderRowDragGhost()}
     `;
   }
 

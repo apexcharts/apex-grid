@@ -4,17 +4,14 @@ import { ifDefined } from 'lit/directives/if-defined.js';
 interface IconDef {
   viewBox: string;
   paths: SVGTemplateResult;
+  /** When true, renders stroke="currentColor" fill="none" (Lucide style). */
+  stroke?: boolean;
 }
 
-const ICONS: Record<string, IconDef> = {
-  'arrow-upward': {
-    viewBox: '0 0 45 45',
-    paths: svg`<path d="M22.5 40V13.7L10.1 26.1 8 24 24 8l16 16-2.1 2.1-12.4-12.4V40Z"/>`,
-  },
-  'arrow-downward': {
-    viewBox: '0 0 45 45',
-    paths: svg`<path fill="currentColor" d="M24 40 8 24l2.1-2.1 12.4 12.4V8h3v26.3l12.4-12.4L40 24Z"/>`,
-  },
+// ---------------------------------------------------------------------------
+// Filter-operand icons — fill-based, no Lucide equivalents.
+// ---------------------------------------------------------------------------
+const OPERAND_ICONS: Record<string, IconDef> = {
   all: {
     viewBox: '0 0 24 24',
     paths: svg`<path d="M2 14h8v2H2zm0-8h12v2H2zm14 11l-3-3-1.5 1.5L16 20l7-7-1.5-1.5L16 17zM2 10h12v2H2z"/>`,
@@ -49,7 +46,7 @@ const ICONS: Record<string, IconDef> = {
   },
   false: {
     viewBox: '0 0 24 24',
-    paths: svg`<path d="M8 5a7 7 0 107 7 7 7 0 00-7-7zm4.31 9.79l-1.52 1.52L8 13.52l-2.79 2.79-1.52-1.52L6.48 12 3.69 9.21l1.52-1.52L8 10.48l2.79-2.79 1.52 1.52L9.52 12zM18 7a5 5 0 00-3 1.06 7.48 7.48 0 01.49 1 3.89 3.89 0 110 5.82 8.08 8.08 0 01-.49 1A5 5 0 1018 7z"/><path d="M17.52 13.85l2.91-2.92-.78-.78-2.13 2.12-1.17-1.15-.38.37-.41.41.42.42L17 13.34l.52.51z"/>`,
+    paths: svg`<path d="M8 5a7 7 0 107 7 7 7 0 00-8-7zm4.31 9.79l-1.52 1.52L8 13.52l-2.79 2.79-1.52-1.52L6.48 12 3.69 9.21l1.52-1.52L8 10.48l2.79-2.79 1.52 1.52L9.52 12zM18 7a5 5 0 00-3 1.06 7.48 7.48 0 01.49 1 3.89 3.89 0 110 5.82 8.08 8.08 0 01-.49 1A5 5 0 1018 7z"/><path d="M17.52 13.85l2.91-2.92-.78-.78-2.13 2.12-1.17-1.15-.38.37-.41.41.42.42L17 13.34l.52.51z"/>`,
   },
   lessThan: {
     viewBox: '0 0 24 24',
@@ -75,51 +72,107 @@ const ICONS: Record<string, IconDef> = {
     viewBox: '0 0 24 24',
     paths: svg`<path d="M19.44 14.22zm-2.88 0zm0 0L18 12.79l1.44 1.43.78-.78L18.79 12l1.43-1.44-.78-.78L18 11.21l-1.44-1.43-.78.78L17.21 12l-1.43 1.44.78.78z"/><path d="M18 7a5 5 0 00-3 1.06 7.48 7.48 0 01.49 1 3.89 3.89 0 110 5.82 8.08 8.08 0 01-.49 1A5 5 0 1018 7zM8 5a7 7 0 107 7 7 7 0 00-7-7zm-.93 10.18l-3.38-3.37 1.13-1.12 2.25 2.25 4.11-4.12 1.13 1.12z"/>`,
   },
+};
+
+// ---------------------------------------------------------------------------
+// Lucide UI-chrome icons — stroke-based, consistent family.
+// ---------------------------------------------------------------------------
+const CHROME_ICONS: Record<string, IconDef> = {
+  // ListFilter: three lines of decreasing width (funnel metaphor)
   filter: {
-    viewBox: '0 0 45 45',
-    paths: svg`<path d="M20 36v-3h8v3Zm-8-10.5v-3h24v3ZM6 15v-3h36v3Z"/>`,
+    viewBox: '0 0 24 24',
+    stroke: true,
+    paths: svg`<path d="M3 6h18M7 12h10M11 18h2"/>`,
   },
+  // Three-dots vertical menu (filled circles — intentionally fill, not stroke)
+  'more-vert': {
+    viewBox: '0 0 24 24',
+    paths: svg`<circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>`,
+  },
+  // X close
   close: {
-    viewBox: '0 0 48 48',
-    paths: svg`<path d="m12.45 37.65-2.1-2.1L21.9 24 10.35 12.45l2.1-2.1L24 21.9l11.55-11.55 2.1 2.1L26.1 24l11.55 11.55-2.1 2.1L24 26.1Z"/>`,
+    viewBox: '0 0 24 24',
+    stroke: true,
+    paths: svg`<path d="M18 6 6 18M6 6l12 12"/>`,
   },
+  // RotateCcw reset
   refresh: {
-    viewBox: '0 0 48 48',
-    paths: svg`<path d="M24 40q-6.65 0-11.325-4.675Q8 30.65 8 24q0-6.65 4.675-11.325Q17.35 8 24 8q4.25 0 7.45 1.725T37 14.45V8h3v12.7H27.3v-3h8.4q-1.9-3-4.85-4.85Q27.9 11 24 11q-5.45 0-9.225 3.775Q11 18.55 11 24q0 5.45 3.775 9.225Q18.55 37 24 37q4.15 0 7.6-2.375 3.45-2.375 4.8-6.275h3.1q-1.45 5.25-5.75 8.45Q29.45 40 24 40Z"/>`,
+    viewBox: '0 0 24 24',
+    stroke: true,
+    paths: svg`<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>`,
   },
+  // Search
+  search: {
+    viewBox: '0 0 24 24',
+    stroke: true,
+    paths: svg`<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>`,
+  },
+  // ChevronDown
+  'chevron-down': {
+    viewBox: '0 0 24 24',
+    stroke: true,
+    paths: svg`<path d="m6 9 6 6 6-6"/>`,
+  },
+  // ArrowUp (used by expansion and group row icons)
+  'arrow-upward': {
+    viewBox: '0 0 24 24',
+    stroke: true,
+    paths: svg`<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>`,
+  },
+  // ArrowDown
+  'arrow-downward': {
+    viewBox: '0 0 24 24',
+    stroke: true,
+    paths: svg`<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>`,
+  },
+  // Download
+  download: {
+    viewBox: '0 0 24 24',
+    stroke: true,
+    paths: svg`<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>`,
+  },
+  // Star
+  star: {
+    viewBox: '0 0 24 24',
+    stroke: true,
+    paths: svg`<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>`,
+  },
+  // Column menu: sort ascending (ArrowUpWideNarrow)
+  'sort-asc': {
+    viewBox: '0 0 24 24',
+    stroke: true,
+    paths: svg`<path d="m3 8 4-4 4 4"/><path d="M7 4v16"/><path d="M11 12h4"/><path d="M11 16h7"/><path d="M11 20h10"/>`,
+  },
+  // Column menu: sort descending (ArrowDownWideNarrow)
+  'sort-desc': {
+    viewBox: '0 0 24 24',
+    stroke: true,
+    paths: svg`<path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="M11 4h10"/><path d="M11 8h7"/><path d="M11 12h4"/>`,
+  },
+  // Paginator
   'page-first': {
     viewBox: '0 0 24 24',
-    paths: svg`<path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>`,
+    stroke: true,
+    paths: svg`<path d="m17 18-6-6 6-6"/><path d="M7 6v12"/>`,
   },
   'page-previous': {
     viewBox: '0 0 24 24',
-    paths: svg`<path d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>`,
+    stroke: true,
+    paths: svg`<path d="m15 18-6-6 6-6"/>`,
   },
   'page-next': {
     viewBox: '0 0 24 24',
-    paths: svg`<path d="M8.59 16.59 10 18l6-6-6-6-1.41 1.41L13.17 12z"/>`,
+    stroke: true,
+    paths: svg`<path d="m9 18 6-6-6-6"/>`,
   },
   'page-last': {
     viewBox: '0 0 24 24',
-    paths: svg`<path d="M6 18l8.5-6L6 6v12zM16 6h2v12h-2z"/>`,
-  },
-  search: {
-    viewBox: '0 0 24 24',
-    paths: svg`<path d="M15.5 14h-.79l-.28-.27a6.471 6.471 0 0 0 1.48-5.34c-.47-2.78-2.79-5-5.59-5.34a6.505 6.505 0 0 0-7.27 7.27c.34 2.8 2.56 5.12 5.34 5.59a6.471 6.471 0 0 0 5.34-1.48l.27.28v.79l4.25 4.25c.41.41 1.08.41 1.49 0 .41-.41.41-1.08 0-1.49L15.5 14zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>`,
-  },
-  star: {
-    viewBox: '0 0 24 24',
-    paths: svg`<path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>`,
-  },
-  'chevron-down': {
-    viewBox: '0 0 24 24',
-    paths: svg`<path d="M7.41 8.58 12 13.17l4.59-4.59L18 10l-6 6-6-6z"/>`,
-  },
-  download: {
-    viewBox: '0 0 24 24',
-    paths: svg`<path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/>`,
+    stroke: true,
+    paths: svg`<path d="m7 18 6-6-6-6"/><path d="M17 6v12"/>`,
   },
 };
+
+const ICONS: Record<string, IconDef> = { ...OPERAND_ICONS, ...CHROME_ICONS };
 
 export type GridIconName = keyof typeof ICONS;
 
@@ -135,17 +188,22 @@ export interface IconRenderOptions {
 }
 
 /**
- * Renders one of the grid's built-in icons as an inline `<svg>`. All icons are
- * decorative (`aria-hidden="true"`) by default — surrounding controls supply
- * the accessible label via `aria-label`.
+ * Renders one of the grid's built-in icons as an inline `<svg>`. Lucide-based
+ * icons (`stroke: true`) render as `stroke="currentColor" fill="none"`;
+ * legacy fill icons render as `fill="currentColor"`.
  */
 export function renderIcon(name: string, opts: IconRenderOptions = {}): TemplateResult {
   const icon = ICONS[name];
   if (!icon) return html``;
+  const isStroke = Boolean(icon.stroke);
   return html`<svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox=${icon.viewBox}
-    fill="currentColor"
+    fill=${isStroke ? 'none' : 'currentColor'}
+    stroke=${ifDefined(isStroke ? 'currentColor' : undefined)}
+    stroke-width=${ifDefined(isStroke ? '2' : undefined)}
+    stroke-linecap=${ifDefined(isStroke ? 'round' : undefined)}
+    stroke-linejoin=${ifDefined(isStroke ? 'round' : undefined)}
     aria-hidden="true"
     focusable="false"
     data-icon=${name}
@@ -157,19 +215,24 @@ export function renderIcon(name: string, opts: IconRenderOptions = {}): Template
 }
 
 /**
- * Renders the stacked up/down sort affordance used by sortable column headers.
- * Both chevrons are dimmed by default; the header CSS lifts the inactive one on
- * hover and paints the active direction in the brand color, driven by the
- * button's `data-sort-active` (`'ascending' | 'descending' | 'none'`) attribute.
+ * Renders the stacked up/down sort affordance (Lucide ChevronsUpDown split
+ * into two independently-styleable parts). The header CSS dims both chevrons
+ * at rest, lifts the inactive one on hover, and paints the active direction
+ * in the brand color via `data-sort-active` on the parent button.
  */
 export function renderSortArrows(): TemplateResult {
   return html`<svg
     xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 6 9"
-    width="6"
+    viewBox="5 3 14 18"
+    width="7"
     height="9"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
     aria-hidden="true"
     focusable="false"
     part="sort-arrows"
-  >${svg`<path part="sort-up" d="M3 0.5 5.5 3.5 0.5 3.5Z" /><path part="sort-down" d="M3 8.5 0.5 5.5 5.5 5.5Z" />`}</svg>`;
+  >${svg`<path part="sort-up" d="M7 9l5-5 5 5"/><path part="sort-down" d="M7 15l5 5 5-5"/>`}</svg>`;
 }

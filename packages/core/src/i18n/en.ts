@@ -110,10 +110,6 @@ export const EN_LOCALE = {
 
   // Enterprise: charts
   'chart.close': 'Close',
-  'chart.theme': 'Chart theme',
-  'chart.themeGrid': 'Grid theme',
-  'chart.themeLight': 'Light',
-  'chart.themeDark': 'Dark',
   'chart.placeholder': 'Select cells, or group/pivot the grid, to chart it.',
   'chart.chartRange': 'Chart range',
   'chart.countSeries': 'Count',

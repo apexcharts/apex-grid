@@ -287,6 +287,7 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
       (action) => html`<button
         type="button"
         part="toolbar-action"
+        data-action-id=${action.id ?? ''}
         @click=${() => action.run()}
       >
         ${action.label}

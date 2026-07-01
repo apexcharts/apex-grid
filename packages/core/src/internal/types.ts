@@ -727,6 +727,20 @@ export interface GridRowReorderingConfiguration {
    * the grid and the app persists it via the `rowMoved` event.
    */
   applyToData?: boolean;
+  /**
+   * Controls how a pointer drag is initiated.
+   *
+   * - `true` (default): a dedicated drag-handle (grip) cell is rendered at the
+   *   start of every reorderable row, and a drag only begins from that handle.
+   *   The rest of the row stays free for selection / editing.
+   * - `false`: no handle is rendered and a drag begins by pressing anywhere on
+   *   the row (excluding interactive sub-parts like inputs and buttons).
+   *
+   * Either way the dragged row is shown as a floating ghost that follows the
+   * cursor, and the keyboard reorder flow (grab with Space, move with arrows) is
+   * unchanged.
+   */
+  handle?: boolean;
 }
 
 /**

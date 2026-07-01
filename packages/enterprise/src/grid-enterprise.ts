@@ -551,6 +551,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.#syncMasterDetail(changed);
     this.#syncInfiniteRowModel(changed);
     this.#injectFormulaEditors(changed);
+    this.#syncFormulaCoordinates(changed);
     this.#injectFormulaDisplays(changed);
     super.willUpdate(changed);
   }
@@ -829,6 +830,27 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     });
     if (injected) {
       this.columns = next;
+    }
+  }
+
+  /** One-time guard so the formula-coordinate default is applied only once. */
+  #formulaCoordsApplied = false;
+
+  /**
+   * When the grid has `allowFormula` columns, show spreadsheet coordinates (the
+   * row-number gutter + the column-letter header chips) by DEFAULT. Reserving
+   * the gutter up front means entering a formula never shifts the layout (the
+   * gutter would otherwise pop in on the first edit, nudging every column). Done
+   * once, the first time formula columns are present; an explicit
+   * `coordinateHints` the app sets afterwards is left untouched.
+   */
+  #syncFormulaCoordinates(changed: PropertyValues): void {
+    if (this.#formulaCoordsApplied || !changed.has('columns')) {
+      return;
+    }
+    if (this.columns.some((column) => column.allowFormula)) {
+      this.#formulaCoordsApplied = true;
+      this.coordinateHints = true;
     }
   }
 

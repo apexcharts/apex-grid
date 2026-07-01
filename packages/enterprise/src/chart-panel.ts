@@ -112,7 +112,11 @@ export class ApexGridChart extends LitElement {
   @property()
   public source: ChartSource = 'auto';
 
-  /** Palette: `'grid'` derives colors from the grid's theme tokens; `'light'`/`'dark'` force a mode. */
+  /**
+   * Palette. Defaults to `'grid'`: the chart follows the grid's theme, deriving its colors and
+   * light/dark mode from the grid's tokens. Set `'light'`/`'dark'` to force a mode (programmatic
+   * escape hatch — there is no built-in theme picker).
+   */
   @property()
   public theme: 'grid' | 'light' | 'dark' = 'grid';
 
@@ -124,6 +128,7 @@ export class ApexGridChart extends LitElement {
   @property()
   public heading = 'Chart';
 
+  /** Chart height in px. Applies to `mode="inline"`; a dialog chart fills its (resizable) panel. */
   @property({ type: Number })
   public height = 320;
 
@@ -151,6 +156,7 @@ export class ApexGridChart extends LitElement {
   /** Refits the chart when its container resizes (dialog resize handle / flex layout changes). */
   #resizeObserver: ResizeObserver | null = null;
   #lastWidth = 0;
+  #lastHeight = 0;
   #boundGrid: HTMLElement | null = null;
   /** Cross-filter: the column key being filtered, and the active category value (or null). */
   #crossFilterKey: string | null = null;
@@ -280,19 +286,22 @@ export class ApexGridChart extends LitElement {
   }
 
   /**
-   * Observe the panel so the chart refits when its container changes width — the dialog's resize
-   * handle, or a flex/grid layout shift. (ApexCharts already handles window resizes itself.) Width
-   * is the only trigger, so re-rendering the chart can't feed back into another resize.
+   * Observe the panel so the chart refits when its container changes size — the dialog's resize
+   * handle, or a flex/grid layout shift. (ApexCharts already handles window resizes itself.) The
+   * chart fills the panel, so re-rendering doesn't change the panel's size and can't feed back into
+   * another resize; a >1px threshold guards against sub-pixel churn either way.
    */
   #ensureResizeObserver(): void {
     if (this.#resizeObserver || typeof ResizeObserver === 'undefined') return;
     const panel = this.renderRoot.querySelector<HTMLElement>('[part="panel"]');
     if (!panel) return;
     this.#lastWidth = panel.clientWidth;
+    this.#lastHeight = panel.clientHeight;
     this.#resizeObserver = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width ?? 0;
-      if (Math.abs(width - this.#lastWidth) < 1) return;
+      const { width = 0, height = 0 } = entries[0]?.contentRect ?? {};
+      if (Math.abs(width - this.#lastWidth) < 1 && Math.abs(height - this.#lastHeight) < 1) return;
       this.#lastWidth = width;
+      this.#lastHeight = height;
       if (this.#chart) this.#scheduleRefresh();
     });
     this.#resizeObserver.observe(panel);
@@ -359,7 +368,7 @@ export class ApexGridChart extends LitElement {
       : {};
     return {
       type: this.type,
-      height: this.height,
+      height: this.#resolveHeight(),
       // Deep-merge the `chart` key so theme + events + caller overrides all survive.
       apexOptions: {
         ...theme,
@@ -372,6 +381,19 @@ export class ApexGridChart extends LitElement {
         },
       },
     };
+  }
+
+  /**
+   * Height to hand ApexCharts. Inline uses the fixed `height` prop. A dialog chart fills its
+   * (resizable) panel, so we measure the canvas box and pass that pixel height rather than
+   * ApexCharts' `'100%'`, which reads the wrong ancestor here and overshoots (chart clipped). Falls
+   * back to `height` before the panel has laid out (canvas not yet measurable).
+   */
+  #resolveHeight(): number {
+    if (this.mode !== 'dialog') return this.height;
+    const canvas = this.renderRoot.querySelector<HTMLElement>('[part="canvas"]');
+    const measured = canvas?.clientHeight ?? 0;
+    return measured > 0 ? measured : this.height;
   }
 
   /**
@@ -460,6 +482,8 @@ export class ApexGridChart extends LitElement {
     };
     panel.style.left = `${rect.left}px`;
     panel.style.top = `${rect.top}px`;
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
     (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
   };
 
@@ -502,11 +526,25 @@ export class ApexGridChart extends LitElement {
       apex-grid-chart[mode='dialog'] [part='panel'] {
         position: fixed;
         inset: auto 24px 24px auto;
+        display: flex;
+        flex-direction: column;
         inline-size: 460px;
         max-inline-size: 92vw;
+        max-block-size: 92vh;
         box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
         resize: both;
-        overflow: auto;
+        /* Clip, don't scroll: ApexCharts can render a hair larger than its box
+           (esp. pie/donut), which under overflow:auto produced spurious H+V
+           scrollbars. The resize handle still works with overflow:hidden. */
+        overflow: hidden;
+      }
+      /* Give the panel a definite height only while a chart is showing, so the
+         canvas can fill it — the chart tracks the panel on resize instead of
+         leaving empty space below a fixed-height chart. The empty/placeholder
+         state keeps auto height and shrinks to its text. */
+      apex-grid-chart[mode='dialog']
+        [part='panel']:has([part='canvas']:not([hidden])) {
+        block-size: 440px;
       }
       apex-grid-chart [part='header'] {
         display: flex;
@@ -548,9 +586,6 @@ export class ApexGridChart extends LitElement {
         color: #fff;
         border-color: #1f2328;
       }
-      apex-grid-chart .agc-theme {
-        margin-inline-start: auto;
-      }
       apex-grid-chart [part='placeholder'] {
         padding: 24px 12px;
         color: #888;
@@ -558,6 +593,17 @@ export class ApexGridChart extends LitElement {
       }
       apex-grid-chart [part='canvas'] {
         padding: 4px;
+      }
+      apex-grid-chart[mode='dialog'] [part='canvas'] {
+        flex: 1 1 auto;
+        /* ApexCharts sets an inline min-height on its container equal to the chart height; left
+           alone it pins the canvas to the tallest chart ever drawn, so shrinking the panel clips
+           instead of refitting. Force 0 (over the inline style) so the flex item tracks the panel;
+           the chart's real height comes from the measured box (see #resolveHeight). */
+        min-height: 0 !important;
+        /* No padding: the chart fills the measured canvas box exactly. */
+        padding: 0;
+        overflow: hidden;
       }
     </style>`;
   }
@@ -602,19 +648,6 @@ export class ApexGridChart extends LitElement {
               ${this.#t(`chart.type.${entry.type}` as GridLocaleKey, entry.label)}
             </button>`
           )}
-          <label class="agc-theme">
-            <select
-              aria-label=${this.#t('chart.theme')}
-              .value=${this.theme}
-              @change=${(event: Event) => {
-                this.theme = (event.target as HTMLSelectElement).value as typeof this.theme;
-              }}
-            >
-              <option value="grid">${this.#t('chart.themeGrid')}</option>
-              <option value="light">${this.#t('chart.themeLight')}</option>
-              <option value="dark">${this.#t('chart.themeDark')}</option>
-            </select>
-          </label>
         </div>
         <div part="placeholder" ?hidden=${!empty}>${this.#t('chart.placeholder')}</div>
         <div part="canvas" ?hidden=${empty}></div>

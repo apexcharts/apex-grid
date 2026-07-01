@@ -65,11 +65,13 @@ describe('Accessibility (WCAG 2.2 AA semantics)', () => {
       expect(fx.headerRow.getAttribute('aria-rowindex')).to.equal('1');
     });
 
-    it('body rows expose role="row" + aria-rowindex starting after the filter row', async () => {
+    it('body rows expose role="row" + aria-rowindex starting after the header row', async () => {
       await fx.waitForUpdate();
       const first = fx.grid.rows[0] as unknown as HTMLElement;
       expect(first.getAttribute('role')).to.equal('row');
-      expect(first.getAttribute('aria-rowindex')).to.equal('3');
+      // The filter panel is a floating overlay (not a table row), so body rows
+      // immediately follow the header row (index 1) at index 2.
+      expect(first.getAttribute('aria-rowindex')).to.equal('2');
     });
 
     it('header cells expose role="columnheader" + aria-colindex starting after auto chrome', () => {

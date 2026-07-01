@@ -106,6 +106,73 @@ $accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var
     margin-inline-start: auto;
 }
 
+// ── Custom toolbar action buttons ──────────────────────────────────────────
+// Base (ghost): minimal chrome — text-only with a hover wash. Suitable for
+// generic / third-party actions that have no special priority.
+[part='toolbar-action'] {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: rem(5px);
+    border: rem(1px) solid transparent;
+    border-radius: var(--ag-radius-sm);
+    background: transparent;
+    color: var(--ag-text-body);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--ag-fs-cell);
+    font-weight: var(--ag-fw-regular);
+    line-height: 1;
+    min-block-size: rem(28px);
+    padding: 0 rem(10px);
+    transition:
+        background-color var(--ag-dur-fast) var(--ag-ease),
+        border-color var(--ag-dur-fast) var(--ag-ease),
+        color var(--ag-dur-fast) var(--ag-ease);
+    white-space: nowrap;
+
+    &:hover {
+        background: var(--ag-brand-softer);
+        color: var(--ag-brand-strong);
+    }
+
+    &:focus-visible {
+        outline: 0;
+        border-color: color-mix(in srgb, var(--ag-brand) 50%, transparent);
+        box-shadow: 0 0 0 rem(3px) color-mix(in srgb, var(--ag-brand) 14%, transparent);
+    }
+}
+
+// "Create chart" — outlined secondary: visible but not loud.
+[part='toolbar-action'][data-action-id='create-chart'] {
+    border-color: var(--ag-hairline);
+    font-weight: var(--ag-fw-semibold);
+
+    &:hover {
+        border-color: color-mix(in srgb, var(--ag-brand) 40%, transparent);
+        background: var(--ag-brand-softer);
+        color: var(--ag-brand-strong);
+    }
+}
+
+// "Ask AI" — filled brand: the primary CTA, always stands out.
+[part='toolbar-action'][data-action-id='ask-ai'] {
+    background: var(--ag-brand);
+    border-color: var(--ag-brand);
+    color: var(--ag-text-on-brand);
+    font-weight: var(--ag-fw-semibold);
+
+    &:hover {
+        background: var(--ag-brand-strong);
+        border-color: var(--ag-brand-strong);
+        color: var(--ag-text-on-brand);
+    }
+
+    &:focus-visible {
+        border-color: var(--ag-brand-strong);
+    }
+}
+
 // Export menu trigger + dropdown.
 [part='export'] {
     position: relative;

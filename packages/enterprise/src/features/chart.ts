@@ -36,7 +36,8 @@ export interface RenderChartOptions {
   /** Friendly chart type, or `'auto'` for the recommended-type heuristic. Defaults to `'column'`. */
   readonly type?: ChartType | 'auto';
   readonly title?: string;
-  readonly height?: number;
+  /** Pixel height, or a CSS length like `'100%'` to fill the container. */
+  readonly height?: number | string;
   /**
    * Per-series type overrides for `type: 'combo'`, aligned by series index. Defaults to series 0 =
    * column, the rest = line.

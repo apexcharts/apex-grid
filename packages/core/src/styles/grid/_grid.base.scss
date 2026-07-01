@@ -107,3 +107,52 @@ apex-virtualizer {
     top: 0;
     z-index: calc(var(--z-index-base) + 1);
 }
+
+// Floating "ghost" of the row being pointer-dragged for reorder. Positioned
+// `fixed` (viewport-relative) and rendered at the top of the shadow tree so it
+// rides above every row and escapes the grid's own overflow clip. Painted from
+// a snapshot taken at grab time, so it mirrors the row's cells and widths.
+[part~='row-drag-ghost'] {
+    position: fixed;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    max-width: 92vw;
+    overflow: hidden;
+    background: $content-background;
+    color: $content-text-color;
+    border: 1px solid var(--ag-brand-line);
+    border-radius: var(--ag-radius-sm);
+    box-shadow:
+        0 #{rem(2px)} #{rem(6px)} rgb(0 0 0 / 10%),
+        0 #{rem(10px)} #{rem(28px)} rgb(0 0 0 / 18%);
+    font-size: var(--ag-fs-cell);
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+    cursor: grabbing;
+    opacity: 0.95;
+    z-index: 99999;
+}
+
+[part~='row-drag-ghost-grip'] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    inline-size: rem(28px);
+    color: var(--ag-text-subtle);
+
+    svg {
+        fill: currentColor;
+    }
+}
+
+[part~='row-drag-ghost-cell'] {
+    flex: 0 0 auto;
+    padding: 0 var(--ag-cell-pad-x);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    box-sizing: border-box;
+}

@@ -78,9 +78,16 @@
   <body>
     <h2>Row Drag-Reorder</h2>
     <p class="subtitle">
-      Enable with <code>rowReordering = { enabled: true }</code>, then drag any row to a new position, or use the keyboard: focus a row, press <strong>Space</strong> to grab, <strong>↑ / ↓</strong> to move, <strong>Space / Enter</strong> to drop, <strong>Esc</strong> to cancel. The grid holds a manual order (mutually exclusive with sorting) and emits <code>rowMoved</code>; the toolbar uses <code>grid.moveRow(from, to)</code>.
+      Enable with <code>rowReordering = { enabled: true }</code>. By default each row shows a grip handle
+      (the six dots on the left): press and drag it and the whole row lifts as a floating ghost that follows
+      the cursor while the rows below shift to make room. Set <code>handle: false</code> to drag from anywhere
+      on the row instead. Either way the keyboard path works: focus a row, press <strong>Space</strong> to grab,
+      <strong>↑ / ↓</strong> to move, <strong>Space / Enter</strong> to drop, <strong>Esc</strong> to cancel.
+      The grid holds a manual order (mutually exclusive with sorting) and emits <code>rowMoved</code>; the
+      toolbar uses <code>grid.moveRow(from, to)</code>.
     </p>
     <div class="toolbar">
+      <button id="toggle-mode" type="button" aria-pressed="true">Drag: handle</button>
       <button id="to-top">Move last row to top</button>
       <button id="shuffle">Move row 1 below row 4</button>
     </div>
@@ -95,7 +102,19 @@
         { id: '5', rank: 5, track: 'Realtime Collaboration',       speaker: 'Ana Costa',    room: 'Hall B',  slot: '14:00' },
         { id: '6', rank: 6, track: 'Observability in Practice',    speaker: 'Sven Eriksen', room: 'Room 1',  slot: '15:00' },
         { id: '7', rank: 7, track: 'Shipping AI Features Safely',  speaker: 'Yuki Tanaka',  room: 'Hall A',  slot: '16:00' },
-        { id: '8', rank: 8, track: 'Closing Panel: What is Next',  speaker: 'Kofi Mensah',  room: 'Hall A',  slot: '17:00' },
+        { id: '8',  rank: 8,  track: 'Closing Panel: What is Next',    speaker: 'Kofi Mensah',   room: 'Hall A',  slot: '17:00' },
+        { id: '9',  rank: 9,  track: 'Zero-Trust Security Patterns',   speaker: 'Lena Fischer',   room: 'Room 2',  slot: '09:30' },
+        { id: '10', rank: 10, track: 'GraphQL at the Edge',             speaker: 'Tom Becker',     room: 'Room 1',  slot: '10:30' },
+        { id: '11', rank: 11, track: 'Design Systems at Scale',         speaker: 'Sara Nilsson',   room: 'Hall B',  slot: '11:30' },
+        { id: '12', rank: 12, track: 'Distributed Tracing Deep Dive',   speaker: 'Raj Malhotra',   room: 'Room 2',  slot: '13:30' },
+        { id: '13', rank: 13, track: 'Micro-Frontend Architecture',     speaker: 'Mira Patel',     room: 'Hall B',  slot: '14:30' },
+        { id: '14', rank: 14, track: 'Data Pipelines Without Ops',      speaker: 'Diego Rojas',    room: 'Room 1',  slot: '15:30' },
+        { id: '15', rank: 15, track: 'Accessibility Audits in CI',      speaker: 'Priya Iyer',     room: 'Room 2',  slot: '16:30' },
+        { id: '16', rank: 16, track: 'Platform Engineering 101',        speaker: 'Otis Brown',     room: 'Hall A',  slot: '09:00' },
+        { id: '17', rank: 17, track: 'LLMs in Production',              speaker: 'Ana Costa',      room: 'Hall B',  slot: '10:00' },
+        { id: '18', rank: 18, track: 'Workshop: Performance Profiling', speaker: 'Sven Eriksen',   room: 'Room 1',  slot: '14:00' },
+        { id: '19', rank: 19, track: 'The Future of Edge Computing',    speaker: 'Yuki Tanaka',    room: 'Hall A',  slot: '11:00' },
+        { id: '20', rank: 20, track: 'Open Source Sustainability',      speaker: 'Kofi Mensah',    room: 'Hall B',  slot: '16:00' },
       ];
 
       const grid = document.getElementById('grid');
@@ -123,6 +142,17 @@
       });
 
       await customElements.whenDefined('apex-grid');
+
+      // Toggle between the grip-handle drag (default) and whole-row drag.
+      const modeBtn = document.getElementById('toggle-mode');
+      let useHandle = true;
+      modeBtn.addEventListener('click', () => {
+        useHandle = !useHandle;
+        grid.rowReordering = { enabled: true, handle: useHandle };
+        modeBtn.textContent = useHandle ? 'Drag: handle' : 'Drag: whole row';
+        modeBtn.setAttribute('aria-pressed', String(useHandle));
+      });
+
       document.getElementById('to-top').addEventListener('click', () => {
         grid.moveRow(grid.data.length - 1, 0, 'before');
       });

@@ -8,10 +8,19 @@ import type { ColumnConfiguration, DataType, GridHost } from './types.js';
 export const SELECTION_COLUMN_WIDTH = 44;
 /** Width of the auto-rendered expansion (chevron) column in CSS pixels. */
 export const EXPANSION_COLUMN_WIDTH = 40;
+/** Width of the auto-rendered row-reorder (grip handle) column in CSS pixels. */
+export const REORDER_HANDLE_COLUMN_WIDTH = 36;
+/** Width of the transient spreadsheet row-number gutter in CSS pixels. */
+export const ROW_NUMBER_COLUMN_WIDTH = 48;
 
 export function applyColumnWidths<T extends object>(
   columns: Array<ColumnConfiguration<T>>,
-  options: { showSelectionColumn?: boolean; showExpansionColumn?: boolean } = {}
+  options: {
+    showSelectionColumn?: boolean;
+    showExpansionColumn?: boolean;
+    showReorderHandle?: boolean;
+    showRowNumbers?: boolean;
+  } = {}
 ): StyleInfo {
   const tracks = columns
     .filter((each) => !each.hidden)
@@ -22,7 +31,31 @@ export function applyColumnWidths<T extends object>(
   if (options.showSelectionColumn) {
     tracks.unshift(`${SELECTION_COLUMN_WIDTH}px`);
   }
+  // Unshifted last so the grip handle is the leftmost leading column, ahead of
+  // any selection / expansion chrome.
+  if (options.showReorderHandle) {
+    tracks.unshift(`${REORDER_HANDLE_COLUMN_WIDTH}px`);
+  }
+  // The spreadsheet row-number gutter is the very first column (matches A1).
+  if (options.showRowNumbers) {
+    tracks.unshift(`${ROW_NUMBER_COLUMN_WIDTH}px`);
+  }
   return { 'grid-template-columns': tracks.join(' ') };
+}
+
+/**
+ * The spreadsheet column letter for a zero-based column index (`0 → A`,
+ * `25 → Z`, `26 → AA`). Used for the transient A1 coordinate hints shown while a
+ * formula cell is being edited.
+ */
+export function columnLetter(index: number): string {
+  let n = index;
+  let letters = '';
+  do {
+    letters = String.fromCharCode(65 + (n % 26)) + letters;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return letters;
 }
 
 /**

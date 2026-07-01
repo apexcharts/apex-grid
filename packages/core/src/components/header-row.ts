@@ -9,7 +9,7 @@ import { partNameMap } from '../internal/part-map.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_HEADER_ROW_TAG } from '../internal/tags.js';
 import type { ColumnConfiguration } from '../internal/types.js';
-import { getPinEdge } from '../internal/utils.js';
+import { columnLetter, getPinEdge } from '../internal/utils.js';
 import { styles } from '../styles/header-row/header-row.base.css.js';
 import ApexGridHeader from './header.js';
 
@@ -37,13 +37,12 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
   @property({ attribute: false })
   public pinOffsets: Map<unknown, number> = new Map();
 
+  /** Reveal the spreadsheet coordinates (row-number header spacer + column letters). */
+  @property({ attribute: false })
+  public coordinateHints = false;
+
   public get headers() {
     return Array.from(this._headers);
-  }
-
-  constructor() {
-    super();
-    this.addEventListener('click', this.#activeFilterColumn);
   }
 
   public override connectedCallback() {
@@ -57,15 +56,6 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
     // The column header is row 1, or row 2 when a group header row precedes it.
     const depth = this.state?.host?.columnGroupDepth ?? 0;
     this.setAttribute('aria-rowindex', String(depth + 1));
-  }
-
-  #activeFilterColumn(event: MouseEvent) {
-    const header = event
-      .composedPath()
-      .filter((target) => target instanceof ApexGridHeader)
-      .at(0) as ApexGridHeader<T>;
-
-    this.state.filtering.setActiveColumn(header?.column);
   }
 
   protected override shouldUpdate(props: PropertyValueMap<this> | Map<PropertyKey, this>): boolean {
@@ -138,6 +128,24 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
    * "select all on this page" checkbox in multi-select mode; nothing in
    * single-select mode (selecting all rows isn't meaningful there).
    */
+  /**
+   * Corner spacer aligning the header with the body's leading row-number gutter
+   * (formula coordinate hints). Shows a small "#" glyph.
+   */
+  protected renderRowNumberHeader() {
+    if (!this.coordinateHints) return nothing;
+    return html`<div part="row-number-header" data-pinned="start" aria-hidden="true">#</div>`;
+  }
+
+  /**
+   * Empty corner spacer aligning the header with the body's leading grip-handle
+   * column. Rendered only in row-reorder handle mode.
+   */
+  protected renderReorderHandleHeader() {
+    if (!this.state?.rowReorder?.showHandleColumn) return nothing;
+    return html`<div part="reorder-handle-header" data-pinned="start" aria-hidden="true"></div>`;
+  }
+
   protected renderSelectionHeader() {
     const selection = this.state?.selection;
     if (!selection?.showCheckboxColumn) return nothing;
@@ -200,7 +208,6 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
   }
 
   protected override render() {
-    const filterRow = this.state.filtering.filterRow;
     const reorderState = this.state.reordering.state;
 
     // Track aria-colindex across the auto chrome columns (selection + expansion)
@@ -208,11 +215,14 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
     let colCursor = 0;
     if (this.state?.selection.showCheckboxColumn) colCursor++;
     if (this.state?.expansion.showToggleColumn) colCursor++;
+    // Spreadsheet column letter index: counts only visible data columns (A = the
+    // first one), independent of the aria/chrome numbering above.
+    let coordCol = 0;
 
     // Keyed by column.key so the same `<apex-grid-header>` DOM element
     // follows its column across a live reorder swap — critical for pointer
     // capture to stay bound to the dragged column as it moves.
-    return html`${this.renderSelectionHeader()}${this.renderExpansionHeader()}${repeat(
+    return html`${this.renderRowNumberHeader()}${this.renderReorderHandleHeader()}${this.renderSelectionHeader()}${this.renderExpansionHeader()}${repeat(
       this.columns,
       (column) => String(column.key),
       (column, index) => {
@@ -223,9 +233,11 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
         const edge = getPinEdge(this.columns, index);
         const isDragSource = reorderState?.sourceKey === column.key;
         const ariaColindex = ++colCursor;
+        const coordinateLetter = this.coordinateHints ? columnLetter(coordCol) : '';
+        coordCol += 1;
         return html`<apex-grid-header
           part=${partNameMap({
-            filtered: column === filterRow?.column,
+            filtered: this.state.filtering.state.has(column.key),
             'pinned-start': column.pinned === 'start',
             'pinned-end': column.pinned === 'end',
             dragging: isDragSource,
@@ -235,6 +247,7 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
           style=${pinStyle}
           .column=${column}
           .colindex=${ariaColindex}
+          .coordinateLetter=${coordinateLetter}
         ></apex-grid-header>`;
       }
     )}${this.renderDragGhost()}`;

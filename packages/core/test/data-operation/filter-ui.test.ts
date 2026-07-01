@@ -121,20 +121,35 @@ describe('Grid UI filter', () => {
       expect(TDD.filterRow.element).to.exist;
     });
 
-    it('Correct number of UI elements', async () => {
-      expect(TDD.filterableColumns).lengthOf(TDD.filterRow.inactiveStateChips.length);
+    it('Correct number of filter icons in headers', async () => {
+      const filterBtns = () =>
+        Array.from(
+          TDD.grid.renderRoot
+            .querySelector('apex-grid-header-row')!
+            .shadowRoot!.querySelectorAll('apex-grid-header')
+        ).filter((h) => h.shadowRoot!.querySelector('[part~="filter-btn"]'));
+
+      expect(filterBtns()).lengthOf(TDD.filterableColumns.length);
 
       await TDD.updateColumns({ key: 'name', filter: false });
-      expect(TDD.filterableColumns).lengthOf(TDD.filterRow.inactiveStateChips.length);
+      expect(filterBtns()).lengthOf(TDD.filterableColumns.length);
 
       await TDD.updateColumns({ key: 'name', filter: true });
-      expect(TDD.filterableColumns).lengthOf(TDD.filterRow.inactiveStateChips.length);
+      expect(filterBtns()).lengthOf(TDD.filterableColumns.length);
     });
 
-    it('Default state when clicking on a filter chip', async () => {
+    it('Opens panel when clicking the filter icon in a header', async () => {
       await TDD.activateFilterRow('name');
 
       TDD.assertActiveFilterRowState();
+      // No filter applied yet, so the header should not have the filtered style.
+      TDD.assertDoesNotHaveHeaderFilterStyle('name');
+    });
+
+    it('Header shows filtered style only after a filter is applied', async () => {
+      await TDD.activateFilterRow('name');
+      await TDD.filterByInput('a');
+
       TDD.assertHasHeaderFilterStyle('name');
     });
 
@@ -146,26 +161,33 @@ describe('Grid UI filter', () => {
       TDD.assertDoesNotHaveHeaderFilterStyle('name');
     });
 
-    it('Correctly changes header style for active column', async () => {
+    it('Header filter style is retained after panel is closed', async () => {
       await TDD.activateFilterRow('name');
+      await TDD.filterByInput('a');
+      await TDD.closeFilterRow();
 
+      // Filter is still active even though the panel is closed.
       TDD.assertHasHeaderFilterStyle('name');
-
-      await TDD.clickHeader('id');
-
-      TDD.assertActiveFilterRowState();
-      TDD.assertDoesNotHaveHeaderFilterStyle('name');
-      TDD.assertHasHeaderFilterStyle('id');
+      expect(TDD.grid.totalItems).to.equal(2);
     });
 
-    it('Does not change header style when clicking on a non-filterable column', async () => {
-      await TDD.updateColumns({ key: 'active', filter: false });
+    it('Opening the panel for a second column switches it without clearing the first filter', async () => {
       await TDD.activateFilterRow('name');
-      await TDD.clickHeader('active');
+      await TDD.filterByInput('a');
+      await TDD.closeFilterRow();
+
+      await TDD.activateFilterRow('importance');
 
       TDD.assertActiveFilterRowState();
       TDD.assertHasHeaderFilterStyle('name');
-      TDD.assertDoesNotHaveHeaderFilterStyle('active');
+      TDD.assertDoesNotHaveHeaderFilterStyle('importance');
+    });
+
+    it('Non-filterable column has no filter icon', async () => {
+      await TDD.updateColumns({ key: 'active', filter: false });
+
+      const activeHeader = TDD.headers.get('active').element;
+      expect(activeHeader.shadowRoot!.querySelector('[part~="filter-btn"]')).to.be.null;
     });
   });
 

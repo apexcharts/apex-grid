@@ -81,14 +81,26 @@
       const matches = (re, msg) => (v) => (v == null || v === '' || re.test(String(v)) ? null : msg);
 
       const data = [
-        { id: '1', name: 'Mira Patel',   email: 'mira.patel@acme.io',   age: 34, title: 'Design Lead'        },
-        { id: '2', name: 'Diego Rojas',  email: 'diego.rojas@acme.io',  age: 41, title: 'Staff Engineer'     },
-        { id: '3', name: 'Priya Iyer',   email: 'priya.iyer@acme.io',   age: 29, title: 'Senior Engineer'    },
-        { id: '4', name: 'Otis Brown',   email: 'otis.brown@acme.io',   age: 52, title: 'Finance Manager'    },
-        { id: '5', name: 'Ana Costa',    email: 'ana.costa@acme.io',    age: 38, title: 'Marketing Lead'     },
-        { id: '6', name: 'Sven Eriksen', email: 'sven.eriksen@acme.io', age: 45, title: 'Principal Engineer' },
-        { id: '7', name: 'Yuki Tanaka',  email: 'yuki.tanaka@acme.io',  age: 31, title: 'Product Designer'   },
-        { id: '8', name: 'Kofi Mensah',  email: 'kofi.mensah@acme.io',  age: 47, title: 'Ops Manager'        },
+        { id: '1',  name: 'Mira Patel',       email: 'mira.patel@acme.io',       age: 34, title: 'Design Lead'          },
+        { id: '2',  name: 'Diego Rojas',      email: 'diego.rojas@acme.io',      age: 41, title: 'Staff Engineer'       },
+        { id: '3',  name: 'Priya Iyer',       email: 'priya.iyer@acme.io',       age: 29, title: 'Senior Engineer'      },
+        { id: '4',  name: 'Otis Brown',       email: 'otis.brown@acme.io',       age: 52, title: 'Finance Manager'      },
+        { id: '5',  name: 'Ana Costa',        email: 'ana.costa@acme.io',        age: 38, title: 'Marketing Lead'       },
+        { id: '6',  name: 'Sven Eriksen',     email: 'sven.eriksen@acme.io',     age: 45, title: 'Principal Engineer'   },
+        { id: '7',  name: 'Yuki Tanaka',      email: 'yuki.tanaka@acme.io',      age: 31, title: 'Product Designer'     },
+        { id: '8',  name: 'Kofi Mensah',      email: 'kofi.mensah@acme.io',      age: 47, title: 'Ops Manager'          },
+        { id: '9',  name: 'Lena Hoffmann',    email: 'lena.hoffmann@acme.io',    age: 36, title: 'Senior Designer'      },
+        { id: '10', name: 'Ravi Sharma',      email: 'ravi.sharma@acme.io',      age: 43, title: 'Engineering Manager'  },
+        { id: '11', name: 'Fatima Al-Rashid', email: 'fatima.al-rashid@acme.io', age: 28, title: 'Junior Engineer'      },
+        { id: '12', name: 'Marcus Williams',  email: 'marcus.williams@acme.io',  age: 55, title: 'VP of Product'        },
+        { id: '13', name: 'Sofia Rossi',      email: 'sofia.rossi@acme.io',      age: 33, title: 'UX Researcher'        },
+        { id: '14', name: 'Chen Wei',         email: 'chen.wei@acme.io',         age: 39, title: 'Data Engineer'        },
+        { id: '15', name: 'Amara Diallo',     email: 'amara.diallo@acme.io',     age: 26, title: 'Marketing Analyst'    },
+        { id: '16', name: 'James O\'Brien',   email: 'james.obrien@acme.io',     age: 50, title: 'Legal Counsel'        },
+        { id: '17', name: 'Nadia Petrov',     email: 'nadia.petrov@acme.io',     age: 44, title: 'HR Business Partner'  },
+        { id: '18', name: 'Luis Herrera',     email: 'luis.herrera@acme.io',     age: 30, title: 'Frontend Engineer'    },
+        { id: '19', name: 'Aisha Okonkwo',    email: 'aisha.okonkwo@acme.io',    age: 37, title: 'Product Manager'      },
+        { id: '20', name: 'Erik Lindqvist',   email: 'erik.lindqvist@acme.io',   age: 58, title: 'Chief Architect'      },
       ];
 
       const grid = document.getElementById('grid');

@@ -18,7 +18,13 @@
  * value-reading feature work unchanged.
  */
 import type { GridLocaleKey } from 'apex-grid';
-import { type GridFeatureModule, type GridHost, PIPELINE } from 'apex-grid/internal';
+import {
+  type CellDecoration,
+  type CellDecoratorContext,
+  type GridFeatureModule,
+  type GridHost,
+  PIPELINE,
+} from 'apex-grid/internal';
 import type { ReactiveController } from 'lit';
 import { type CellValue, cycleError, refError } from './errors.js';
 import { evaluate, type FormulaContext } from './evaluator.js';
@@ -30,9 +36,12 @@ import {
   parseFormula,
   stringifyFormula,
 } from './parser.js';
-import { type CellAddress, formatCell, rangeCells } from './refs.js';
+import { type CellAddress, formatCell, normalizeRange, rangeCells } from './refs.js';
 
 export const FORMULA_MODULE_ID = 'formula';
+
+/** Number of distinct colors the reference highlighter cycles (mirrors body-cell.scss). */
+const HIGHLIGHT_PALETTE_SIZE = 6;
 
 const cellKey = (address: CellAddress): string => `${address.row}:${address.col}`;
 
@@ -328,14 +337,23 @@ export class FormulaController<T extends object> implements ReactiveController, 
 
   readonly #host: GridHost<T>;
   readonly #store: FormulaStore;
+  /** Owning state controller, for requesting cell-decoration refreshes. */
+  readonly #state: { bumpDecoration(): void } | undefined;
   /** Stable A1 letter order: column keys in first-seen order, append-only so a
    * formula's letters survive column reorder; a removed column's slot is kept. */
   #letterOrder: string[] = [];
   #recomputing = false;
   #lastData: ReadonlyArray<T> | undefined;
+  /**
+   * Transient reference highlights for the formula being edited: row data object
+   * → (column key → palette slot). `null` when no formula is open. Read by
+   * {@link decorateCell}; rebuilt by {@link highlightReferences}.
+   */
+  #highlights: Map<T, Map<string, number>> | null = null;
 
-  constructor(host: GridHost<T>) {
+  constructor(host: GridHost<T>, state?: { bumpDecoration(): void }) {
     this.#host = host;
+    this.#state = state;
     this.#store = new FormulaStore(this);
     host.addController(this);
   }
@@ -484,6 +502,65 @@ export class FormulaController<T extends object> implements ReactiveController, 
       : undefined;
   }
 
+  /**
+   * Reflect the cells the formula being edited references as cell decoration
+   * (the editor's live reference highlighting). Each distinct reference cycles a
+   * small palette so it reads as its own color, spreadsheet-style. Tolerates
+   * partial/invalid input (keeps the last good highlight); `null`, empty, or a
+   * non-formula clears. Drives the {@link decorateCell} seam.
+   */
+  public highlightReferences(src: string | null): void {
+    const text = src?.trim() ?? '';
+    if (!text.startsWith('=')) {
+      this.#setHighlights(null);
+      return;
+    }
+    let ast: FormulaAst;
+    try {
+      ast = parseFormula(text);
+    } catch {
+      return; // mid-typing / invalid: leave the last good highlight in place
+    }
+    this.#syncColumns();
+    const slots = new Map<string, number>(); // ref signature → palette slot
+    const next = new Map<T, Map<string, number>>();
+    const paint = (cells: CellAddress[], signature: string): void => {
+      let slot = slots.get(signature);
+      if (slot === undefined) {
+        slot = slots.size % HIGHLIGHT_PALETTE_SIZE;
+        slots.set(signature, slot);
+      }
+      for (const cell of cells) {
+        const data = this.#host.data[cell.row];
+        const key = this.#keyForIndex(cell.col);
+        if (data === undefined || key === undefined) {
+          continue;
+        }
+        let perRow = next.get(data);
+        if (!perRow) {
+          perRow = new Map();
+          next.set(data, perRow);
+        }
+        perRow.set(key, slot);
+      }
+    };
+    const refs = formulaReferences(ast);
+    for (const cell of refs.cells) {
+      paint([cell], `c:${cell.row}:${cell.col}`);
+    }
+    for (const range of refs.ranges) {
+      const r = normalizeRange(range);
+      paint(rangeCells(range), `r:${r.start.row}:${r.start.col}:${r.end.row}:${r.end.col}`);
+    }
+    this.#setHighlights(next.size ? next : null);
+  }
+
+  /** Decorate a referenced cell with its palette slot (CellDecorator seam). */
+  public decorateCell(ctx: CellDecoratorContext<T>): CellDecoration | null {
+    const slot = this.#highlights?.get(ctx.row)?.get(String(ctx.column.key));
+    return slot === undefined ? null : { attributes: { 'data-formula-ref': String(slot) } };
+  }
+
   /** Localize a grid string (delegates to the host), used by the editor. */
   public localize(key: GridLocaleKey): string {
     return this.#host.localize(key);
@@ -520,6 +597,15 @@ export class FormulaController<T extends object> implements ReactiveController, 
   }
 
   // --- internals ------------------------------------------------------------
+
+  /** Swap the highlight map and refresh cell decoration (no-op for null→null). */
+  #setHighlights(next: Map<T, Map<string, number>> | null): void {
+    if (next === null && this.#highlights === null) {
+      return;
+    }
+    this.#highlights = next;
+    this.#state?.bumpDecoration();
+  }
 
   #onCellValueChanged = (event: Event): void => {
     if (this.#recomputing) {
@@ -616,5 +702,5 @@ export class FormulaController<T extends object> implements ReactiveController, 
 /** Feature module registered on the enterprise grid (wired into the set in F5). */
 export const formulaModule: GridFeatureModule = {
   id: FORMULA_MODULE_ID,
-  create: (host) => new FormulaController(host),
+  create: (host, state) => new FormulaController(host, state),
 };

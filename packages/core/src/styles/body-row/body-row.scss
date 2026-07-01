@@ -75,6 +75,68 @@ $accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var
     cursor: grabbing;
 }
 
+// Leading row-number gutter cell (transient spreadsheet coordinate hint).
+// Sticky to the inline-start edge like the other chrome cells.
+[part='row-number-cell'] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: calc(var(--z-index-base) + 1);
+    background: inherit;
+    border-inline-end: 1px solid $row-border-color;
+    color: var(--ag-text-subtle);
+    font-size: var(--ag-fs-cell-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+// Leading grip-handle cell — sticky to the inline-start edge like the other
+// chrome cells, so it stays put during horizontal scrolling. Only rendered in
+// handle mode; pinned rows render an empty (non-grabbable) spacer.
+[part='reorder-handle-cell'] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: calc(var(--z-index-base) + 1);
+    background: inherit;
+}
+
+[part='reorder-handle'] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    // Touch target: 24x24 minimum (WCAG 2.5.8); visible grip is 16px.
+    inline-size: rem(24px);
+    block-size: rem(24px);
+    color: var(--ag-text-subtle);
+    border-radius: var(--ag-radius-xs);
+    cursor: grab;
+    // Claim vertical-drag gestures from the scroller on touch devices.
+    touch-action: none;
+    transition:
+        color var(--ag-dur-fast) var(--ag-ease),
+        background-color var(--ag-dur-fast) var(--ag-ease);
+
+    &:hover {
+        color: var(--ag-text-muted);
+        background: var(--ag-brand-soft);
+    }
+
+    &:active {
+        cursor: grabbing;
+    }
+}
+
+[part='reorder-grip'] {
+    fill: currentColor;
+    // The press is handled on the row host; never let the SVG be the target.
+    pointer-events: none;
+}
+
 // Built-in selection (checkbox) cell — always sits at the start of the row,
 // pinned so it stays put during horizontal scrolling.
 [part='selection-cell'] {
