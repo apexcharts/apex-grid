@@ -28,6 +28,7 @@ export type {
   CellInteraction,
   CellInteractionHandler,
   CellInteractionKind,
+  ColumnMenuProvider,
   GridFeatureModule,
   PresentedRow,
   RowPresenter,
@@ -38,6 +39,7 @@ export type {
 export {
   isCellDecorator,
   isCellInteractionHandler,
+  isColumnMenuProvider,
   isRowPresenter,
   isRowTransformer,
   isSerializableModule,

@@ -36,6 +36,7 @@ $grid-resize-line-color: var(--igx-grid-resize-line-color, var(--grid-resize-lin
     // `overflow: auto` stays — the host is the scroll container; the radius
     // still clips the sticky header/footer corners.
     border-radius: var(--ag-radius);
+
     // Token-driven so a one-line `--ag-grid-bg` override (or `theme="dark"`)
     // re-skins the card. Default carries the subtle premium light gradient.
     background: var(--ag-grid-bg);
@@ -58,6 +59,15 @@ $grid-resize-line-color: var(--igx-grid-resize-line-color, var(--grid-resize-lin
 
     --scrollbar-offset: 0;
     --z-index-base: 1;
+}
+
+// Opt-in per-column header dividers (`columnSeparator`). Publishing this
+// inherited custom property here (rather than passing a flag through every
+// header cell) switches the divider on inside each `apex-grid-header` shadow
+// root — custom properties cross shadow boundaries, so the header cell reads it
+// directly. Off by default; the header cell's `::before` stays `display: none`.
+:host([column-separator]) {
+    --apex-header-separator-display: block;
 }
 
 // --- Row pinning (sticky top / bottom bands) -------------------------------
@@ -144,7 +154,7 @@ apex-virtualizer {
     color: var(--ag-text-subtle);
 
     svg {
-        fill: currentColor;
+        fill: currentcolor;
     }
 }
 

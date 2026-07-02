@@ -164,6 +164,31 @@ export function isCellDecorator<T extends object>(
   );
 }
 
+/**
+ * Optional capability a feature module's controller may implement to signal that
+ * it provides a **column header menu** (opened from the header's kebab button).
+ * The core header shows the kebab whenever a column is sortable or resizable, or
+ * when a module reports `true` here, so a feature (e.g. the enterprise context
+ * menu) can surface pin / hide / group / chart actions on any column. The module
+ * owns the menu content itself (it opens on the `apex-grid-column-menu` event the
+ * header dispatches). Inert for the community grid, which registers no modules.
+ *
+ * @remarks Unstable; part of `apex-grid/internal`.
+ */
+export interface ColumnMenuProvider {
+  /** Whether the column-menu (kebab) button should be offered for columns. */
+  providesColumnMenu(): boolean;
+}
+
+/** Runtime type-guard for {@link ColumnMenuProvider}. */
+export function isColumnMenuProvider(controller: unknown): controller is ColumnMenuProvider {
+  return (
+    typeof controller === 'object' &&
+    controller !== null &&
+    typeof (controller as ColumnMenuProvider).providesColumnMenu === 'function'
+  );
+}
+
 /** The kind of pointer interaction forwarded from a body cell. */
 export type CellInteractionKind = 'down' | 'over' | 'up';
 

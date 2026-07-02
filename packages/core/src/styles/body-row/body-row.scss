@@ -7,6 +7,7 @@ $row-odd-background: var(--igx-row-odd-background, var(--row-odd-background, var
 $row-odd-text-color: var(--igx-row-odd-text-color, var(--row-odd-text-color, var(--ag-text-body)));
 $row-even-background: var(--igx-row-even-background, var(--row-even-background, var(--ag-surface-alt)));
 $row-even-text-color: var(--igx-row-even-text-color, var(--row-even-text-color, var(--ag-text-body)));
+
 // Row state washes are OPAQUE (mixed over the surface, not over transparent):
 // the selection/expansion/pinned cells are sticky and paint
 // `background: inherit`, so a translucent row background would let
@@ -22,6 +23,7 @@ $accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var
 :host {
     display: grid;
     width: 100%;
+
     // `min-height` (not fixed `height`) so expandable rows can grow to fit
     // their detail panel; for normal rows content is < 36px so this reads as a
     // fixed 36px row.
@@ -115,6 +117,7 @@ $accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var
     color: var(--ag-text-subtle);
     border-radius: var(--ag-radius-xs);
     cursor: grab;
+
     // Claim vertical-drag gestures from the scroller on touch devices.
     touch-action: none;
     transition:
@@ -132,7 +135,8 @@ $accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var
 }
 
 [part='reorder-grip'] {
-    fill: currentColor;
+    fill: currentcolor;
+
     // The press is handled on the row host; never let the SVG be the target.
     pointer-events: none;
 }
@@ -151,7 +155,7 @@ $accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var
 }
 
 [part='selection-checkbox'] {
-    @include apex-checkbox;
+    @include apex-checkbox();
 }
 
 // Built-in expansion (chevron) cell — sits at the start of the row, pinned
@@ -219,6 +223,7 @@ $accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var
 [part='detail-panel'] {
     grid-column: 1 / -1;
     padding: #{rem(12px)} var(--ag-cell-pad-x);
+
     // Opaque (sticky inline-start, so it must mask scrolled content).
     background: var(--ag-surface-alt);
     border-block-start: 1px solid $row-border-color;

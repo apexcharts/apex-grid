@@ -1,16 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Premium default design tokens (`--ag-*`).
-//
 // These land on the `<apex-grid>` host (this file is `@use`d by
 // `grid/_grid.base.scss`, which ships inside every theme). CSS custom
 // properties inherit across shadow boundaries, so every child component
 // (`apex-grid-row`, `apex-grid-cell`, `apex-grid-header`, …) can read them.
-//
 // This is the single rebrand surface: override ~12 values on `apex-grid` and
 // the whole grid re-skins. Values fall back to self-contained literals, so a
 // grid mounted with zero consumer CSS already looks premium; the brand tokens
 // additionally re-tint from the igniteui palette when it is present.
-//
 // No `!important`, no downstream hardcoded numerics — every rule resolves here.
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -20,24 +17,25 @@
     // auto-matches an igniteui host app), and falls back to the self-contained
     // premium blue otherwise. This igniteui hook used to live in the per-theme
     // files; folding it here keeps that integration without named themes.
-    --ag-brand: var(--ig-primary-500, #0d6fd3); // primary blue
-    --ag-brand-strong: var(--ig-primary-700, #0a56b8); // hover / pressed
+    --ag-brand: var(--ig-primary-500, #0d6fd3); /* primary blue */
+    --ag-brand-strong: var(--ig-primary-700, #0a56b8); /* hover / pressed */
 
     // Brand-derived washes are mixed from `--ag-brand` so a one-line rebrand
     // cascades to every tint. With the default brand these resolve to the
     // spec's exact rgba(13, 111, 211, …) values.
-    --ag-brand-soft: color-mix(in srgb, var(--ag-brand) 10%, transparent); // selected row / chip wash
-    --ag-brand-softer: color-mix(in srgb, var(--ag-brand) 7%, transparent); // chip / control wash
-    --ag-brand-line: color-mix(in srgb, var(--ag-brand) 18%, transparent); // chip / search borders
+    --ag-brand-soft: color-mix(in srgb, var(--ag-brand) 10%, transparent); /* selected row / chip wash */
+    --ag-brand-softer: color-mix(in srgb, var(--ag-brand) 7%, transparent); /* chip / control wash */
+    --ag-brand-line: color-mix(in srgb, var(--ag-brand) 18%, transparent); /* chip / search borders */
 
     // ── Neutral chrome ───────────────────────────────────────────────────
     // The grid's chrome (surfaces, gridlines, row hover) is grayscale so the
     // grid reads as a calm, neutral table; `--ag-brand` is reserved for genuine
     // state (selection, focus, checkboxes, active sort) and accents (chips).
-    --ag-hairline: rgba(15, 23, 42, 0.08); // header / structural gridlines
-    --ag-border: rgba(15, 23, 42, 0.08); // row separators — same weight as hairline
-    --ag-pin-line: rgba(15, 23, 42, 0.18); // 1px vertical line at pinned-column edge
-    --ag-row-hover: color-mix(in srgb, #0f172a 5%, var(--ag-surface)); // neutral hover wash (opaque)
+    --ag-hairline: rgb(15 23 42 / 8%); /* header / structural gridlines */
+    --ag-border: rgb(15 23 42 / 8%); /* row separators — same weight as hairline */
+    --ag-pin-line: rgb(15 23 42 / 18%); /* 1px vertical line at pinned-column edge */
+    --ag-header-separator: rgb(15 23 42 / 12%); /* opt-in per-column header divider (columnSeparator) */
+    --ag-row-hover: color-mix(in srgb, #0f172a 5%, var(--ag-surface)); /* neutral hover wash (opaque) */
 
     // ── Surfaces ─────────────────────────────────────────────────────────
     // These back sticky/pinned regions (header, footer, frozen columns) which
@@ -49,71 +47,68 @@
     // gradient while sticky surfaces stay flat/opaque. Dark themes override it
     // with a flat color. The host paints THIS, so dark mode is impossible
     // without it being a token.
-    --ag-grid-bg: #ffffff; // flat white — gradients are dated in modern data grids
-    --ag-surface: #fff; // grid card background
-    --ag-surface-alt: var(--ag-surface); // no zebra stripes — rely on hover + hairline borders
-    --ag-surface-elevated: #f8f9fb; // flat header/toolbar/footer surface
+    --ag-grid-bg: #fff; /* flat white — gradients are dated in modern data grids */
+    --ag-surface: #fff; /* grid card background */
+    --ag-surface-alt: var(--ag-surface); /* no zebra stripes — rely on hover + hairline borders */
+    --ag-surface-elevated: #f8f9fb; /* flat header/toolbar/footer surface */
 
     // ── Text ─────────────────────────────────────────────────────────────
-    --ag-text: #111827; // primary
-    --ag-text-body: #1f2937; // row text
-    --ag-text-muted: #6b7280; // roles, labels
-    --ag-text-subtle: #9ca3af; // placeholder, ellipsis
+    --ag-text: #111827; /* primary */
+    --ag-text-body: #1f2937; /* row text */
+    --ag-text-muted: #6b7280; /* roles, labels */
+    --ag-text-subtle: #9ca3af; /* placeholder, ellipsis */
     --ag-text-on-brand: #fff;
 
     // ── State ────────────────────────────────────────────────────────────
-    --ag-good: #10b981; // health > 80, Active
+    --ag-good: #10b981; /* health > 80, Active */
     --ag-good-text: #047857;
-    --ag-good-soft: rgba(16, 185, 129, 0.1);
-    --ag-watch: #f59e0b; // health 65–80, Trial
+    --ag-good-soft: rgb(16 185 129 / 10%);
+    --ag-watch: #f59e0b; /* health 65–80, Trial */
     --ag-watch-text: #b45309;
-    --ag-watch-soft: rgba(245, 158, 11, 0.1);
-    --ag-risk: #ef4444; // health < 65, Churn
+    --ag-watch-soft: rgb(245 158 11 / 10%);
+    --ag-risk: #ef4444; /* health < 65, Churn */
     --ag-risk-text: #b91c1c;
-    --ag-risk-soft: rgba(239, 68, 68, 0.1);
-
-    --ag-gold: #fef3c7; // Enterprise pill bg
+    --ag-risk-soft: rgb(239 68 68 / 10%);
+    --ag-gold: #fef3c7; /* Enterprise pill bg */
     --ag-gold-line: #fde68a;
     --ag-gold-text: #92400e;
-
     --ag-shadow-card:
-        0 16px 38px rgba(15, 23, 42, 0.12),
-        0 0 0 1px rgba(15, 23, 42, 0.06),
-        0 1px 0 rgba(255, 255, 255, 0.9) inset; // soft neutral floating shadow
+        0 16px 38px rgb(15 23 42 / 12%),
+        0 0 0 1px rgb(15 23 42 / 6%),
+        0 1px 0 rgb(255 255 255 / 90%) inset; /* soft neutral floating shadow */
 
     // ── Typography ───────────────────────────────────────────────────────
     --ag-font: 'Inter', -apple-system, blinkmacsystemfont, sans-serif;
     --ag-fs-cell: 13px;
-    --ag-fs-cell-secondary: 11.5px; // role line, header labels
-    --ag-fs-tiny: 10px; // tags, page ellipsis
+    --ag-fs-cell-secondary: 11.5px; /* role line, header labels */
+    --ag-fs-tiny: 10px; /* tags, page ellipsis */
     --ag-fw-regular: 500;
     --ag-fw-semibold: 600;
     --ag-fw-bold: 700;
     --ag-tracking-tight: -0.005em;
-    --ag-tracking-header: 0.05em; // uppercase header labels
+    --ag-tracking-header: 0.05em; /* uppercase header labels */
     --ag-leading: 1.4;
 
     // ── Spacing & sizing ─────────────────────────────────────────────────
     --ag-cell-pad-x: 10px;
-    --ag-row-h: 36px; // dense but readable
-    --ag-header-h: 40px; // taller than rows to accommodate 3-icon header
+    --ag-row-h: 36px; /* dense but readable */
+    --ag-header-h: 40px; /* taller than rows to accommodate 3-icon header */
     --ag-toolbar-pad: 12px 14px;
     --ag-footer-pad: 10px 14px;
-    --ag-radius: 8px; // outer card — tighter matches modern table libraries
-    --ag-radius-sm: 6px; // chips, page buttons
-    --ag-radius-xs: 4px; // checkboxes, expand button
-    --ag-radius-pill: 20px; // status badges
+    --ag-radius: 8px; /* outer card — tighter matches modern table libraries */
+    --ag-radius-sm: 6px; /* chips, page buttons */
+    --ag-radius-xs: 4px; /* checkboxes, expand button */
+    --ag-radius-pill: 20px; /* status badges */
 
     // ── Motion ───────────────────────────────────────────────────────────
     --ag-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-    --ag-dur-fast: 120ms; // hover, focus
-    --ag-dur-med: 180ms; // chevron rotate
-    --ag-dur-slow: 240ms; // health bar fill
+    --ag-dur-fast: 120ms; /* hover, focus */
+    --ag-dur-med: 180ms; /* chevron rotate */
+    --ag-dur-slow: 240ms; /* health bar fill */
 }
 
 // ─────────────────────────────────────────────────────────────────────────
 // Built-in dark theme. Opt in with `<apex-grid theme="dark">`.
-//
 // Only color/surface tokens are flipped to a neutral slate palette; geometry,
 // typography, motion, and the brand hue (which still auto-tints from the
 // igniteui palette when present) are inherited from the light block above.
@@ -128,73 +123,71 @@
     --ag-brand-strong: var(--ig-primary-400, #60a5fa);
 
     // ── Surfaces ── flat, opaque slate (sticky regions paint these).
-    --ag-grid-bg: #0f172a; // host card (flat in dark)
-    --ag-surface: #0f172a; // grid body / row bg
-    --ag-surface-alt: var(--ag-surface); // no stripes in dark mode either
-    --ag-surface-elevated: #1e2532; // header / footer / toolbar — slightly lifted
+    --ag-grid-bg: #0f172a; /* host card (flat in dark) */
+    --ag-surface: #0f172a; /* grid body / row bg */
+    --ag-surface-alt: var(--ag-surface); /* no stripes in dark mode either */
+    --ag-surface-elevated: #1e2532; /* header / footer / toolbar — slightly lifted */
 
     // ── Chrome ── light-on-dark gridlines + a hover wash that mixes toward
     // white (the light default mixes toward #0f172a, which is invisible here).
-    --ag-hairline: rgba(255, 255, 255, 0.12); // structural gridlines
-    --ag-border: rgba(255, 255, 255, 0.12); // row separators — same weight as hairline
-    --ag-pin-line: rgba(255, 255, 255, 0.28); // 1px vertical line at pinned-column edge
-    --ag-row-hover: color-mix(in srgb, #ffffff 7%, var(--ag-surface));
+    --ag-hairline: rgb(255 255 255 / 12%); /* structural gridlines */
+    --ag-border: rgb(255 255 255 / 12%); /* row separators — same weight as hairline */
+    --ag-pin-line: rgb(255 255 255 / 28%); /* 1px vertical line at pinned-column edge */
+    --ag-header-separator: rgb(255 255 255 / 18%); /* opt-in per-column header divider (columnSeparator) */
+    --ag-row-hover: color-mix(in srgb, #fff 7%, var(--ag-surface));
 
     // ── Text ──
-    --ag-text: #f1f5f9; // primary
-    --ag-text-body: #e2e8f0; // row text
-    --ag-text-muted: #94a3b8; // roles, labels
-    --ag-text-subtle: #64748b; // placeholder, ellipsis
+    --ag-text: #f1f5f9; /* primary */
+    --ag-text-body: #e2e8f0; /* row text */
+    --ag-text-muted: #94a3b8; /* roles, labels */
+    --ag-text-subtle: #64748b; /* placeholder, ellipsis */
 
     // ── State ── brighter text + slightly stronger washes for legibility on
     // the dark surface.
     --ag-good-text: #34d399;
-    --ag-good-soft: rgba(16, 185, 129, 0.18);
+    --ag-good-soft: rgb(16 185 129 / 18%);
     --ag-watch-text: #fbbf24;
-    --ag-watch-soft: rgba(245, 158, 11, 0.18);
+    --ag-watch-soft: rgb(245 158 11 / 18%);
     --ag-risk-text: #f87171;
-    --ag-risk-soft: rgba(239, 68, 68, 0.18);
-
-    --ag-gold: rgba(245, 158, 11, 0.16); // Enterprise pill bg (dark amber wash)
-    --ag-gold-line: rgba(245, 158, 11, 0.35);
+    --ag-risk-soft: rgb(239 68 68 / 18%);
+    --ag-gold: rgb(245 158 11 / 16%); /* Enterprise pill bg (dark amber wash) */
+    --ag-gold-line: rgb(245 158 11 / 35%);
     --ag-gold-text: #fcd34d;
 
     // Drop the light-mode white inset highlight; deepen the drop shadow.
     --ag-shadow-card:
-        0 16px 38px rgba(0, 0, 0, 0.55),
-        0 0 0 1px rgba(255, 255, 255, 0.06),
-        0 1px 0 rgba(255, 255, 255, 0.04) inset;
+        0 16px 38px rgb(0 0 0 / 55%),
+        0 0 0 1px rgb(255 255 255 / 6%),
+        0 1px 0 rgb(255 255 255 / 4%) inset;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
 // Optional brand-tinted chrome. Opt in with `theme="tinted"` (composes with
 // dark as `theme="dark tinted"`).
-//
 // By default the chrome is neutral grayscale and `--ag-brand` only shows on
 // interactive state (selection, focus, active sort). This variant mixes a
 // little brand into the surfaces/gridlines so the grid wears its brand even
 // at rest, a brand-tinted variant. Because every value is `color-mix(... var
 // (--ag-brand) ...)`, it follows whatever brand is in effect (including the
 // igniteui auto-tint) with no per-brand CSS.
-//
 // The light variant mixes into the white neutrals; the dark variant (higher
 // specificity, so it wins under `theme="dark tinted"`) mixes the SAME token
 // set into the slate neutrals. Body row surface stays untinted for legibility.
 // ─────────────────────────────────────────────────────────────────────────
 :host([theme~='tinted']) {
-    --ag-surface-alt: color-mix(in srgb, var(--ag-brand) 4%, #fff); // zebra
-    --ag-surface-elevated: color-mix(in srgb, var(--ag-brand) 11%, #fbfcfd); // header / footer / toolbar
-    --ag-hairline: color-mix(in srgb, var(--ag-brand) 24%, rgba(15, 23, 42, 0.07)); // gridlines
-    --ag-border: color-mix(in srgb, var(--ag-brand) 12%, transparent); // row separators
+    --ag-surface-alt: color-mix(in srgb, var(--ag-brand) 4%, #fff); /* zebra */
+    --ag-surface-elevated: color-mix(in srgb, var(--ag-brand) 11%, #fbfcfd); /* header / footer / toolbar */
+    --ag-hairline: color-mix(in srgb, var(--ag-brand) 24%, rgb(15 23 42 / 7%)); /* gridlines */
+    --ag-border: color-mix(in srgb, var(--ag-brand) 12%, transparent); /* row separators */
     --ag-row-hover: color-mix(in srgb, var(--ag-brand) 9%, var(--ag-surface));
-    --ag-text-muted: color-mix(in srgb, var(--ag-brand) 32%, #6b7280); // header labels pick up the brand
+    --ag-text-muted: color-mix(in srgb, var(--ag-brand) 32%, #6b7280); /* header labels pick up the brand */
 }
 
 :host([theme~='dark'][theme~='tinted']) {
     --ag-surface-alt: color-mix(in srgb, var(--ag-brand) 10%, #172033);
     --ag-surface-elevated: color-mix(in srgb, var(--ag-brand) 20%, #1e293b);
-    --ag-hairline: color-mix(in srgb, var(--ag-brand) 30%, rgba(255, 255, 255, 0.12));
-    --ag-border: color-mix(in srgb, var(--ag-brand) 16%, rgba(255, 255, 255, 0.07));
+    --ag-hairline: color-mix(in srgb, var(--ag-brand) 30%, rgb(255 255 255 / 12%));
+    --ag-border: color-mix(in srgb, var(--ag-brand) 16%, rgb(255 255 255 / 7%));
     --ag-row-hover: color-mix(in srgb, var(--ag-brand) 12%, var(--ag-surface));
     --ag-text-muted: color-mix(in srgb, var(--ag-brand) 28%, #94a3b8);
 }

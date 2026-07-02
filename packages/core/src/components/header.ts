@@ -217,6 +217,20 @@ export default class ApexGridHeader<T extends object> extends LitElement {
 
   #handleMenuClick = (e: MouseEvent) => {
     e.stopPropagation();
+    // Offer the column menu to a feature module first: the enterprise context
+    // menu opens its richer, shared menu (sort / pin / hide / group / chart)
+    // anchored at this button and calls preventDefault(). When nothing handles
+    // it (the community grid), fall back to the built-in inline menu below.
+    // Event name is a stable string contract (mirrored in the enterprise
+    // context-menu controller), like the native 'contextmenu'.
+    const request = new CustomEvent('apex-grid-column-menu', {
+      detail: { column: this.column, anchor: e.currentTarget as HTMLElement },
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    });
+    this.dispatchEvent(request);
+    if (request.defaultPrevented) return;
     this.menuOpen = !this.menuOpen;
   };
 
@@ -326,7 +340,14 @@ export default class ApexGridHeader<T extends object> extends LitElement {
   }
 
   protected renderMenuButton() {
-    const hasMenuItems = this.isSortable || this.column.resizable;
+    // Suppress the kebab entirely when the grid opts out.
+    if (this.state?.host?.columnMenu === false) return nothing;
+    // Show the kebab when this column has built-in menu items (sort / autosize)
+    // or when a feature module provides a richer column menu (the enterprise
+    // context menu: pin / hide / group / chart), so the affordance appears even
+    // on columns that are neither sortable nor resizable.
+    const hasMenuItems =
+      this.isSortable || this.column.resizable || Boolean(this.state?.hasColumnMenu);
     if (!hasMenuItems) return nothing;
     return html`<button
       type="button"

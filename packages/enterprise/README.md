@@ -21,7 +21,8 @@ configuration API, theming, and events are identical, plus the additions below.
 - **[Cell range selection & status bar](#cell-range-selection--status-bar)**: Excel-style range select with live aggregates.
 - **[Excel (XLSX) export](#excel-xlsx-export)**: native-typed `.xlsx` export plus a toolbar menu entry.
 - **[Master / detail grids](#master--detail-grids)**: embed a child grid in each expandable row.
-- **[Integrated charts](#integrated-charts)**: render the grid's data as an ApexCharts chart.
+- **[Integrated charts](#integrated-charts)**: render the grid's data as an ApexCharts chart, with optional chart-driven cross-filtering.
+- **[Context menu](#context-menu)**: right-click or the header kebab button for sort / pin / hide / group / copy, a "Chart range" submenu, and custom items.
 - **[Infinite (server-side) row model](#infinite-server-side-row-model)**: stream large remote datasets, block by block.
 - **[AI Toolkit](#ai-toolkit)**: natural-language grid control and read-only Q&A through a provider-agnostic adapter, with a first-class Claude reference adapter.
 - **[Formulas](#formulas)**: spreadsheet-style cell formulas with relative/absolute A1 references, drag-to-fill, editor autocomplete and click-to-insert, a broad built-in function set (plus custom functions), dependency-graph recalculation, a show-formulas view, and formula-aware export.
@@ -71,9 +72,9 @@ ApexGridEnterprise.register();
 ```
 
 Available modules: `aggregationModule`, `groupingModule`, `pivotModule`,
-`rangeSelectionModule`. The `enterpriseModules` array is the full set (it is what
-`/define` passes to `use()`). Modules a grid is not opted into add nothing to
-your bundle.
+`rangeSelectionModule`, `contextMenuModule`, `formulaModule`. The
+`enterpriseModules` array is the full set (it is what `/define` passes to
+`use()`). Modules a grid is not opted into add nothing to your bundle.
 
 ---
 
@@ -258,6 +259,74 @@ chart.theme = 'grid';       // 'grid' (sync palette to grid theme) | 'light' | '
 The enterprise grid also adds a **"Create chart"** toolbar button that opens the
 panel in a dialog. The panel and toolbar button require `<apex-grid-chart>` to be
 registered (the `/define` entry does this for you).
+
+### Cross-filtering
+
+Set `cross-filter` (the attribute or the `crossFilter` property) to turn the panel
+into a filter surface: clicking a chart segment filters the underlying grid rows to
+that category, and clicking it again toggles the filter off. The chart reads the
+grid's **full, unfiltered** data, so every category stays on the chart instead of
+collapsing to the filtered subset.
+
+```html
+<apex-grid-chart cross-filter></apex-grid-chart>
+```
+
+```ts
+chart.crossFilter = true;
+chart.selectCategory(0); // programmatic form of clicking the first segment
+```
+
+The filter is applied with a self-contained, **type-independent** equality operation
+(a `logic` predicate rather than a named operand), so it matches regardless of the
+category column's declared type. Turning `crossFilter` off (or disconnecting the
+panel) drops any filter it applied.
+
+## Context menu
+
+A right-click **context menu** on cells and column headers, also opened from each
+column header's kebab (three-dot) button so the actions are discoverable without a
+right-click. The kebab and the right-click menu show the same items. Enabled by
+default; set `context-menu="false"` (the attribute) to turn it off, or assign a
+`ContextMenuConfig` (via the `contextMenu` property) to replace the items.
+
+```ts
+grid.contextMenu = false; // disable
+
+grid.contextMenu = {      // or replace the items
+  items: (target) => [
+    { id: 'sort-asc', label: 'Sort ascending', run: () => grid.sort([{ key: target.column.key, direction: 'ascending' }]) },
+    { id: 'copy', label: 'Copy', separatorBefore: true, run: (t) => copyCell(t) },
+  ],
+};
+```
+
+`ContextMenuConfig<T>` is `{ items?: ContextMenuItem<T>[] | ((target: ContextMenuTarget<T>) => ContextMenuItem<T>[]) }`,
+where a `ContextMenuItem<T>` is `{ id, label, run?, disabled?, submenu?, separatorBefore? }`
+(provide a `submenu` for a nested menu, or a `run` callback for a leaf). The `target`
+is `{ kind: 'cell' | 'header', column, row?, rowIndex? }`.
+
+The built-in default items are **sort ascending / descending / clear sort**, **pin to
+start / pin to end / unpin**, **hide column**, and (on cell targets) **copy**. On header
+targets, when the grouping module is present, the menu also offers **group by this
+column**, **un-group all**, and **expand / collapse all groups**. When you leave
+`contextMenu` at its default (rather than supplying your own `items`), the menu also
+appends a **"Chart range"** submenu whose entries (Column, Bar, Line, Area, Pie, Donut,
+Combo, Auto) chart the current cell-range selection in the chart dialog.
+
+To tweak the items per target without replacing the whole set, listen for the
+cancellable `apex-context-menu-opening` event: its `detail.items` array is prefilled
+with the resolved items (the defaults, unless you supplied your own) and is mutable, so
+you can push, splice, or `preventDefault()` before the menu opens.
+
+```ts
+grid.addEventListener('apex-context-menu-opening', (event) => {
+  event.detail.items.push({ id: 'custom', label: 'My action', separatorBefore: true, run: () => {} });
+});
+```
+
+The feature is the `contextMenuModule` (id `context-menu`); the `/define` entry
+includes it.
 
 ## Infinite (server-side) row model
 
@@ -456,6 +525,21 @@ grid.fillTo({ row: 4, column: 'total' }); // =B1*C1 becomes =B2*C2, =B3*C3, ...
 Copying a range and pasting it back inside the same grid re-offsets the source
 formulas (a plain-text clipboard cannot carry formulas, so cross-app paste stays
 literal).
+
+### Reference highlighting
+
+While a formula cell is being edited, every cell the formula references lights up in
+the grid, and each distinct reference gets its own color (a small palette cycles), so
+`=B2*C2` highlights B2 and C2 differently, spreadsheet-style. The highlight tracks the
+text as you type (invalid mid-edit input keeps the last good highlight) and clears when
+the editor closes. It is applied as a `data-formula-ref` cell decoration, so you can
+theme the colors with CSS.
+
+To make those references easy to read, spreadsheet coordinates (a row-number gutter
+plus `A` / `B` / `C` column letters) are shown by **default** for any grid that has
+`allowFormula` columns. Reserving the gutter up front means entering a formula never
+shifts the layout: the gutter would otherwise pop in on the first edit and nudge every
+column. An explicit `coordinateHints` you set afterwards is left untouched.
 
 ### Functions
 

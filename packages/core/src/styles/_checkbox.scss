@@ -2,7 +2,6 @@
 // renders: the row selection box (`body-row`), the header select-all box
 // (`header-row`), and the boolean cell mark (`body-cell`). Reused via a mixin
 // so the premium styling lives in one place.
-//
 // Native `<input type="checkbox">` is restyled with `appearance: none` and an
 // SVG `background-image` for the tick / indeterminate bar (replaced elements
 // can't carry a reliable `::after`). Tick + bar are white-on-brand.

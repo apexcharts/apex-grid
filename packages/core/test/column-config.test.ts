@@ -121,4 +121,28 @@ describe('Column configuration', () => {
       expect(TDD.headers.get('name').resizePart).to.exist;
     });
   });
+
+  describe('Column separator', () => {
+    const separatorDisplay = () =>
+      getComputedStyle(TDD.headers.first.element)
+        .getPropertyValue('--apex-header-separator-display')
+        .trim();
+
+    it('On by default, reflecting the attribute and switching the divider on', () => {
+      expect(TDD.grid.columnSeparator).to.be.true;
+      expect(TDD.grid.hasAttribute('column-separator')).to.be.true;
+      // The grid host publishes the switch as an inherited custom property that
+      // crosses into each header cell's shadow root.
+      expect(separatorDisplay()).to.equal('block');
+    });
+
+    it('Hidden when turned off, removing the reflected attribute', async () => {
+      TDD.grid.columnSeparator = false;
+      await elementUpdated(TDD.grid);
+
+      expect(TDD.grid.hasAttribute('column-separator')).to.be.false;
+      // Feature var is undeclared, so the header divider falls back to `display: none`.
+      expect(separatorDisplay()).to.equal('');
+    });
+  });
 });

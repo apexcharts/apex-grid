@@ -130,7 +130,7 @@ export function playKeyedFlip<K>(
 
   for (const { key, rect: oldRect } of before) {
     const element = resolveElement(key);
-    if (!element || !element.isConnected) continue;
+    if (!element?.isConnected) continue;
     const newRect = element.getBoundingClientRect();
     const dx = axis === 'y' ? 0 : oldRect.left - newRect.left;
     const dy = axis === 'x' ? 0 : oldRect.top - newRect.top;

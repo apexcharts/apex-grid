@@ -70,7 +70,7 @@ $accent: var(--igx-cell-active-border-color, var(--cell-active-border-color, var
 }
 
 [part='selection-header'] input[type='checkbox'] {
-    @include apex-checkbox;
+    @include apex-checkbox();
 }
 
 // Built-in expansion header cell — pinned start so it stays aligned with the

@@ -186,7 +186,7 @@ export class RowReorderController<T extends object> implements ReactiveControlle
    * `rowMoved` and does not animate; re-runs the pipeline.
    */
   public restoreManualOrder(order: T[] | null): void {
-    this.#order = order && order.length ? [...order] : null;
+    this.#order = order?.length ? [...order] : null;
     this.host.requestUpdate(PIPELINE);
   }
 

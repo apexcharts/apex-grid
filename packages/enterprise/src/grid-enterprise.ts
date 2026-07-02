@@ -54,6 +54,7 @@ import {
   type ContextMenuConfig,
   type ContextMenuController,
   type ContextMenuItem,
+  type ContextMenuTarget,
 } from './features/context-menu.js';
 import {
   FORMULA_MODULE_ID,
@@ -565,9 +566,80 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     const config = this.contextMenu;
     controller.enabled = config !== false;
     const userItems = config && typeof config === 'object' ? config.items : undefined;
-    // Default items = the controller's built-ins + a "Chart range" submenu.
+    // Default items, shared by the right-click menu and the header kebab button:
+    // the controller's built-ins (sort / pin / hide), the grouping actions when
+    // the grouping module is present, and a "Chart range" submenu.
     controller.items =
-      userItems ?? ((target) => [...controller.defaultItems(target), this.#chartRangeItem()]);
+      userItems ??
+      ((target) => [
+        ...controller.defaultItems(target),
+        ...this.#groupingMenuItems(target),
+        this.#chartRangeItem(),
+      ]);
+  }
+
+  /**
+   * Column-grouping entries for the shared column menu (header targets only,
+   * and only when the grouping module is registered): group by the column,
+   * un-group everything, and expand / collapse all groups once grouped.
+   */
+  #groupingMenuItems(target: ContextMenuTarget<T>): ContextMenuItem<T>[] {
+    const grouping = this.#groupingController();
+    if (!grouping || target.kind !== 'header') {
+      return [];
+    }
+    const key = String(target.column.key);
+    const items: ContextMenuItem<T>[] = [
+      {
+        id: 'group-by',
+        label: this.localize(
+          'contextMenu.groupBy' as GridLocaleKey,
+          undefined,
+          'Group by this column'
+        ),
+        separatorBefore: true,
+        disabled: this.groupBy.includes(key),
+        run: () => {
+          if (!this.groupBy.includes(key)) {
+            this.groupBy = [...this.groupBy, key];
+          }
+        },
+      },
+    ];
+    if (this.groupBy.length) {
+      items.push(
+        {
+          id: 'ungroup-all',
+          label: this.localize(
+            'contextMenu.ungroupAll' as GridLocaleKey,
+            undefined,
+            'Un-group all'
+          ),
+          run: () => {
+            this.groupBy = [];
+          },
+        },
+        {
+          id: 'expand-groups',
+          label: this.localize(
+            'contextMenu.expandGroups' as GridLocaleKey,
+            undefined,
+            'Expand all groups'
+          ),
+          run: () => grouping.expandAllGroups(),
+        },
+        {
+          id: 'collapse-groups',
+          label: this.localize(
+            'contextMenu.collapseGroups' as GridLocaleKey,
+            undefined,
+            'Collapse all groups'
+          ),
+          run: () => grouping.collapseAllGroups(),
+        }
+      );
+    }
+    return items;
   }
 
   /** The "Chart range ▸ [type]" submenu entry, opening the dialog on the current selection. */

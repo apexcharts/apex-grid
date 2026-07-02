@@ -31,14 +31,14 @@
 }
 
 [part~='pill--neutral'] {
-    background: rgba(99, 102, 241, 0.08);
-    border-color: rgba(99, 102, 241, 0.22);
+    background: rgb(99 102 241 / 8%);
+    border-color: rgb(99 102 241 / 22%);
     color: #4338ca;
 }
 
 [part~='pill--muted'] {
-    background: rgba(107, 114, 128, 0.1);
-    border-color: rgba(107, 114, 128, 0.22);
+    background: rgb(107 114 128 / 10%);
+    border-color: rgb(107 114 128 / 22%);
     color: #4b5563;
 }
 
@@ -60,8 +60,8 @@
     line-height: 1;
     user-select: none;
     box-shadow:
-        0 0 0 2px rgba(255, 255, 255, 0.85),
-        0 1px 2px rgba(15, 23, 42, 0.18);
+        0 0 0 2px rgb(255 255 255 / 85%),
+        0 1px 2px rgb(15 23 42 / 18%);
 }
 
 // ── Progress bar (health / completion) ───────────────────────────────────
@@ -78,7 +78,7 @@
     block-size: 5px;
     min-inline-size: 40px;
     border-radius: 3px;
-    background: rgba(15, 23, 42, 0.08);
+    background: rgb(15 23 42 / 8%);
     overflow: hidden;
 }
 
@@ -122,7 +122,7 @@
     display: block;
     inline-size: 64px;
     block-size: 22px;
-    color: var(--ag-text-muted); // trend color drives both line + area
+    color: var(--ag-text-muted); /* trend color drives both line + area */
     overflow: visible;
 }
 
@@ -189,18 +189,18 @@
 
 [part~='status--active'] {
     background: var(--ag-good-soft);
-    border-color: rgba(16, 185, 129, 0.28);
+    border-color: rgb(16 185 129 / 28%);
     color: var(--ag-good-text);
 }
 
 [part~='status--trial'] {
     background: var(--ag-watch-soft);
-    border-color: rgba(245, 158, 11, 0.28);
+    border-color: rgb(245 158 11 / 28%);
     color: var(--ag-watch-text);
 }
 
 [part~='status--churn'] {
     background: var(--ag-risk-soft);
-    border-color: rgba(239, 68, 68, 0.3);
+    border-color: rgb(239 68 68 / 30%);
     color: var(--ag-risk-text);
 }

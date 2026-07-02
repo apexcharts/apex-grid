@@ -6,6 +6,7 @@ $header-border-color: var(--igx-header-border-color, var(--header-border-color, 
 $header-text-color: var(--igx-header-text-color, var(--header-text-color, var(--ag-text-body)));
 $active-header-icon-color: var(--igx-sorted-header-icon-color, var(--sorted-header-icon-color, var(--ag-brand)));
 $header-hover: color-mix(in srgb, var(--ag-brand) 4%, transparent);
+$header-separator-color: var(--igx-header-separator-color, var(--header-separator-color, var(--ag-header-separator)));
 
 :host {
     display: flex;
@@ -67,6 +68,26 @@ $header-hover: color-mix(in srgb, var(--ag-brand) 4%, transparent);
     inset-inline-start: 0;
 }
 
+// Opt-in per-column divider (grid `columnSeparator`): a persistent vertical
+// line on each header cell's trailing edge, distinct from the frozen-column pin
+// line above. `display` is driven by the inherited `--apex-header-separator-display`
+// the grid host publishes only when the feature is on, so it costs nothing when
+// off. It sits exactly where the resize handle lives, so on resizable columns
+// the always-visible line is also the resize grab target (see `[part~='resizable']`
+// below — the handle stays on top and takes the `col-resize` cursor). Kept below
+// the handle's z-index and `pointer-events: none` so it never intercepts drags.
+:host::before {
+    content: '';
+    display: var(--apex-header-separator-display, none);
+    position: absolute;
+    inset-block: var(--apex-header-separator-inset, 20%);
+    inset-inline-end: 0;
+    inline-size: 1px;
+    background: $header-separator-color;
+    pointer-events: none;
+    z-index: 1;
+}
+
 [part~='content'] {
     display: flex;
     align-items: center;
@@ -78,15 +99,11 @@ $header-hover: color-mix(in srgb, var(--ag-brand) 4%, transparent);
     user-select: none;
 }
 
-// Numeric and currency columns right-align their body cells. The title fills
-// available space and right-aligns its text so the label sits flush with the
-// values below it. Action icons stay on the trailing edge (same as every other
-// column type) so they don't crowd the left side.
-:host([data-cell-type='number']) [part~='title'],
-:host([data-cell-type='currency']) [part~='title'] {
-    flex: 1;
-    text-align: end;
-}
+// Numeric and currency headers left-align like every other column (the grid
+// default, matching common data-grid behavior). There is deliberately no
+// column-type alignment rule here: the title sits at the start and the action
+// icons on the trailing edge via the content row's space-between, exactly like
+// text columns.
 
 [part~='title'] {
     display: block;
@@ -141,13 +158,44 @@ $header-hover: color-mix(in srgb, var(--ag-brand) 4%, transparent);
     font: inherit;
     line-height: 0;
 
-    // Touch target: 24x24 minimum (WCAG 2.5.8) — the visible glyph is 6×9.
-    inline-size: rem(24px);
-    block-size: rem(24px);
+    // Compact visual footprint: the button box renders at 16x16 so the header
+    // actions stay tightly packed and don't crowd the label. The icon glyphs
+    // keep their own sizes (they are not scaled down); only the surrounding box
+    // shrinks. The clickable target and the hover chip are grown back out past
+    // the box by the ::before below, so the buttons stay easy to hit and show a
+    // clear per-button highlight despite the small box. `isolation` gives the
+    // button its own stacking context so that chip can sit behind the icon.
+    inline-size: rem(16px);
+    block-size: rem(16px);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     position: relative;
+    isolation: isolate;
+
+    // Pointer target + hover/focus highlight surface: a ~22px rounded chip that
+    // expands ~3px past the 16px box without affecting layout, painted behind
+    // the icon (z-index: -1 within the button's own stacking context). Adjacent
+    // buttons' chips can overlap ~2px across the 4px actions gap, which is
+    // harmless: the fill only appears on hover / focus, and only one button is
+    // ever hovered at a time.
+    &::before {
+        content: '';
+        position: absolute;
+        inset: rem(-3px);
+        z-index: -1;
+        border-radius: var(--ag-radius-xs);
+        background: transparent;
+        transition: background-color var(--ag-dur-fast) var(--ag-ease);
+    }
+
+    // Per-button hover highlight: a soft neutral chip behind just the button
+    // under the cursor, so it's clear which action will fire. This is distinct
+    // from the faint whole-cell hover, which lifts every icon at once and can't
+    // tell you where the click will land. Keyboard focus keeps the ring below.
+    &:hover::before {
+        background: hsl(from currentcolor h s l / 12%);
+    }
 
     &:focus-visible {
         outline: rem(2px) solid $active-header-icon-color;
@@ -271,19 +319,18 @@ $header-hover: color-mix(in srgb, var(--ag-brand) 4%, transparent);
     flex-shrink: 0;
 }
 
-// Three-dots column menu button — shown on hover to keep the header clean.
+// Three-dots column menu button. Always visible (subtle at rest, like the
+// filter button), darkening on hover / focus. Hidden entirely only when the
+// grid's `columnMenu` is set to false (the header then skips rendering it).
 [part~='menu-btn'] {
-    opacity: 0;
+    opacity: 0.55;
     transition: opacity var(--ag-dur-fast) var(--ag-ease);
 }
 
 :host(:hover) [part~='menu-btn'],
+[part~='menu-btn']:hover,
 [part~='menu-btn']:focus-visible {
-    opacity: 0.6;
-}
-
-:host(:hover) [part~='menu-btn']:hover {
-    opacity: 1;
+    opacity: 0.9;
 }
 
 [part~='menu-btn'] svg {

@@ -27,11 +27,11 @@ $editor-background: var(--igx-cell-editor-background, var(--ag-surface));
     user-select: none;
 }
 
-// Numeric cells: tabular figures, right-aligned, slightly heavier in the
-// primary text color so columns of numbers line up and read as data.
+// Numeric cells: tabular figures, slightly heavier in the primary text color so
+// columns of numbers read as data. They left-align like every other column (the
+// grid default); tabular-nums still keeps digits vertically consistent.
 :host([data-cell-type='number']),
 :host([data-cell-type='currency']) {
-    justify-content: flex-end;
     font-variant-numeric: tabular-nums;
     font-weight: var(--ag-fw-semibold);
     color: var(--ag-text);
@@ -121,12 +121,11 @@ input[data-apex-editor] {
 }
 
 input[type='number'][data-apex-editor] {
-    text-align: end;
     font-variant-numeric: tabular-nums;
 }
 
 input[type='checkbox'][data-apex-editor] {
-    @include apex-checkbox;
+    @include apex-checkbox();
 
     position: relative;
     inset: auto;
@@ -134,7 +133,7 @@ input[type='checkbox'][data-apex-editor] {
 
 // Built-in boolean display (column `type: 'boolean'`).
 input[part~='boolean-mark'] {
-    @include apex-checkbox;
+    @include apex-checkbox();
 }
 
 input[part~='boolean-mark'][aria-readonly='true'] {

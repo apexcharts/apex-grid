@@ -8,6 +8,7 @@ import {
   type GridFeatureModule,
   isCellDecorator,
   isCellInteractionHandler,
+  isColumnMenuProvider,
   isRowPresenter,
   isRowTransformer,
   isSerializableModule,
@@ -211,6 +212,22 @@ export class StateController<T extends object> implements ReactiveController {
   public bumpDecoration(): void {
     this.#decorationVersion += 1;
     this.host.requestUpdate();
+  }
+
+  /**
+   * Whether any feature module implementing {@link ColumnMenuProvider} offers a
+   * column header menu. The header uses this to show its kebab button even on
+   * columns that are neither sortable nor resizable, so a module (the enterprise
+   * context menu) can surface pin / hide / group / chart actions. Always `false`
+   * for the community grid (no modules).
+   */
+  public get hasColumnMenu(): boolean {
+    for (const controller of this.modules.values()) {
+      if (isColumnMenuProvider(controller) && controller.providesColumnMenu()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

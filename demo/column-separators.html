@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Column Separators - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .toolbar button {
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 13px;
+        border: 1px solid #d0d5dd;
+        background: #fff;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .toolbar button:hover {
+        background: #f7f9fc;
+      }
+      .toolbar label {
+        font-size: 13px;
+        color: #333;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      apex-grid {
+        min-height: 420px;
+        --ig-size: 2;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Column Separators</h2>
+    <p class="subtitle">
+      <code>columnSeparator</code> is on by default: a persistent vertical divider shows on every
+      column header's trailing edge. On columns that opt into resizing the divider doubles
+      as the resize handle: hover it for the <code>col-resize</code> cursor and drag to resize.
+      Untick below to hide the dividers.
+    </p>
+    <div class="toolbar">
+      <label>
+        <input type="checkbox" id="toggle-separator" checked />
+        Show column separators (<code>column-separator</code>)
+      </label>
+      <label>
+        <input type="checkbox" id="toggle-resizable" checked />
+        Columns resizable
+      </label>
+    </div>
+    <apex-grid id="grid"></apex-grid>
+    <script type="module">
+      const data = [
+        { id: '1',  name: 'Wireless Headphones',  category: 'Audio',        vendor: 'Sony',     sku: 'WH-1000XM5',  price: 299.00, sold: 82,  rating: 4.5, stock: 14 },
+        { id: '2',  name: 'USB-C Hub',            category: 'Connectivity', vendor: 'Anker',    sku: 'USB-C-HUB',   price: 49.99,  sold: 35,  rating: 3.8, stock: 28 },
+        { id: '3',  name: 'Mechanical Keyboard',  category: 'Input',        vendor: 'Keychron', sku: 'KB-MEC',      price: 189.00, sold: 64,  rating: 4.7, stock: 5  },
+        { id: '4',  name: 'Ergonomic Mouse',      category: 'Input',        vendor: 'Logitech', sku: 'MOUSE-ERG',   price: 79.95,  sold: 91,  rating: 4.2, stock: 22 },
+        { id: '5',  name: 'Monitor Stand',        category: 'Furniture',    vendor: 'Vivo',     sku: 'MNT-STAND',   price: 59.99,  sold: 47,  rating: 3.5, stock: 17 },
+        { id: '6',  name: '4K Webcam',            category: 'Video',        vendor: 'Logitech', sku: 'CAM-4K',      price: 149.00, sold: 28,  rating: 4.0, stock: 9  },
+        { id: '7',  name: 'Laptop Sleeve',        category: 'Accessories',  vendor: 'tomtoc',   sku: 'LP-SLV',      price: 34.99,  sold: 110, rating: 4.3, stock: 31 },
+        { id: '8',  name: 'Desk Lamp',            category: 'Furniture',    vendor: 'BenQ',     sku: 'LAMP-DESK',   price: 44.50,  sold: 73,  rating: 3.9, stock: 12 },
+        { id: '9',  name: 'True Wireless Earbuds',category: 'Audio',        vendor: 'Apple',    sku: 'AIRPODS-PRO', price: 249.00, sold: 143, rating: 4.6, stock: 20 },
+        { id: '10', name: 'Portable Charger',     category: 'Connectivity', vendor: 'Anker',    sku: 'CHG-20K',     price: 39.99,  sold: 88,  rating: 4.1, stock: 45 },
+        { id: '11', name: 'Ultrawide Monitor',    category: 'Video',        vendor: 'Samsung',  sku: 'MON-UW34',    price: 649.00, sold: 19,  rating: 4.4, stock: 6  },
+        { id: '12', name: 'Noise-Cancelling Headset', category: 'Audio',   vendor: 'Jabra',    sku: 'EVO-65',      price: 219.00, sold: 52,  rating: 4.3, stock: 11 },
+      ];
+
+      const grid = document.getElementById('grid');
+      const makeColumns = (resizable) => [
+        { key: 'id',       headerText: 'ID',       resizable },
+        { key: 'name',     headerText: 'Name',     resizable, sort: true },
+        { key: 'category', headerText: 'Category', resizable, sort: true },
+        { key: 'vendor',   headerText: 'Vendor',   resizable },
+        { key: 'sku',      headerText: 'SKU',      resizable },
+        { key: 'price',    headerText: 'Price',    resizable, type: 'number' },
+        { key: 'sold',     headerText: 'Sold',     resizable, type: 'number' },
+        { key: 'rating',   headerText: 'Rating',   resizable, type: 'number' },
+        { key: 'stock',    headerText: 'Stock',    resizable, type: 'number' },
+      ];
+      grid.columns = makeColumns(true);
+      grid.data = data;
+
+      document.getElementById('toggle-separator').addEventListener('change', (e) => {
+        grid.columnSeparator = e.target.checked;
+      });
+      document.getElementById('toggle-resizable').addEventListener('change', (e) => {
+        grid.columns = makeColumns(e.target.checked);
+      });
+    </script>
+  </body>
+</html>

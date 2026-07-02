@@ -191,6 +191,8 @@ grid.clearSort();                                          // or grid.clearSort(
 
 When `multiple` is enabled, a plain header click sorts by that column alone; hold Ctrl/Cmd and click to append additional columns as lower-priority sort keys. Events: `sorting` (cancellable), `sorted`.
 
+Columns show a column menu (the three-dot / kebab button) in the header. Out of the box it offers **Sort Ascending**, **Sort Descending**, and **Autosize Column** (on sortable or resizable columns). A feature module can supply the menu instead through the `ColumnMenuProvider` seam: `apex-grid-enterprise` fills it with pin, hide, group, and chart actions on every column, shared with the right-click context menu. The button is always visible; set `columnMenu` to `false` to hide it entirely (a module's menu stays reachable by right-click).
+
 ### Filtering
 
 ```ts
@@ -205,6 +207,8 @@ grid.clearFilter();
 ```
 
 Operand classes: `StringOperands`, `NumberOperands`, `BooleanOperands`. Events: `filtering` (cancellable), `filtered`.
+
+Filterable columns show a per-column filter button in the header that opens the filter panel; an active filter is highlighted (with a count badge when more than one condition is set).
 
 ### Quick filter (global search)
 
@@ -268,6 +272,16 @@ await grid.moveColumn('email', 'name', 'after');
 ```
 
 Per-column opt-out: `{ key: 'id', reorderable: false }`. Reordering is constrained to the column's own pinning group (start / unpinned / end). Events: `columnMoving` (cancellable), `columnMoved`. Attribute: `column-reordering`.
+
+### Column separators
+
+A persistent vertical divider on each column header's trailing edge, on by default. On columns that opt into resizing (`{ key, resizable: true }`) the divider doubles as the resize handle: it takes the `col-resize` cursor and can be dragged.
+
+```ts
+grid.columnSeparator = false;                     // hide the dividers
+```
+
+Theme the line with `--ag-header-separator` (or the `--header-separator-color` / `--igx-header-separator-color` override hooks) and set its vertical inset with `--apex-header-separator-inset`. Because the default is `true`, disable it through the property rather than markup (a default-on boolean attribute cannot be turned off by attribute alone). Attribute: `column-separator`.
 
 ### Column groups (spanning headers)
 
@@ -366,7 +380,7 @@ grid.rowReordering = { enabled: true };   // add applyToData: true to splice gri
 grid.moveRow(0, 4, 'after');
 ```
 
-Drag any row, or use the keyboard: focus a row, **Space** to grab, **Arrow** keys to move, **Space / Enter** to drop, **Esc** to cancel. The grid holds a manual order that is mutually exclusive with sorting (applying a sort clears it). By default the app persists the order via the `rowMoved` event; set `applyToData: true` to splice `grid.data` directly. Events: `rowMoving` (cancellable), `rowMoved { from, to, data }`.
+By default (`rowReordering.handle`, boolean, default `true`) a six-dot grip handle shows at the start of every reorderable row, and dragging lifts a full-row floating ghost that follows the cursor. Both interaction modes are supported: **handle mode** (only the grip starts a drag, so the rest of the row stays free for selection and editing) and **whole-row mode** (set `handle: false` to drag from anywhere on the row, excluding interactive sub-parts like inputs and buttons). Or use the keyboard: focus a row, **Space** to grab, **Arrow** keys to move, **Space / Enter** to drop, **Esc** to cancel. The grid holds a manual order that is mutually exclusive with sorting (applying a sort clears it). By default the app persists the order via the `rowMoved` event; set `applyToData: true` to splice `grid.data` directly. Events: `rowMoving` (cancellable), `rowMoved { from, to, data }`.
 
 ### Row expansion (master-detail)
 
@@ -463,6 +477,18 @@ apex-grid::part(paginator) { background: var(--surface-2); }
 apex-grid-toolbar::part(search-input) { font-family: var(--font-mono); }
 ```
 
+### Spreadsheet coordinates
+
+```ts
+grid.coordinateHints = true;
+```
+
+```html
+<apex-grid coordinate-hints></apex-grid>
+```
+
+When `coordinateHints` is on, the grid shows a leading row-number gutter (1, 2, 3, and so on) and A / B / C column-letter chips in the headers, so cell references are discoverable (a spreadsheet-style look). Set it directly for a persistent spreadsheet look. `apex-grid-enterprise` turns it on by default for any grid that has an `allowFormula` column, so the gutter is reserved up front and entering a formula never shifts the layout. Reflected to the `coordinate-hints` attribute (default `false`).
+
 ### State & persistence
 
 `getState()` returns a JSON-safe snapshot of the grid's restorable view and `setState()` applies one back. The snapshot covers column layout (order, width, pinning, visibility), sort, filter, quick filter, pagination, selection, expansion, tree expansion, pinned rows, the manual drag-reorder order, and any feature-module state (enterprise grouping / pivot / aggregation / ranges). Functions and templates are never serialized: sort comparers, filter condition functions, and cell/header/editor templates re-bind from the live `columns` config on restore (filter conditions are captured by operand name).
@@ -511,7 +537,9 @@ See [`demo/state-persistence.html`](../../demo/state-persistence.html) for a sav
 | `expansion` | `GridExpansionConfiguration<T>` |  | |
 | `tree` | `GridTreeConfiguration<T>` |  | |
 | `rowPinning` | `GridRowPinningConfiguration` |  | `{ enabled }` |
-| `rowReordering` | `GridRowReorderingConfiguration` |  | `{ enabled, applyToData? }` |
+| `rowReordering` | `GridRowReorderingConfiguration` |  | `{ enabled, applyToData?, handle? }` (`handle` default `true`: grip-only drag) |
+| `coordinateHints` | `boolean` | `false` | Show a row-number gutter + A / B / C header chips (spreadsheet look). Attr `coordinate-hints` |
+| `columnMenu` | `boolean` | `true` | Show the always-visible column-menu (kebab) button on headers; `false` hides it |
 | `rowId` | `(row: T) => string \| number` |  | Durable row identity for `getState` / `setState` |
 | `localeText` | `GridLocaleText` |  | Override map for built-in strings (e.g. `esLocale`) |
 | `canUndo`, `canRedo` | `boolean` |  | Get (history) |
@@ -601,7 +629,7 @@ Programmatic `sort()` / `filter()` calls are silent; only UI-initiated changes e
 
 ### Attributes
 
-`auto-generate`, `quick-filter`, `show-quick-filter`, `show-export`, `column-reordering`.
+`auto-generate`, `quick-filter`, `show-quick-filter`, `show-export`, `column-reordering`, `coordinate-hints`.
 
 ### CSS parts
 

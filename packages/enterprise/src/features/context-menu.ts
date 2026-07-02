@@ -1,5 +1,5 @@
 import type { ColumnConfiguration, SortExpression } from 'apex-grid';
-import type { GridFeatureModule, GridHost } from 'apex-grid/internal';
+import type { ColumnMenuProvider, GridFeatureModule, GridHost } from 'apex-grid/internal';
 import type { ReactiveController } from 'lit';
 import { html, nothing, render } from 'lit';
 
@@ -104,7 +104,9 @@ function ensureStyle(): void {
  * via {@link items}. Opt in with `ApexGridEnterprise.use(contextMenuModule)` (the `/define` entry
  * includes it).
  */
-export class ContextMenuController<T extends object> implements ReactiveController {
+export class ContextMenuController<T extends object>
+  implements ReactiveController, ColumnMenuProvider
+{
   /** When `false`, the feature is inert. */
   public enabled = true;
   /** Replace the default items: a static array or a per-target callback. `null` = defaults. */
@@ -125,13 +127,24 @@ export class ContextMenuController<T extends object> implements ReactiveControll
     const el = this.host as unknown as HTMLElement;
     el.addEventListener('contextmenu', this.#onContextMenu);
     el.addEventListener('keydown', this.#onHostKeydown);
+    el.addEventListener('apex-grid-column-menu', this.#onColumnMenu as EventListener);
   }
 
   public hostDisconnected(): void {
     const el = this.host as unknown as HTMLElement;
     el.removeEventListener('contextmenu', this.#onContextMenu);
     el.removeEventListener('keydown', this.#onHostKeydown);
+    el.removeEventListener('apex-grid-column-menu', this.#onColumnMenu as EventListener);
     this.#close();
+  }
+
+  /**
+   * {@link ColumnMenuProvider}: tell the core header to show its kebab button
+   * (on every column, not just sortable / resizable ones) whenever the context
+   * menu is enabled, since the kebab opens this shared menu.
+   */
+  public providesColumnMenu(): boolean {
+    return this.enabled;
   }
 
   #onContextMenu = (event: MouseEvent): void => {
@@ -150,6 +163,26 @@ export class ContextMenuController<T extends object> implements ReactiveControll
     event.preventDefault();
     const rect = resolved.element.getBoundingClientRect();
     this.#openAt(resolved.target, rect.left, rect.bottom);
+  };
+
+  /**
+   * Open the shared menu from a column header's kebab button. The core header
+   * dispatches `apex-grid-column-menu` (with the column and the button element)
+   * when its menu button is clicked; opening here means the kebab and the
+   * right-click menu present exactly the same items. Calling `preventDefault()`
+   * tells the core header a module owned the menu, so it skips its inline
+   * fallback.
+   */
+  #onColumnMenu = (
+    event: CustomEvent<{ column?: ColumnConfiguration<T>; anchor?: HTMLElement }>
+  ): void => {
+    if (!this.enabled) return;
+    const column = event.detail?.column;
+    const anchor = event.detail?.anchor;
+    if (!column || !anchor) return;
+    event.preventDefault();
+    const rect = anchor.getBoundingClientRect();
+    this.#openAt({ kind: 'header', column }, rect.left, rect.bottom);
   };
 
   /** Resolve the cell/header (and its element) from an event's composed path. */

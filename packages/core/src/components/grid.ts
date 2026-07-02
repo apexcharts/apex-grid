@@ -1072,6 +1072,28 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   public columnReordering = false;
 
   /**
+   * Shows a persistent vertical divider on the trailing edge of every column
+   * header, rather than only the frozen-column pin edges.
+   *
+   * @remarks
+   * On by default. On columns that opt into resizing (via
+   * {@link BaseColumnConfiguration.resizable}) the divider doubles as the
+   * resize handle: it takes the `col-resize` cursor and can be dragged to
+   * resize, so the always-visible line is also the grab target. On
+   * non-resizable columns it is purely decorative.
+   *
+   * Because the default is `true`, hide the dividers by setting the property to
+   * `false` (`grid.columnSeparator = false`); the reflected `column-separator`
+   * attribute is then removed. The line's color and vertical inset are themeable
+   * through the `--ag-header-separator` / `--header-separator-color` custom
+   * properties and `--apex-header-separator-inset`.
+   *
+   * @attr column-separator
+   */
+  @property({ type: Boolean, attribute: 'column-separator', reflect: true })
+  public columnSeparator = true;
+
+  /**
    * Inline editing configuration for the grid.
    *
    * @remarks
@@ -1228,6 +1250,16 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   @property({ type: Boolean, reflect: true, attribute: 'coordinate-hints' })
   public coordinateHints = false;
+
+  /**
+   * Whether column headers show the column-menu (kebab) button. On by default,
+   * and the button is always visible (not hover-only). Set to `false` to hide it
+   * entirely; a feature module's menu (e.g. the enterprise context menu) stays
+   * reachable by right-click. This is a JS property (no attribute) so it can
+   * stay `true` by default.
+   */
+  @property({ attribute: false })
+  public columnMenu = true;
 
   /**
    * Column groups rendered as spanning headers above the column header row.

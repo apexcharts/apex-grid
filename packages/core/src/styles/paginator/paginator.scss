@@ -9,6 +9,7 @@ $header-border-color: var(--igx-header-border-color, var(--header-border-color, 
 
     grid-row: paginator-row;
     display: block;
+
     // Shares the header's elevated surface so the footer reads as grounded
     // chrome and re-skins with it (incl. dark mode). Opaque by contract: the
     // footer is sticky and must mask body rows scrolling underneath it.
