@@ -24,8 +24,9 @@ jobs:
           node-version: 20.x
           cache: 'npm'
       - run: npm ci
-      # demo:bundle (run by pree2e) needs packages/core/dist/define.js.
-      - run: npm run build:core
+      # pree2e bundles BOTH demos, so it needs core AND enterprise dist/define.js
+      # (demo:bundle + demo:bundle:enterprise). Build both, like the publish job.
+      - run: npm run build
       # pree2e bundles the demo + vendors lit, then Playwright compares snapshots.
       - run: npm run e2e
       - if: failure()
