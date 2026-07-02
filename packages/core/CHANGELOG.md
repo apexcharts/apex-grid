@@ -4,6 +4,83 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.3.0] - 2026-07-02
+
+A large, additive, backward-compatible release. The public `.` / `./define` API
+stays compatible and existing grids keep working. A couple of default behaviors
+changed: numeric and currency columns now left-align (previously their values
+right-aligned), and a column menu / filter button now appear on sortable /
+filterable columns.
+
+### Added
+- **State snapshots: `getState()` / `setState()`.** Serialize and restore the
+  grid's state (such as sort, filter, columns, pagination, selection, and
+  expansion) as a plain, JSON-safe object. `setState()` is defensive: it
+  validates the incoming shape and returns a result report instead of throwing
+  on unexpected input.
+- **`getSchema()`.** A capability descriptor for the grid's columns and features,
+  intended for tooling and AI integrations.
+- **`stateChanged` event.** Fires when a state-bearing operation changes, so a
+  host can persist or react to grid state.
+- **Internationalization.** A `localeText` override map plus a bundled Spanish
+  (`es`) locale; every built-in string (core, and the enterprise features) is
+  localizable.
+- **Declarative cell validation.** Per-column validators reject invalid edits,
+  reflect `data-invalid` on the cell, surface an inline error message, and block
+  the commit.
+- **Undo / redo** for cell-data edits, backed by a history controller.
+- **Row pinning.** Pin rows to sticky top and / or bottom bands that stay in view
+  while the body scrolls.
+- **Row drag-reorder.** Reorder rows by dragging, applied as a manual-order
+  pipeline step. A six-dot grip handle shows by default (`rowReordering.handle`,
+  default `true`) and dragging lifts a full-row floating ghost. Two modes are
+  supported: handle mode (only the grip starts a drag, so the rest of the row
+  stays free for selection and editing) and whole-row mode (`handle: false`,
+  drag from anywhere on the row).
+- **Column groups.** Spanning header groups above the column header row.
+- **Spreadsheet coordinate hints.** Set `coordinateHints` (reflected as the
+  `coordinate-hints` attribute) to reveal a leading row-number gutter
+  (1, 2, 3, and so on) and A / B / C column-letter header chips, so cell
+  references are discoverable.
+- **Header column menu and per-column filter button.** A kebab (three-dot)
+  button opens a column menu; the built-in items are Sort Ascending / Descending
+  and Autosize Column, and a feature module can supply the menu through the new
+  `ColumnMenuProvider` seam (so `apex-grid-enterprise` fills it with pin / hide /
+  group / chart actions). The kebab shows on sortable or resizable columns, or
+  whenever a module provides a menu, and is always visible (not hover-only); set
+  the new `columnMenu` property to `false` to hide it. Filterable columns also
+  show a filter button that opens the filter panel.
+- **Column separators.** A persistent vertical divider now shows on every
+  column header's trailing edge, not just the frozen-column pin edges. On
+  columns that opt into resizing the divider doubles as the resize handle (it
+  takes the `col-resize` cursor and can be dragged). On by default; set
+  `columnSeparator` to `false` (reflected as the `column-separator` attribute)
+  to hide them. The line's color and vertical inset are themeable via
+  `--ag-header-separator` / `--header-separator-color` and
+  `--apex-header-separator-inset`.
+- **`allowFormula` column flag.** Inert in the community grid; the seam the
+  `apex-grid-enterprise` formula editor builds on.
+
+### Changed
+- **Numeric and currency columns left-align by default**, matching the common
+  data-grid default. Previously their values right-aligned; now the header label
+  and the column values both sit at the leading edge, like every other column.
+  Digits still use tabular figures so they stay vertically consistent.
+- **Filtering opens in a floating panel** from the header filter button, instead
+  of an always-present inline filter row.
+- Theming refinements: design-token tweaks and a crisp 1px frozen-column
+  pin-edge line.
+
+### Fixed
+- Range-selection drag now tracks through `pointermove`, so a drag that leaves
+  and re-enters the grid stays accurate.
+
+### Internal
+- Cell writes funnel through a single `applyCellEdit` choke point, so undo / redo,
+  validation, and (in enterprise) formula recalculation share one write path.
+  `apex-grid/internal` also gained the seams the enterprise coordinate, formula,
+  and column-menu (`ColumnMenuProvider`) features build on.
+
 ## [3.2.0] — 2026-06-23
 
 Additive, backward-compatible release. The default look of `<apex-grid>` is
@@ -107,6 +184,7 @@ Documentation-only patch (no runtime or API changes).
 - Repository converted to an npm-workspaces monorepo; this package publishes
   from `packages/core`.
 
+[3.3.0]: https://github.com/apexcharts/apex-grid/releases
 [3.2.0]: https://github.com/apexcharts/apex-grid/releases
 [3.1.0]: https://github.com/apexcharts/apex-grid/releases
 [3.0.1]: https://github.com/apexcharts/apex-grid/releases

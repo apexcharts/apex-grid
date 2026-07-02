@@ -4,6 +4,57 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.0] - 2026-07-02
+
+A large additive release built on `apex-grid` `3.3.0`. Everything is opt-in and
+`<apex-grid-enterprise>` stays a drop-in replacement for `<apex-grid>`.
+
+### Added
+- **Formula engine (spreadsheet formulas).** Mark a column `allowFormula` and its
+  cells accept `=` formulas through an injected formula editor. A1 references are
+  positional over the grid data (stable across sort, filter, and paging), with a
+  dependency graph, cycle detection, and topological recalculation. Ships a
+  function library and Excel-style error values (`#DIV/0!`, `#REF!`, `#VALUE!`,
+  and so on). Formulas participate in `getState()` / `setState()` and are
+  localized.
+  - **References and authoring.** Relative and absolute (`$`) references; drag-fill
+    and paste that rewrite references; function-name autocomplete; and
+    click-to-insert of a clicked cell's reference.
+  - **Reference highlighting.** While a formula cell is edited, each referenced
+    cell is highlighted in the grid in its own color, and spreadsheet coordinates
+    (a row-number gutter plus A / B / C column letters) are shown by default for
+    grids with `allowFormula` columns, so entering a formula never shifts the
+    layout.
+  - **Show formulas** toggle (reveal the source instead of the computed value) and
+    **Export formulas** to CSV.
+- **AI Toolkit.** An `<apex-grid-ai>` prompt panel plus an "Ask AI" toolbar entry.
+  `runPrompt(...)` runs a natural-language prompt against a pluggable adapter
+  contract, with a Claude reference adapter (proxy and dev-key modes) and an
+  offline mock. The grid's JSON schema is emitted for the model, and the UI is
+  localized.
+- **Context menu (and header column menu).** A right-click menu, also opened from
+  each column header's kebab (three-dot) button, via the `contextMenu` config
+  (enabled by default, `context-menu="false"` to disable, or supply custom
+  `items`). Built-in actions: sort, pin, hide, copy (cells), the grouping actions
+  (group by column, un-group all, expand / collapse all groups) when the grouping
+  module is present, and a "Chart range" submenu that charts the current
+  selection. The kebab and the right-click menu share the same items. An
+  `apex-context-menu-opening` event allows per-target tweaks.
+- **Integrated charts v2.** Opt-in chart modules, range charting, and an
+  `<apex-grid-chart>` panel.
+  - **Cross-filtering.** Set `crossFilter` on `<apex-grid-chart>` so clicking a
+    chart category filters the grid to that value (click again to clear), using a
+    type-independent equality operation.
+
+### Changed
+- **`apex-grid` dependency raised to `^3.3.0`.** The formula coordinates use
+  core's `coordinateHints`, and the enterprise features build on the 3.3.0 core
+  seams.
+
+### Fixed
+- The chart panel refits its container on resize, and chart dialog accessibility
+  was polished.
+
 ## [0.2.1] — 2026-06-23
 
 Documentation-only patch (no runtime, API, or dependency changes).
@@ -88,6 +139,7 @@ Initial release. Pro-licensed grid that extends the community
 - `apex-grid` `^3.0.0`, `apex-commons` `^0.1.0`. Peer deps: `lit`, `@lit/context`,
   `igniteui-webcomponents` (shared single copy with core).
 
+[0.5.0]: https://github.com/apexcharts/apex-grid/releases
 [0.2.1]: https://github.com/apexcharts/apex-grid/releases
 [0.2.0]: https://github.com/apexcharts/apex-grid/releases
 [0.1.1]: https://github.com/apexcharts/apex-grid/releases

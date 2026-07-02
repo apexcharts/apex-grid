@@ -1,6 +1,6 @@
 {
   "name": "apex-grid-enterprise",
-  "version": "0.2.1",
+  "version": "0.5.0",
   "description": "Enterprise (pro-licensed) features for apex-grid.",
   "keywords": [
     "lit",
@@ -30,7 +30,7 @@
   },
   "dependencies": {
     "apex-commons": "^0.1.0",
-    "apex-grid": "^3.1.0"
+    "apex-grid": "^3.3.0"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.106.0",
