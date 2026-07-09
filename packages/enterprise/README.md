@@ -512,6 +512,15 @@ While editing a formula (after typing `=`):
   `NAME()` with the caret between the parentheses), Escape to dismiss.
 - **Click-to-insert**: click any grid cell to insert its reference at the caret;
   Shift-click inserts an absolute `$A$1`.
+- **Drag-to-insert a range**: press on a cell and drag across the grid to insert
+  a live `A1:C3` range reference; a dashed marquee tracks the cells as you drag.
+  Clicking again re-picks the reference (replaces it); type an operator to add a
+  second one. Escape backs out of a just-picked reference without leaving the edit.
+- **F4 absolute/relative**: with the caret on a reference, press F4 to cycle its
+  `$` markers: `A1 -> $A$1 -> A$1 -> $A1 -> A1`.
+
+Point-and-click reference entry is **mouse-driven**: while editing, the arrow keys
+always move the text caret and never start referencing cells.
 
 **Drag-to-fill and paste** rewrite a formula's relative references by the
 row/column delta to the new cell (absolute `$` axes are preserved):

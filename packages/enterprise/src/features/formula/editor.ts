@@ -19,9 +19,19 @@ import { css, html, LitElement, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { ParseError } from './errors.js';
 import { type FormulaAst, parseFormula } from './parser.js';
+import { type CellRefFlags, formatCell, parseCellRef } from './refs.js';
 import type { FormulaController } from './store.js';
 
 export const FORMULA_EDITOR_TAG = 'apex-grid-formula-editor';
+
+/** A cell address (data-row index + stable letter index) exchanged with the controller. */
+interface EditorAddress {
+  row: number;
+  col: number;
+}
+
+/** Arrow keys, detected so they can be kept as plain caret navigation while editing. */
+const ARROW_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 /** The slice of `ApexEditorContext` the formula editor uses. */
 export interface FormulaEditorContext {
@@ -45,6 +55,40 @@ export interface FormulaEditorController {
   referenceFor?(row: object, key: string, absolute?: boolean): string | undefined;
   /** Highlight (or clear) the cells the formula being edited references. */
   highlightReferences?(src: string | null): void;
+  /** The A1 address of a cell, for drag/keyboard point-mode reference entry. */
+  addressFor?(row: object, key: string): EditorAddress | null;
+  /** Max valid row/column indices, for clamping the point-mode pointer. */
+  gridBounds?(): { maxRow: number; maxCol: number };
+  /** Format the A1 reference spanning anchor→focus (single cell or `A1:C3`). */
+  rangeReferenceForAddresses?(
+    anchor: EditorAddress,
+    focus: EditorAddress,
+    absolute?: boolean
+  ): string;
+  /** Show (or clear) the point-mode marquee over the pointed cell/range. */
+  setPointer?(range: { start: EditorAddress; end: EditorAddress } | null): void;
+}
+
+/** Whether two addresses point at the same cell. */
+function sameAddress(a: EditorAddress, b: EditorAddress): boolean {
+  return a.row === b.row && a.col === b.col;
+}
+
+/**
+ * The next step in the F4 absoluteness cycle for a reference's `$` markers:
+ * `A1 (rel,rel) -> $A$1 (abs,abs) -> A$1 (rel,abs) -> $A1 (abs,rel) -> A1`.
+ */
+function nextAbsFlags({ colAbsolute, rowAbsolute }: CellRefFlags): CellRefFlags {
+  if (!colAbsolute && !rowAbsolute) {
+    return { colAbsolute: true, rowAbsolute: true };
+  }
+  if (colAbsolute && rowAbsolute) {
+    return { colAbsolute: false, rowAbsolute: true };
+  }
+  if (!colAbsolute && rowAbsolute) {
+    return { colAbsolute: true, rowAbsolute: false };
+  }
+  return { colAbsolute: false, rowAbsolute: false };
 }
 
 /** Coerce committed literal text: empty to null, numeric to number, else text. */
@@ -153,6 +197,24 @@ export class FormulaCellEditor extends LitElement {
   /** The grid host the click-to-insert listener is attached to (for teardown). */
   #gridHost: HTMLElement | null = null;
 
+  // --- point mode (drag / arrow reference entry) ----------------------------
+  /**
+   * The active point session: `'mouse'` while clicking/dragging cells to enter a
+   * reference, `'none'` otherwise. A session owns a {@link #pendingSpan} of the
+   * input text that the pointer rewrites live. Point mode is mouse-only — arrow
+   * keys are reserved for text-caret navigation.
+   */
+  #pointMode: 'none' | 'mouse' = 'none';
+  /** The `[start,end)` slice of `this.text` the current point session rewrites. */
+  #pendingSpan: { start: number; end: number } | null = null;
+  /** The point session's anchor + focus cells (the range corners). */
+  #pointAnchor: EditorAddress | null = null;
+  #pointFocus: EditorAddress | null = null;
+  /** Whether the session emits absolute refs (`$A$1`) — set by a Shift mouse drag. */
+  #pointAbsolute = false;
+  /** Whether a mouse drag is currently in progress (between pointerdown and up). */
+  #dragging = false;
+
   public override willUpdate(): void {
     if (this.#initialized || !this.ctx) {
       return;
@@ -176,9 +238,11 @@ export class FormulaCellEditor extends LitElement {
 
   public override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.#detachPointDrag();
     this.#gridHost?.removeEventListener('pointerdown', this.#onGridPointerDown, true);
     this.#gridHost = null;
     this.controller?.highlightReferences?.(null);
+    this.controller?.setPointer?.(null);
     this.#allowCellOverflow(false);
   }
 
@@ -261,6 +325,11 @@ export class FormulaCellEditor extends LitElement {
   }
 
   #onInput = (event: Event): void => {
+    // Typing while pointing locks the pending reference into the text and ends
+    // the point session (matching Sheets: a keystroke commits the picked ref).
+    if (this.#pointMode !== 'none') {
+      this.#endPoint();
+    }
     const input = event.target as HTMLInputElement;
     this.text = input.value;
     this.error = '';
@@ -301,13 +370,38 @@ export class FormulaCellEditor extends LitElement {
       }
     }
 
+    // F4 cycles the absolute/relative `$` markers on the reference at the caret.
+    if (event.key === 'F4' && this.text.trim().startsWith('=')) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.#cycleAbsolute();
+      return;
+    }
+
+    // Arrow keys always move the text caret while editing — they never start
+    // referencing cells (that was a jarring hijack of normal caret navigation).
+    // Point mode is entered only by the mouse (click a cell / drag a range). If a
+    // reference is still armed from a click, an arrow locks it in first, then the
+    // caret moves natively (no preventDefault).
+    if (ARROW_KEYS.has(event.key)) {
+      if (this.#pointMode !== 'none') {
+        this.#endPoint();
+      }
+      return;
+    }
+
     if (event.key === 'Enter' || event.key === 'Tab') {
       event.preventDefault();
       event.stopPropagation();
+      this.#endPoint(); // lock any pending reference before committing
       void this.#commit();
     } else if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
+      if (this.#pointMode !== 'none') {
+        this.#cancelPoint(); // back out of point mode, stay in the edit
+        return;
+      }
       this.#done = true;
       this.ctx?.cancel();
     }
@@ -400,35 +494,217 @@ export class FormulaCellEditor extends LitElement {
     return host;
   }
 
-  #onGridPointerDown = (event: PointerEvent): void => {
-    if (!this.controller?.referenceFor || !this.text.trim().startsWith('=')) {
-      return;
-    }
+  /** Resolve a grid pointer event to the foreign cell's `{ record, key }`, or null. */
+  #cellFromEvent(event: Event): { record: object; key: string } | null {
     const path = event.composedPath();
     if (path.includes(this)) {
-      return; // a click within our own editor
+      return null; // within our own editor
     }
     const ownCell = (this.getRootNode() as ShadowRoot | null)?.host;
     const cell = path.find(
       (el): el is HTMLElement => el instanceof HTMLElement && el.localName === 'apex-grid-cell'
     ) as (HTMLElement & { row?: { data?: object }; column?: { key?: PropertyKey } }) | undefined;
     if (!cell || cell === ownCell) {
-      return; // not a cell, or our own editing cell
+      return null; // not a cell, or our own editing cell
     }
     const record = cell.row?.data;
     const key = cell.column?.key;
-    if (!record || key == null) {
+    return record && key != null ? { record, key: String(key) } : null;
+  }
+
+  #onGridPointerDown = (event: PointerEvent): void => {
+    if (!this.controller?.referenceFor || !this.text.trim().startsWith('=')) {
       return;
     }
-    const reference = this.controller.referenceFor(record, String(key), event.shiftKey);
-    if (!reference) {
+    const hit = this.#cellFromEvent(event);
+    if (!hit) {
       return;
     }
     // Insert the reference instead of letting the grid select/edit that cell.
     event.preventDefault();
     event.stopPropagation();
-    this.#insertAtCaret(reference);
+    const anchor = this.controller.addressFor?.(hit.record, hit.key) ?? null;
+    if (!anchor || !this.controller.rangeReferenceForAddresses) {
+      // Fallback: no address services -> the original single-cell insert.
+      const reference = this.controller.referenceFor(hit.record, hit.key, event.shiftKey);
+      if (reference) {
+        this.#insertAtCaret(reference);
+      }
+      return;
+    }
+    this.#pointAbsolute = event.shiftKey;
+    if (this.#pendingSpan && this.#pointMode !== 'none') {
+      // A reference is still armed from the previous click/arrow (the user has
+      // not typed since). Replace it in place rather than appending a new one —
+      // matching Sheets, where consecutive clicks re-pick the same reference.
+      this.#pointMode = 'mouse';
+      this.#pointAnchor = anchor;
+      this.#pointFocus = anchor;
+      this.#refreshPoint();
+    } else {
+      // Fresh session: press seeds a single-cell ref, drag extends it to a range.
+      this.#beginPoint(anchor);
+    }
+    this.#dragging = true;
+    globalThis.addEventListener?.('pointermove', this.#onGridPointerMove, true);
+    globalThis.addEventListener?.('pointerup', this.#onGridPointerUp, true);
   };
+
+  #onGridPointerMove = (event: PointerEvent): void => {
+    if (!this.#dragging || !this.#pointAnchor) {
+      return;
+    }
+    const hit = this.#cellFromEvent(event);
+    if (!hit) {
+      return; // pointer left the grid; keep the last focus
+    }
+    const focus = this.controller?.addressFor?.(hit.record, hit.key);
+    if (!focus || (this.#pointFocus && sameAddress(focus, this.#pointFocus))) {
+      return;
+    }
+    this.#pointFocus = focus;
+    this.#refreshPoint();
+  };
+
+  #onGridPointerUp = (): void => {
+    if (!this.#dragging) {
+      return;
+    }
+    // End the drag but keep the reference ARMED: a next click/arrow replaces it,
+    // typing or Enter locks it, Escape cancels it. (Ending here was the bug that
+    // made a second click append instead of replace.)
+    this.#dragging = false;
+    this.#detachPointDrag();
+    this.#input?.focus();
+  };
+
+  /** Remove the transient drag listeners (safe to call when none are attached). */
+  #detachPointDrag(): void {
+    globalThis.removeEventListener?.('pointermove', this.#onGridPointerMove, true);
+    globalThis.removeEventListener?.('pointerup', this.#onGridPointerUp, true);
+  }
+
+  // --- point mode (shared by drag + arrow) ----------------------------------
+
+  /**
+   * The `[start,end)` of the reference token the caret sits in or touches, or
+   * `null`. Used so a click/arrow that lands on an existing reference *replaces*
+   * it (Sheets-style) instead of inserting an adjacent, invalid one — e.g.
+   * opening `=B4*C4` (caret at the end) and clicking a cell re-points `C4`.
+   */
+  #referenceSpanAt(caret: number): { start: number; end: number } | null {
+    const pattern = /\$?[A-Za-z]+\$?[0-9]+(?::\$?[A-Za-z]+\$?[0-9]+)?/g;
+    for (let match = pattern.exec(this.text); match; match = pattern.exec(this.text)) {
+      const start = match.index;
+      const end = start + match[0].length;
+      if (caret >= start && caret <= end) {
+        return { start, end };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Open a point session and seed the anchor/focus. The pending span is: an
+   * explicit text selection if one exists; else the reference token the caret
+   * touches (so it is replaced, not appended to); else an empty insertion point.
+   */
+  #beginPoint(anchor: EditorAddress): void {
+    const input = this.#input;
+    let start = input?.selectionStart ?? this.text.length;
+    let end = input?.selectionEnd ?? start;
+    if (start === end) {
+      const token = this.#referenceSpanAt(start);
+      if (token) {
+        start = token.start;
+        end = token.end;
+      }
+    }
+    this.text = this.text.slice(0, start) + this.text.slice(end);
+    this.#pointMode = 'mouse';
+    this.#pendingSpan = { start, end: start };
+    this.#pointAnchor = anchor;
+    this.#pointFocus = anchor;
+    this.#refreshPoint();
+  }
+
+  /** Rewrite the pending span to the current anchor→focus reference + marquee. */
+  #refreshPoint(): void {
+    if (!this.#pendingSpan || !this.#pointAnchor || !this.#pointFocus) {
+      return;
+    }
+    const reference = this.controller?.rangeReferenceForAddresses?.(
+      this.#pointAnchor,
+      this.#pointFocus,
+      this.#pointAbsolute
+    );
+    if (reference === undefined) {
+      return;
+    }
+    const span = this.#pendingSpan;
+    this.text = this.text.slice(0, span.start) + reference + this.text.slice(span.end);
+    span.end = span.start + reference.length;
+    this.#caretToRestore = span.end;
+    this.suggestions = [];
+    this.error = this.#parseError(this.text.trim()) ?? '';
+    this.controller?.setPointer?.({ start: this.#pointAnchor, end: this.#pointFocus });
+    this.#updateHighlights();
+  }
+
+  /** Lock the pending reference into the text and end the session (clears marquee). */
+  #endPoint(): void {
+    if (this.#pointMode === 'none') {
+      return;
+    }
+    this.#pointMode = 'none';
+    this.#pendingSpan = null;
+    this.#pointAnchor = null;
+    this.#pointFocus = null;
+    this.#pointAbsolute = false;
+    this.#dragging = false;
+    this.#detachPointDrag();
+    this.controller?.setPointer?.(null);
+  }
+
+  /** Back out of point mode: drop the pending reference text, then end the session. */
+  #cancelPoint(): void {
+    if (this.#pendingSpan) {
+      const { start, end } = this.#pendingSpan;
+      this.text = this.text.slice(0, start) + this.text.slice(end);
+      this.#caretToRestore = start;
+    }
+    this.#endPoint();
+    this.error = this.#parseError(this.text.trim()) ?? '';
+    this.#updateHighlights();
+  }
+
+  /**
+   * Cycle the `$` markers on the cell reference at the caret:
+   * `A1 -> $A$1 -> A$1 -> $A1 -> A1`. No-op when the caret is not on a reference.
+   */
+  #cycleAbsolute(): void {
+    const caret = this.#input?.selectionStart ?? this.text.length;
+    const pattern = /\$?[A-Za-z]+\$?[0-9]+/g;
+    for (let match = pattern.exec(this.text); match; match = pattern.exec(this.text)) {
+      const start = match.index;
+      const end = start + match[0].length;
+      if (caret < start || caret > end) {
+        continue;
+      }
+      let parsed: { address: { row: number; col: number } } & CellRefFlags;
+      try {
+        parsed = parseCellRef(match[0]);
+      } catch {
+        return; // not a valid single-cell reference (e.g. a bare column letter)
+      }
+      const replaced = formatCell(parsed.address, nextAbsFlags(parsed));
+      this.text = this.text.slice(0, start) + replaced + this.text.slice(end);
+      this.#caretToRestore = start + replaced.length;
+      this.error = this.#parseError(this.text.trim()) ?? '';
+      this.#updateHighlights();
+      return;
+    }
+  }
 
   /**
    * Insert `text` over the current selection (or at the caret), keeping focus

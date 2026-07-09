@@ -480,3 +480,41 @@ $invalid-color: var(--igx-cell-invalid-border-color, var(--ag-risk, #ef4444));
 :host([data-formula-ref='5']) {
     --apex-formula-ref: var(--apex-formula-ref-5, #0891b2);
 }
+
+// --- Formula point-mode marquee (CellDecorator seam) -----------------------
+// Inert for the community grid. While a formula is being authored, dragging
+// across cells or arrowing in "point mode" reflects `data-formula-pointer` (with
+// per-side `data-formula-pointer-edge` tokens) onto the pointed cell/range, so it
+// reads as a dashed marching-ants marquee, spreadsheet-style. A faint fill plus a
+// dashed border drawn on a `::before` overlay so it never shifts the content box.
+// Themable via `--apex-formula-pointer`.
+:host([data-formula-pointer]) {
+    --apex-formula-pointer: var(--ag-brand);
+
+    background: color-mix(in srgb, var(--apex-formula-pointer) 10%, transparent);
+}
+
+:host([data-formula-pointer])::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2;
+    border: 0 dashed var(--apex-formula-pointer, var(--ag-brand));
+}
+
+:host([data-formula-pointer-edge~='top'])::before {
+    border-block-start-width: var(--apex-formula-pointer-width, 1.5px);
+}
+
+:host([data-formula-pointer-edge~='bottom'])::before {
+    border-block-end-width: var(--apex-formula-pointer-width, 1.5px);
+}
+
+:host([data-formula-pointer-edge~='left'])::before {
+    border-inline-start-width: var(--apex-formula-pointer-width, 1.5px);
+}
+
+:host([data-formula-pointer-edge~='right'])::before {
+    border-inline-end-width: var(--apex-formula-pointer-width, 1.5px);
+}

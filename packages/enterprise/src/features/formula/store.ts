@@ -36,7 +36,13 @@ import {
   parseFormula,
   stringifyFormula,
 } from './parser.js';
-import { type CellAddress, formatCell, normalizeRange, rangeCells } from './refs.js';
+import {
+  type CellAddress,
+  formatCell,
+  normalizeRange,
+  type RangeAddress,
+  rangeCells,
+} from './refs.js';
 
 export const FORMULA_MODULE_ID = 'formula';
 
@@ -350,6 +356,14 @@ export class FormulaController<T extends object> implements ReactiveController, 
    * {@link decorateCell}; rebuilt by {@link highlightReferences}.
    */
   #highlights: Map<T, Map<string, number>> | null = null;
+  /**
+   * Transient "point-mode" pointer for the reference the user is currently
+   * dragging or arrowing in the grid while editing a formula: row data object →
+   * (column key → edge tokens, e.g. `"top left"`). `null` when not pointing.
+   * Read by {@link decorateCell} to draw the marching-ants marquee; set by
+   * {@link setPointer}.
+   */
+  #pointerCells: Map<T, Map<string, string>> | null = null;
 
   constructor(host: GridHost<T>, state?: { bumpDecoration(): void }) {
     this.#host = host;
@@ -503,6 +517,90 @@ export class FormulaController<T extends object> implements ReactiveController, 
   }
 
   /**
+   * The A1 {@link CellAddress} of a cell (data-row index + stable letter index),
+   * or `null` when the row/column is not in the grid. The editor uses it both to
+   * seed the keyboard "point mode" pointer from the cell being edited and to
+   * resolve the anchor/focus cells of a drag into a range reference.
+   */
+  public addressFor(row: T, columnKey: keyof T & string): CellAddress | null {
+    return this.#addressOf(row, columnKey);
+  }
+
+  /**
+   * The maximum valid row and column indices, for clamping the point-mode
+   * pointer to a real cell as the user arrows around the grid.
+   */
+  public gridBounds(): { maxRow: number; maxCol: number } {
+    this.#syncColumns();
+    let maxCol = 0;
+    for (const column of this.#host.columns) {
+      maxCol = Math.max(maxCol, this.#indexForKey(String(column.key)));
+    }
+    return { maxRow: Math.max(0, this.#host.data.length - 1), maxCol };
+  }
+
+  /**
+   * Format the A1 reference spanning `anchor`→`focus`: a single cell when the
+   * two coincide, else a normalized `A1:C3` range. `absolute` fixes both axes on
+   * every corner (`$A$1`), matching the Shift modifier of click/drag insert.
+   * Drives both the mouse drag-to-insert-range and the keyboard Shift+Arrow
+   * range extension.
+   */
+  public rangeReferenceForAddresses(
+    anchor: CellAddress,
+    focus: CellAddress,
+    absolute = false
+  ): string {
+    const range = normalizeRange({ start: anchor, end: focus });
+    const flags = { colAbsolute: absolute, rowAbsolute: absolute };
+    const start = formatCell(range.start, flags);
+    if (range.start.row === range.end.row && range.start.col === range.end.col) {
+      return start;
+    }
+    return `${start}:${formatCell(range.end, flags)}`;
+  }
+
+  /**
+   * Show (or clear) the point-mode marquee over the cell/range the user is
+   * currently pointing at while editing a formula. Precomputes each cell's edge
+   * tokens once (so {@link decorateCell} is a cheap per-cell lookup), mirroring
+   * the reference-highlight machinery. `null` clears it.
+   */
+  public setPointer(range: RangeAddress | null): void {
+    if (range === null) {
+      if (this.#pointerCells === null) {
+        return;
+      }
+      this.#pointerCells = null;
+      this.#state?.bumpDecoration();
+      return;
+    }
+    this.#syncColumns();
+    const r = normalizeRange(range);
+    const next = new Map<T, Map<string, string>>();
+    for (const cell of rangeCells(r)) {
+      const data = this.#host.data[cell.row];
+      const key = this.#keyForIndex(cell.col);
+      if (data === undefined || key === undefined) {
+        continue;
+      }
+      const edges: string[] = [];
+      if (cell.row === r.start.row) edges.push('top');
+      if (cell.row === r.end.row) edges.push('bottom');
+      if (cell.col === r.start.col) edges.push('left');
+      if (cell.col === r.end.col) edges.push('right');
+      let perRow = next.get(data);
+      if (!perRow) {
+        perRow = new Map();
+        next.set(data, perRow);
+      }
+      perRow.set(key, edges.join(' '));
+    }
+    this.#pointerCells = next.size ? next : null;
+    this.#state?.bumpDecoration();
+  }
+
+  /**
    * Reflect the cells the formula being edited references as cell decoration
    * (the editor's live reference highlighting). Each distinct reference cycles a
    * small palette so it reads as its own color, spreadsheet-style. Tolerates
@@ -555,10 +653,28 @@ export class FormulaController<T extends object> implements ReactiveController, 
     this.#setHighlights(next.size ? next : null);
   }
 
-  /** Decorate a referenced cell with its palette slot (CellDecorator seam). */
+  /**
+   * Decorate a cell for the formula editor: its palette slot when the formula
+   * being edited references it (`data-formula-ref`), and/or the point-mode
+   * marquee when the user is currently pointing at it (`data-formula-pointer`
+   * plus per-side `data-formula-pointer-edge`). Both merge into one decoration.
+   */
   public decorateCell(ctx: CellDecoratorContext<T>): CellDecoration | null {
-    const slot = this.#highlights?.get(ctx.row)?.get(String(ctx.column.key));
-    return slot === undefined ? null : { attributes: { 'data-formula-ref': String(slot) } };
+    const key = String(ctx.column.key);
+    const slot = this.#highlights?.get(ctx.row)?.get(key);
+    const edges = this.#pointerCells?.get(ctx.row)?.get(key);
+    if (slot === undefined && edges === undefined) {
+      return null;
+    }
+    const attributes: Record<string, string | null> = {};
+    if (slot !== undefined) {
+      attributes['data-formula-ref'] = String(slot);
+    }
+    if (edges !== undefined) {
+      attributes['data-formula-pointer'] = '';
+      attributes['data-formula-pointer-edge'] = edges.length ? edges : null;
+    }
+    return { attributes };
   }
 
   /** Localize a grid string (delegates to the host), used by the editor. */

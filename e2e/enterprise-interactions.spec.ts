@@ -514,6 +514,81 @@ test.describe('formula-engine', () => {
     expect(value).toContain('B1'); // the reference was inserted
   });
 
+  test('opening a formula then clicking a cell replaces the trailing reference (real mouse)', async ({
+    page,
+  }) => {
+    await openDemo(page, 'formula-engine.html');
+    // Total[3] (row 4, "Sprocket") is seeded "=B4*C4". Double-click to edit it;
+    // the caret lands at the end, right after C4.
+    const row3 = page.locator('apex-grid-row').nth(3);
+    const row2 = page.locator('apex-grid-row').nth(2);
+    const editor = page.locator('[part="editor"]').first();
+    await row3.locator('apex-grid-cell').nth(3).dblclick();
+    await expect(editor).toHaveValue('=B4*C4');
+
+    // Click Unit Price[2] (C3): the caret is on C4, so it re-points to C3 —
+    // NOT the old bug that produced "=B4*C4C3".
+    await row2.locator('apex-grid-cell').nth(2).click();
+    await expect(editor).toHaveValue('=B4*C3');
+  });
+
+  test('consecutive clicks replace the pending reference (real mouse, no appending)', async ({
+    page,
+  }) => {
+    await openDemo(page, 'formula-engine.html');
+    const row0 = page.locator('apex-grid-row').first();
+    const row1 = page.locator('apex-grid-row').nth(1);
+    const editor = page.locator('[part="editor"]').first();
+
+    await row0.locator('apex-grid-cell').nth(3).dblclick(); // edit Total[0]
+    await editor.fill('=B1*'); // start "=B1*" with the caret after the operator
+
+    // First real click on Unit Price[0] (C1) -> inserts C1.
+    await row0.locator('apex-grid-cell').nth(2).click();
+    await expect(editor).toHaveValue('=B1*C1');
+
+    // Second real click on Qty[1] (B2) WITHOUT typing -> REPLACES, not appends.
+    await row1.locator('apex-grid-cell').nth(1).click();
+    await expect(editor).toHaveValue('=B1*B2');
+
+    // Typing an operator locks it; the next click then appends after the operator.
+    await page.keyboard.type('+');
+    await row0.locator('apex-grid-cell').nth(1).click(); // Qty[0] = B1
+    await expect(editor).toHaveValue('=B1*B2+B1');
+  });
+
+  test('drag across cells inserts a live range reference (real mouse)', async ({ page }) => {
+    await openDemo(page, 'formula-engine.html');
+    const row0 = page.locator('apex-grid-row').first();
+    const row1 = page.locator('apex-grid-row').nth(1);
+    const editor = page.locator('[part="editor"]').first();
+
+    await row0.locator('apex-grid-cell').nth(3).dblclick();
+    await editor.fill('=SUM(');
+
+    const from = await row0.locator('apex-grid-cell').nth(1).boundingBox(); // B1 (Qty)
+    const to = await row1.locator('apex-grid-cell').nth(2).boundingBox(); // C2 (Unit Price)
+    await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await expect(editor).toHaveValue('=SUM(B1:C2');
+  });
+
+  test('clearing a number cell commits null, not NaN', async ({ page }) => {
+    await openDemo(page, 'formula-engine.html');
+    // The Total row (row 6) Qty is a plain number cell, isolated from formulas.
+    const qtyCell = page.locator('apex-grid-row').nth(5).locator('apex-grid-cell').nth(1);
+    await qtyCell.dblclick();
+    const input = page.locator('[data-apex-editor]').first();
+    await input.fill('5');
+    await input.fill(''); // clear the field
+    await input.press('Enter');
+    await expect(qtyCell).not.toContainText('NaN');
+    const qty = await page.evaluate(() => (document.getElementById('grid') as any).data[5].qty);
+    expect(qty).toBeNull();
+  });
+
   test('editing Qty recalculates the row total and the grand total', async ({ page }) => {
     await openDemo(page, 'formula-engine.html');
     const qty = page.locator('apex-grid-row').first().locator('apex-grid-cell').nth(1);
@@ -579,6 +654,22 @@ test.describe('formula-engine', () => {
     expect(await result('=MOD(B1,3)')).toBe(1); // 10 mod 3
     expect(await result('=MOD(B1,0)')).toBe('#DIV/0!'); // guarded divide-by-zero
     expect(String(await result('=D1'))).toContain('#'); // self-reference -> cycle/ref error
+    // A range used where a single value is expected is a #VALUE! error, not empty.
+    expect(await result('=B1*C1:C2')).toBe('#VALUE!');
+  });
+
+  test('an error value renders as its code in a typed (currency) cell, not empty', async ({
+    page,
+  }) => {
+    await openDemo(page, 'formula-engine.html');
+    const totalCell = page.locator('apex-grid-row').first().locator('apex-grid-cell').nth(3);
+    // Author "=B1*C1:C2" (scalar * range) in the currency Total cell.
+    await totalCell.dblclick();
+    const editor = page.locator('[part="editor"]').first();
+    await editor.fill('=B1*C1:C2');
+    await editor.press('Enter');
+    // The currency renderer used to coerce the error to NaN and show nothing.
+    await expect(totalCell).toContainText('#VALUE!');
   });
 
   test('autocomplete suggests a function when typing "=SU"', async ({ page }) => {

@@ -15,6 +15,22 @@ import { styles } from '../styles/body-cell/body-cell.css.js';
 import type ApexGridRow from './row.js';
 
 /**
+ * A spreadsheet-style error value (e.g. the enterprise formula engine's
+ * `#VALUE!` / `#DIV/0!`). Duck-typed so core carries no dependency on the
+ * enterprise layer: any value that is an object carrying a `#...` string `code`
+ * is rendered as that code, even in a typed (currency / number) column whose
+ * numeric renderer would otherwise coerce it to `NaN` and show nothing.
+ */
+function isErrorLike(value: unknown): value is { code: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { code?: unknown }).code === 'string' &&
+    (value as { code: string }).code.startsWith('#')
+  );
+}
+
+/**
  * Component representing a DOM cell of the Apex grid.
  *
  * @csspart cell - The cell host element.
@@ -392,7 +408,14 @@ export default class ApexGridCell<T extends object> extends LitElement {
 
   #handleTextInput = (event: Event) => {
     const target = event.target as HTMLInputElement;
-    this.#pendingValue = this.column.type === 'number' ? target.valueAsNumber : target.value;
+    if (this.column.type === 'number') {
+      // An empty (or non-parseable) number field clears the value to null rather
+      // than committing NaN, which would render as the text "NaN".
+      const numeric = target.valueAsNumber;
+      this.#pendingValue = target.value === '' || Number.isNaN(numeric) ? null : numeric;
+      return;
+    }
+    this.#pendingValue = target.value;
   };
 
   #handleCheckboxChange = (event: Event) => {
@@ -539,6 +562,13 @@ export default class ApexGridCell<T extends object> extends LitElement {
   protected renderCellBody() {
     if (this.column.cellTemplate) {
       return this.column.cellTemplate(this.context as ApexCellContext<T> as never);
+    }
+    // A formula error is a first-class cell value: render its code as text so it
+    // stays visible in typed columns (a currency/number renderer would coerce it
+    // to NaN and show an empty cell).
+    const value = this.resolveDisplayValue();
+    if (isErrorLike(value)) {
+      return html`${value.code}`;
     }
     const typeRenderer = getColumnTypeRenderer<T>(this.column.type);
     if (typeRenderer?.display) {

@@ -79,6 +79,8 @@ async function type(el: FormulaCellEditor, text: string) {
 const pressEnter = (el: FormulaCellEditor) =>
   inputOf(el).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
+const setCaret = (el: FormulaCellEditor, pos: number) => inputOf(el).setSelectionRange(pos, pos);
+
 describe('formula cell editor (F4)', () => {
   before(() => FormulaCellEditor.register());
   afterEach(() => fixtureCleanup());
@@ -132,6 +134,37 @@ describe('formula cell editor (F4)', () => {
     expect(el.renderRoot.querySelector('[part~="formula-error"]'), 'shows an error').to.exist;
     expect(calls.set).to.be.empty;
     expect(state.canceled).to.be.false;
+  });
+
+  // --- F4 absolute/relative cycling ----------------------------------------
+
+  it('cycles the reference at the caret with F4 (A1 -> $A$1 -> A$1 -> $A1 -> A1)', async () => {
+    const { controller } = makeController();
+    const { ctx } = makeCtx(0);
+    const el = await mountEditor(ctx, controller);
+    await type(el, '=A1');
+    setCaret(el, 3);
+
+    const pressF4 = async () => {
+      inputOf(el).dispatchEvent(new KeyboardEvent('keydown', { key: 'F4', bubbles: true }));
+      await el.updateComplete;
+      return inputOf(el).value;
+    };
+    expect(await pressF4()).to.equal('=$A$1');
+    expect(await pressF4()).to.equal('=A$1');
+    expect(await pressF4()).to.equal('=$A1');
+    expect(await pressF4()).to.equal('=A1');
+  });
+
+  it('leaves the text unchanged when F4 is pressed away from a reference', async () => {
+    const { controller } = makeController();
+    const { ctx } = makeCtx(0);
+    const el = await mountEditor(ctx, controller);
+    await type(el, '=1+2');
+    setCaret(el, 2); // on the "1" literal, not a reference
+    inputOf(el).dispatchEvent(new KeyboardEvent('keydown', { key: 'F4', bubbles: true }));
+    await el.updateComplete;
+    expect(inputOf(el).value).to.equal('=1+2');
   });
 
   // --- autocomplete (Tier 2, P3) -------------------------------------------
@@ -384,5 +417,248 @@ describe('formula editor autocomplete + click-to-insert (Tier 2, P3, grid-bound)
     );
     await editor!.updateComplete;
     expect(input.value).to.equal('=A1+$B$2');
+  });
+});
+
+describe('formula editor point mode: drag range + arrow keys (grid-bound)', () => {
+  const columns: ColumnConfiguration<Row>[] = [
+    { key: 'qty', type: 'number', editable: true }, // A
+    { key: 'price', type: 'number', editable: true }, // B
+    { key: 'total', type: 'number', editable: true, allowFormula: true }, // C
+  ];
+
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+  });
+  afterEach(() => fixtureCleanup());
+
+  function sizedParent() {
+    const node = document.createElement('div');
+    node.style.height = '600px';
+    return node;
+  }
+
+  async function mountGrid(data: Row[]) {
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise
+        .data=${data}
+        .columns=${columns}
+        .editing=${{ enabled: true, mode: 'cell' }}
+      ></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    await grid.updateComplete;
+    const scroll = (grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } })
+      .scrollContainer;
+    await scroll?.layoutComplete;
+    await nextFrame();
+    return grid;
+  }
+
+  async function openEditor(grid: ApexGridEnterprise<Row>, rowIndex: number) {
+    await editingOf(grid).editCell(rowIndex, 'total');
+    await grid.updateComplete;
+    await nextFrame();
+    const editor = cellOf(grid, rowIndex, 'total')?.renderRoot.querySelector(
+      'apex-grid-formula-editor'
+    ) as FormulaCellEditor | null;
+    expect(editor, 'formula editor is open').to.exist;
+    const input = editor!.renderRoot.querySelector('input') as HTMLInputElement;
+    input.value = '=';
+    input.dispatchEvent(new Event('input'));
+    await editor!.updateComplete;
+    input.setSelectionRange(1, 1);
+    return { editor: editor!, input };
+  }
+
+  const arrow = (input: HTMLInputElement, key: string, shiftKey = false) =>
+    input.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true }));
+
+  it('drag across cells inserts a live range reference', async () => {
+    const data: Row[] = [
+      { qty: 5, price: 2, total: 0 },
+      { qty: 3, price: 4, total: 0 },
+    ];
+    const grid = await mountGrid(data);
+    const { editor, input } = await openEditor(grid, 0);
+
+    // Press on qty[0] (A1), drag over price[1] (B2), release.
+    (cellOf(grid, 0, 'qty') as HTMLElement).dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, composed: true })
+    );
+    await editor.updateComplete;
+    expect(input.value, 'press seeds a single-cell ref').to.equal('=A1');
+
+    (cellOf(grid, 1, 'price') as HTMLElement).dispatchEvent(
+      new PointerEvent('pointermove', { bubbles: true, composed: true, buttons: 1 })
+    );
+    await editor.updateComplete;
+    expect(input.value, 'drag extends to a range').to.equal('=A1:B2');
+
+    globalThis.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    await editor.updateComplete;
+    expect(input.value, 'release locks the range').to.equal('=A1:B2');
+  });
+
+  it('consecutive clicks REPLACE the pending reference (no appending)', async () => {
+    const data: Row[] = [
+      { qty: 5, price: 2, total: 0 },
+      { qty: 3, price: 4, total: 0 },
+    ];
+    const grid = await mountGrid(data);
+    const { editor, input } = await openEditor(grid, 0);
+
+    // "=B4*" style start: type an operator, then click cells with no typing between.
+    input.value = '=A1*';
+    input.dispatchEvent(new Event('input'));
+    await editor.updateComplete;
+    input.setSelectionRange(4, 4);
+
+    // First click -> inserts B1 after the operator.
+    (cellOf(grid, 0, 'price') as HTMLElement).dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, composed: true })
+    );
+    globalThis.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    await editor.updateComplete;
+    expect(input.value).to.equal('=A1*B1');
+
+    // Second click WITHOUT typing -> replaces B1, does not append.
+    (cellOf(grid, 1, 'qty') as HTMLElement).dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, composed: true })
+    );
+    globalThis.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    await editor.updateComplete;
+    expect(input.value, 'second click replaces, not appends').to.equal('=A1*A2');
+
+    // Typing locks the reference; a later click then appends after new input.
+    input.value = '=A1*A2+';
+    input.dispatchEvent(new Event('input'));
+    await editor.updateComplete;
+    input.setSelectionRange(7, 7);
+    (cellOf(grid, 0, 'qty') as HTMLElement).dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, composed: true })
+    );
+    globalThis.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    await editor.updateComplete;
+    expect(input.value, 'after typing, a click appends a fresh ref').to.equal('=A1*A2+A1');
+  });
+
+  it('clicking with the caret on an existing reference replaces it (open formula)', async () => {
+    const data: Row[] = [
+      { qty: 5, price: 2, total: 0 },
+      { qty: 3, price: 4, total: 0 },
+    ];
+    const grid = await mountGrid(data);
+    // Seed total[0] with a formula, then open the editor on it (caret at the end).
+    gridControllerOf(grid).setFormula(data[0], 'total', '=A1*B1');
+    await grid.updateComplete;
+    await editingOf(grid).editCell(0, 'total');
+    await grid.updateComplete;
+    await nextFrame();
+    const editor = cellOf(grid, 0, 'total')?.renderRoot.querySelector(
+      'apex-grid-formula-editor'
+    ) as FormulaCellEditor;
+    const input = editor.renderRoot.querySelector('input') as HTMLInputElement;
+    expect(input.value).to.equal('=A1*B1');
+    input.setSelectionRange(input.value.length, input.value.length); // caret after B1
+
+    // Click qty[1] (A2) -> replaces the trailing B1, does NOT append "B1A2".
+    (cellOf(grid, 1, 'qty') as HTMLElement).dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, composed: true })
+    );
+    globalThis.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    await editor.updateComplete;
+    expect(input.value).to.equal('=A1*A2');
+  });
+
+  it('arrow keys never start referencing cells (caret navigation stays text-only)', async () => {
+    const data: Row[] = [
+      { qty: 1, price: 2, total: 0 },
+      { qty: 3, price: 4, total: 0 },
+    ];
+    const grid = await mountGrid(data);
+    const { editor, input } = await openEditor(grid, 1);
+
+    // A formula ending in an operator (a "reference is expected" position): arrows
+    // must still only move the caret, never insert a reference.
+    input.value = '=A1+';
+    input.dispatchEvent(new Event('input'));
+    await editor.updateComplete;
+    input.setSelectionRange(4, 4);
+
+    for (const key of ['ArrowUp', 'ArrowLeft', 'ArrowRight', 'ArrowDown']) {
+      arrow(input, key);
+      await editor.updateComplete;
+    }
+    expect(input.value, 'arrows do not reference cells while editing').to.equal('=A1+');
+    // No point marquee was created.
+    expect(
+      gridControllerOf(grid).decorateCell({
+        row: data[0],
+        rowIndex: 0,
+        column: { key: 'qty' },
+      } as unknown as Parameters<ReturnType<typeof gridControllerOf>['decorateCell']>[0])
+    ).to.equal(null);
+  });
+
+  it('Escape backs out of a mouse-picked reference without cancelling the edit', async () => {
+    const data: Row[] = [
+      { qty: 1, price: 2, total: 0 },
+      { qty: 3, price: 4, total: 0 },
+    ];
+    const grid = await mountGrid(data);
+    const { editor, input } = await openEditor(grid, 1);
+
+    // Click a cell to pick a reference (armed session).
+    (cellOf(grid, 0, 'qty') as HTMLElement).dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, composed: true })
+    );
+    globalThis.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    await editor.updateComplete;
+    expect(input.value).to.equal('=A1');
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await editor.updateComplete;
+    expect(input.value, 'pending reference is removed').to.equal('=');
+    // The editor is still open (the edit was not cancelled).
+    expect(
+      cellOf(grid, 1, 'total')?.renderRoot.querySelector('apex-grid-formula-editor'),
+      'editor stays open'
+    ).to.exist;
+  });
+
+  it('exposes address services + a point marquee decoration on the controller', async () => {
+    const data: Row[] = [
+      { qty: 1, price: 2, total: 0 },
+      { qty: 3, price: 4, total: 0 },
+    ];
+    const grid = await mountGrid(data);
+    const controller = gridControllerOf(grid);
+
+    expect(controller.addressFor(data[0], 'qty')).to.eql({ row: 0, col: 0 });
+    expect(controller.gridBounds()).to.eql({ maxRow: 1, maxCol: 2 });
+    expect(controller.rangeReferenceForAddresses({ row: 0, col: 0 }, { row: 1, col: 1 })).to.equal(
+      'A1:B2'
+    );
+
+    controller.setPointer({ start: { row: 0, col: 0 }, end: { row: 1, col: 1 } });
+    const decoration = controller.decorateCell({
+      row: data[0],
+      rowIndex: 0,
+      column: { key: 'qty' },
+    } as unknown as Parameters<typeof controller.decorateCell>[0]);
+    expect(decoration?.attributes?.['data-formula-pointer']).to.equal('');
+    expect(decoration?.attributes?.['data-formula-pointer-edge']).to.contain('top');
+
+    controller.setPointer(null);
+    expect(
+      controller.decorateCell({
+        row: data[0],
+        rowIndex: 0,
+        column: { key: 'qty' },
+      } as unknown as Parameters<typeof controller.decorateCell>[0]),
+      'clears the marquee'
+    ).to.equal(null);
   });
 });

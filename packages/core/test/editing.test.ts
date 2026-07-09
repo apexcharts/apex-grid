@@ -104,6 +104,21 @@ describe('Inline editing — cell mode', () => {
     expect(TDD.grid.editingCell).to.be.null;
   });
 
+  it('clears a number cell to null (not NaN) when committed empty', async () => {
+    await TDD.updateColumns({ key: 'id', editable: true });
+    await TDD.grid.editCell(0, 'id');
+    await TDD.waitForUpdate();
+    const input = TDD.cellInput(0, 'id')!;
+    input.value = '';
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await TDD.waitForUpdate();
+
+    expect(TDD.grid.data[0].id, 'empty number commits null, not NaN').to.equal(null);
+    const cell = TDD.rows.get(0).cells.get('id' as never).element;
+    expect(cell.shadowRoot!.textContent ?? '', 'cell does not render "NaN"').to.not.contain('NaN');
+  });
+
   it('aborts the commit when cellValueChanging is cancelled', async () => {
     TDD.grid.addEventListener('cellValueChanging', (event) => event.preventDefault());
 

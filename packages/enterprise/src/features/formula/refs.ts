@@ -161,6 +161,26 @@ export function offsetAddress(
   };
 }
 
+/**
+ * Move an address by (`dRow`, `dCol`) and clamp it inside the grid bounds
+ * `[0, maxRow] x [0, maxCol]` (inclusive). Unlike {@link offsetAddress} (which
+ * only clamps the low end, leaving an over-range target to surface as `#REF!`),
+ * this keeps the address on a real cell: it is used to walk the keyboard
+ * "point mode" pointer, which must always land on an existing cell.
+ */
+export function stepAddress(
+  addr: CellAddress,
+  dRow: number,
+  dCol: number,
+  maxRow: number,
+  maxCol: number
+): CellAddress {
+  return {
+    row: Math.min(Math.max(0, addr.row + dRow), Math.max(0, maxRow)),
+    col: Math.min(Math.max(0, addr.col + dCol), Math.max(0, maxCol)),
+  };
+}
+
 /** Format a cell or range address as A1 text (`C2` or `A1:C3`). */
 export function formatA1(addr: CellAddress | RangeAddress): string {
   return isRangeAddress(addr)
