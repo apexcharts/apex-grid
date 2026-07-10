@@ -2,22 +2,37 @@ import { type GridLocaleKey, localize } from 'apex-grid';
 import { registerComponent } from 'apex-grid/internal';
 import { css, html, LitElement, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
-import type { AIMode, AIResult } from './features/ai.js';
+import type { AIMode, AIResult, Plan } from './features/ai/index.js';
 import type { ApexGridEnterprise } from './grid-enterprise.js';
 
 export const AI_TAG = 'apex-grid-ai';
 
+/** One completed turn, kept for the in-panel transcript. */
+interface TranscriptEntry {
+  prompt: string;
+  summary: string;
+  /** The reasoner that produced the plan (`'rule'`, `'llm:claude'`, …). */
+  source: string;
+  mode: AIMode;
+}
+
 /**
  * Prompt panel for the enterprise grid's AI Toolkit. Mount it beside a grid and
  * set its `grid` property: it sends a natural-language prompt through the grid's
- * {@link ApexGridEnterprise.runPrompt} (and thus its {@link ApexGridEnterprise.aiAdapter}),
- * then shows what changed with a one-click **Undo**, or the answer in ask mode.
+ * {@link ApexGridEnterprise.runPrompt} (the built-in rule engine, plus any
+ * {@link ApexGridEnterprise.aiReasoner}), then shows what changed with a one-click
+ * **Undo**, or the answer in ask mode.
  *
  * Two container modes via `mode`: `'inline'` renders in place; `'dialog'` (the
  * default) is a floating, draggable panel. The element holds no API key and never
- * imports an LLM SDK: it only calls the grid, which owns the adapter.
+ * imports an LLM SDK: it only calls the grid, which owns the reasoning.
  *
  * @element apex-grid-ai
+ *
+ * A **source badge** shows whether each result came from the deterministic rule
+ * engine or an LLM reasoner; **Preview** dry-runs the prompt through
+ * {@link ApexGridEnterprise.previewPrompt} (nothing is applied) so the planned
+ * steps can be inspected first; and a **transcript** logs past turns.
  *
  * @fires apex-ai-result - After a prompt resolves: `{ result }` (the {@link AIResult}).
  * @fires apex-ai-closed - When a dialog panel is dismissed.
@@ -29,11 +44,18 @@ export const AI_TAG = 'apex-grid-ai';
  * @csspart mode-button - A Control / Ask mode toggle button.
  * @csspart input - The prompt textarea.
  * @csspart send - The send / cancel button.
+ * @csspart preview-button - The preview (dry-run) button.
  * @csspart result - The result region (applied summary or answer).
+ * @csspart abstention - The region shown when the prompt could not be mapped.
+ * @csspart preview - The preview region (planned steps, not applied).
+ * @csspart source - The badge naming the reasoner that produced a result.
  * @csspart undo - The undo button (control mode).
  * @csspart warnings - The notes / warnings list.
- * @csspart notice - The "no adapter" / empty notice.
+ * @csspart notice - The thinking / empty notice.
  * @csspart error - The error message.
+ * @csspart history - The transcript region.
+ * @csspart history-item - One past turn in the transcript.
+ * @csspart clear-history - The button that clears the transcript.
  */
 export class ApexGridAI extends LitElement {
   public static get tagName(): string {
@@ -147,6 +169,10 @@ export class ApexGridAI extends LitElement {
     [part='result'] {
       font-size: 0.78rem;
     }
+    [part='abstention'] {
+      font-size: 0.78rem;
+      color: #475467;
+    }
     [part='undo'] {
       font: inherit;
       font-size: 0.75rem;
@@ -173,6 +199,69 @@ export class ApexGridAI extends LitElement {
     [part='error'] {
       color: #b42318;
     }
+    [part='preview-button'] {
+      font: inherit;
+      padding: 5px 12px;
+      border: 1px solid #d0d5dd;
+      background: #fff;
+      color: #1f2328;
+      border-radius: 4px;
+      cursor: pointer;
+      min-height: 24px;
+    }
+    [part='preview-button'][disabled] {
+      opacity: 0.5;
+      cursor: default;
+    }
+    [part='source'] {
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: #57606a;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 0 7px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    [part='preview'] {
+      font-size: 0.78rem;
+      color: #475467;
+    }
+    [part='history'] {
+      margin-block-start: 4px;
+      border-block-start: 1px solid #eef0f4;
+      padding-block-start: 6px;
+    }
+    .history-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 600;
+      font-size: 0.72rem;
+      color: #6b7280;
+    }
+    [part='clear-history'] {
+      font: inherit;
+      font-size: 0.7rem;
+      border: none;
+      background: none;
+      color: #6b7280;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    [part='history-item'] {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: baseline;
+    }
+    .hist-prompt {
+      font-weight: 600;
+    }
+    .hist-summary {
+      color: #6b7280;
+    }
     ul {
       margin: 4px 0 0;
       padding-inline-start: 18px;
@@ -197,6 +286,8 @@ export class ApexGridAI extends LitElement {
   @state() private error = '';
   @state() private result: AIResult | null = null;
   @state() private undone = false;
+  @state() private previewPlan: Plan | null = null;
+  @state() private transcript: TranscriptEntry[] = [];
 
   #controller: AbortController | null = null;
   #drag: { pointerId: number; offsetX: number; offsetY: number } | null = null;
@@ -243,9 +334,11 @@ export class ApexGridAI extends LitElement {
 
   async #send(): Promise<void> {
     const grid = this.grid;
-    if (!grid || this.busy || !this.prompt.trim()) return;
+    const prompt = this.prompt.trim();
+    if (!grid || this.busy || !prompt) return;
     this.error = '';
     this.result = null;
+    this.previewPlan = null;
     this.undone = false;
     this.busy = true;
     this.#controller = new AbortController();
@@ -255,9 +348,40 @@ export class ApexGridAI extends LitElement {
         signal: this.#controller.signal,
       });
       this.result = result;
+      this.transcript = [
+        ...this.transcript,
+        {
+          prompt,
+          summary: this.#summarize(result),
+          source: result.plan.source,
+          mode: result.mode,
+        },
+      ];
       this.dispatchEvent(
         new CustomEvent('apex-ai-result', { detail: { result }, bubbles: true, composed: true })
       );
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
+    } finally {
+      this.busy = false;
+      this.#controller = null;
+    }
+  }
+
+  /** Dry-run the prompt: show the plan the reasoner would run, applying nothing. */
+  async #preview(): Promise<void> {
+    const grid = this.grid;
+    if (!grid || this.busy || !this.prompt.trim()) return;
+    this.error = '';
+    this.result = null;
+    this.previewPlan = null;
+    this.busy = true;
+    this.#controller = new AbortController();
+    try {
+      this.previewPlan = await grid.previewPrompt(this.prompt, {
+        mode: this.currentMode,
+        signal: this.#controller.signal,
+      });
     } catch (error) {
       this.error = error instanceof Error ? error.message : String(error);
     } finally {
@@ -278,8 +402,27 @@ export class ApexGridAI extends LitElement {
     }
   }
 
+  #clearHistory(): void {
+    this.transcript = [];
+  }
+
   #setMode(mode: AIMode): void {
     this.currentMode = mode;
+  }
+
+  /** A one-line, localized summary of a result, for the transcript. */
+  #summarize(result: AIResult): string {
+    if (result.mode === 'ask') {
+      return result.abstained ? this.#t('ai.abstained') : result.answer;
+    }
+    return result.applied.length
+      ? `${this.#t('ai.applied')}: ${result.applied.join(', ')}`
+      : this.#t('ai.noChanges');
+  }
+
+  /** Human label for a plan's source: the rule engine, or an LLM. */
+  #sourceLabel(source: string): string {
+    return source === 'rule' ? this.#t('ai.viaRule') : this.#t('ai.viaAI');
   }
 
   // --- dialog drag ---------------------------------------------------------
@@ -315,22 +458,41 @@ export class ApexGridAI extends LitElement {
 
   // --- render --------------------------------------------------------------
 
-  #renderResult() {
+  /** The live status region: error, thinking, a preview, or the last result. */
+  #renderStatus() {
     if (this.error) return html`<div part="error">${this.error}</div>`;
     if (this.busy) return html`<div part="notice">${this.#t('ai.thinking')}</div>`;
-    const result = this.result;
-    if (!result) return nothing;
+    if (this.previewPlan) return this.#renderPreview(this.previewPlan);
+    if (this.result) return this.#renderResult(this.result);
+    return nothing;
+  }
 
+  /** A small badge naming the reasoner behind a plan (rule engine vs. an LLM). */
+  #renderSource(source: string) {
+    return html`<span part="source" title=${source}>${this.#sourceLabel(source)}</span>`;
+  }
+
+  #renderResult(result: AIResult) {
     if (result.mode === 'ask') {
-      return html`<div part="result">${result.answer}</div>`;
+      // Abstention: the pipeline could not map the prompt to an action or a grounded
+      // answer. Show an honest, localized message plus a hint, not the raw note.
+      if (result.abstained) {
+        return html`<div part="abstention">
+          <div>${this.#t('ai.abstained')} ${this.#renderSource(result.plan.source)}</div>
+          <div part="notice">${this.#t('ai.abstainedHint')}</div>
+        </div>`;
+      }
+      return html`<div part="result">
+        <div>${result.answer} ${this.#renderSource(result.plan.source)}</div>
+      </div>`;
     }
 
-    const applied = result.result.applied;
+    const applied = result.applied;
     const summary = applied.length
       ? `${this.#t('ai.applied')}: ${applied.join(', ')}`
       : this.#t('ai.noChanges');
     return html`<div part="result">
-      <div>${summary}</div>
+      <div>${summary} ${this.#renderSource(result.plan.source)}</div>
       ${
         result.warnings.length
           ? html`<div part="warnings">
@@ -356,9 +518,57 @@ export class ApexGridAI extends LitElement {
     </div>`;
   }
 
+  /** A dry-run: the steps the plan would run (or its answer), applying nothing. */
+  #renderPreview(plan: Plan) {
+    const lines =
+      plan.mode === 'ask'
+        ? [this.#t('ai.modeAsk')]
+        : plan.steps.map((step) => step.rationale ?? step.tool);
+    return html`<div part="preview">
+      <div>${this.#t('ai.previewHeading')} ${this.#renderSource(plan.source)}</div>
+      ${
+        lines.length
+          ? html`<ul>
+              ${lines.map((line) => html`<li>${line}</li>`)}
+            </ul>`
+          : html`<div part="notice">${this.#t('ai.previewEmpty')}</div>`
+      }
+      ${
+        plan.notes?.length
+          ? html`<div part="warnings">
+              <ul>
+                ${plan.notes.map((note) => html`<li>${note}</li>`)}
+              </ul>
+            </div>`
+          : nothing
+      }
+    </div>`;
+  }
+
+  /** A compact log of past turns, newest last. */
+  #renderTranscript() {
+    if (this.transcript.length === 0) return nothing;
+    return html`<div part="history">
+      <div class="history-head">
+        <span>${this.#t('ai.history')}</span>
+        <button part="clear-history" type="button" @click=${() => this.#clearHistory()}>
+          ${this.#t('ai.clearHistory')}
+        </button>
+      </div>
+      <ul>
+        ${this.transcript.map(
+          (entry) => html`<li part="history-item">
+            <span class="hist-prompt">${entry.prompt}</span>
+            <span class="hist-summary">${entry.summary}</span>
+            ${this.#renderSource(entry.source)}
+          </li>`
+        )}
+      </ul>
+    </div>`;
+  }
+
   protected override render() {
-    const hasAdapter = Boolean(this.grid?.aiAdapter);
-    const canSend = hasAdapter && !this.busy && this.prompt.trim().length > 0;
+    const canSend = !this.busy && this.prompt.trim().length > 0;
     return html`<div
       part="panel"
       role=${this.mode === 'dialog' ? 'dialog' : nothing}
@@ -421,17 +631,25 @@ export class ApexGridAI extends LitElement {
                   ${this.#t('ai.cancel')}
                 </button>`
               : html`<button
-                  part="send"
-                  type="button"
-                  ?disabled=${!canSend}
-                  @click=${() => this.#send()}
-                >
-                  ${this.#t('ai.send')}
-                </button>`
+                    part="send"
+                    type="button"
+                    ?disabled=${!canSend}
+                    @click=${() => this.#send()}
+                  >
+                    ${this.#t('ai.send')}
+                  </button>
+                  <button
+                    part="preview-button"
+                    type="button"
+                    ?disabled=${!canSend}
+                    @click=${() => this.#preview()}
+                  >
+                    ${this.#t('ai.preview')}
+                  </button>`
           }
         </div>
-        ${hasAdapter ? nothing : html`<div part="notice">${this.#t('ai.noAdapter')}</div>`}
-        <div role="status" aria-live="polite">${this.#renderResult()}</div>
+        <div role="status" aria-live="polite">${this.#renderStatus()}</div>
+        ${this.#renderTranscript()}
       </div>
     </div>`;
   }

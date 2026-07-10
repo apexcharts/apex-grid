@@ -1,11 +1,6 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
-import {
-  ApexGridAI,
-  ApexGridEnterprise,
-  createMockAdapter,
-  enterpriseModules,
-} from '../src/index.js';
+import { ApexGridAI, ApexGridEnterprise, enterpriseModules, type Reasoner } from '../src/index.js';
 
 interface Row {
   region: string;
@@ -32,7 +27,9 @@ function part<T extends HTMLElement>(panel: ApexGridAI, name: string): T | null 
 async function waitForResult(panel: ApexGridAI): Promise<void> {
   for (let i = 0; i < 40; i++) {
     await nextFrame();
-    if (panel.renderRoot.querySelector('[part="result"], [part="error"]')) return;
+    if (panel.renderRoot.querySelector('[part="result"], [part="error"], [part="abstention"]')) {
+      return;
+    }
   }
 }
 
@@ -52,14 +49,11 @@ describe('AI Toolkit — <apex-grid-ai>', () => {
   });
   afterEach(() => fixtureCleanup());
 
-  async function mount(
-    withAdapter: boolean
-  ): Promise<{ grid: ApexGridEnterprise<Row>; panel: ApexGridAI }> {
+  async function mount(): Promise<{ grid: ApexGridEnterprise<Row>; panel: ApexGridAI }> {
     const grid = await fixture<ApexGridEnterprise<Row>>(html`<apex-grid-enterprise
       .data=${data}
       .columns=${columns}
     ></apex-grid-enterprise>`);
-    if (withAdapter) grid.aiAdapter = createMockAdapter();
     await grid.updateComplete;
     const panel = await fixture<ApexGridAI>(
       html`<apex-grid-ai .grid=${grid} mode="inline"></apex-grid-ai>`
@@ -68,14 +62,15 @@ describe('AI Toolkit — <apex-grid-ai>', () => {
     return { grid, panel };
   }
 
-  it('shows a notice and disables send when no adapter is set', async () => {
-    const { panel } = await mount(false);
-    expect(part(panel, 'notice'), 'no-adapter notice').to.exist;
+  it('disables send until a prompt is entered (rule engine, no adapter needed)', async () => {
+    const { panel } = await mount();
     expect(part<HTMLButtonElement>(panel, 'send')?.disabled).to.be.true;
+    await type(panel, 'sort by amount');
+    expect(part<HTMLButtonElement>(panel, 'send')?.disabled).to.be.false;
   });
 
-  it('control mode applies a patch and reports what changed', async () => {
-    const { grid, panel } = await mount(true);
+  it('control mode applies a change and reports what changed', async () => {
+    const { grid, panel } = await mount();
     await type(panel, 'sort by amount descending');
     part<HTMLButtonElement>(panel, 'send')?.click();
     await waitForResult(panel);
@@ -88,7 +83,7 @@ describe('AI Toolkit — <apex-grid-ai>', () => {
   });
 
   it('undo restores the prior view', async () => {
-    const { grid, panel } = await mount(true);
+    const { grid, panel } = await mount();
     await type(panel, 'sort by amount descending');
     part<HTMLButtonElement>(panel, 'send')?.click();
     await waitForResult(panel);
@@ -100,8 +95,7 @@ describe('AI Toolkit — <apex-grid-ai>', () => {
   });
 
   it('ask mode answers without mutating the grid', async () => {
-    const { grid, panel } = await mount(true);
-    // switch to ask mode (second mode button)
+    const { grid, panel } = await mount();
     const modeButtons =
       panel.renderRoot.querySelectorAll<HTMLButtonElement>('[part="mode-button"]');
     modeButtons[1].click();
@@ -116,15 +110,68 @@ describe('AI Toolkit — <apex-grid-ai>', () => {
     expect(grid.getState().sort, 'ask did not change state').to.be.empty;
   });
 
-  it('surfaces a thrown adapter error', async () => {
-    const { grid, panel } = await mount(false);
-    grid.aiAdapter = async () => {
-      throw new Error('boom from adapter');
-    };
-    await panel.updateComplete;
-    await type(panel, 'do something');
+  it('abstains honestly when the prompt cannot be mapped (no silent no-op)', async () => {
+    const { grid, panel } = await mount();
+    // No command verb the rules know, and the stray "who" must not answer confidently.
+    await type(panel, 'delete who have amount less than 15');
     part<HTMLButtonElement>(panel, 'send')?.click();
     await waitForResult(panel);
-    expect(part(panel, 'error')?.textContent).to.contain('boom from adapter');
+
+    expect(part(panel, 'abstention'), 'abstention region').to.exist;
+    expect(part(panel, 'abstention')?.textContent).to.contain(
+      'could not turn that into a grid action'
+    );
+    expect(grid.getState().filter, 'abstention did not mutate the grid').to.be.empty;
+  });
+
+  it('surfaces a thrown reasoner error', async () => {
+    const { grid, panel } = await mount();
+    const boom: Reasoner = {
+      name: 'boom',
+      score: () => 1,
+      reason: () => Promise.reject(new Error('boom from reasoner')),
+    };
+    grid.aiReasoner = boom;
+    await panel.updateComplete;
+    await type(panel, 'do something the rules cannot map xyzzy');
+    part<HTMLButtonElement>(panel, 'send')?.click();
+    await waitForResult(panel);
+    expect(part(panel, 'error')?.textContent).to.contain('boom from reasoner');
+  });
+
+  it('labels a result with its source (rule engine by default)', async () => {
+    const { panel } = await mount();
+    await type(panel, 'sort by amount descending');
+    part<HTMLButtonElement>(panel, 'send')?.click();
+    await waitForResult(panel);
+    const badge = part(panel, 'source');
+    expect(badge, 'source badge').to.exist;
+    expect(badge?.textContent).to.contain('Rule engine');
+  });
+
+  it('preview dry-runs the prompt without applying it', async () => {
+    const { grid, panel } = await mount();
+    await type(panel, 'sort by amount descending');
+    part<HTMLButtonElement>(panel, 'preview-button')?.click();
+    for (let i = 0; i < 40; i++) {
+      await nextFrame();
+      if (part(panel, 'preview')) break;
+    }
+    expect(part(panel, 'preview'), 'preview region').to.exist;
+    expect(part(panel, 'preview')?.textContent).to.contain('sort');
+    expect(grid.getState().sort, 'preview must not mutate the grid').to.be.empty;
+  });
+
+  it('logs turns in the transcript and clears them', async () => {
+    const { panel } = await mount();
+    await type(panel, 'sort by amount descending');
+    part<HTMLButtonElement>(panel, 'send')?.click();
+    await waitForResult(panel);
+    expect(part(panel, 'history'), 'history region').to.exist;
+    expect(panel.renderRoot.querySelectorAll('[part="history-item"]')).to.have.lengthOf(1);
+
+    part<HTMLButtonElement>(panel, 'clear-history')?.click();
+    await panel.updateComplete;
+    expect(part(panel, 'history'), 'history cleared').to.not.exist;
   });
 });

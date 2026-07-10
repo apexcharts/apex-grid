@@ -41,7 +41,15 @@ import {
   type AggregationFn,
   type AggregationResults,
 } from './features/aggregation.js';
-import { type AIAdapter, type AIResult, type RunPromptOptions, runPrompt } from './features/ai.js';
+// The AI layer is imported for TYPES ONLY here; its runtime values are pulled in via a
+// dynamic `import()` inside `#ensureAIEngine`, on the first `runPrompt` / `previewPrompt`.
+// Two payoffs: (1) an `<apex-grid-enterprise>` consumer who never uses AI links zero AI
+// code (the whole layer becomes an on-demand chunk); (2) the barrel is still avoided, so
+// createClaudeReasoner's lazy `import('@anthropic-ai/sdk')` never reaches the browser
+// `define` bundle. The Claude reasoner stays reachable only through the package entry.
+import type { AIEngine, AIResult, RunPromptOptions } from './features/ai/engine.js';
+import type { Reasoner } from './features/ai/reasoner.js';
+import type { Plan } from './features/ai/types.js';
 import {
   type ChartModel,
   type ChartSeries,
@@ -328,13 +336,22 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   public infiniteRowModel: InfiniteRowModelConfig<T> | null = null;
 
   /**
-   * Adapter the AI Toolkit calls to turn a natural-language prompt into a grid
-   * change (or an answer). Provider-agnostic: assign `createClaudeAdapter(...)`
-   * for Anthropic/Claude, `createMockAdapter()` for a no-network demo, or your
-   * own `(request) => Promise<{ patch?, answer? }>`. Unset, {@link runPrompt}
-   * rejects. The entire AI Toolkit is an enterprise feature.
+   * An optional escalation {@link Reasoner} the AI layer consults when the built-in
+   * deterministic rule engine is not confident (e.g. `createClaudeReasoner(...)` for
+   * Anthropic/Claude). Unset (the default), {@link runPrompt} is handled entirely by
+   * the rule engine: no LLM, no key, no network. The AI Toolkit is an enterprise feature.
    */
-  public aiAdapter: AIAdapter | null = null;
+  public aiReasoner: Reasoner | null = null;
+
+  /**
+   * Advanced: a fully custom {@link AIEngine} (custom tools, memory, or routing
+   * policy) used instead of the lazily-built default. When set, it overrides
+   * {@link aiReasoner}.
+   */
+  public aiEngine: AIEngine<T> | null = null;
+
+  #aiEngine: AIEngine<T> | null = null;
+  #aiEngineReasoner: Reasoner | null = null;
 
   #infiniteManager: InfiniteRowModelManager<T> | null = null;
   #infiniteNeedsStart = false;
@@ -520,25 +537,60 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   /**
-   * Run a natural-language `prompt` against the grid via {@link aiAdapter}.
+   * Run a natural-language `prompt` against the grid.
    *
-   * - **`'control'` (default):** the adapter returns a state patch, which is
-   *   validated against {@link getSchema}, applied via {@link setState}, and made
-   *   reversible: the result carries an `undo()` that restores the prior snapshot.
-   * - **`'ask'`:** the adapter returns a text answer about the current view; the
-   *   grid is not mutated.
+   * Works out of the box via the built-in deterministic rule engine (no LLM, no
+   * key, no network). Set {@link aiReasoner} to add an LLM escalation path for
+   * requests the rule engine cannot map.
    *
-   * Rejects when no {@link aiAdapter} is set. AI Toolkit is an enterprise feature.
+   * - **`'control'` (default):** the planned tool calls are validated and applied
+   *   via {@link setState}; the result carries an `undo()` that restores the prior
+   *   snapshot.
+   * - **`'ask'`:** a read-only answer about the current view / data; no mutation.
+   *
+   * AI Toolkit is an enterprise feature.
    *
    * @example
    * ```ts
-   * grid.aiAdapter = createMockAdapter();
    * const result = await grid.runPrompt('sort by price, highest first');
    * if (result.mode === 'control') result.undo(); // one-click revert
    * ```
    */
-  public runPrompt(prompt: string, options?: RunPromptOptions): Promise<AIResult> {
-    return runPrompt(this, prompt, options);
+  public async runPrompt(prompt: string, options?: RunPromptOptions): Promise<AIResult> {
+    return (await this.#ensureAIEngine()).runPrompt(prompt, options);
+  }
+
+  /**
+   * Dry-run a prompt: return the {@link Plan} the reasoner would execute, without
+   * applying it. The natural primitive for a confirm-before-apply UI.
+   */
+  public async previewPrompt(prompt: string, options?: RunPromptOptions): Promise<Plan> {
+    return (await this.#ensureAIEngine()).previewPrompt(prompt, options);
+  }
+
+  /**
+   * The AI engine to drive: an explicitly assigned {@link aiEngine}, otherwise a
+   * cached default engine, rebuilt when {@link aiReasoner} changes so a set reasoner
+   * takes effect while preserving conversation memory across calls otherwise.
+   *
+   * The engine's runtime is loaded on demand (dynamic `import`) so a grid that never
+   * runs a prompt never bundles the AI layer.
+   */
+  async #ensureAIEngine(): Promise<AIEngine<T>> {
+    if (this.aiEngine) return this.aiEngine;
+    if (!this.#aiEngine || this.#aiEngineReasoner !== this.aiReasoner) {
+      const [{ createAIEngine }, { gridApiFor }, { createRuleBasedReasoner }] = await Promise.all([
+        import('./features/ai/engine.js'),
+        import('./features/ai/grid-api.js'),
+        import('./features/ai/reasoner.js'),
+      ]);
+      const reasoners = this.aiReasoner
+        ? [createRuleBasedReasoner(), this.aiReasoner]
+        : [createRuleBasedReasoner()];
+      this.#aiEngine = createAIEngine<T>(gridApiFor(this), { reasoners });
+      this.#aiEngineReasoner = this.aiReasoner;
+    }
+    return this.#aiEngine;
   }
 
   protected override willUpdate(changed: PropertyValues): void {
@@ -1272,8 +1324,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   /**
    * Adds an "Ask AI" button to the toolbar. Clicking it opens a floating
    * `<apex-grid-ai mode="dialog">` bound to this grid, which drives
-   * {@link runPrompt} via the configured {@link aiAdapter}. Requires
-   * `<apex-grid-ai>` to be registered (the `/define` entry does so).
+   * {@link runPrompt} (the built-in rule engine, plus any {@link aiReasoner}).
+   * Requires `<apex-grid-ai>` to be registered (the `/define` entry does so).
    */
   #openAIDialog(): void {
     if (!this.#aiDialog) {

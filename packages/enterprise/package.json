@@ -15,6 +15,9 @@
     ".": "./dist/index.js",
     "./define": "./dist/define.js"
   },
+  "sideEffects": [
+    "**/define.js"
+  ],
   "type": "module",
   "engines": {
     "node": ">=20.0.0"

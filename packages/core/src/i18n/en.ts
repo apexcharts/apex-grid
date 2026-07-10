@@ -152,8 +152,16 @@ export const EN_LOCALE = {
   'ai.warnings': 'Notes',
   'ai.answer': 'Answer',
   'ai.error': 'Something went wrong.',
-  'ai.noAdapter': 'No AI adapter configured. Set grid.aiAdapter to enable.',
   'ai.close': 'Close',
+  'ai.preview': 'Preview',
+  'ai.previewHeading': 'Would run (not applied):',
+  'ai.previewEmpty': 'Nothing to run.',
+  'ai.viaRule': 'Rule engine',
+  'ai.viaAI': 'AI',
+  'ai.history': 'History',
+  'ai.clearHistory': 'Clear',
+  'ai.abstained': 'I could not turn that into a grid action.',
+  'ai.abstainedHint': 'Try sorting, filtering, or grouping, or ask a question about the data.',
 
   // Formulas (enterprise)
   'formula.editorLabel': 'Formula',

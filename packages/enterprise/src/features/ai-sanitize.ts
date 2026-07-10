@@ -1,83 +1,5 @@
-import type { GridSchema, GridState, SetStateResult } from 'apex-grid';
+import type { GridSchema, GridState } from 'apex-grid';
 import { aggregatableColumns, groupableKeys, pivotableKeys, type StatePatch } from './ai-schema.js';
-
-/** What the AI is asked to do: control the grid, or answer a read-only question. */
-export type AIMode = 'control' | 'ask';
-
-/** The payload handed to an {@link AIAdapter}. */
-export interface AIRequest {
-  /**
-   * The grid's capability descriptor (columns, capabilities, and current state).
-   * The basis for a structured-output schema and the contract a patch is judged
-   * against. `schema.state` carries the live values, so no separate state arg.
-   */
-  schema: GridSchema;
-  /** The user's natural-language prompt. */
-  prompt: string;
-  /** `'control'` expects a `patch`; `'ask'` expects an `answer`. */
-  mode: AIMode;
-  /** Cooperative cancellation; {@link runPrompt} forwards an `AbortSignal`. */
-  signal?: AbortSignal;
-  /**
-   * The grid's current rows, forwarded so an adapter can ground its answer or
-   * patch in the data. Adapters decide how much to use (the Claude adapter sends
-   * a bounded sample). Omitted when the host exposes no data.
-   */
-  data?: readonly unknown[];
-}
-
-/** What an {@link AIAdapter} returns. */
-export interface AIResponse {
-  /** Control mode: the proposed state patch (validated before it is applied). */
-  patch?: StatePatch;
-  /** Ask mode: the natural-language answer. */
-  answer?: string;
-}
-
-/**
- * Turns an {@link AIRequest} into an {@link AIResponse}. Provider- and
- * transport-agnostic: the grid only defines the contract and applies the
- * validated result. Use {@link createClaudeAdapter} for Anthropic/Claude,
- * {@link createMockAdapter} for a no-network demo, or supply your own.
- */
-export type AIAdapter = (request: AIRequest) => Promise<AIResponse>;
-
-/** Options for {@link runPrompt}. */
-export interface RunPromptOptions {
-  /** `'control'` (default) applies a patch; `'ask'` returns an answer only. */
-  mode?: AIMode;
-  /** Forwarded to the adapter for cancellation. */
-  signal?: AbortSignal;
-}
-
-/** The outcome of a {@link runPrompt} call: a discriminated union by `mode`. */
-export type AIResult =
-  | {
-      mode: 'control';
-      /** The sanitized patch that was actually applied. */
-      patch: StatePatch;
-      /** The `setState` outcome (applied / skipped / warnings). */
-      result: SetStateResult;
-      /** Sanitizer drops merged with `setState` warnings. */
-      warnings: string[];
-      /** Restore the pre-prompt snapshot. Idempotent: a second call is a no-op. */
-      undo: () => SetStateResult;
-    }
-  | { mode: 'ask'; answer: string };
-
-/**
- * The grid surface {@link runPrompt} needs. {@link ApexGridEnterprise} satisfies
- * it structurally; keeping it an interface decouples the orchestration from the
- * element (and makes it trivial to test).
- */
-export interface AIHost {
-  aiAdapter: AIAdapter | null;
-  getSchema(): GridSchema;
-  getState(): GridState;
-  setState(patch: Partial<GridState>): SetStateResult;
-  /** The grid's current rows, forwarded to the adapter as {@link AIRequest.data}. */
-  data?: readonly unknown[];
-}
 
 /** Slices an AI patch may carry; anything else is dropped with a warning. */
 const PATCH_SLICES = new Set<string>([
@@ -218,15 +140,15 @@ function sanitizeEnterpriseModule(
 }
 
 /**
- * Defense-in-depth on top of the grid's defensive `setState`: strip anything an
- * LLM (or a non-structured-output adapter) returned that the {@link GridSchema}
- * does not advertise, so the applied patch is a faithful, predictable record and
- * the UI can report exactly what was refused. Drops, with a warning each: sort on
- * unknown / non-sortable columns or invalid directions (and extra entries on a
- * single-sort grid); filters on unknown columns or with operands invalid for the
- * column; column-layout entries on unknown keys; selection / pagination when the
- * grid disables them; out-of-vocabulary grouping / pivot / aggregation fields; and
- * any slice outside the documented {@link StatePatch} surface.
+ * Defense-in-depth on top of the grid's defensive `setState`: strip anything the
+ * reasoner returned that the {@link GridSchema} does not advertise, so the applied
+ * patch is a faithful, predictable record and the UI can report exactly what was
+ * refused. Drops, with a warning each: sort on unknown / non-sortable columns or
+ * invalid directions (and extra entries on a single-sort grid); filters on unknown
+ * columns or with operands invalid for the column; column-layout entries on unknown
+ * keys; selection / pagination when the grid disables them; out-of-vocabulary
+ * grouping / pivot / aggregation fields; and any slice outside the documented
+ * {@link StatePatch} surface. Used by the view-state tools before `applyState`.
  */
 export function sanitizePatch(
   patch: Partial<GridState>,
@@ -331,54 +253,4 @@ export function sanitizePatch(
   }
 
   return { patch: out, warnings };
-}
-
-/**
- * Run a natural-language `prompt` against the grid through its {@link AIHost.aiAdapter}.
- *
- * - **`'control'` (default):** the adapter returns a patch, which is sanitized
- *   against {@link AIHost.getSchema}, applied via {@link AIHost.setState}, and made
- *   reversible (the result's `undo()` restores the snapshot taken just before).
- * - **`'ask'`:** the adapter returns a text answer; the grid is not mutated.
- *
- * Rejects if no adapter is set.
- */
-export async function runPrompt(
-  host: AIHost,
-  prompt: string,
-  options: RunPromptOptions = {}
-): Promise<AIResult> {
-  const adapter = host.aiAdapter;
-  if (!adapter) {
-    throw new Error(
-      'apex-grid AI: no adapter set. Assign grid.aiAdapter (createClaudeAdapter(...), createMockAdapter(), or your own) before calling runPrompt.'
-    );
-  }
-
-  const mode: AIMode = options.mode ?? 'control';
-  const schema = host.getSchema();
-  const response = await adapter({ schema, prompt, mode, signal: options.signal, data: host.data });
-
-  if (mode === 'ask') {
-    return { mode: 'ask', answer: response.answer ?? '' };
-  }
-
-  const { patch, warnings: sanitizeWarnings } = sanitizePatch(response.patch ?? {}, schema);
-  const before = host.getState();
-  const result = host.setState(patch);
-
-  let undone = false;
-  const undo = (): SetStateResult => {
-    if (undone) return { applied: [], skipped: [], warnings: ['AI change already undone'] };
-    undone = true;
-    return host.setState(before);
-  };
-
-  return {
-    mode: 'control',
-    patch,
-    result,
-    warnings: [...sanitizeWarnings, ...result.warnings],
-    undo,
-  };
 }

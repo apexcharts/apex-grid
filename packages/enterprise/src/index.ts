@@ -7,26 +7,9 @@ export type {
   AggregationResults,
 } from './features/aggregation.js';
 export { aggregationModule } from './features/aggregation.js';
-export type {
-  AIAdapter,
-  AIMode,
-  AIRequest,
-  AIResponse,
-  AIResult,
-  RunPromptOptions,
-} from './features/ai.js';
-export { sanitizePatch } from './features/ai.js';
-export {
-  buildAskRequest,
-  buildControlRequest,
-  type ClaudeAdapterConfig,
-  type ClaudeClient,
-  type ClaudeMessage,
-  createClaudeAdapter,
-  extractAnswer,
-  extractPatch,
-} from './features/ai-claude.js';
-export { createMockAdapter, type MockAdapterOptions, type MockRule } from './features/ai-mock.js';
+// AI reasoning layer: GridApi facade, ContextBuilder, Memory, tools + executor,
+// the rule engine, and the engine + router behind grid.runPrompt / previewPrompt.
+export * from './features/ai/index.js';
 export type { JSONSchema, StatePatch } from './features/ai-schema.js';
 export { toJSONSchema } from './features/ai-schema.js';
 export {

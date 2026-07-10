@@ -157,8 +157,16 @@ export const esLocale: GridLocaleText = {
   'ai.warnings': 'Notas',
   'ai.answer': 'Respuesta',
   'ai.error': 'Algo salió mal.',
-  'ai.noAdapter': 'No hay adaptador de IA configurado. Asigne grid.aiAdapter para habilitarlo.',
   'ai.close': 'Cerrar',
+  'ai.preview': 'Vista previa',
+  'ai.previewHeading': 'Se ejecutaría (no aplicado):',
+  'ai.previewEmpty': 'Nada que ejecutar.',
+  'ai.viaRule': 'Motor de reglas',
+  'ai.viaAI': 'IA',
+  'ai.history': 'Historial',
+  'ai.clearHistory': 'Borrar',
+  'ai.abstained': 'No pude convertir eso en una acción de la tabla.',
+  'ai.abstainedHint': 'Prueba a ordenar, filtrar o agrupar, o haz una pregunta sobre los datos.',
 
   // Fórmulas (enterprise)
   'formula.editorLabel': 'Fórmula',

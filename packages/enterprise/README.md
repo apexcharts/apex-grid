@@ -24,7 +24,7 @@ configuration API, theming, and events are identical, plus the additions below.
 - **[Integrated charts](#integrated-charts)**: render the grid's data as an ApexCharts chart, with optional chart-driven cross-filtering.
 - **[Context menu](#context-menu)**: right-click or the header kebab button for sort / pin / hide / group / copy, a "Chart range" submenu, and custom items.
 - **[Infinite (server-side) row model](#infinite-server-side-row-model)**: stream large remote datasets, block by block.
-- **[AI Toolkit](#ai-toolkit)**: natural-language grid control and read-only Q&A through a provider-agnostic adapter, with a first-class Claude reference adapter.
+- **[AI Toolkit](#ai-toolkit)**: natural-language grid control and read-only Q&A on a built-in deterministic rule engine (offline, no key), with optional LLM escalation and a first-class Claude reasoner included.
 - **[Formulas](#formulas)**: spreadsheet-style cell formulas with relative/absolute A1 references, drag-to-fill, editor autocomplete and click-to-insert, a broad built-in function set (plus custom functions), dependency-graph recalculation, a show-formulas view, and formula-aware export.
 
 ## Install
@@ -355,40 +355,46 @@ blockSize }`) so you can show live load status.
 ## AI Toolkit
 
 Drive the grid in natural language. A prompt becomes a schema-validated state
-patch that is applied through `setState()` with a one-click undo, plus a
-read-only Q&A mode. The toolkit is provider-agnostic: you wire any LLM through a
-tiny adapter, and a first-class Anthropic/Claude reference adapter ships in the
-box. The whole toolkit is an enterprise feature; it builds on the community
+change applied through `setState()` with a one-click undo, plus a read-only Q&A
+mode. By default it runs on a **built-in deterministic rule engine**: offline, no
+key, no network. You can add an optional LLM (a first-class Anthropic/Claude
+reasoner is included) that the grid escalates to only when the rule engine is not
+confident. The whole toolkit is an enterprise feature; it builds on the community
 grid's `getSchema()` / `setState()` foundation.
 
-### The adapter
+### What it understands
 
-An `AIAdapter` is any function from a request to a response:
+The rule engine covers a documented set of commands and questions. Use these and
+they work instantly and offline; anything outside the set escalates to your LLM
+reasoner (if you configured one) or is reported honestly (see below). It never
+guesses silently.
 
-```ts
-type AIAdapter = (request: AIRequest) => Promise<AIResponse>;
-// request:  { schema, prompt, mode: 'control' | 'ask', data?, signal? }
-// response: { patch?, answer? }
-```
+- **Sort:** "sort by revenue, highest first", "order by name", "reverse the sort".
+- **Group / ungroup:** "group by region", "ungroup".
+- **Filter:** "filter status = open", "only show EMEA", "remove rows where salary
+  is under 70000", "keep only rows with amount over 100". Removal keeps the
+  complement (it inverts the operand, or reports that it cannot).
+- **Columns:** "hide the notes column", "show salary", "pin name to the left".
+- **Search:** "search Acme".
+- **Pivot / aggregate:** "pivot on region", "sum of revenue".
+- **Pagination / export:** "page 2", "page size 50", "export as csv".
+- **Reset / undo:** "reset", "undo".
+- **Read-only questions:** "how many rows", "highest / lowest / average salary",
+  "min, max and median of bonus", "average salary by department", "who has the
+  highest salary", "top 5 by revenue", "which region has the highest total sales".
 
-`request.schema` is the grid's `getSchema()` descriptor (columns, capabilities,
-and current state), so the adapter has everything it needs to build a prompt and
-a valid patch. Assign one to the grid:
-
-```ts
-import { createClaudeAdapter } from 'apex-grid-enterprise';
-
-grid.aiAdapter = createClaudeAdapter({ endpoint: '/api/grid-ai' });
-```
+Compound requests are supported in one sentence: "group by department, then sort
+by salary and remove all rows under 70000" applies three steps atomically with a
+single undo.
 
 ### Running a prompt
 
 ```ts
 const result = await grid.runPrompt('group by region, then sort by revenue, highest first');
 if (result.mode === 'control') {
-  console.log(result.result.applied); // e.g. ['modules', 'sort']
-  console.log(result.warnings);       // anything dropped, each with a reason
-  result.undo();                      // one-click revert
+  console.log(result.applied);  // e.g. ['group', 'sort']
+  console.log(result.warnings); // anything dropped or unmapped, each with a reason
+  result.undo();                // one-click revert
 }
 
 // Read-only question; the grid is not changed.
@@ -396,40 +402,66 @@ const answer = await grid.runPrompt('which region has the highest average revenu
 // answer.mode === 'ask'; answer.answer is the text reply
 ```
 
-`runPrompt` validates the returned patch against the schema (dropping anything
+`runPrompt` validates every planned change against the schema (dropping anything
 out of vocabulary, with a reported reason), applies it via the defensive
 `setState()`, and returns an idempotent `undo()` that restores the prior
 snapshot. Ask mode never mutates the grid.
 
-### Claude reference adapter
+### Honest fallback (no silent no-ops)
 
-`createClaudeAdapter` is the bundled Anthropic/Claude adapter, with two
-transports:
+When a prompt cannot be mapped to a grid action and no LLM reasoner is
+configured, `runPrompt` **abstains** rather than silently doing nothing or
+guessing:
 
 ```ts
-// Production: your backend holds the key and calls Anthropic; the browser never sees it.
-grid.aiAdapter = createClaudeAdapter({ endpoint: '/api/grid-ai' });
-
-// Development only: call Anthropic from the browser. This exposes the key to the page.
-grid.aiAdapter = createClaudeAdapter({ apiKey: '...', dangerouslyAllowBrowser: true });
+const result = await grid.runPrompt('teleport the widget sideways');
+// result.mode === 'ask', result.abstained === true
+// result.answer is a short "I could not turn that into a grid action" note
 ```
 
-The direct transport dynamically imports `@anthropic-ai/sdk` (an optional peer
-dependency), defaults to `claude-opus-4-8` (configurable), and uses tool use so
-the model returns a patch shaped by the grid's schema. The proxy transport POSTs
-`{ prompt, mode, schema, data }` to your endpoint, which returns
-`{ patch?, answer? }`. Prefer the proxy for production: it keeps the key on the
-server. Install the SDK only when you use the direct transport:
+The panel renders this as a distinct message (with a hint) instead of an empty
+result. Confidence is calibrated on how much the prompt actually grounds against
+your schema, so a near-miss command scores low and either escalates to your LLM
+reasoner or abstains, instead of returning a confident wrong answer.
+
+### Optional LLM escalation
+
+Leave `runPrompt` as is for the offline rule engine. To also handle prompts the
+rules cannot map, assign a `Reasoner`. The grid tries the rule engine first and
+escalates only when it is unsure, so simple requests stay instant and offline.
+
+```ts
+import { createClaudeReasoner, createLLMReasoner } from 'apex-grid-enterprise';
+
+// Production: your backend holds the key and calls Anthropic; the browser never sees it.
+grid.aiReasoner = createClaudeReasoner({ endpoint: '/api/grid-ai' });
+
+// Development only: call Anthropic from the browser. This exposes the key to the page.
+grid.aiReasoner = createClaudeReasoner({ apiKey: '...', dangerouslyAllowBrowser: true });
+
+// Or bring any provider by implementing a single completion function.
+grid.aiReasoner = createLLMReasoner({ complete: async (req) => ({ patch: /* ... */ }) });
+```
+
+The Claude direct transport dynamically imports `@anthropic-ai/sdk` (an optional
+peer dependency), defaults to `claude-opus-4-8` (configurable), and uses tool use
+so the model returns a state patch shaped by the grid's schema (`toJSONSchema`).
+The proxy transport POSTs `{ prompt, mode, schema, data }` to your endpoint,
+which returns `{ patch?, answer? }`. Prefer the proxy for production. Install the
+SDK only when you use the direct transport:
 
 ```bash
 npm install @anthropic-ai/sdk
 ```
 
+The AI runtime is loaded on demand, on the first `runPrompt` / `previewPrompt`, so
+a grid that never runs a prompt bundles none of it.
+
 ### Prompt panel
 
 `<apex-grid-ai>` is a ready-made prompt UI. Bind it to a grid and it drives
-`runPrompt` for you, showing what changed (with an Undo button), or the answer in
-ask mode.
+`runPrompt` for you, showing what changed (with an Undo button), the answer in
+ask mode, or the honest fallback when a prompt could not be mapped.
 
 ```html
 <apex-grid-ai mode="inline"></apex-grid-ai>
@@ -443,24 +475,13 @@ document.querySelector('apex-grid-ai').grid = grid;
 draggable panel. The enterprise grid also adds an **"Ask AI"** toolbar button
 that opens the panel in a dialog (the `/define` entry registers the element).
 
-### Offline mock
-
-`createMockAdapter` is a deterministic, no-network adapter for demos and tests.
-It maps a small canned vocabulary (sort, group, filter, search, reset) to patches
-and answers simple data questions, with no key required.
-
-```ts
-import { createMockAdapter } from 'apex-grid-enterprise';
-
-grid.aiAdapter = createMockAdapter();
-```
-
 ### How it stays safe
 
-The control path is guarded in layers: the model is constrained by the grid's
-schema (`toJSONSchema`), anything out of vocabulary is stripped before it is
-applied (each drop reported), the defensive `setState()` drops and reports the
-rest, and every change is one click undoable. Ask mode is read-only.
+The control path is guarded in layers: an LLM is constrained by the grid's schema
+(`toJSONSchema`), anything out of vocabulary is stripped before it is applied
+(each drop reported), the defensive `setState()` drops and reports the rest, and
+every change is one click undoable. Ask mode is read-only, and an unmappable
+prompt abstains instead of acting.
 
 ---
 

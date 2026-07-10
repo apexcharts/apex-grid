@@ -361,7 +361,7 @@ test.describe('master-detail-enterprise', () => {
   });
 });
 
-// --- 7. AI toolkit (offline mock) -------------------------------------------
+// --- 7. AI toolkit (built-in rule engine, no LLM) ---------------------------
 
 test.describe('ai-toolkit', () => {
   const pageItems = (page: Page) =>
@@ -411,7 +411,7 @@ test.describe('ai-toolkit', () => {
     expect((await pageItems(page)).length).toBe(12);
   });
 
-  test('Ask mode answers questions from the mock', async ({ page }) => {
+  test('Ask mode answers questions from the rule engine', async ({ page }) => {
     await openDemo(page, 'ai-toolkit.html');
     const ask = (prompt: string) =>
       page.evaluate(async (p) => {
@@ -419,19 +419,80 @@ test.describe('ai-toolkit', () => {
         return r.answer as string;
       }, prompt);
     expect(await ask('how many rows')).toBe('There are 12 rows.');
-    expect(await ask('highest salary')).toBe('Highest Salary: 104,000');
-    expect(await ask('lowest salary')).toBe('Lowest Salary: 64,000');
-    expect(await ask('average salary')).toBe('Average Salary: 81,500');
-    expect(await ask('do a backflip')).toContain('Try'); // edge: unknown prompt -> hint
+    expect(await ask('highest salary')).toMatch(/highest.*104000/i);
+    expect(await ask('lowest salary')).toMatch(/lowest.*64000/i);
+    expect(await ask('average salary')).toMatch(/average.*81500/i);
+    expect(await ask('do a backflip')).toMatch(/current view|columns/i); // edge: falls back to a view summary
+  });
+
+  test('answers analytical questions computed over the data (rule engine)', async ({ page }) => {
+    await openDemo(page, 'ai-toolkit.html');
+    const ask = (prompt: string) =>
+      page.evaluate(async (p) => {
+        const r = await (document.getElementById('grid') as any).runPrompt(p, { mode: 'ask' });
+        return r.answer as string;
+      }, prompt);
+    expect(await ask('min, max and median of bonus')).toMatch(
+      /minimum 5000.*maximum 15000.*median 8250/i
+    );
+    expect(await ask('who has the highest salary')).toMatch(/Liam Chen.*104000/);
+    expect(await ask('average salary by department')).toMatch(/Engineering 95600/);
+    expect(await ask('which department has the highest average salary')).toMatch(
+      /Engineering.*highest.*95600/i
+    );
+  });
+
+  test('a compound command applies group + sort + filter in one sentence', async ({ page }) => {
+    await openDemo(page, 'ai-toolkit.html');
+    await runControl(
+      page,
+      'group by department, then sort by salary and remove all rows that have less than 70000 salary'
+    );
+    expect(
+      await page.evaluate(() => (document.getElementById('grid') as any).getGroups().length)
+    ).toBeGreaterThan(0);
+    const salaries = await page.evaluate(() =>
+      (document.getElementById('grid') as any).pageItems
+        .map((r: any) => r.salary)
+        .filter((n: any) => typeof n === 'number')
+    );
+    expect(salaries.length).toBeGreaterThan(0);
+    expect(Math.min(...salaries)).toBeGreaterThanOrEqual(70000);
+  });
+
+  test('"remove all rows that have less than 70000 salary" keeps only >= 70k', async ({ page }) => {
+    await openDemo(page, 'ai-toolkit.html');
+    await runControl(page, 'remove all rows that have less than 70000 salary');
+    const salaries = await page.evaluate(() =>
+      (document.getElementById('grid') as any).pageItems.map((r: any) => r.salary)
+    );
+    expect(salaries.every((s: number) => s >= 70000)).toBe(true);
+    expect(salaries.length).toBe(9);
+  });
+
+  test('an unmappable request abstains honestly (control mode) without touching the grid', async ({
+    page,
+  }) => {
+    await openDemo(page, 'ai-toolkit.html');
+    const r = await page.evaluate(async () => {
+      const g = document.getElementById('grid') as any;
+      const before = g.pageItems.length;
+      const res = await g.runPrompt('delete who have salary less than 76000'); // default = control mode
+      await g.updateComplete;
+      return { mode: res.mode, abstained: res.abstained, rows: g.pageItems.length, before };
+    });
+    expect(r.mode).toBe('ask');
+    expect(r.abstained).toBe(true);
+    expect(r.rows).toBe(r.before); // grid untouched, but now reported as an honest fallback
   });
 
   test('a preset chip fills the prompt input', async ({ page }) => {
     await openDemo(page, 'ai-toolkit.html');
-    await page.locator('.chips button', { hasText: 'Group by department' }).click();
+    await page.locator('.chips button', { hasText: 'Who earns the most' }).click();
     const value = await page.evaluate(
       () => ((document.getElementById('ai') as any).renderRoot.querySelector('[part="input"]') as HTMLInputElement).value
     );
-    expect(value).toBe('group by department');
+    expect(value).toBe('who has the highest salary');
   });
 });
 

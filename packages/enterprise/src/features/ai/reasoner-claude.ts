@@ -1,6 +1,27 @@
+/**
+ * Claude-backed {@link Reasoner}: the bundled reference LLM provider.
+ *
+ * `createClaudeReasoner(config)` builds a model-completion transport and adapts it
+ * with {@link createLLMReasoner}, so a Claude model becomes an escalation target on
+ * the default `rule-first` router (`grid.aiReasoner = createClaudeReasoner(...)`).
+ * Two transports: a server **proxy** (`endpoint`, recommended for production, the
+ * key stays on your backend) or a **direct** browser call (`apiKey` +
+ * `dangerouslyAllowBrowser`, development only, the key is exposed to the page).
+ *
+ * Control mode uses tool use: the grid's {@link toJSONSchema} is the tool's
+ * `input_schema`, so the returned patch is shaped by the grid's advertised
+ * vocabulary (and is sanitized again on apply). Ask mode is a plain, read-only
+ * message over the schema and a bounded data sample. The reasoner interface is
+ * provider-agnostic; this is the reference implementation.
+ *
+ * @see plans/ai-reasoning-layer-spec.md (section 4.8)
+ */
+
 import type Anthropic from '@anthropic-ai/sdk';
-import type { AIAdapter, AIRequest, AIResponse } from './ai.js';
-import { type StatePatch, toJSONSchema } from './ai-schema.js';
+import { type StatePatch, toJSONSchema } from '../ai-schema.js';
+import type { Reasoner } from './reasoner.js';
+import type { LLMComplete, LLMRequest, LLMResponse } from './reasoner-llm.js';
+import { createLLMReasoner } from './reasoner-llm.js';
 
 /** Default model. Configurable; never silently downgraded. */
 const DEFAULT_MODEL = 'claude-opus-4-8';
@@ -12,13 +33,13 @@ const DEFAULT_MAX_DATA_ROWS = 50;
 const CONTROL_TOOL_NAME = 'apply_grid_state';
 
 /**
- * Configures {@link createClaudeAdapter}. Two transports: a server **proxy**
+ * Configures {@link createClaudeReasoner}. Two transports: a server **proxy**
  * (`endpoint`, recommended for production: the key stays on your backend) or a
  * **direct** browser call (`apiKey` + `dangerouslyAllowBrowser`, development
- * only: the key is exposed to the page). The adapter interface itself is
+ * only: the key is exposed to the page). The reasoner interface itself is
  * provider-agnostic; this is the bundled Anthropic/Claude reference.
  */
-export interface ClaudeAdapterConfig {
+export interface ClaudeReasonerConfig {
   /** Production transport: POST `{ prompt, mode, schema, data }` to your backend. */
   endpoint?: string;
   /** Development transport: call Anthropic directly. Requires {@link dangerouslyAllowBrowser}. */
@@ -37,16 +58,20 @@ export interface ClaudeAdapterConfig {
   fetch?: typeof fetch;
   /** Supply the Anthropic client (or a stub) instead of the bundled dynamic import. */
   client?: ClaudeClient;
+  /** Reasoner name stamped on plans. Defaults to `'llm:claude'`. */
+  name?: string;
+  /** Router triage score in `[0, 1]`. Defaults to the bridge default (`0.6`). */
+  score?: number;
 }
 
-/** The slice of an Anthropic message the adapter reads. */
+/** The slice of an Anthropic message the reasoner reads. */
 export interface ClaudeMessage {
   content: ReadonlyArray<{ type: string; text?: string; input?: unknown; name?: string }>;
   stop_reason?: string | null;
   stop_details?: { explanation?: string | null } | null;
 }
 
-/** Minimal structural view of the Anthropic client (the part the adapter uses). */
+/** Minimal structural view of the Anthropic client (the part the reasoner uses). */
 export interface ClaudeClient {
   messages: {
     create(body: Anthropic.MessageCreateParamsNonStreaming): Promise<ClaudeMessage>;
@@ -58,7 +83,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** `schema` + a bounded data sample, as a system-prompt block. */
-function contextBlock(request: AIRequest, config: ClaudeAdapterConfig): string {
+function contextBlock(request: LLMRequest, config: ClaudeReasonerConfig): string {
   let block = `Grid schema (columns, capabilities, and current state):\n${JSON.stringify(request.schema)}`;
   const max = config.maxDataRows ?? DEFAULT_MAX_DATA_ROWS;
   const rows = request.data ?? [];
@@ -70,7 +95,7 @@ function contextBlock(request: AIRequest, config: ClaudeAdapterConfig): string {
   return block;
 }
 
-function controlSystemPrompt(request: AIRequest, config: ClaudeAdapterConfig): string {
+function controlSystemPrompt(request: LLMRequest, config: ClaudeReasonerConfig): string {
   return [
     'You translate a user request into a change to a data grid.',
     `Call the ${CONTROL_TOOL_NAME} tool with a patch that achieves the request. Use only the columns, operands, and values described by the schema, and include only the slices you want to change.`,
@@ -81,7 +106,7 @@ function controlSystemPrompt(request: AIRequest, config: ClaudeAdapterConfig): s
     .join('\n\n');
 }
 
-function askSystemPrompt(request: AIRequest, config: ClaudeAdapterConfig): string {
+function askSystemPrompt(request: LLMRequest, config: ClaudeReasonerConfig): string {
   return [
     'You answer questions about a data grid and its data, concisely. This is read-only: do not propose or make any change to the grid.',
     contextBlock(request, config),
@@ -93,8 +118,8 @@ function askSystemPrompt(request: AIRequest, config: ClaudeAdapterConfig): strin
 
 /** Build the control-mode (tool-use) request. Exported for testing. */
 export function buildControlRequest(
-  request: AIRequest,
-  config: ClaudeAdapterConfig
+  request: LLMRequest,
+  config: ClaudeReasonerConfig
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: config.model ?? DEFAULT_MODEL,
@@ -116,8 +141,8 @@ export function buildControlRequest(
 
 /** Build the ask-mode (plain message) request. Exported for testing. */
 export function buildAskRequest(
-  request: AIRequest,
-  config: ClaudeAdapterConfig
+  request: LLMRequest,
+  config: ClaudeReasonerConfig
 ): Anthropic.MessageCreateParamsNonStreaming {
   return {
     model: config.model ?? DEFAULT_MODEL,
@@ -156,22 +181,25 @@ function assertNotRefused(message: ClaudeMessage): void {
   }
 }
 
-function validateConfig(config: ClaudeAdapterConfig): void {
+function validateConfig(config: ClaudeReasonerConfig): void {
   if (config.endpoint || config.client) return;
   if (config.apiKey) {
     if (!config.dangerouslyAllowBrowser) {
       throw new Error(
-        'apex-grid AI: createClaudeAdapter with an apiKey calls Anthropic from the browser and exposes the key to the page. Set dangerouslyAllowBrowser: true to acknowledge (development only), or pass an endpoint (a server proxy) for production.'
+        'apex-grid AI: createClaudeReasoner with an apiKey calls Anthropic from the browser and exposes the key to the page. Set dangerouslyAllowBrowser: true to acknowledge (development only), or pass an endpoint (a server proxy) for production.'
       );
     }
     return;
   }
   throw new Error(
-    'apex-grid AI: createClaudeAdapter needs an endpoint (server proxy, recommended) or an apiKey (development only).'
+    'apex-grid AI: createClaudeReasoner needs an endpoint (server proxy, recommended) or an apiKey (development only).'
   );
 }
 
-async function proxyRequest(config: ClaudeAdapterConfig, request: AIRequest): Promise<AIResponse> {
+async function proxyRequest(
+  config: ClaudeReasonerConfig,
+  request: LLMRequest
+): Promise<LLMResponse> {
   const fetchImpl = config.fetch ?? globalThis.fetch;
   if (!fetchImpl) throw new Error('apex-grid AI: no fetch available; pass config.fetch.');
   const response = await fetchImpl(config.endpoint as string, {
@@ -188,12 +216,12 @@ async function proxyRequest(config: ClaudeAdapterConfig, request: AIRequest): Pr
   if (!response.ok) {
     throw new Error(`apex-grid AI: proxy endpoint responded ${response.status}`);
   }
-  const json = (await response.json()) as AIResponse;
+  const json = (await response.json()) as LLMResponse;
   return { patch: json.patch, answer: json.answer };
 }
 
 async function callMessages(
-  config: ClaudeAdapterConfig,
+  config: ClaudeReasonerConfig,
   body: Anthropic.MessageCreateParamsNonStreaming
 ): Promise<ClaudeMessage> {
   if (config.client) return config.client.messages.create(body);
@@ -204,7 +232,10 @@ async function callMessages(
   return client.messages.create(body);
 }
 
-async function directRequest(config: ClaudeAdapterConfig, request: AIRequest): Promise<AIResponse> {
+async function directRequest(
+  config: ClaudeReasonerConfig,
+  request: LLMRequest
+): Promise<LLMResponse> {
   const body =
     request.mode === 'ask'
       ? buildAskRequest(request, config)
@@ -217,25 +248,26 @@ async function directRequest(config: ClaudeAdapterConfig, request: AIRequest): P
 }
 
 /**
- * The first-class Anthropic/Claude reference {@link AIAdapter}. Set it on
- * `grid.aiAdapter`, then call `grid.runPrompt(...)`.
- *
- * Control mode uses tool use: the grid's {@link toJSONSchema} becomes the tool's
- * `input_schema`, so the returned patch is shaped by the grid's advertised
- * vocabulary (and the grid sanitizes + applies it defensively). Ask mode is a
- * plain, read-only message over the schema and a bounded data sample.
+ * The first-class Anthropic/Claude reference {@link Reasoner}. Set it on
+ * `grid.aiReasoner`, then call `grid.runPrompt(...)`; the rule engine handles
+ * simple prompts and only unmapped ones escalate to the model.
  *
  * @example Production (server proxy holds the key)
  * ```ts
- * grid.aiAdapter = createClaudeAdapter({ endpoint: '/api/grid-ai' });
+ * grid.aiReasoner = createClaudeReasoner({ endpoint: '/api/grid-ai' });
  * ```
  * @example Development (browser key; never ship this)
  * ```ts
- * grid.aiAdapter = createClaudeAdapter({ apiKey, dangerouslyAllowBrowser: true });
+ * grid.aiReasoner = createClaudeReasoner({ apiKey, dangerouslyAllowBrowser: true });
  * ```
  */
-export function createClaudeAdapter(config: ClaudeAdapterConfig): AIAdapter {
+export function createClaudeReasoner(config: ClaudeReasonerConfig): Reasoner {
   validateConfig(config);
-  return (request: AIRequest): Promise<AIResponse> =>
+  const complete: LLMComplete = (request) =>
     config.endpoint ? proxyRequest(config, request) : directRequest(config, request);
+  return createLLMReasoner({
+    complete,
+    name: config.name ?? 'llm:claude',
+    score: config.score,
+  });
 }

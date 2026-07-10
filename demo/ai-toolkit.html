@@ -91,19 +91,24 @@
   <body>
     <h2>AI Toolkit <span class="badge">Enterprise</span></h2>
     <p class="subtitle">
-      Type a request in plain language and the grid turns it into a change: <code>sort</code>,
-      <code>filter</code>, <code>group</code>, and more. The
-      <code>&lt;apex-grid-ai&gt;</code> panel sends your prompt through
-      <code>grid.runPrompt()</code>, which validates the returned patch against the grid's schema,
-      applies it with <code>setState()</code>, and offers a one-click <strong>Undo</strong>. Switch to
-      <strong>Ask a question</strong> for a read-only answer. This page uses a tiny offline mock so it
-      runs with no API key.
+      Type a request in plain language and the grid either changes the view
+      (<code>sort</code>, <code>filter</code>, <code>group</code>) or answers an
+      <strong>analytical question</strong> it computes over the data:
+      <code>min / max / median</code>, averages by group, rankings ("who earns the most",
+      "which department has the highest average salary"). The <code>&lt;apex-grid-ai&gt;</code> panel
+      sends your prompt through <code>grid.runPrompt()</code>; changes offer a one-click
+      <strong>Undo</strong>, <strong>Preview</strong> shows the plan first, and a badge names whoever
+      handled it. This page runs entirely on the built-in deterministic rule engine: no API key, no
+      network.
     </p>
     <div class="chips" id="chips">
-      <button data-prompt="group by department">Group by department</button>
-      <button data-prompt="sort by salary, highest first">Sort by salary (desc)</button>
-      <button data-prompt="filter department = Engineering">Filter to Engineering</button>
-      <button data-prompt="search Ava">Search "Ava"</button>
+      <button data-prompt="min, max and median of bonus">Bonus min / max / median</button>
+      <button data-prompt="average salary by department">Avg salary by department</button>
+      <button data-prompt="who has the highest salary">Who earns the most</button>
+      <button data-prompt="group by department, then sort by salary and remove all rows that have less than 70000 salary">
+        Group + sort + filter (one sentence)
+      </button>
+      <button data-prompt="remove all rows that have less than 70000 salary">Remove rows under 70k</button>
       <button data-prompt="reset">Reset</button>
     </div>
     <div class="layout">
@@ -136,72 +141,18 @@
       grid.data = data;
       grid.selection = { enabled: true, mode: 'multiple' };
 
-      // An AIAdapter is any `(request) => Promise<{ patch?, answer? }>`. In production you
-      // would use the bundled Claude reference adapter, with the key held by your backend:
+      // No configuration needed: grid.runPrompt() uses the built-in deterministic rule
+      // engine (offline, free, private) to plan sort / filter / group / quick-filter /
+      // reset and to answer read-only questions. To also handle prompts the rules can't
+      // map, set an LLM escalation reasoner (the key stays on your backend):
       //
-      //   import { createClaudeAdapter } from 'apex-grid-enterprise';
-      //   grid.aiAdapter = createClaudeAdapter({ endpoint: '/api/grid-ai' });           // proxy (recommended)
-      //   grid.aiAdapter = createClaudeAdapter({ apiKey, dangerouslyAllowBrowser: true }); // dev only
+      //   import { createClaudeReasoner } from 'apex-grid-enterprise';
+      //   grid.aiReasoner = createClaudeReasoner({ endpoint: '/api/grid-ai' });            // proxy (recommended)
+      //   grid.aiReasoner = createClaudeReasoner({ apiKey, dangerouslyAllowBrowser: true }); // dev only
       //
-      // This page wires a tiny offline mock instead, so it runs with no key.
-      grid.aiAdapter = async (request) => {
-        const columns = request.schema.columns;
-        const find = (name) =>
-          columns.find(
-            (c) =>
-              c.key.toLowerCase() === name.toLowerCase() ||
-              c.label.toLowerCase() === name.toLowerCase()
-          );
-        const text = request.prompt.trim();
-        const lower = text.toLowerCase();
-
-        if (request.mode === 'ask') {
-          const rows = request.data ?? [];
-          if (/how many|count|rows/.test(lower)) return { answer: `There are ${rows.length} rows.` };
-          const numCol = columns.find(
-            (c) =>
-              (c.dataType === 'number' || c.dataType === 'currency') &&
-              lower.includes(c.label.toLowerCase())
-          );
-          if (numCol) {
-            const values = rows.map((r) => Number(r[numCol.key])).filter(Number.isFinite);
-            const fmt = (n) => n.toLocaleString('en-US');
-            if (/highest|max|top|most/.test(lower)) return { answer: `Highest ${numCol.label}: ${fmt(Math.max(...values))}` };
-            if (/lowest|min|least/.test(lower)) return { answer: `Lowest ${numCol.label}: ${fmt(Math.min(...values))}` };
-            if (/average|avg|mean/.test(lower)) {
-              const avg = values.reduce((a, b) => a + b, 0) / values.length;
-              return { answer: `Average ${numCol.label}: ${fmt(Math.round(avg))}` };
-            }
-          }
-          return { answer: 'Try "highest salary", "how many rows", or switch to Change mode to sort, filter, or group.' };
-        }
-
-        let m;
-        if (/\b(reset|clear)\b/.test(lower))
-          return { patch: { sort: [], filter: [], quickFilter: '', modules: { enterprise: { groupBy: [] } } } };
-        if ((m = text.match(/group\s+(?:by\s+)?(\w+)/i))) {
-          const c = find(m[1]);
-          if (c) return { patch: { modules: { enterprise: { groupBy: [c.key] } } } };
-        }
-        if ((m = text.match(/sort\s+(?:by\s+)?(\w+)(.*)/i))) {
-          const c = find(m[1]);
-          if (c) {
-            const descending = /desc|high|large|top|most/i.test(m[2]);
-            return { patch: { sort: [{ key: c.key, direction: descending ? 'descending' : 'ascending' }] } };
-          }
-        }
-        if ((m = text.match(/filter\s+(\w+)\s*(?:=|is|equals?|contains)\s*(.+)/i))) {
-          const c = find(m[1]);
-          if (c) {
-            const operand = c.filterOperands.includes('equals') ? 'equals' : c.filterOperands[0];
-            const value = c.dataType === 'number' ? Number(m[2]) : m[2].trim();
-            return { patch: { filter: [{ key: c.key, operand, searchTerm: value }] } };
-          }
-        }
-        if ((m = text.match(/(?:search|find)\s+(.+)/i)))
-          return { patch: { quickFilter: m[1].replace(/^["']|["']$/g, '').trim() } };
-        return { patch: {} };
-      };
+      // The grid tries the rule engine first and only escalates when it is unsure, so
+      // simple requests stay instant and offline. Or bring any provider with
+      // createLLMReasoner({ complete }).
 
       const ai = document.getElementById('ai');
       ai.grid = grid;
