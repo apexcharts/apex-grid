@@ -609,7 +609,11 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * resize. Lives on `document.body` (like the chart dialogs) so it is never clipped by the grid.
    */
   #updateChartAffordance = (): void => {
-    if (!this.#hasRangeSelection()) {
+    // Hidden while a cell/row editor is open: the floating button would sit over
+    // grid cells and swallow clicks the editor needs (e.g. the formula editor's
+    // click-to-insert-reference).
+    const editing = this.editingCell !== null || this.editingRow !== null;
+    if (!this.#hasRangeSelection() || editing) {
       if (this.#chartAffordance) this.#chartAffordance.style.display = 'none';
       return;
     }
@@ -990,6 +994,9 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     }
   }
 
+  /** Last editing state seen by `updated`, to sync the chart affordance on change. */
+  #wasEditing = false;
+
   protected override updated(): void {
     super.updated();
     if (this.#infiniteManager && this.#infiniteNeedsStart) {
@@ -999,6 +1006,13 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     // Idempotent — binds the virtualizer's rangeChanged once it's rendered.
     this.#infiniteManager?.attach();
     this.#emitViewChanged();
+    // Entering/leaving edit mode re-renders the grid but fires no range event,
+    // so sync the selection-chart affordance here (it hides while editing).
+    const editing = this.editingCell !== null || this.editingRow !== null;
+    if (editing !== this.#wasEditing) {
+      this.#wasEditing = editing;
+      this.#updateChartAffordance();
+    }
   }
 
   /**

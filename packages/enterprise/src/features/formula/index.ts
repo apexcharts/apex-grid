@@ -75,7 +75,6 @@ export {
   parseCellRef,
   type RangeAddress,
   rangeCells,
-  stepAddress,
 } from './refs.js';
 // Store + dependency graph + recalc (F3).
 export {

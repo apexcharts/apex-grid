@@ -14,7 +14,6 @@ import {
   parseCellRef,
   type RangeAddress,
   rangeCells,
-  stepAddress,
 } from '../src/features/formula/index.js';
 
 describe('formula reference model (F2)', () => {
@@ -176,23 +175,6 @@ describe('formula reference model (F2)', () => {
 
     it('offsetAddress clamps at 0 instead of producing a negative index', () => {
       expect(offsetAddress({ row: 1, col: 1 }, -5, -5)).to.deep.equal({ row: 0, col: 0 });
-    });
-
-    it('stepAddress clamps the point-mode pointer to the grid bounds', () => {
-      const c2: CellAddress = { row: 1, col: 2 };
-      expect(stepAddress(c2, -1, 0, 3, 3), 'move up').to.deep.equal({ row: 0, col: 2 });
-      expect(stepAddress(c2, -1, 0, 3, 3), 'clamps at the top edge').to.not.deep.equal({
-        row: -1,
-        col: 2,
-      });
-      expect(stepAddress({ row: 0, col: 0 }, -1, -1, 3, 3), 'clamps low').to.deep.equal({
-        row: 0,
-        col: 0,
-      });
-      expect(stepAddress({ row: 3, col: 3 }, 1, 1, 3, 3), 'clamps high').to.deep.equal({
-        row: 3,
-        col: 3,
-      });
     });
 
     it('parseA1 / formatA1 stay relative (no markers) for back-compat', () => {

@@ -518,33 +518,18 @@ export class FormulaController<T extends object> implements ReactiveController, 
 
   /**
    * The A1 {@link CellAddress} of a cell (data-row index + stable letter index),
-   * or `null` when the row/column is not in the grid. The editor uses it both to
-   * seed the keyboard "point mode" pointer from the cell being edited and to
-   * resolve the anchor/focus cells of a drag into a range reference.
+   * or `null` when the row/column is not in the grid. The editor uses it to
+   * resolve the anchor/focus cells of a click or drag into a reference.
    */
   public addressFor(row: T, columnKey: keyof T & string): CellAddress | null {
     return this.#addressOf(row, columnKey);
   }
 
   /**
-   * The maximum valid row and column indices, for clamping the point-mode
-   * pointer to a real cell as the user arrows around the grid.
-   */
-  public gridBounds(): { maxRow: number; maxCol: number } {
-    this.#syncColumns();
-    let maxCol = 0;
-    for (const column of this.#host.columns) {
-      maxCol = Math.max(maxCol, this.#indexForKey(String(column.key)));
-    }
-    return { maxRow: Math.max(0, this.#host.data.length - 1), maxCol };
-  }
-
-  /**
    * Format the A1 reference spanning `anchor`→`focus`: a single cell when the
    * two coincide, else a normalized `A1:C3` range. `absolute` fixes both axes on
    * every corner (`$A$1`), matching the Shift modifier of click/drag insert.
-   * Drives both the mouse drag-to-insert-range and the keyboard Shift+Arrow
-   * range extension.
+   * Drives the mouse drag-to-insert-range reference entry.
    */
   public rangeReferenceForAddresses(
     anchor: CellAddress,

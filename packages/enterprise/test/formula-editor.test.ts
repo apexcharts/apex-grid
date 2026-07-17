@@ -637,7 +637,6 @@ describe('formula editor point mode: drag range + arrow keys (grid-bound)', () =
     const controller = gridControllerOf(grid);
 
     expect(controller.addressFor(data[0], 'qty')).to.eql({ row: 0, col: 0 });
-    expect(controller.gridBounds()).to.eql({ maxRow: 1, maxCol: 2 });
     expect(controller.rangeReferenceForAddresses({ row: 0, col: 0 }, { row: 1, col: 1 })).to.equal(
       'A1:B2'
     );

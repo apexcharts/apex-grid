@@ -55,10 +55,8 @@ export interface FormulaEditorController {
   referenceFor?(row: object, key: string, absolute?: boolean): string | undefined;
   /** Highlight (or clear) the cells the formula being edited references. */
   highlightReferences?(src: string | null): void;
-  /** The A1 address of a cell, for drag/keyboard point-mode reference entry. */
+  /** The A1 address of a cell, for click/drag point-mode reference entry. */
   addressFor?(row: object, key: string): EditorAddress | null;
-  /** Max valid row/column indices, for clamping the point-mode pointer. */
-  gridBounds?(): { maxRow: number; maxCol: number };
   /** Format the A1 reference spanning anchor→focus (single cell or `A1:C3`). */
   rangeReferenceForAddresses?(
     anchor: EditorAddress,
@@ -240,6 +238,8 @@ export class FormulaCellEditor extends LitElement {
     super.disconnectedCallback();
     this.#detachPointDrag();
     this.#gridHost?.removeEventListener('pointerdown', this.#onGridPointerDown, true);
+    this.#gridHost?.removeEventListener('click', this.#onGridClickCapture, true);
+    this.#gridHost?.removeEventListener('dblclick', this.#onGridClickCapture, true);
     this.#gridHost = null;
     this.controller?.highlightReferences?.(null);
     this.controller?.setPointer?.(null);
@@ -470,6 +470,12 @@ export class FormulaCellEditor extends LitElement {
     }
     this.#gridHost = host;
     host.addEventListener('pointerdown', this.#onGridPointerDown, true);
+    // The pointerdown insert prevents the default, but the browser still fires
+    // the follow-up click/dblclick at the foreign cell. Those must be swallowed
+    // too: the cell's own click handler moves the roving focus (and a focusout
+    // on the editing cell commits), which would close this editor mid-insert.
+    host.addEventListener('click', this.#onGridClickCapture, true);
+    host.addEventListener('dblclick', this.#onGridClickCapture, true);
   }
 
   /**
@@ -511,6 +517,19 @@ export class FormulaCellEditor extends LitElement {
     const key = cell.column?.key;
     return record && key != null ? { record, key: String(key) } : null;
   }
+
+  /**
+   * Swallow the click/dblclick that follows a reference-inserting pointerdown on
+   * a foreign cell, so the cell never activates, steals the roving focus, or
+   * opens its own editor while a formula is being authored.
+   */
+  #onGridClickCapture = (event: MouseEvent): void => {
+    if (!this.text.trim().startsWith('=') || !this.#cellFromEvent(event)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   #onGridPointerDown = (event: PointerEvent): void => {
     if (!this.controller?.referenceFor || !this.text.trim().startsWith('=')) {
@@ -584,7 +603,7 @@ export class FormulaCellEditor extends LitElement {
     globalThis.removeEventListener?.('pointerup', this.#onGridPointerUp, true);
   }
 
-  // --- point mode (shared by drag + arrow) ----------------------------------
+  // --- point mode (mouse click / drag reference entry) ----------------------
 
   /**
    * The `[start,end)` of the reference token the caret sits in or touches, or
