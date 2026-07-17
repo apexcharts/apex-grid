@@ -317,6 +317,35 @@ grid.cancelEdit();
 
 `mode: 'row'` puts all editable cells in the row into edit together. Properties: `editingCell`, `editingRow`. Events: `cellValueChanging` (cancellable), `cellValueChanged`, plus `rowEditStarted` / `rowEditEnded` in row mode.
 
+### Keyboard navigation and accessibility
+
+The grid body is a single tab stop: Tab enters the grid, and the active cell
+holds real focus (a roving tabindex), so screen readers follow the cursor as
+it moves. Keys, with editing enabled where relevant:
+
+| Keys | Action |
+|---|---|
+| Arrow keys | Move the active cell |
+| Home / End | First / last cell **in the row** |
+| Ctrl/Cmd+Home / Ctrl/Cmd+End | First / last cell of the grid |
+| PageUp / PageDown | Move up / down by a viewport page |
+| Enter or F2 | Open the active cell's editor |
+| Enter / Tab (while editing) | Commit (Tab commits and moves) |
+| Escape (while editing) | Cancel the edit |
+| Space | Toggle row selection (selection column) |
+| Ctrl/Cmd+Z / Ctrl/Cmd+Y | Undo / redo (with history enabled) |
+
+A keyboard-driven commit or cancel returns focus to the cell, so navigation
+continues from where you were. Sorting, filtering, selection, paging, row
+pinning, reorder, expansion, and undo / redo are announced through a polite
+live region, and every announcement and control label is localizable (the
+`announce.*` and `header.*` locale keys). The host gets a localized
+`aria-label` ("Data grid") unless you provide `aria-label` /
+`aria-labelledby` yourself.
+
+> Changed in 3.4.0: Home / End used to jump to the first / last row; they now
+> stay within the row. Use Ctrl/Cmd+Home / Ctrl/Cmd+End for the grid corners.
+
 ### Cell validation
 
 ```ts

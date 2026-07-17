@@ -4,6 +4,77 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.0] - 2026-07-17
+
+Built on `apex-grid` `3.4.0` (required: this release consumes new core locale
+keys). Two areas headline: a much larger integrated-charts feature set, and a
+rework of the AI layer that **replaces** the 0.5.0 adapter API (breaking
+changes listed below).
+
+### Added
+- **Integrated charts, expanded.**
+  - **View-bound charts**: `getViewChartModel()` charts the current view on
+    any grid (not just grouping / pivot) and the chart panel live-redraws as
+    the grid sorts, filters, or edits.
+  - **Data mapping and aggregation**: a Data popover picks the category
+    column, measure columns (each with a secondary-axis toggle), and the
+    aggregation (`sum`, `avg`, `count`, `min`, `max`, `median`), driving a
+    `ChartDefinition`; `getChartFields()` lists mappable columns and
+    `buildValueAxes()` builds a dual-axis layout.
+  - **Calculated fields**: formula-defined series (`=B1/A1*100` style, A1
+    letters over the numeric columns) evaluated aggregate-then-compute via the
+    formula engine (`computeCalculatedSeries`, `isValidChartFormula`);
+    calculated fields can sit on the secondary axis.
+  - **Format popover**: per-series colors, legend / data-label / gridline
+    toggles, number format (applied to the value axis), axis titles, and
+    analytics overlays: trend line, forecast with optional confidence band
+    (`linearTrend`, `linearForecast`, `linearForecastBand`), reference line
+    and shaded reference band.
+  - **Multiple charts** at once (each Create Chart opens an independent
+    dialog), a **Suggested** chart type, a grouped type gallery, inline
+    heading rename with auto-titles, and swap-axes.
+  - **Save and restore**: per-chart `toJSON()` / `restore(config)`
+    (`ChartConfig`), JSON-safe for app-owned storage.
+  - **Export**: PNG / SVG download and copy-image from the panel toolbar.
+  - **Entry points**: a floating Create Chart affordance over a selected
+    range, Alt+F1, and a context-menu item that charts the view while
+    grouping / pivot is active.
+- **Formula authoring, spreadsheet-style reference entry.** While editing a
+  formula: click a cell to insert its reference, drag across cells to insert
+  a live `A1:C3` range (with a dashed marquee), click again to re-pick the
+  reference, Shift-click for absolute, and press F4 to cycle `$` markers
+  (`A1`, `$A$1`, `A$1`, `$A1`). Arrow keys always move the text caret and
+  never start referencing. Errors like `#VALUE!` now render visibly in typed
+  columns (core fix).
+- **AI, deterministic first.** `grid.runPrompt()` / `grid.previewPrompt()`
+  run offline through a rule-based engine (no key, no network): compound
+  commands, order-agnostic filters, first-class abstention ("I couldn't map
+  that"), and a read-only analytics layer that answers data questions
+  ("who earns the most", "average salary by department"). An LLM is an
+  optional escalation via `grid.aiReasoner = createClaudeReasoner(...)` or
+  `createLLMReasoner({ complete })`. `<apex-grid-ai>` gains a source badge
+  (rule vs AI), a Preview mode, and a transcript.
+- **Range selection**: holding a drag at the top / bottom edge auto-scrolls
+  and keeps extending the selection.
+- **Accessibility**: dialogs and menus restore focus on close, the status bar
+  is a polite live region, set-filter options are label-wrapped, and the tool
+  panel search is labelled (part of the core 3.4.0 a11y pass).
+
+### Breaking (AI adapter API replaced)
+The 0.5.0 adapter API is removed with no back-compat layer:
+- Removed exports: `AIAdapter`, `AIRequest`, `AIResponse`,
+  `createClaudeAdapter`, `ClaudeAdapterConfig`, `createMockAdapter`,
+  `MockAdapterOptions`, `MockRule`.
+- Removed grid property: `aiAdapter` (use `aiReasoner`; the rule engine now
+  runs with no reasoner set, so `runPrompt` no longer rejects without one).
+- Reshaped: `AIResult` is now `{ plan, applied, skipped, warnings, undo }`
+  (`undo()` returns `void`); `RunPromptOptions` adds `maxDataRows`.
+- Moved (same names, import from the package root as before): `sanitizePatch`,
+  `AIMode`, `ClaudeClient`, `ClaudeMessage`, `buildAskRequest`,
+  `buildControlRequest`, `extractAnswer`, `extractPatch`.
+- Core locale key `ai.noAdapter` was removed; new `ai.*` keys cover the
+  abstention, preview, source-badge, and history strings.
+
 ## [0.5.0] - 2026-07-02
 
 A large additive release built on `apex-grid` `3.3.0`. Everything is opt-in and

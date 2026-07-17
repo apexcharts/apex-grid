@@ -177,7 +177,8 @@ document.getElementById('panel').grid = grid; // the only wiring needed
 
 Excel-style cell range selection is on by default; pair it with the status bar
 companion element to show live aggregates (count / sum / avg / min / max) over
-the current selection.
+the current selection. Holding a drag at the top or bottom edge of the grid
+body auto-scrolls and keeps extending the selection past the visible rows.
 
 ```html
 <apex-grid-status-bar id="status"></apex-grid-status-bar>

@@ -4,6 +4,48 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.4.0] - 2026-07-17
+
+An accessibility-focused release. The public module API is unchanged (no
+exported symbol was added, removed, or renamed); two keyboard and editing
+behaviors changed, listed under Changed below.
+
+### Added
+- **Keyboard editing and navigation.** Enter or F2 opens the active cell's
+  editor (previously editing was pointer-only); PageUp / PageDown move by a
+  viewport page; Ctrl/Cmd+Home and Ctrl/Cmd+End jump to the grid's first and
+  last cell.
+- **Roving-tabindex focus model.** The active cell is the grid body's single
+  tab stop, so real focus follows arrow-key navigation and screen readers
+  track cell-to-cell movement. Keyboard-driven commit or cancel returns focus
+  to the cell.
+- **Localized live-region announcements** for sorting, filtering, selection,
+  paging, row pinning, row reorder, expansion, and undo / redo, plus localized
+  header control labels and sort-state descriptions. New locale keys under
+  `announce.*` and `header.*`, along with `grid.label` and `editor.rating`
+  (English and Spanish).
+- The grid host now applies a localized `aria-label` ("Data grid") unless the
+  author sets `aria-label` / `aria-labelledby`, and reflects
+  `aria-multiselectable` when multi-row selection is enabled.
+- **Locale keys for the enterprise chart panel** (`chart.*`) and the reworked
+  enterprise AI surface (`ai.*`). Inert in the community grid.
+- **Error-value rendering.** A spreadsheet-style error value (an object with a
+  `#...` code, such as the enterprise formula engine's `#VALUE!`) now renders
+  as its code in typed (number / currency) columns instead of being coerced to
+  `NaN` and showing an empty cell.
+
+### Changed
+- **Home / End now move within the row** (first / last cell of the active
+  row), matching the common data-grid convention; previously they jumped to
+  the first / last row. Use Ctrl/Cmd+Home / Ctrl/Cmd+End for the grid corners.
+- **Clearing a number or currency editor commits `null`, not `NaN`.** An empty
+  or unparseable numeric input previously wrote `NaN` into the row.
+
+### Removed
+- The `ai.noAdapter` locale key (the enterprise AI adapter API it supported
+  was replaced; see the `apex-grid-enterprise` 0.6.0 changelog). If you
+  overrode this key in `localeText`, remove it.
+
 ## [3.3.0] - 2026-07-02
 
 A large, additive, backward-compatible release. The public `.` / `./define` API
