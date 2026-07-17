@@ -133,12 +133,13 @@ export class ApexGridStatusBar extends LitElement {
 
   protected override render() {
     const stats = this.stats;
+    // A polite live region: screen readers announce the aggregates as the selection changes.
     if (!stats || stats.count === 0) {
-      return html`<div part="status-bar">
+      return html`<div part="status-bar" role="status" aria-live="polite">
         <span part="hint">${this.#t('statusBar.selectRange')}</span>
       </div>`;
     }
-    return html`<div part="status-bar">
+    return html`<div part="status-bar" role="status" aria-live="polite">
       ${this.#renderStat(this.#t('statusBar.count'), formatNumber(stats.count))}
       ${
         stats.numericCount > 0

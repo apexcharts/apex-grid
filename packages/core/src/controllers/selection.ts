@@ -237,11 +237,11 @@ export class SelectionController<T extends object> implements ReactiveController
 
     const total = this.selected.size;
     if (total === 0) {
-      this.host.announce('Selection cleared');
+      this.host.announce(this.host.localize('announce.selectionCleared'));
     } else if (added.length === 1 && removed.length === 0 && total === 1) {
-      this.host.announce('1 row selected');
+      this.host.announce(this.host.localize('announce.rowSelected'));
     } else {
-      this.host.announce(`${total} rows selected`);
+      this.host.announce(this.host.localize('announce.rowsSelected', { count: total }));
     }
 
     this.host.emitEvent('rowSelected', {

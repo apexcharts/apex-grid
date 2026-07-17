@@ -2,7 +2,7 @@ import type { ReactiveController } from 'lit';
 import type ApexGridRow from '../components/row.js';
 import { NAVIGATION_STATE, SENTINEL_NODE } from '../internal/constants.js';
 import { GRID_ROW_TAG } from '../internal/tags.js';
-import type { ActiveNode, GridHost, Keys } from '../internal/types.js';
+import type { ActiveNode, ColumnConfiguration, GridHost, Keys } from '../internal/types.js';
 import { getDisplayColumns } from '../internal/utils.js';
 
 export class NavigationController<T extends object> implements ReactiveController {
@@ -14,6 +14,8 @@ export class NavigationController<T extends object> implements ReactiveControlle
       ArrowRight: this.arrowRight,
       Home: this.home,
       End: this.end,
+      PageUp: this.pageUp,
+      PageDown: this.pageDown,
       ' ': this.toggleSelection,
     })
   );
@@ -73,6 +75,34 @@ export class NavigationController<T extends object> implements ReactiveControlle
     }
   }
 
+  protected findActiveCell() {
+    const row = Array.from(this.virtualizer.querySelectorAll(GRID_ROW_TAG)).find(
+      (el) => (el as unknown as ApexGridRow<T>).index === this.active.row
+    ) as unknown as ApexGridRow<T> | undefined;
+    return row?.cells.find((cell) => cell.column.key === this.active.column);
+  }
+
+  /**
+   * Moves real DOM focus to the active cell (the grid body's roving tab stop),
+   * so screen readers track keyboard navigation. Waits for the host render to
+   * commit the cell's `active` state, then retries once on the next frame to
+   * cover virtualizer re-materialization after a long jump. No-op while no
+   * cell is active (the scroll container keeps focus as the entry point).
+   */
+  public focusActiveCell(): void {
+    const node = this.state.get('current');
+    if (!node || node === SENTINEL_NODE) return;
+    void (async () => {
+      await this.host.updateComplete;
+      let cell = this.findActiveCell();
+      if (!cell) {
+        await new Promise(requestAnimationFrame);
+        cell = this.findActiveCell();
+      }
+      cell?.focus({ preventScroll: true });
+    })();
+  }
+
   public get active() {
     return this._active as ActiveNode<T>;
   }
@@ -88,13 +118,59 @@ export class NavigationController<T extends object> implements ReactiveControlle
     this.host.addController(this);
   }
 
+  /** Home moves to the first cell in the row (ARIA grid pattern). */
   protected home() {
-    this.active = Object.assign(this.nextNode, { row: 0 });
+    this.active = Object.assign(this.nextNode, { column: this.firstColumn });
+    this.scrollToCell(this.active);
+  }
+
+  /** End moves to the last cell in the row (ARIA grid pattern). */
+  protected end() {
+    const last = this.visibleColumns.at(-1)?.key ?? this.firstColumn;
+    this.active = Object.assign(this.nextNode, { column: last });
+    this.scrollToCell(this.active);
+  }
+
+  /** Ctrl/Cmd+Home moves to the first cell of the grid. */
+  protected ctrlHome() {
+    this.active = { column: this.firstColumn, row: 0 } as ActiveNode<T>;
+    this.virtualizer.element(0)?.scrollIntoView({ block: 'nearest' });
+    this.scrollToCell(this.active);
+  }
+
+  /** Ctrl/Cmd+End moves to the last cell of the grid. */
+  protected ctrlEnd() {
+    const row = Math.max(0, this.host.pageItems.length - 1);
+    const last = this.visibleColumns.at(-1)?.key ?? this.firstColumn;
+    this.active = { column: last, row } as ActiveNode<T>;
+    this.virtualizer.element(row)?.scrollIntoView({ block: 'nearest' });
+    this.scrollToCell(this.active);
+  }
+
+  /**
+   * Rows per Page Up/Down step, derived from the host viewport and the height
+   * of a rendered row (fallback: 10 rows when nothing is measurable yet).
+   */
+  protected pageStep(): number {
+    const rowEl = this.virtualizer.element(this.nextNode.row) as HTMLElement | undefined;
+    const rowHeight = rowEl?.offsetHeight || 0;
+    const viewport = (this.host as unknown as HTMLElement).clientHeight || 0;
+    if (!rowHeight || !viewport) return 10;
+    const rows = Math.floor(viewport / rowHeight) - 1;
+    return rows > 0 ? rows : 10;
+  }
+
+  protected pageUp() {
+    const next = this.nextNode;
+    this.active = Object.assign(next, { row: Math.max(0, next.row - this.pageStep()) });
     this.virtualizer.element(this.active.row)?.scrollIntoView({ block: 'nearest' });
   }
 
-  protected end() {
-    this.active = Object.assign(this.nextNode, { row: this.host.pageItems.length - 1 });
+  protected pageDown() {
+    const next = this.nextNode;
+    this.active = Object.assign(next, {
+      row: Math.min(this.host.pageItems.length - 1, next.row + this.pageStep()),
+    });
     this.virtualizer.element(this.active.row)?.scrollIntoView({ block: 'nearest' });
   }
 
@@ -138,6 +214,35 @@ export class NavigationController<T extends object> implements ReactiveControlle
   public hostDisconnected() {
     this.active = SENTINEL_NODE as ActiveNode<T>;
     this.state = NAVIGATION_STATE;
+  }
+
+  protected get editing() {
+    // @ts-expect-error - protected member access
+    return this.host.stateController.editing as
+      | {
+          enabled: boolean;
+          isEditable(column: ColumnConfiguration<T>): boolean;
+          editCell(rowIndex: number, columnKey: Keys<T>): Promise<boolean>;
+        }
+      | undefined;
+  }
+
+  /**
+   * Enter / F2 on the active cell opens its editor (the keyboard path into
+   * edit mode). Returns `true` when the event was consumed.
+   */
+  protected handleEditKey(event: KeyboardEvent): boolean {
+    if (event.key !== 'Enter' && event.key !== 'F2') return false;
+    if (event.ctrlKey || event.metaKey || event.altKey) return false;
+    const node = this.state.get('current');
+    if (!node || node === SENTINEL_NODE) return false;
+    const editing = this.editing;
+    if (!editing?.enabled) return false;
+    const column = this.host.getColumn(this.active.column);
+    if (!column || !editing.isEditable(column)) return false;
+    event.preventDefault();
+    void editing.editCell(this.active.row, this.active.column);
+    return true;
   }
 
   protected get rowReorder() {
@@ -214,10 +319,24 @@ export class NavigationController<T extends object> implements ReactiveControlle
         this.host.redo();
         return;
       }
+      // Ctrl/Cmd+Home / Ctrl/Cmd+End jump to the grid corners (ARIA grid pattern).
+      if (event.key === 'Home' || event.key === 'End') {
+        event.preventDefault();
+        if (event.key === 'Home') {
+          this.ctrlHome();
+        } else {
+          this.ctrlEnd();
+        }
+        this.focusActiveCell();
+        return;
+      }
     }
+    if (this.handleEditKey(event)) return;
     if (this.handlers.has(event.key)) {
       event.preventDefault();
       this.handlers.get(event.key)!.call(this);
+      // Real focus follows the active cell so AT tracks the movement.
+      this.focusActiveCell();
     }
   }
 }

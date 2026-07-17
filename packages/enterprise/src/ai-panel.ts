@@ -16,6 +16,13 @@ interface TranscriptEntry {
   mode: AIMode;
 }
 
+/** The deepest focused element across shadow boundaries (so focus restore lands where it was). */
+function deepActiveElement(): HTMLElement | null {
+  let el: Element | null = document.activeElement;
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+  return el instanceof HTMLElement ? el : null;
+}
+
 /**
  * Prompt panel for the enterprise grid's AI Toolkit. Mount it beside a grid and
  * set its `grid` property: it sends a natural-language prompt through the grid's
@@ -291,6 +298,8 @@ export class ApexGridAI extends LitElement {
 
   #controller: AbortController | null = null;
   #drag: { pointerId: number; offsetX: number; offsetY: number } | null = null;
+  /** What had focus before {@link show}, so a dialog close can put focus back. */
+  #restoreFocus: HTMLElement | null = null;
 
   /** Resolve a locale key against the bound grid's overrides (English when unbound). */
   #t = (key: GridLocaleKey, fallback?: string): string =>
@@ -305,6 +314,8 @@ export class ApexGridAI extends LitElement {
   /** Open the dialog panel and move focus into the prompt. */
   public show(): void {
     this.open = true;
+    // Remember where focus came from so close() can put it back (dialog a11y).
+    this.#restoreFocus = deepActiveElement();
     void this.updateComplete.then(() => {
       this.renderRoot.querySelector<HTMLElement>('[part="input"]')?.focus();
     });
@@ -315,14 +326,45 @@ export class ApexGridAI extends LitElement {
     this.open = false;
     this.#controller?.abort();
     this.dispatchEvent(new CustomEvent('apex-ai-closed', { bubbles: true, composed: true }));
+    const previous = this.#restoreFocus;
+    this.#restoreFocus = null;
+    if (this.mode === 'dialog' && previous?.isConnected && typeof previous.focus === 'function') {
+      previous.focus();
+    }
   }
 
   #onKeydown = (event: KeyboardEvent): void => {
-    if (this.mode === 'dialog' && this.open && event.key === 'Escape') {
+    if (this.mode !== 'dialog' || !this.open) return;
+    if (event.key === 'Escape') {
       event.stopPropagation();
       this.close();
+    } else if (event.key === 'Tab') {
+      this.#trapFocus(event);
     }
   };
+
+  /** Keep Tab / Shift+Tab cycling inside the dialog (wrap last to first, first to last). */
+  #trapFocus(event: KeyboardEvent): void {
+    const focusables = [
+      ...this.renderRoot.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      ),
+    ].filter(
+      (el) =>
+        !el.hasAttribute('disabled') && (el.offsetParent !== null || el.getClientRects().length > 0)
+    );
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = this.shadowRoot?.activeElement ?? null;
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
 
   #onInputKeydown = (event: KeyboardEvent): void => {
     // Cmd/Ctrl + Enter sends, matching common prompt-box conventions.
@@ -572,6 +614,7 @@ export class ApexGridAI extends LitElement {
     return html`<div
       part="panel"
       role=${this.mode === 'dialog' ? 'dialog' : nothing}
+      aria-modal=${this.mode === 'dialog' ? 'true' : nothing}
       aria-label=${this.mode === 'dialog' ? this.#t('ai.title') : nothing}
       @keydown=${this.#onKeydown}
     >

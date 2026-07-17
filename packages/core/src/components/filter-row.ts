@@ -93,14 +93,76 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     this.requestUpdate();
   }
 
-  #handleDropdownItemClick = (event: Event) => {
-    event.stopPropagation();
-    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-value]');
+  #selectOption(target: HTMLElement | null) {
     if (!target) return;
     const value = target.dataset.value as OperandKeys<T[typeof this.column.key]>;
     this.#applyCondition(value);
     this.dropdownOpen = false;
     this.input?.focus();
+  }
+
+  #handleDropdownItemClick = (event: Event) => {
+    event.stopPropagation();
+    this.#selectOption((event.target as HTMLElement).closest<HTMLElement>('[data-value]'));
+  };
+
+  #dropdownOptions(): HTMLElement[] {
+    return Array.from(this.dropdown?.querySelectorAll<HTMLElement>('[role="option"]') ?? []);
+  }
+
+  /** Moves focus into the dropdown, landing on the selected (or first) option. */
+  #focusDropdownOption() {
+    requestAnimationFrame(() => {
+      const options = this.#dropdownOptions();
+      (options.find((option) => option.matches('[aria-selected="true"]')) ?? options[0])?.focus();
+    });
+  }
+
+  /** ArrowDown on the condition trigger opens the listbox and focuses into it. */
+  #handleTriggerKeydown = (event: KeyboardEvent) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'Down') return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.dropdownOpen = true;
+    this.#focusDropdownOption();
+  };
+
+  /** Listbox keyboard pattern: arrows/Home/End rove, Enter/Space pick. */
+  #handleDropdownKeydown = (event: KeyboardEvent) => {
+    const options = this.#dropdownOptions();
+    const current = options.findIndex((option) => option.matches(':focus'));
+    switch (event.key) {
+      case 'ArrowDown':
+      case 'Down':
+        event.preventDefault();
+        event.stopPropagation();
+        options[Math.min(current + 1, options.length - 1)]?.focus();
+        return;
+      case 'ArrowUp':
+      case 'Up':
+        event.preventDefault();
+        event.stopPropagation();
+        options[Math.max(current - 1, 0)]?.focus();
+        return;
+      case 'Home':
+        event.preventDefault();
+        event.stopPropagation();
+        options[0]?.focus();
+        return;
+      case 'End':
+        event.preventDefault();
+        event.stopPropagation();
+        options[options.length - 1]?.focus();
+        return;
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        event.stopPropagation();
+        this.#selectOption(options[current] ?? null);
+        return;
+      default:
+        return;
+    }
   };
 
   #handleOutsidePointer = (event: PointerEvent) => {
@@ -340,6 +402,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
       aria-label=${this.state.localize('filter.conditionList')}
       ?hidden=${!this.dropdownOpen}
       @click=${this.#handleDropdownItemClick}
+      @keydown=${this.#handleDropdownKeydown}
     >
       ${Object.entries(getFilterOperandsFor(this.column)).map(
         ([key, operand]) => html`
@@ -378,6 +441,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
       aria-haspopup="listbox"
       aria-expanded=${this.dropdownOpen ? 'true' : 'false'}
       @click=${this.#openDropdownList}
+      @keydown=${this.#handleTriggerKeydown}
     >
       <span>${conditionLabel}</span>
       ${renderIcon('chevron-down')}

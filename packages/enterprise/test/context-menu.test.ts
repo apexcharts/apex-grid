@@ -160,6 +160,22 @@ describe('Context menu', () => {
     expect(menu()).to.equal(null);
   });
 
+  it('restores focus to the previously focused element on Escape', async () => {
+    const grid = await mount();
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    try {
+      trigger.focus();
+      rightClick(cellElement(grid, 0, 'name')!);
+      expect(menu()).to.exist;
+      menu()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(menu()).to.equal(null);
+      expect(document.activeElement).to.equal(trigger);
+    } finally {
+      trigger.remove();
+    }
+  });
+
   it('closes on outside pointerdown', async () => {
     const grid = await mount();
     rightClick(cellElement(grid, 0, 'name')!);
@@ -189,6 +205,21 @@ describe('Context menu', () => {
     expect((chart as unknown as { open: boolean }).open).to.equal(true);
     expect((chart as unknown as { type: string }).type).to.equal('line');
     expect((chart as unknown as { source: string }).source).to.equal('selection');
+  });
+
+  it('offers "Chart this view" (not "Chart range") while grouping is active', async () => {
+    const grid = await mount();
+    grid.groupBy = ['name'];
+    await grid.updateComplete;
+    rightClick(headerElement(grid, 'value')!);
+    expect(item('Chart this view')).to.exist;
+    expect(item('Chart range')).to.equal(undefined);
+    // Charting the view opens a chart without a selection source (reads the group/pivot model).
+    item('Chart this view')!.click();
+    item('Column')!.click();
+    const chart = document.body.querySelector('apex-grid-chart');
+    expect(chart).to.exist;
+    expect((chart as unknown as { source: string }).source).to.equal('auto');
   });
 
   it('apex-context-menu-opening can add items', async () => {

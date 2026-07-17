@@ -128,6 +128,20 @@ describe('ApexGridSetFilter', () => {
     expect(grid.pageItems.length).to.equal(5);
   });
 
+  it('wraps every option checkbox in a label and labels the search input', async () => {
+    const { filter } = await mount();
+    const checkboxes = [
+      ...filter.shadowRoot!.querySelectorAll<HTMLInputElement>('[part="checkbox"]'),
+    ];
+    // 3 values + the "(Select all)" row.
+    expect(checkboxes.length).to.equal(4);
+    for (const checkbox of checkboxes) {
+      expect(checkbox.closest('label')).to.not.be.null;
+    }
+    const search = filter.shadowRoot!.querySelector('[part="search"]')!;
+    expect(search.getAttribute('aria-label')).to.equal('Search values…');
+  });
+
   it('fires apex-set-filter-changed on apply', async () => {
     const { grid, filter } = await mount();
     let detail: { column: string; selected: string[] } | null = null;

@@ -75,6 +75,13 @@ describe('ApexGridStatusBar', () => {
   });
   afterEach(() => fixtureCleanup());
 
+  it('is a polite live region so aggregate updates are announced', async () => {
+    const { bar } = await mount();
+    const container = bar.shadowRoot!.querySelector('[part="status-bar"]')!;
+    expect(container.getAttribute('role')).to.equal('status');
+    expect(container.getAttribute('aria-live')).to.equal('polite');
+  });
+
   it('shows a hint when nothing is selected', async () => {
     const { bar } = await mount();
     const hint = bar.shadowRoot!.querySelector('[part="hint"]');

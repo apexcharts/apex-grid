@@ -119,6 +119,7 @@ export class FilterController<T extends object> implements ReactiveController {
     this.#filter([]);
 
     await this.host.updateComplete;
+    this.#announce(key, 'cleared');
     this.#emitFilteredEvent({ key, state: this.get(key)?.all ?? [] });
   }
 
@@ -138,6 +139,7 @@ export class FilterController<T extends object> implements ReactiveController {
     this.#filter([]);
 
     await this.host.updateComplete;
+    this.#announce(expression.key, 'cleared');
     this.#emitFilteredEvent({ key: expression.key, state: state?.all ?? [] });
   }
 
@@ -149,7 +151,20 @@ export class FilterController<T extends object> implements ReactiveController {
     this.#filter(expression);
 
     await this.host.updateComplete;
+    // Announce only on `add`: `modify` fires per keystroke while typing a
+    // filter value and would flood the live region.
+    if (type === 'add') this.#announce(expression.key, 'applied');
     this.#emitFilteredEvent({ key: expression.key, state: this.get(expression.key)?.all ?? [] });
+  }
+
+  #announce(key: Keys<T>, kind: 'applied' | 'cleared') {
+    const column = this.host.getColumn(key);
+    const label = column?.headerText ?? String(key);
+    this.host.announce(
+      this.host.localize(kind === 'applied' ? 'announce.filtered' : 'announce.filterCleared', {
+        label,
+      })
+    );
   }
 
   public filter(expression: FilterExpression<T> | FilterExpression<T>[]) {

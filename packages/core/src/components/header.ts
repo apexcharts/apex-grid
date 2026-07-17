@@ -240,6 +240,79 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     this.menuOpen = false;
   };
 
+  /** ArrowDown on the kebab opens the menu and moves focus to its first item. */
+  #handleMenuTriggerKeydown = (e: KeyboardEvent) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'Down') return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!this.menuOpen) {
+      // Route through the same module-first contract as a click.
+      this.#handleMenuClick(e as unknown as MouseEvent);
+    }
+    this.#focusMenuItem(0);
+  };
+
+  #menuItems(): HTMLElement[] {
+    return Array.from(this.renderRoot.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+  }
+
+  #focusMenuItem(index: number) {
+    requestAnimationFrame(() => {
+      const items = this.#menuItems();
+      if (!items.length) return;
+      items[(index + items.length) % items.length]?.focus();
+    });
+  }
+
+  #closeMenu(returnFocus = false) {
+    this.menuOpen = false;
+    if (returnFocus) {
+      requestAnimationFrame(() =>
+        this.renderRoot.querySelector<HTMLElement>('[part~="menu-btn"]')?.focus()
+      );
+    }
+  }
+
+  /** Menu keyboard pattern: arrows/Home/End rove, Escape closes and restores focus. */
+  #handleColMenuKeydown = (e: KeyboardEvent) => {
+    const items = this.#menuItems();
+    const current = items.findIndex((item) => item.matches(':focus'));
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'Down':
+        e.preventDefault();
+        e.stopPropagation();
+        items[(current + 1) % items.length]?.focus();
+        return;
+      case 'ArrowUp':
+      case 'Up':
+        e.preventDefault();
+        e.stopPropagation();
+        items[(current - 1 + items.length) % items.length]?.focus();
+        return;
+      case 'Home':
+        e.preventDefault();
+        e.stopPropagation();
+        items[0]?.focus();
+        return;
+      case 'End':
+        e.preventDefault();
+        e.stopPropagation();
+        items[items.length - 1]?.focus();
+        return;
+      case 'Escape':
+        e.preventDefault();
+        e.stopPropagation();
+        this.#closeMenu(true);
+        return;
+      case 'Tab':
+        this.#closeMenu();
+        return;
+      default:
+        return;
+    }
+  };
+
   protected override updated() {
     // Mirror the column's data type onto the host so the header label can match
     // the body cell alignment by default (numeric/currency cells right-align,
@@ -297,10 +370,10 @@ export default class ApexGridHeader<T extends object> extends LitElement {
 
     const label =
       state?.direction === 'ascending'
-        ? 'Sorted ascending. Activate to sort descending.'
+        ? this.state.localize('header.sortedAscending')
         : state?.direction === 'descending'
-          ? 'Sorted descending. Activate to clear sort.'
-          : 'Not sorted. Activate to sort ascending.';
+          ? this.state.localize('header.sortedDescending')
+          : this.state.localize('header.notSorted');
 
     return state || this.isSortable
       ? this.isSortable
@@ -331,7 +404,7 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     return html`<button
       type="button"
       part=${partNameMap({ action: true, 'filter-btn': true, 'filter-active': this.hasActiveFilter })}
-      aria-label="Filter column"
+      aria-label=${this.state.localize('header.filterColumn')}
       @click=${this.#handleFilterClick}
     >
       ${renderIcon('filter')}
@@ -352,10 +425,11 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     return html`<button
       type="button"
       part=${partNameMap({ action: true, 'menu-btn': true })}
-      aria-label="Column menu"
+      aria-label=${this.state.localize('header.columnMenu')}
       aria-expanded=${this.menuOpen ? 'true' : 'false'}
       aria-haspopup="menu"
       @click=${this.#handleMenuClick}
+      @keydown=${this.#handleMenuTriggerKeydown}
     >
       ${renderIcon('more-vert')}
     </button>`;
@@ -363,7 +437,7 @@ export default class ApexGridHeader<T extends object> extends LitElement {
 
   protected renderColumnMenu() {
     if (!this.menuOpen) return nothing;
-    return html`<div part="col-menu" role="menu">
+    return html`<div part="col-menu" role="menu" @keydown=${this.#handleColMenuKeydown}>
       ${
         this.isSortable
           ? html`
@@ -371,23 +445,25 @@ export default class ApexGridHeader<T extends object> extends LitElement {
               type="button"
               part="col-menu-item"
               role="menuitem"
+              tabindex="-1"
               @click=${() => {
                 this.state.sorting.sort({ key: this.column.key, direction: 'ascending' } as any);
                 this.menuOpen = false;
               }}
             >
-              ${renderIcon('sort-asc')} Sort Ascending
+              ${renderIcon('sort-asc')} ${this.state.localize('contextMenu.sortAsc')}
             </button>
             <button
               type="button"
               part="col-menu-item"
               role="menuitem"
+              tabindex="-1"
               @click=${() => {
                 this.state.sorting.sort({ key: this.column.key, direction: 'descending' } as any);
                 this.menuOpen = false;
               }}
             >
-              ${renderIcon('sort-desc')} Sort Descending
+              ${renderIcon('sort-desc')} ${this.state.localize('contextMenu.sortDesc')}
             </button>
           `
           : nothing
@@ -398,12 +474,13 @@ export default class ApexGridHeader<T extends object> extends LitElement {
             type="button"
             part="col-menu-item"
             role="menuitem"
+            tabindex="-1"
             @click=${() => {
               this.state.resizing.autosize(this.column, this);
               this.menuOpen = false;
             }}
           >
-            ${renderIcon('arrow-upward')} Autosize Column
+            ${renderIcon('arrow-upward')} ${this.state.localize('header.autosizeColumn')}
           </button>`
           : nothing
       }

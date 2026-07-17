@@ -69,7 +69,11 @@ export class RowPinController<T extends object> implements ReactiveController {
     this.#top.delete(row);
     this.#bottom.delete(row);
     (position === 'top' ? this.#top : this.#bottom).add(row);
-    this.#commit(row, position, `Row pinned to ${position}`);
+    this.#commit(
+      row,
+      position,
+      this.host.localize(position === 'top' ? 'announce.rowPinnedTop' : 'announce.rowPinnedBottom')
+    );
     return true;
   }
 
@@ -85,7 +89,7 @@ export class RowPinController<T extends object> implements ReactiveController {
 
     this.#top.delete(row);
     this.#bottom.delete(row);
-    this.#commit(row, null, 'Row unpinned');
+    this.#commit(row, null, this.host.localize('announce.rowUnpinned'));
     return true;
   }
 

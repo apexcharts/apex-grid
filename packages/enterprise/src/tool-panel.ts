@@ -361,6 +361,7 @@ export class ApexGridToolPanel extends LitElement {
         part="search"
         type="search"
         placeholder=${this.#t('toolPanel.searchPlaceholder')}
+        aria-label=${this.#t('toolPanel.searchPlaceholder')}
         .value=${this.search}
         @input=${(event: Event) => {
           this.search = (event.target as HTMLInputElement).value;

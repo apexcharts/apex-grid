@@ -13,7 +13,7 @@ import {
   type LocaleParams,
   localize as resolveLocaleText,
 } from '../i18n/index.js';
-import { DEFAULT_COLUMN_CONFIG, PIPELINE } from '../internal/constants.js';
+import { DEFAULT_COLUMN_CONFIG, PIPELINE, SENTINEL_NODE } from '../internal/constants.js';
 import {
   buildCSV,
   type CSVExportOptions,
@@ -1638,8 +1638,39 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       (this.stateController.expansion.showToggleColumn ? 1 : 0);
     this.setAttribute('aria-colcount', String(visibleColumns + extras));
 
+    const selection = this.stateController.selection;
+    if (selection.enabled && selection.mode === 'multiple') {
+      this.setAttribute('aria-multiselectable', 'true');
+    } else {
+      this.removeAttribute('aria-multiselectable');
+    }
+
+    // Roving tabindex: once a cell is active it is the body's single tab stop,
+    // so the scroll container leaves the tab order. Keeping both focusable
+    // would make Shift+Tab bounce off the container back into the grid (a
+    // keyboard trap). With no active cell the container stays the entry point.
+    if (this.scrollContainer) {
+      this.scrollContainer.tabIndex = this.stateController.active === SENTINEL_NODE ? 0 : -1;
+    }
+
+    // Default accessible name for the host. An author-provided `aria-label`
+    // or `aria-labelledby` always wins; only the value this grid set itself
+    // is kept in sync (e.g. when `localeText` changes).
+    const currentLabel = this.getAttribute('aria-label');
+    const authorLabeled =
+      this.hasAttribute('aria-labelledby') ||
+      (currentLabel !== null && currentLabel !== this.#autoAriaLabel);
+    if (!authorLabeled) {
+      const label = this.localize('grid.label');
+      if (currentLabel !== label) this.setAttribute('aria-label', label);
+      this.#autoAriaLabel = label;
+    }
+
     this.#emitStateChangedIfNeeded();
   }
+
+  /** The `aria-label` value this grid last auto-applied (never an author's). */
+  #autoAriaLabel: string | null = null;
 
   /**
    * Listener count for `stateChanged`, so the (potentially non-trivial) snapshot
@@ -2506,12 +2537,32 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
         column: target.column.key,
         row: target.row.index,
       };
+      // The active cell is the body's roving tab stop; give it real focus so
+      // keyboard navigation continues from the clicked cell. Skip while an
+      // editor is open (the editor owns focus).
+      if (!target.editing) target.focus({ preventScroll: true });
     }
   }
 
   protected bodyKeydownHandler(event: KeyboardEvent) {
-    if (this.scrollContainer.isSameNode(event.target as HTMLElement)) {
+    // Navigation drives from the scroll container (the tab entry point) or
+    // from a focused cell (the roving tab stop). Keys originating inside an
+    // open editor or an embedded control (button, input) are left alone.
+    const origin = event.composedPath()[0];
+    const fromBody = this.scrollContainer.isSameNode(event.target as HTMLElement);
+    const fromCell = origin instanceof ApexGridCell && !origin.editing;
+    if (fromBody || fromCell) {
       this.stateController.navigation.navigate(event);
+    }
+  }
+
+  /**
+   * Tabbing into the grid body lands on the scroll container; forward focus to
+   * the active cell (when one exists) so the roving tab stop is honored.
+   */
+  protected bodyFocusHandler(event: FocusEvent) {
+    if (this.scrollContainer.isSameNode(event.target as HTMLElement)) {
+      this.stateController.navigation.focusActiveCell();
     }
   }
 
@@ -2578,6 +2629,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
         .renderItem=${this.DOM.rowRenderer}
         @click=${this.bodyClickHandler}
         @keydown=${this.bodyKeydownHandler}
+        @focusin=${this.bodyFocusHandler}
         @pointerdown=${this.bodyPointerHandler}
         @pointermove=${this.bodyPointerHandler}
         @pointerup=${this.bodyPointerHandler}

@@ -118,6 +118,8 @@ export class ContextMenuController<T extends object>
   /** Open menus, root first; submenus pushed on top. */
   #menus: MenuEl<T>[] = [];
   #target: ContextMenuTarget<T> | null = null;
+  /** What had focus when the root menu opened, so a keyboard close can put focus back. */
+  #restoreFocus: HTMLElement | null = null;
 
   constructor(private host: GridHost<T>) {
     host.addController(this);
@@ -307,6 +309,12 @@ export class ContextMenuController<T extends object>
       return;
     }
 
+    // Remember what had focus (deep, across shadow roots) before the menu takes it,
+    // so a keyboard close or a run item can put focus back where it was.
+    let focused: Element | null = document.activeElement;
+    while (focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement;
+    this.#restoreFocus = focused instanceof HTMLElement ? focused : null;
+
     const menu = this.#spawnMenu(detail.items);
     const rect = menu.getBoundingClientRect();
     menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - rect.width - 4))}px`;
@@ -420,12 +428,12 @@ export class ContextMenuController<T extends object>
           this.#closeFrom(index);
           parentButton?.focus();
         } else {
-          this.#close();
+          this.#closeAndRestore();
         }
         break;
       }
       case 'Tab':
-        this.#close();
+        this.#closeAndRestore();
         break;
     }
   };
@@ -439,8 +447,17 @@ export class ContextMenuController<T extends object>
   #run(item: ContextMenuItem<T>): void {
     if (item.disabled) return;
     const target = this.#target;
-    this.#close();
+    // Restore focus before running: an item that moves focus itself (e.g. opening
+    // a chart dialog) still wins.
+    this.#closeAndRestore();
     if (target) item.run?.(target);
+  }
+
+  /** Close everything, then return focus to the pre-open element (keyboard close / run item). */
+  #closeAndRestore(): void {
+    const previous = this.#restoreFocus;
+    this.#close();
+    if (previous?.isConnected && typeof previous.focus === 'function') previous.focus();
   }
 
   /** Tear down menus from `index` (inclusive) to the top of the stack. */
@@ -459,6 +476,8 @@ export class ContextMenuController<T extends object>
       document.removeEventListener('pointerdown', this.#onOutside, true);
     }
     this.#target = null;
+    // Deliberately not restored on outside-pointerdown: the user clicked elsewhere.
+    this.#restoreFocus = null;
   };
 }
 

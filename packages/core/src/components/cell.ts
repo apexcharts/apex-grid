@@ -1,5 +1,5 @@
 import { consume } from '@lit/context';
-import { html, LitElement } from 'lit';
+import { html, LitElement, type PropertyValues } from 'lit';
 import { property, query } from 'lit/decorators.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
 import { getColumnTypeRenderer } from '../internal/column-types.js';
@@ -177,6 +177,10 @@ export default class ApexGridCell<T extends object> extends LitElement {
     } else {
       this.removeAttribute('aria-colindex');
     }
+    // Roving tabindex: the active cell is the grid body's single tab stop, so
+    // real focus (not just `aria-current`) tracks keyboard navigation and
+    // screen readers follow arrow-key movement cell to cell.
+    this.tabIndex = this.active ? 0 : -1;
     if (this.active) {
       this.setAttribute('aria-current', 'true');
     } else {
@@ -273,7 +277,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
     this.#decoratedKeys = applied;
   }
 
-  protected override updated() {
+  protected override updated(changed: PropertyValues<this>) {
     if (this.isEditing) {
       const editor = this.editorElement;
       editor?.focus();
@@ -282,6 +286,15 @@ export default class ApexGridCell<T extends object> extends LitElement {
           editor.select();
         }
       }
+      return;
+    }
+    // A keyboard-committed (or cancelled) edit removes the focused editor from
+    // the DOM; hand focus back to the cell host so grid navigation continues
+    // from where the user was. Pointer-driven exits (blur / outside click)
+    // never set the flag, so they don't steal focus from the click target.
+    if (changed.get('editing') === true && this.#refocusAfterEdit) {
+      this.#refocusAfterEdit = false;
+      this.focus();
     }
   }
 
@@ -319,6 +332,9 @@ export default class ApexGridCell<T extends object> extends LitElement {
 
   #pendingValue: unknown;
 
+  /** Set by keyboard-driven commit/cancel so `updated` refocuses the cell host. */
+  #refocusAfterEdit = false;
+
   #commitWith = async (value?: unknown): Promise<boolean> => {
     return this.editingController.commitCell(value ?? this.#pendingValue);
   };
@@ -332,16 +348,19 @@ export default class ApexGridCell<T extends object> extends LitElement {
     switch (event.key) {
       case 'Enter':
         event.preventDefault();
+        this.#refocusAfterEdit = true;
         this.#commitWith();
         return;
       case 'Escape':
         event.preventDefault();
+        this.#refocusAfterEdit = true;
         this.#cancel();
         return;
       case 'Tab':
         // Commit first; navigation moves to the next/prev cell. Editing of the
         // landed cell stays manual (Enter to re-edit) for predictability.
         event.preventDefault();
+        this.#refocusAfterEdit = true;
         this.#commitWith();
         return;
       default:
@@ -375,11 +394,13 @@ export default class ApexGridCell<T extends object> extends LitElement {
     if (!this.isEditing) return;
     if (event.key === 'Escape') {
       event.preventDefault();
+      this.#refocusAfterEdit = true;
       this.#cancel();
       return;
     }
     if (event.key === 'Tab') {
       event.preventDefault();
+      this.#refocusAfterEdit = true;
       this.#commitWith();
     }
   };

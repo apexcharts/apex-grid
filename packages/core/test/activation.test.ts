@@ -90,11 +90,13 @@ describe('Grid activation', () => {
       expect(TDD.rows.first.cells.first.active).to.be.true;
     });
 
+    // Home / End follow the ARIA grid pattern: first / last cell in the row.
+    // The row-jump variants live on Ctrl+Home / Ctrl+End.
     it('Home', async () => {
-      await TDD.clickCell(TDD.rows.last.cells.first);
+      await TDD.clickCell(TDD.rows.last.cells.last);
       await TDD.fireNavigationEvent({ key: 'Home' });
 
-      expect(TDD.rows.first.cells.first.active).to.be.true;
+      expect(TDD.rows.last.cells.first.active).to.be.true;
     });
 
     it('Home @ boundary', async () => {
@@ -108,14 +110,38 @@ describe('Grid activation', () => {
       await TDD.clickCell(TDD.rows.first.cells.first);
       await TDD.fireNavigationEvent({ key: 'End' });
 
-      expect(TDD.rows.last.cells.first.active).to.be.true;
+      expect(TDD.rows.first.cells.last.active).to.be.true;
     });
 
     it('End (at edge)', async () => {
-      await TDD.clickCell(TDD.rows.last.cells.first);
+      await TDD.clickCell(TDD.rows.last.cells.last);
       await TDD.fireNavigationEvent({ key: 'End' });
 
+      expect(TDD.rows.last.cells.last.active).to.be.true;
+    });
+
+    it('Ctrl+Home moves to the first cell of the grid', async () => {
+      await TDD.clickCell(TDD.rows.last.cells.last);
+      await TDD.fireNavigationEvent({ key: 'Home', ctrlKey: true });
+
+      expect(TDD.rows.first.cells.first.active).to.be.true;
+    });
+
+    it('Ctrl+End moves to the last cell of the grid', async () => {
+      await TDD.clickCell(TDD.rows.first.cells.first);
+      await TDD.fireNavigationEvent({ key: 'End', ctrlKey: true });
+
+      expect(TDD.rows.last.cells.last.active).to.be.true;
+    });
+
+    it('PageDown / PageUp move by a viewport page (clamped to the data edges)', async () => {
+      await TDD.clickCell(TDD.rows.first.cells.first);
+      await TDD.fireNavigationEvent({ key: 'PageDown' });
+
       expect(TDD.rows.last.cells.first.active).to.be.true;
+
+      await TDD.fireNavigationEvent({ key: 'PageUp' });
+      expect(TDD.rows.first.cells.first.active).to.be.true;
     });
   });
 });

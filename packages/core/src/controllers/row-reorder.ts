@@ -197,7 +197,7 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     if (!this.#order) return;
     this.#order = null;
     this.host.requestUpdate(PIPELINE);
-    if (announce) this.host.announce('Manual row order cleared');
+    if (announce) this.host.announce(this.host.localize('announce.manualOrderCleared'));
   }
 
   /**
@@ -370,7 +370,7 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     this.grabbed = row;
     this.#preGrab = this.#order ? [...this.#order] : null;
     this.host.requestUpdate();
-    this.host.announce('Row grabbed. Use arrow keys to move, Enter to drop, Escape to cancel.');
+    this.host.announce(this.host.localize('announce.rowGrabbed'));
     return true;
   }
 
@@ -390,7 +390,7 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     });
     if (!ok) return -1;
     void this.#flipAfterUpdate(before);
-    this.host.announce(`Row moved to position ${target + 1}`);
+    this.host.announce(this.host.localize('announce.rowMovedTo', { position: target + 1 }));
     return target;
   }
 
@@ -400,7 +400,7 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     this.grabbed = null;
     this.#preGrab = null;
     this.host.requestUpdate();
-    this.host.announce('Row dropped');
+    this.host.announce(this.host.localize('announce.rowDropped'));
   }
 
   /** Cancels the grab, reverting to the order captured when it was grabbed. */
@@ -410,7 +410,7 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     this.#order = this.#preGrab;
     this.#preGrab = null;
     this.host.requestUpdate(PIPELINE);
-    this.host.announce('Reorder cancelled');
+    this.host.announce(this.host.localize('announce.reorderCancelled'));
   }
 
   // --- internals ----------------------------------------------------------
@@ -452,7 +452,7 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     }
 
     this.host.requestUpdate(PIPELINE);
-    if (!options.silent) this.host.announce('Row moved');
+    if (!options.silent) this.host.announce(this.host.localize('announce.rowMoved'));
     this.host.emitEvent('rowMoved', { detail: { from, to, data: source } });
     return true;
   }

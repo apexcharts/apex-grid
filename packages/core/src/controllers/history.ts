@@ -157,7 +157,7 @@ export class HistoryController<T extends object> implements ReactiveController {
     if (!command) return;
     command.revert();
     this.#redo.push(command);
-    this.#afterReplay(command, 'Undo');
+    this.#afterReplay(command, 'undo');
   }
 
   /** Re-applies the most recently undone command. No-op when nothing to redo. */
@@ -166,7 +166,7 @@ export class HistoryController<T extends object> implements ReactiveController {
     if (!command) return;
     command.apply();
     this.#undo.push(command);
-    this.#afterReplay(command, 'Redo');
+    this.#afterReplay(command, 'redo');
   }
 
   /** Clears both stacks (e.g. after a data reset). */
@@ -189,10 +189,18 @@ export class HistoryController<T extends object> implements ReactiveController {
     this.#emitChanged();
   }
 
-  #afterReplay(command: EditCommand, label: string): void {
+  #afterReplay(command: EditCommand, kind: 'undo' | 'redo'): void {
     this.host.requestUpdate(PIPELINE);
     const count = command instanceof CellEditCommand ? command.changes.length : 1;
-    this.host.announce(`${label} ${count} cell ${count === 1 ? 'change' : 'changes'}`);
+    const key =
+      kind === 'undo'
+        ? count === 1
+          ? 'announce.undoOne'
+          : 'announce.undoMany'
+        : count === 1
+          ? 'announce.redoOne'
+          : 'announce.redoMany';
+    this.host.announce(this.host.localize(key, { count }));
     this.#emitChanged();
   }
 

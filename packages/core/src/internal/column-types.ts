@@ -320,7 +320,7 @@ const ratingType: ColumnTypeRenderer<object> = {
     return html`<span
       part="rating-editor"
       role="radiogroup"
-      aria-label="Rating"
+      aria-label=${ctx.parent.state?.localize('editor.rating', undefined, 'Rating') ?? 'Rating'}
     >
       ${stars.map(
         (rank) => html`<button

@@ -116,8 +116,13 @@ export class SortController<T extends object> implements ReactiveController {
     const label = column.headerText ?? String(column.key);
     const message =
       expression.direction === 'none'
-        ? `Sort cleared on ${label}`
-        : `Sorted by ${label} ${expression.direction}`;
+        ? this.host.localize('announce.sortCleared', { label })
+        : this.host.localize(
+            expression.direction === 'ascending'
+              ? 'announce.sortedAscending'
+              : 'announce.sortedDescending',
+            { label }
+          );
     this.host.announce(message);
   }
 

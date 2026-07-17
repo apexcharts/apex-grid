@@ -174,4 +174,19 @@ describe('AI Toolkit — <apex-grid-ai>', () => {
     await panel.updateComplete;
     expect(part(panel, 'history'), 'history cleared').to.not.exist;
   });
+
+  it('exposes aria-modal="true" in dialog mode', async () => {
+    const grid = await fixture<ApexGridEnterprise<Row>>(html`<apex-grid-enterprise
+      .data=${data}
+      .columns=${columns}
+    ></apex-grid-enterprise>`);
+    await grid.updateComplete;
+    const panel = await fixture<ApexGridAI>(
+      html`<apex-grid-ai .grid=${grid} mode="dialog"></apex-grid-ai>`
+    );
+    await panel.updateComplete;
+    const container = part(panel, 'panel')!;
+    expect(container.getAttribute('role')).to.equal('dialog');
+    expect(container.getAttribute('aria-modal')).to.equal('true');
+  });
 });
