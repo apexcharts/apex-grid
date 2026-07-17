@@ -462,4 +462,88 @@ describe('Range selection', () => {
     const inner = renderedCell(grid, 0, 'amount'); // top-left
     expect(inner?.hasAttribute('data-range-handle'), 'non-corner has no handle').to.be.false;
   });
+
+  describe('edge auto-scroll during a drag', () => {
+    /** Mount a scrollable grid (many rows in a short host) so the body overflows. */
+    async function mountScrollable() {
+      const many: Row[] = Array.from({ length: 100 }, (_, i) => ({
+        id: i + 1,
+        name: `R${i + 1}`,
+        amount: (i + 1) * 10,
+        score: (i + 1) * 100,
+      }));
+      const parent = document.createElement('div');
+      parent.style.height = '220px';
+      const grid = await fixture<ApexGridEnterprise<Row>>(
+        html`<apex-grid-enterprise
+          style="height: 220px"
+          .data=${many}
+          .columns=${columns}
+        ></apex-grid-enterprise>`,
+        { parentNode: parent }
+      );
+      await layoutComplete(grid);
+      return grid;
+    }
+
+    const raf = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    async function settleAutoScroll(grid: ApexGridEnterprise<Row>, frames = 120) {
+      for (let i = 0; i < frames; i += 1) await raf();
+      await grid.updateComplete;
+    }
+
+    it('scrolls the body and extends the selection when the pointer holds at the bottom edge', async () => {
+      const grid = await mountScrollable();
+      const el = grid as unknown as HTMLElement;
+      expect(el.scrollHeight - el.clientHeight, 'grid overflows').to.be.greaterThan(100);
+
+      // Start a real drag on the first cell (attaches the auto-scroll tracking).
+      interact(grid, 'down', 0, 'amount');
+
+      // Hold the pointer at the body's bottom edge; no cell fires `over` there.
+      const rect = el.getBoundingClientRect();
+      globalThis.dispatchEvent(
+        new PointerEvent('pointermove', { clientX: rect.left + 30, clientY: rect.bottom - 2 })
+      );
+      await settleAutoScroll(grid);
+
+      expect(el.scrollTop, 'viewport auto-scrolled down').to.be.greaterThan(80);
+      // The selection follows the scroll far past the ~6 initially visible rows
+      // (it reaches the very last row given enough time; see the e2e drive).
+      expect(
+        grid.getSelectionBounds()!.bottom,
+        'selection extended past the screen'
+      ).to.be.greaterThan(30);
+
+      // Ending the drag stops the loop: a later pointermove must not scroll further.
+      interact(grid, 'up', 99, 'amount');
+      const resting = el.scrollTop;
+      globalThis.dispatchEvent(
+        new PointerEvent('pointermove', { clientX: rect.left + 30, clientY: rect.bottom - 2 })
+      );
+      await settleAutoScroll(grid, 10);
+      expect(el.scrollTop, 'no auto-scroll after pointerup').to.equal(resting);
+    });
+
+    it('scrolls back up when the pointer holds at the top edge', async () => {
+      const grid = await mountScrollable();
+      const el = grid as unknown as HTMLElement;
+      el.scrollTop = el.scrollHeight; // start scrolled to the bottom
+      await grid.updateComplete;
+      await nextFrame();
+      const start = el.scrollTop;
+      expect(start, 'starts scrolled down').to.be.greaterThan(80);
+
+      interact(grid, 'down', grid.pageItems.length - 1, 'amount');
+      const rect = el.getBoundingClientRect();
+      globalThis.dispatchEvent(
+        new PointerEvent('pointermove', { clientX: rect.left + 30, clientY: rect.top + 2 })
+      );
+      await settleAutoScroll(grid);
+
+      expect(el.scrollTop, 'viewport auto-scrolled up').to.be.lessThan(start - 80);
+      interact(grid, 'up', 0, 'amount');
+    });
+  });
 });

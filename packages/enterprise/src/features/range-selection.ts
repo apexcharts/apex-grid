@@ -132,6 +132,16 @@ export class RangeSelectionController<T extends object>
   #copiedTSV: string | null = null;
   #copiedFormulaSource: { rows: T[]; keys: string[] } | null = null;
 
+  /**
+   * Edge auto-scroll state (active only during a select/fill drag). `#dragPointer`
+   * is the live pointer position in client coordinates, tracked via a window
+   * `pointermove` listener because the core only forwards `over` interactions
+   * while the pointer is over a cell, not when it is in the dead zone past the
+   * last rendered row. `#autoScrollFrame` is the pending rAF handle (0 = idle).
+   */
+  #dragPointer: { x: number; y: number } | null = null;
+  #autoScrollFrame = 0;
+
   constructor(
     private host: GridHost<T>,
     private state: StateController<T>
@@ -152,11 +162,13 @@ export class RangeSelectionController<T extends object>
     const el = this.host as unknown as HTMLElement;
     el.removeEventListener('keydown', this.#onKeydown);
     globalThis.removeEventListener?.('pointerup', this.#onWindowPointerUp);
+    this.#endDrag();
   }
 
   #onWindowPointerUp = (): void => {
     if (this.#mode === 'fill') this.#commitFill();
     this.#mode = 'idle';
+    this.#endDrag();
   };
 
   #onKeydown = (event: KeyboardEvent): void => {
@@ -195,6 +207,7 @@ export class RangeSelectionController<T extends object>
           this.#fillSource = this.#activeBounds();
           this.#fillPreview = this.#fillSource;
           this.#mode = 'fill';
+          this.#beginDrag();
           this.#commit();
           return;
         }
@@ -220,6 +233,7 @@ export class RangeSelectionController<T extends object>
           this.#focus = ref;
         }
         this.#mode = 'select';
+        this.#beginDrag();
         this.#commit();
         return;
       }
@@ -238,6 +252,7 @@ export class RangeSelectionController<T extends object>
       case 'up': {
         if (this.#mode === 'fill') this.#commitFill();
         this.#mode = 'idle';
+        this.#endDrag();
         this.#commit();
         return;
       }
@@ -368,6 +383,7 @@ export class RangeSelectionController<T extends object>
     this.#fillSource = null;
     this.#fillPreview = null;
     this.#mode = 'idle';
+    this.#endDrag();
     this.#commit();
   }
 
@@ -814,6 +830,156 @@ export class RangeSelectionController<T extends object>
       interaction.originalEvent.clientX >= rect.right - FILL_HANDLE_HIT &&
       interaction.originalEvent.clientY >= rect.bottom - FILL_HANDLE_HIT
     );
+  }
+
+  // --- edge auto-scroll ----------------------------------------------------
+
+  /** How close (px) to the body's top/bottom edge starts an auto-scroll. */
+  static readonly #EDGE_BAND = 28;
+  /** Max scroll speed (px/frame) at the deepest point of the edge band. */
+  static readonly #MAX_SPEED = 24;
+
+  /** Begin tracking the pointer for edge auto-scroll (called at drag start). */
+  #beginDrag(): void {
+    this.#dragPointer = null;
+    globalThis.addEventListener?.('pointermove', this.#onWindowPointerMove);
+  }
+
+  /** Stop tracking and cancel any pending auto-scroll (called at drag end). */
+  #endDrag(): void {
+    globalThis.removeEventListener?.('pointermove', this.#onWindowPointerMove);
+    this.#dragPointer = null;
+    if (this.#autoScrollFrame) {
+      globalThis.cancelAnimationFrame?.(this.#autoScrollFrame);
+      this.#autoScrollFrame = 0;
+    }
+  }
+
+  #onWindowPointerMove = (event: PointerEvent): void => {
+    if (this.#mode !== 'select' && this.#mode !== 'fill') return;
+    this.#dragPointer = { x: event.clientX, y: event.clientY };
+    this.#ensureAutoScroll();
+  };
+
+  /** Kick off the auto-scroll rAF loop if one isn't already running. */
+  #ensureAutoScroll(): void {
+    if (this.#autoScrollFrame || !globalThis.requestAnimationFrame) return;
+    const step = (): void => {
+      this.#autoScrollFrame = 0;
+      if ((this.#mode !== 'select' && this.#mode !== 'fill') || !this.#dragPointer) return;
+      // Keep looping only while the pointer stays in an edge band with room to scroll.
+      if (this.#autoScrollStep()) {
+        this.#autoScrollFrame = globalThis.requestAnimationFrame(step);
+      }
+    };
+    this.#autoScrollFrame = globalThis.requestAnimationFrame(step);
+  }
+
+  /**
+   * One auto-scroll frame: if the pointer is inside the top/bottom edge band,
+   * scroll the body and extend the selection to the furthest visible row.
+   * Returns `true` while it should keep scrolling (in-band with room left).
+   */
+  #autoScrollStep(): boolean {
+    const pointer = this.#dragPointer;
+    if (!pointer) return false;
+    const viewport = this.#bodyViewport();
+    const band = RangeSelectionController.#EDGE_BAND;
+
+    let dir = 0;
+    let intensity = 0;
+    if (pointer.y > viewport.bottom - band) {
+      dir = 1;
+      intensity = Math.min(1, (pointer.y - (viewport.bottom - band)) / band);
+    } else if (pointer.y < viewport.top + band) {
+      dir = -1;
+      intensity = Math.min(1, (viewport.top + band - pointer.y) / band);
+    } else {
+      return false;
+    }
+
+    const scroller = this.#scrollElement();
+    const before = scroller.scrollTop;
+    const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+    const delta = dir * (4 + RangeSelectionController.#MAX_SPEED * intensity);
+    scroller.scrollTop = Math.max(0, Math.min(maxScroll, before + delta));
+
+    // Extend to the furthest visible row even when we've hit the scroll limit, so
+    // the selection still reaches the last/first data row.
+    this.#extendToEdgeRow(dir, viewport);
+    return scroller.scrollTop !== before;
+  }
+
+  /** Extend the active selection (or fill preview) to the edge-most visible row. */
+  #extendToEdgeRow(dir: number, viewport: { top: number; bottom: number }): void {
+    let target: number | null = null;
+    for (const row of this.#bodyRows()) {
+      const rect = row.el.getBoundingClientRect();
+      // Skip rows entirely outside the visible body band.
+      if (rect.bottom <= viewport.top || rect.top >= viewport.bottom) continue;
+      if (target === null || (dir > 0 ? row.index > target : row.index < target)) {
+        target = row.index;
+      }
+    }
+    if (target === null) return;
+
+    if (this.#mode === 'fill' && this.#fillSource) {
+      const col = this.#fillPreview?.right ?? this.#fillSource.right;
+      const preview = this.#computeFillPreview(this.#fillSource, { row: target, col });
+      if (!this.#fillPreview || !sameBounds(this.#fillPreview, preview)) {
+        this.#fillPreview = preview;
+        this.#commit();
+      }
+      return;
+    }
+    if (this.#focus && this.#focus.row === target) return;
+    const col = this.#focus?.col ?? this.#anchor?.col ?? 0;
+    this.#focus = { row: target, col };
+    this.#commit();
+  }
+
+  /** Rendered body rows (excluding pinned) with their view index. */
+  #bodyRows(): { index: number; el: HTMLElement }[] {
+    const pinned = this.host.pinnedRows;
+    const out: { index: number; el: HTMLElement }[] = [];
+    for (const row of this.host.rows) {
+      const node = row as unknown as { index: number; data: T } & HTMLElement;
+      if (pinned.top.includes(node.data) || pinned.bottom.includes(node.data)) continue;
+      out.push({ index: node.index, el: node });
+    }
+    return out;
+  }
+
+  /**
+   * The body viewport in client coordinates: the grid host's box minus the sticky
+   * chrome (header / filter / pinned rows / paginator) that overlays its edges.
+   */
+  #bodyViewport(): { top: number; bottom: number } {
+    const host = this.host as unknown as HTMLElement;
+    const rect = host.getBoundingClientRect();
+    let top = rect.top;
+    let bottom = rect.bottom;
+    const root = host.shadowRoot;
+    if (root) {
+      for (const sel of ['apex-grid-header-row', 'apex-filter-row', '[part~=pinned-top]']) {
+        const el = root.querySelector(sel);
+        if (el) top = Math.max(top, el.getBoundingClientRect().bottom);
+      }
+      for (const sel of ['[part~=pinned-bottom]', 'apex-grid-paginator']) {
+        const el = root.querySelector(sel);
+        if (el) bottom = Math.min(bottom, el.getBoundingClientRect().top);
+      }
+    }
+    return { top, bottom };
+  }
+
+  /** The element that actually scrolls the body (the host, per grid CSS). */
+  #scrollElement(): HTMLElement {
+    const host = this.host as unknown as HTMLElement;
+    if (host.scrollHeight - host.clientHeight > 1) return host;
+    const virtualizer = host.shadowRoot?.querySelector('apex-virtualizer') as HTMLElement | null;
+    if (virtualizer && virtualizer.scrollHeight - virtualizer.clientHeight > 1) return virtualizer;
+    return host;
   }
 
   /** Re-decorate cells and notify listeners (status bar / app) of the change. */
