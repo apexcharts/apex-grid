@@ -89,7 +89,10 @@ jobs:
           registry-url: https://registry.npmjs.org/
           cache: 'npm'
 
-      - run: npm install -g npm@latest
+      # Pin the npm major rather than `@latest`: npm 12 dropped Node 20 support
+      # (requires Node >= 22.22.2), so `@latest` fails to install on this runner.
+      # npm 11 supports Node 20 and provides provenance + OIDC trusted publishing.
+      - run: npm install -g npm@11
       - run: npm ci
 
       - name: Install Playwright browsers
