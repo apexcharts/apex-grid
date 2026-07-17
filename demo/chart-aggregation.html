@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chart Aggregation (Enterprise) - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid-enterprise.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+        color: #1a1a2e;
+      }
+      h2 { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
+      .badge {
+        font-size: 13px; font-weight: 500; color: #92400e;
+        background: #fef3c7; border: 1px solid #fde68a;
+        border-radius: 20px; padding: 2px 10px; vertical-align: middle;
+      }
+      .subtitle { font-size: 13px; color: #888; margin-bottom: 16px; }
+      code { background: #f1f1f1; padding: 0 0.25rem; border-radius: 3px; }
+      apex-grid-enterprise { height: 320px; --ig-size: 2; }
+      .controls {
+        display: flex; align-items: center; gap: 10px;
+        margin: 14px 0; font-size: 14px; flex-wrap: wrap;
+      }
+      .controls select {
+        font: inherit; font-size: 14px; padding: 6px 10px;
+        border: 1px solid #d0d5dd; border-radius: 6px; background: #fff;
+      }
+      #chart { display: block; margin-top: 8px; }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid-enterprise');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Chart Aggregation <span class="badge">Enterprise</span></h2>
+    <p class="subtitle">
+      The companion chart groups rows by <strong>Department</strong> and collapses each group's
+      <strong>Salary</strong> with a chosen function. Switch the aggregation below: <code>sum</code>,
+      <code>avg</code>, <code>count</code>, <code>min</code>, <code>max</code>, or <code>median</code>.
+      Filtering the grid recomputes the aggregate live.
+    </p>
+
+    <apex-grid-enterprise id="grid"></apex-grid-enterprise>
+
+    <div class="controls">
+      <label for="agg">Aggregate salary by</label>
+      <select id="agg">
+        <option value="sum">Sum</option>
+        <option value="avg" selected>Average</option>
+        <option value="count">Count (headcount)</option>
+        <option value="min">Minimum</option>
+        <option value="max">Maximum</option>
+        <option value="median">Median</option>
+      </select>
+    </div>
+
+    <apex-grid-chart id="chart" mode="inline" source="view" type="column"></apex-grid-chart>
+
+    <script type="module">
+      const data = [
+        { name: 'Ava Morgan', department: 'Engineering', salary: 96000 },
+        { name: 'Liam Chen', department: 'Engineering', salary: 104000 },
+        { name: 'Noah Patel', department: 'Engineering', salary: 88000 },
+        { name: 'Isabella Costa', department: 'Engineering', salary: 99000 },
+        { name: 'Lucas Brown', department: 'Engineering', salary: 91000 },
+        { name: 'Emma Davis', department: 'Sales', salary: 72000 },
+        { name: 'Olivia Rossi', department: 'Sales', salary: 69000 },
+        { name: 'William Kim', department: 'Sales', salary: 81000 },
+        { name: 'Mateo Silva', department: 'Sales', salary: 75000 },
+        { name: 'Sophia Nguyen', department: 'Marketing', salary: 64000 },
+        { name: 'James Muller', department: 'Marketing', salary: 71000 },
+        { name: 'Mia Johnson', department: 'Marketing', salary: 68000 },
+      ];
+
+      const grid = document.getElementById('grid');
+      const chart = document.getElementById('chart');
+      grid.columns = [
+        { key: 'name', headerText: 'Name', filter: true },
+        { key: 'department', headerText: 'Department', sort: true, filter: true },
+        { key: 'salary', headerText: 'Salary', type: 'number', sort: true, filter: true },
+      ];
+      grid.data = data;
+
+      chart.grid = grid;
+      // Only 'name' and 'salary' are candidate columns besides department; name is non-numeric so
+      // it's ignored. Category = department (repeated → grouped); the single series is Salary.
+      chart.apexOptions = { chart: { animations: { enabled: true } }, colors: ['#5b8def'] };
+      const applyAgg = (fn) => {
+        chart.definition = { category: 'department', measures: ['salary'], aggregation: fn };
+        // Drive number formatting + data labels through the Format API, so the toolbar's Format
+        // popover stays in sync with what's on the chart. Count is a plain integer, not currency.
+        chart.format = {
+          numberFormat: fn === 'count' ? 'none' : 'currency',
+          dataLabels: true,
+        };
+      };
+
+      await grid.updateComplete;
+      applyAgg('avg');
+
+      document.getElementById('agg').addEventListener('change', (e) => applyAgg(e.target.value));
+    </script>
+  </body>
+</html>

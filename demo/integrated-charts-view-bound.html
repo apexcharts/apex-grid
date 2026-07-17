@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>View-bound Companion Chart (Enterprise) - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid-enterprise.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+        color: #1a1a2e;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        margin: 0 0 4px 0;
+        line-height: 1.3;
+      }
+      .badge {
+        font-size: 13px;
+        font-weight: 500;
+        color: #92400e;
+        background: #fef3c7;
+        border: 1px solid #fde68a;
+        border-radius: 20px;
+        padding: 2px 10px;
+        vertical-align: middle;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        margin: 12px 0;
+        flex-wrap: wrap;
+      }
+      .toolbar button {
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 13px;
+        border: 1px solid #d0d5dd;
+        background: #fff;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .toolbar button:hover { background: #f7f9fc; }
+      code {
+        background: #f1f1f1;
+        padding: 0 0.25rem;
+        border-radius: 3px;
+      }
+      apex-grid-enterprise {
+        height: 360px;
+        --ig-size: 2;
+      }
+      #chart {
+        display: block;
+        margin-top: 16px;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid-enterprise');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>View-bound Companion Chart <span class="badge">Enterprise</span></h2>
+    <p class="subtitle">
+      The chart is <strong>not</strong> tied to a cell selection. It is bound to the grid's <em>view</em>
+      (<code>source="view"</code>) and stays as a permanent complement to the data. <strong>Filter</strong> a month out
+      (header filter icon), <strong>sort</strong> a column, or use the buttons below to edit or replace the data: every
+      change flows into the chart automatically. First non-numeric column (Month) is the category axis; every numeric
+      column becomes a series.
+    </p>
+
+    <apex-grid-enterprise id="grid"></apex-grid-enterprise>
+
+    <div class="toolbar">
+      <button id="edit">Bump July rain +40</button>
+      <button id="sort">Sort by Rain (desc)</button>
+      <button id="filter">Filter: drop winter (Dec-Feb)</button>
+      <button id="reset">Reset</button>
+    </div>
+
+    <apex-grid-chart id="chart" mode="inline" source="view"></apex-grid-chart>
+
+    <script type="module">
+      // One row per month: distinct categories chart row-for-row, so filtering removes a bar and
+      // sorting reorders the bars — both visible proof the chart tracks the view, not a selection.
+      const seed = () => [
+        { month: 'Jan', rain: 78, pressure: 1016, temp: 4 },
+        { month: 'Feb', rain: 51, pressure: 1014, temp: 5 },
+        { month: 'Mar', rain: 40, pressure: 1012, temp: 8 },
+        { month: 'Apr', rain: 45, pressure: 1010, temp: 11 },
+        { month: 'May', rain: 62, pressure: 1013, temp: 15 },
+        { month: 'Jun', rain: 66, pressure: 1015, temp: 18 },
+        { month: 'Jul', rain: 58, pressure: 1017, temp: 21 },
+        { month: 'Aug', rain: 61, pressure: 1016, temp: 20 },
+        { month: 'Sep', rain: 55, pressure: 1014, temp: 16 },
+        { month: 'Oct', rain: 72, pressure: 1013, temp: 11 },
+        { month: 'Nov', rain: 84, pressure: 1012, temp: 7 },
+        { month: 'Dec', rain: 80, pressure: 1015, temp: 4 },
+      ];
+
+      const grid = document.getElementById('grid');
+      const chart = document.getElementById('chart');
+      grid.columns = [
+        { key: 'month', headerText: 'Month', sort: true, filter: true },
+        { key: 'rain', headerText: 'Rain', type: 'number', sort: true, filter: true },
+        { key: 'pressure', headerText: 'Pressure', type: 'number', sort: true, filter: true },
+        { key: 'temp', headerText: 'Temp', type: 'number', sort: true, filter: true },
+      ];
+      grid.data = seed();
+
+      chart.grid = grid;
+      // Combo: Rain as columns, Pressure + Temp as lines on their own axes (the three measures live on
+      // very different scales). Series order follows column order: [Rain, Pressure, Temp].
+      chart.type = 'combo';
+      chart.apexOptions = {
+        chart: { animations: { enabled: true } },
+        colors: ['#5b8def', '#f2a34f', '#59a14f'],
+        stroke: { width: [0, 3, 3], curve: 'straight' },
+        yaxis: [
+          { seriesName: 'Rain', title: { text: 'Rain (mm)' } },
+          { seriesName: 'Pressure', opposite: true, title: { text: 'Pressure (hPa)' } },
+          { seriesName: 'Temp', opposite: true, title: { text: 'Temp (C)' } },
+        ],
+      };
+
+      await grid.updateComplete;
+
+      document.getElementById('edit').addEventListener('click', () => {
+        const rows = grid.data.map((r) => ({ ...r }));
+        const jul = rows.find((r) => r.month === 'Jul');
+        if (jul) jul.rain += 40;
+        grid.data = rows; // data replace → view changes → chart redraws
+      });
+      document.getElementById('sort').addEventListener('click', () => {
+        grid.sort({ key: 'rain', direction: 'descending' });
+      });
+      document.getElementById('filter').addEventListener('click', () => {
+        grid.filter({
+          key: 'month',
+          searchTerm: '',
+          condition: {
+            name: 'notWinter',
+            unary: false,
+            logic: (target) => !['Dec', 'Jan', 'Feb'].includes(String(target)),
+          },
+        });
+      });
+      document.getElementById('reset').addEventListener('click', () => {
+        grid.clearFilter();
+        grid.clearSort();
+        grid.data = seed();
+      });
+    </script>
+  </body>
+</html>

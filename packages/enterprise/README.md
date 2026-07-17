@@ -21,7 +21,7 @@ configuration API, theming, and events are identical, plus the additions below.
 - **[Cell range selection & status bar](#cell-range-selection--status-bar)**: Excel-style range select with live aggregates.
 - **[Excel (XLSX) export](#excel-xlsx-export)**: native-typed `.xlsx` export plus a toolbar menu entry.
 - **[Master / detail grids](#master--detail-grids)**: embed a child grid in each expandable row.
-- **[Integrated charts](#integrated-charts)**: render the grid's data as an ApexCharts chart, with optional chart-driven cross-filtering.
+- **[Integrated charts](#integrated-charts)**: render the grid's data as an ApexCharts chart, live-bound to the view (redraws on sort / filter / edit), with a data-mapping definition, a format popover (colors, number format, axis titles, trend / reference lines & bands, forecasting), image export, save / restore, and optional chart-driven cross-filtering.
 - **[Context menu](#context-menu)**: right-click or the header kebab button for sort / pin / hide / group / copy, a "Chart range" submenu, and custom items.
 - **[Infinite (server-side) row model](#infinite-server-side-row-model)**: stream large remote datasets, block by block.
 - **[AI Toolkit](#ai-toolkit)**: natural-language grid control and read-only Q&A on a built-in deterministic rule engine (offline, no key), with optional LLM escalation and a first-class Claude reasoner included.
@@ -223,13 +223,13 @@ Render the grid's current data as an ApexCharts chart. ApexCharts is dynamically
 imported, so it only loads when a chart is actually drawn.
 
 The chart model is derived by intent: a selected **cell range** wins, otherwise the
-**grouping/pivot view**. Friendly chart types (`column`, `bar`, `line`, `area`,
-`pie`, `donut`, `scatter`, `radar`, `heatmap`, `combo`, or `'auto'`) map to the
-right ApexCharts shape.
+current **view** (the flat grid, or a grouping/pivot aggregate). Friendly chart types
+(`column`, `bar`, `line`, `area`, `pie`, `donut`, `scatter`, `radar`, `combo`, or
+`'auto'`) map to the right ApexCharts shape.
 
 ```ts
 const model = grid.getRangeChartModel();     // from the active cell selection
-// or grid.getViewChartModel()               // from grouping / pivot only
+// or grid.getViewChartModel()               // from the current view (flat, or grouping/pivot)
 // or grid.getChartModel()                   // selection if present, else view
 
 const chart = grid.createRangeChart(container, {
@@ -237,6 +237,10 @@ const chart = grid.createRangeChart(container, {
   apexOptions: { /* deep-merged escape hatch */ },
 });
 ```
+
+Each getter takes an optional [`ChartDefinition`](#data-mapping) to control which
+column is the category, which are the measures, and how rows are aggregated per
+category.
 
 ### `<apex-grid-chart>` panel
 
@@ -256,9 +260,128 @@ chart.type = 'column';      // gallery-switchable; 'auto' uses the recommended t
 chart.theme = 'grid';       // 'grid' (sync palette to grid theme) | 'light' | 'dark'
 ```
 
+With `source="view"` the panel becomes a **live companion**: it charts the whole
+current view and redraws automatically as you sort, filter, or edit the grid, with no
+cell selection required.
+
 The enterprise grid also adds a **"Create chart"** toolbar button that opens the
-panel in a dialog. The panel and toolbar button require `<apex-grid-chart>` to be
+panel in a dialog. Each click mints an **independent** chart panel, so several charts
+(each a frozen snapshot of the data at creation) can sit side by side without
+disturbing one another. The panel and toolbar button require `<apex-grid-chart>` to be
 registered (the `/define` entry does this for you).
+
+Ways to start a chart, and a few panel niceties:
+
+- **On a selection** a floating **Chart** button appears over the grid, and **Alt+F1**
+  charts the current cell range from the keyboard.
+- **On a grouped / pivoted view** the right-click menu offers **"Chart this view"**
+  (it charts the group/pivot model); with a plain selection it offers **"Chart range"**.
+- The type gallery is grouped (cartesian / circular / statistical) with an icon per
+  type; **Auto** is a "Suggested" badge. A dialog chart's heading **auto-titles** from
+  the mapping ("Revenue by Region") and is **double-click-to-rename**.
+
+### Data mapping
+
+`ChartDefinition` (the panel's `definition` property, or an argument to the model
+getters) controls how the grid maps to the chart. Every field is optional: the empty
+default keeps the automatic mapping (first non-numeric column is the category, every
+numeric column a series, summed per category), so a mapping UI can seed itself from the
+default and override only what changes.
+
+```ts
+chart.definition = {
+  category: 'region',            // column key for the X axis
+  measures: ['revenue', 'deals'],// column keys plotted as series
+  aggregation: 'sum',            // 'sum' | 'avg' | 'count' | 'min' | 'max' | 'median'
+                                 // (or a per-measure map { revenue: 'sum', deals: 'avg' })
+  secondaryMeasures: ['deals'],  // draw these on a secondary (opposite) value axis
+};
+```
+
+The panel surfaces all of this in a **Data** popover in the toolbar: a category
+picker, a checkbox per numeric column (with a per-series **2nd axis** toggle for
+measures on a different scale, e.g. revenue vs. headcount), and the aggregation. The
+columns it offers come from `grid.getChartFields()` (`{ key, label, numeric }[]`), so a
+custom mapping UI can read the same list. The popover is hidden for snapshot charts
+(`staticModel`) and while grouping/pivot is active (those views carry their own
+aggregation).
+
+### Calculated fields
+
+A **calculated field** plots a series from a formula over the other columns, with no
+extra grid column. The formula uses the enterprise formula engine with **A1**
+references, where the letters map to the numeric columns in display order (`A1` = first
+numeric column, `B1` = second, …; row is always `1` — one aggregated value per column
+per category):
+
+```ts
+chart.definition = {
+  category: 'department',
+  measures: ['salary'],
+  calculatedFields: [{ name: 'Bonus %', formula: 'B1 / A1 * 100' }], // bonus / salary * 100
+  secondaryMeasures: ['Bonus %'], // a calc field can sit on the secondary axis (by its name)
+};
+```
+
+Each field is evaluated **per category over the aggregated values** (aggregate-then-
+evaluate, i.e. the ratio of totals — the convention in Excel PivotTable calculated
+fields, Power BI measures, and Tableau). The Data popover has an editor (name + a
+live-validated formula input with an `A1 = column` legend); calc fields ride through
+`toJSON` / `restore` in the definition. `isValidChartFormula(formula)` and
+`computeCalculatedSeries(...)` are exported for building your own UI.
+
+### Format popover
+
+The toolbar's **Format** popover surfaces the handful of options users change most
+often, layered over `apexOptions` so it only touches the keys you set. All are
+available programmatically via the `format` property (`ChartFormat`):
+
+```ts
+chart.format = {
+  colors: ['#2563eb', '#16a34a'], // per-series, in series order
+  legend: true,
+  dataLabels: false,
+  gridlines: true,
+  numberFormat: 'currency',       // 'none' | 'currency' | 'percent' | 'thousands'
+  axisTitles: { x: 'Department', y: 'Salary (USD)' },
+  referenceLine: 100_000,         // dashed target/threshold on the value axis
+  referenceBand: { from: 80_000, to: 100_000 }, // shaded target range
+  trendline: true,                // least-squares trend overlay on the first series
+  forecast: 3,                    // project N future periods as a continuation line
+  forecastBand: true,             // add a ~95% prediction band around the forecast
+};
+```
+
+`trendline`, `forecast`, and `forecastBand` are also exposed as the pure functions
+`linearTrend()`, `linearForecast()`, and `linearForecastBand()`, and `ChartFormat` ↔
+ApexCharts translation as `formatToApexOptions()`, so you can drive them without the
+panel.
+
+### Export
+
+The toolbar's **Export** menu (and the matching methods) save the chart as a raster
+**PNG**, a scalable **SVG**, or copy it to the clipboard as an image:
+
+```ts
+await chart.exportImage('png'); // or 'svg'
+await chart.copyImage();        // PNG to the clipboard
+```
+
+### Save & restore
+
+`toJSON()` returns a plain-JSON `ChartConfig` (type, source, mapping, format, heading,
+cross-filter, and any frozen snapshot) that an app can persist anywhere and reapply
+with `restore()`. `apexOptions` is excluded (it is author code and may hold functions),
+so bind it and `grid` separately.
+
+```ts
+const config = chart.toJSON();            // JSON-safe; JSON.stringify(chart) works too
+localStorage.setItem('myChart', JSON.stringify(config));
+
+// later
+chart.grid = grid;
+chart.restore(JSON.parse(localStorage.getItem('myChart')!));
+```
 
 ### Cross-filtering
 

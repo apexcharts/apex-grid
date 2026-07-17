@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Save &amp; Restore Charts (Enterprise) - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid-enterprise.min.js"></script>
+    <style>
+      body { max-width: 1000px; margin: 0 auto; font-family: 'Inter', sans-serif; background: #fff; padding: 20px; color: #1a1a2e; }
+      h2 { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
+      .badge { font-size: 13px; font-weight: 500; color: #92400e; background: #fef3c7; border: 1px solid #fde68a; border-radius: 20px; padding: 2px 10px; vertical-align: middle; }
+      .subtitle { font-size: 13px; color: #888; margin-bottom: 16px; }
+      code { background: #f1f1f1; padding: 0 0.25rem; border-radius: 3px; }
+      apex-grid-enterprise { height: 300px; --ig-size: 2; }
+      .toolbar { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+      .toolbar button { padding: 6px 12px; font: inherit; font-size: 13px; border: 1px solid #d0d5dd; background: #fff; border-radius: 6px; cursor: pointer; }
+      .toolbar button:hover { background: #f7f9fc; }
+      #chart { display: block; margin-top: 8px; }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid-enterprise');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Save &amp; Restore Charts <span class="badge">Enterprise</span></h2>
+    <p class="subtitle">
+      Configure the chart (type, aggregation, format), then <strong>Save layout</strong> serializes it with
+      <code>chart.toJSON()</code> into <code>localStorage</code>. Change things, then <strong>Restore layout</strong>
+      rebuilds it with <code>chart.restore(config)</code>. Plain JSON &mdash; the app owns where it's stored.
+    </p>
+
+    <apex-grid-enterprise id="grid"></apex-grid-enterprise>
+
+    <div class="toolbar">
+      <button id="save">Save layout</button>
+      <button id="restore">Restore layout</button>
+      <button id="bar">Set type: Bar</button>
+      <button id="line">Set type: Line</button>
+    </div>
+
+    <apex-grid-chart id="chart" mode="inline" source="view" type="column"></apex-grid-chart>
+
+    <script type="module">
+      const data = [
+        { name: 'Ava Morgan', department: 'Engineering', salary: 96000 },
+        { name: 'Liam Chen', department: 'Engineering', salary: 104000 },
+        { name: 'Emma Davis', department: 'Sales', salary: 72000 },
+        { name: 'William Kim', department: 'Sales', salary: 81000 },
+        { name: 'Sophia Nguyen', department: 'Marketing', salary: 64000 },
+        { name: 'Mia Johnson', department: 'Marketing', salary: 68000 },
+      ];
+      const grid = document.getElementById('grid');
+      const chart = document.getElementById('chart');
+      grid.columns = [
+        { key: 'name', headerText: 'Name', filter: true },
+        { key: 'department', headerText: 'Department', sort: true, filter: true },
+        { key: 'salary', headerText: 'Salary', type: 'number', sort: true, filter: true },
+      ];
+      grid.data = data;
+      chart.grid = grid;
+      chart.definition = { category: 'department', measures: ['salary'], aggregation: 'avg' };
+
+      const KEY = 'apexgrid-chart-layout';
+      document.getElementById('save').addEventListener('click', () => {
+        localStorage.setItem(KEY, JSON.stringify(chart.toJSON()));
+      });
+      document.getElementById('restore').addEventListener('click', () => {
+        const raw = localStorage.getItem(KEY);
+        if (raw) chart.restore(JSON.parse(raw));
+      });
+      document.getElementById('bar').addEventListener('click', () => { chart.type = 'bar'; });
+      document.getElementById('line').addEventListener('click', () => { chart.type = 'line'; });
+    </script>
+  </body>
+</html>

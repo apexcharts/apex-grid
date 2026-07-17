@@ -19,6 +19,7 @@ import {
   type ExportOptions,
   type GridFeatureModule,
   getColumnLabel,
+  getDisplayColumns,
   PIPELINE,
   type RowRef,
   registerComponent,
@@ -51,12 +52,16 @@ import type { AIEngine, AIResult, RunPromptOptions } from './features/ai/engine.
 import type { Reasoner } from './features/ai/reasoner.js';
 import type { Plan } from './features/ai/types.js';
 import {
+  type ChartAggregation,
+  type ChartDefinition,
+  type ChartField,
   type ChartModel,
   type ChartSeries,
   type ChartType,
   type RenderChartOptions,
   renderApexChart,
 } from './features/chart.js';
+import { computeCalculatedSeries } from './features/chart-calc.js';
 import {
   CONTEXT_MENU_MODULE_ID,
   type ContextMenuConfig,
@@ -83,6 +88,7 @@ import {
 import { type MasterDetailConfig, MasterDetailManager } from './features/master-detail.js';
 import { PIVOT_MODULE_ID, type PivotController } from './features/pivot.js';
 import {
+  RANGE_CHANGED_EVENT,
   RANGE_SELECTION_MODULE_ID,
   type RangeBounds,
   type RangeSelectionController,
@@ -103,6 +109,160 @@ function toNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+/** Collapse the values collected for one category into a single number, per {@link ChartAggregation}. */
+function aggregateValues(values: ReadonlyArray<number>, fn: ChartAggregation): number {
+  const n = values.length;
+  if (n === 0) return 0;
+  switch (fn) {
+    case 'count':
+      return n;
+    case 'avg':
+      return values.reduce((a, b) => a + b, 0) / n;
+    case 'min':
+      return values.reduce((a, b) => Math.min(a, b), Number.POSITIVE_INFINITY);
+    case 'max':
+      return values.reduce((a, b) => Math.max(a, b), Number.NEGATIVE_INFINITY);
+    case 'median': {
+      const sorted = [...values].sort((a, b) => a - b);
+      const mid = Math.floor(n / 2);
+      return n % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+    default:
+      return values.reduce((a, b) => a + b, 0); // sum
+  }
+}
+
+/**
+ * Build a category/series {@link ChartModel} from a labeled grid: `columns` (in display order) and
+ * `rows` of row-major cell values. By default the first non-numeric column is the **category axis**
+ * and every numeric column becomes a **series** (named by its header); a {@link ChartDefinition}
+ * overrides the category, the measure set, and the aggregation. A column is numeric if declared
+ * `type: 'number'` or every non-blank cell parses to a finite number.
+ *
+ * Rows are grouped by category label (first-seen order) and each measure is aggregated per category
+ * — `sum` by default, or `avg`/`count`/`min`/`max`/`median` (one function for all series or a
+ * per-measure map). With already-distinct labels each group holds one row, so the default reproduces
+ * the row-for-row chart. An all-numeric grid uses row positions (1, 2, 3, …) as categories. Returns
+ * an empty model when there is no series to plot.
+ *
+ * Shared by {@link ApexGridEnterprise.getRangeChartModel} (cell-range selection) and the flat-grid
+ * branch of {@link ApexGridEnterprise.getViewChartModel} (the view-bound companion chart).
+ */
+/**
+ * Per-column numeric test used to orient a chart: a column is numeric when it is declared
+ * `type: 'number'`, or every non-blank value in `rows` parses as a number (and at least one value
+ * was seen). Column index aligns with `rows`' inner arrays.
+ */
+function detectNumericColumns<T extends object>(
+  columns: ReadonlyArray<ColumnConfiguration<T>>,
+  rows: ReadonlyArray<ReadonlyArray<unknown>>
+): boolean[] {
+  return columns.map((column, c) => {
+    if (column.type === 'number') return true;
+    let sawValue = false;
+    for (const row of rows) {
+      const value = row[c];
+      if (value === null || value === undefined || value === '') continue;
+      sawValue = true;
+      if (toNumber(value) === null) return false;
+    }
+    return sawValue;
+  });
+}
+
+function buildCategoryModel<T extends object>(
+  columns: ReadonlyArray<ColumnConfiguration<T>>,
+  rows: ReadonlyArray<ReadonlyArray<unknown>>,
+  definition: ChartDefinition = {}
+): ChartModel {
+  const numeric = detectNumericColumns(columns, rows);
+
+  // Category: an explicit `definition.category` (by column key) wins; otherwise the first
+  // non-numeric column. -1 means "no category" → chart row-for-row with positional labels.
+  let catIndex = -1;
+  if (definition.category != null) {
+    catIndex = columns.findIndex((column) => String(column.key) === definition.category);
+  }
+  if (catIndex < 0 && definition.category == null) {
+    catIndex = numeric.findIndex((isNumeric) => !isNumeric);
+  }
+  const labels =
+    catIndex >= 0
+      ? rows.map((row) => String(row[catIndex] ?? ''))
+      : rows.map((_, i) => String(i + 1));
+
+  // Measures: an explicit list (by key, minus the category) or every numeric non-category column.
+  const measureIndices =
+    definition.measures && definition.measures.length > 0
+      ? definition.measures
+          .map((key) => columns.findIndex((column) => String(column.key) === key))
+          .filter((c) => c >= 0 && c !== catIndex)
+      : columns.map((_, c) => c).filter((c) => c !== catIndex && numeric[c]);
+  if (measureIndices.length === 0) return { categories: [], series: [] };
+
+  const aggregationFor = (key: string): ChartAggregation => {
+    const agg = definition.aggregation;
+    if (agg == null) return 'sum';
+    return typeof agg === 'string' ? agg : (agg[key] ?? 'sum');
+  };
+
+  // Group rows by category label (first-seen order), collecting each measure's values per category.
+  const categories: string[] = [];
+  const slotOf = new Map<string, number>();
+  const buckets: number[][][] = measureIndices.map(() => []);
+  labels.forEach((label, r) => {
+    let slot = slotOf.get(label);
+    if (slot === undefined) {
+      slot = categories.length;
+      slotOf.set(label, slot);
+      categories.push(label);
+      for (const bucket of buckets) bucket[slot] = [];
+    }
+    measureIndices.forEach((c, m) => {
+      buckets[m][slot as number].push(toNumber(rows[r][c]) ?? 0);
+    });
+  });
+
+  const series: ChartSeries[] = measureIndices.map((c, m) => {
+    const fn = aggregationFor(String(columns[c].key));
+    return {
+      name: getColumnLabel(columns[c]),
+      data: buckets[m].map((values) => aggregateValues(values, fn)),
+    };
+  });
+
+  // Calculated-field series: aggregate EVERY numeric non-category column per category (letters A, B,
+  // … in column order — the reference frame the formulas + the popover legend share), then evaluate
+  // each formula once per category over those aggregates (aggregate-then-evaluate). Appended after
+  // the measure series. Guarded so a chart without calculated fields pays nothing.
+  if (!definition.calculatedFields || definition.calculatedFields.length === 0) {
+    return { categories, series };
+  }
+  const numericCols = columns.map((_, c) => c).filter((c) => numeric[c] && c !== catIndex);
+  const refBuckets: number[][][] = numericCols.map(() => categories.map(() => []));
+  labels.forEach((label, r) => {
+    const slot = slotOf.get(label);
+    if (slot === undefined) return;
+    numericCols.forEach((c, letterIndex) => {
+      refBuckets[letterIndex][slot].push(toNumber(rows[r][c]) ?? 0);
+    });
+  });
+  const refAggregates = numericCols.map((c, letterIndex) =>
+    refBuckets[letterIndex].map((values) =>
+      aggregateValues(values, aggregationFor(String(columns[c].key)))
+    )
+  );
+  // A calculated series may carry nulls (a category where the formula errored / was non-finite);
+  // ApexCharts renders those as gaps. ChartSeries types data as number[], so cast (matching how the
+  // panel's trend/forecast overlays already introduce null gaps).
+  const calculated = computeCalculatedSeries(
+    definition.calculatedFields,
+    refAggregates,
+    categories.length
+  ) as ChartSeries[];
+  return { categories, series: [...series, ...calculated] };
 }
 
 /**
@@ -393,13 +553,95 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   public override connectedCallback(): void {
     super.connectedCallback();
     ApexGridEnterprise.#instances.add(this);
+    // A cell edit changes a value without changing the view's shape, so the structural view
+    // signature would not move. Bump the data epoch and re-signal so a view-bound chart redraws.
+    this.addEventListener('cellValueChanged', this.#onCellValueChanged);
+    // On-selection charting: a floating affordance appears over a non-empty range, and Alt+F1
+    // charts the selection from the keyboard (Excel-style). RANGE_CHANGED is a custom event not in
+    // the grid's typed event map, so listen via the EventTarget interface.
+    (this as EventTarget).addEventListener(RANGE_CHANGED_EVENT, this.#updateChartAffordance);
+    this.addEventListener('keydown', this.#onChartShortcut);
+    window.addEventListener('scroll', this.#updateChartAffordance, true);
+    window.addEventListener('resize', this.#updateChartAffordance);
   }
+
+  #onCellValueChanged = (): void => {
+    this.#dataEpoch += 1;
+    this.#emitViewChanged();
+  };
 
   public override disconnectedCallback(): void {
     ApexGridEnterprise.#instances.delete(this);
     this.#infiniteManager?.stop();
+    this.removeEventListener('cellValueChanged', this.#onCellValueChanged);
+    (this as EventTarget).removeEventListener(RANGE_CHANGED_EVENT, this.#updateChartAffordance);
+    this.removeEventListener('keydown', this.#onChartShortcut);
+    window.removeEventListener('scroll', this.#updateChartAffordance, true);
+    window.removeEventListener('resize', this.#updateChartAffordance);
+    this.#chartAffordance?.remove();
+    this.#chartAffordance = null;
+    // Floating chart dialogs live on document.body, not under the grid, so tear them down here.
+    for (const chart of this.#chartDialogs) chart.remove();
+    this.#chartDialogs.clear();
     super.disconnectedCallback();
   }
+
+  /** The floating "Chart" button shown over a non-empty range selection (lazily created). */
+  #chartAffordance: HTMLButtonElement | null = null;
+
+  /** True when the range-selection module has a non-empty active range to chart. */
+  #hasRangeSelection(): boolean {
+    const active = this.#rangeController()?.getActiveGrid();
+    return !!active && active.rows.length > 0;
+  }
+
+  /** Alt+F1 charts the current selection (a no-op without one). */
+  #onChartShortcut = (event: KeyboardEvent): void => {
+    if (event.altKey && event.key === 'F1' && this.#hasRangeSelection()) {
+      event.preventDefault();
+      this.#openChartDialog({ source: 'selection' });
+    }
+  };
+
+  /**
+   * Show (and position) a floating "Chart" button over the grid's lower-right corner while a range
+   * is selected; hide it otherwise. Anchored to the grid's viewport rect, so it follows scroll and
+   * resize. Lives on `document.body` (like the chart dialogs) so it is never clipped by the grid.
+   */
+  #updateChartAffordance = (): void => {
+    if (!this.#hasRangeSelection()) {
+      if (this.#chartAffordance) this.#chartAffordance.style.display = 'none';
+      return;
+    }
+    let button = this.#chartAffordance;
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      const hint = this.localize('chart.selectionHint', undefined, 'Chart the selection (Alt+F1)');
+      button.title = hint;
+      button.setAttribute('aria-label', hint);
+      Object.assign(button.style, {
+        position: 'fixed',
+        zIndex: '10900',
+        font: '600 12px system-ui, sans-serif',
+        padding: '5px 11px',
+        border: '1px solid #1f2328',
+        background: '#1f2328',
+        color: '#fff',
+        borderRadius: '6px',
+        cursor: 'pointer',
+        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.22)',
+      });
+      button.addEventListener('click', () => this.#openChartDialog({ source: 'selection' }));
+      document.body.appendChild(button);
+      this.#chartAffordance = button;
+    }
+    button.textContent = `\u{1F4CA} ${this.localize('toolbar.createChart')}`;
+    button.style.display = 'block';
+    const rect = this.getBoundingClientRect();
+    button.style.top = `${Math.max(8, rect.bottom - button.offsetHeight - 14)}px`;
+    button.style.left = `${Math.max(8, rect.right - button.offsetWidth - 16)}px`;
+  };
 
   /** Computes the configured {@link aggregations} over the grid's data. */
   public getAggregations(): AggregationResults {
@@ -606,6 +848,10 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.#injectFormulaEditors(changed);
     this.#syncFormulaCoordinates(changed);
     this.#injectFormulaDisplays(changed);
+    // A new `data` array is a content change the value-blind structural view signature would miss;
+    // bump the epoch so a view-bound chart redraws on it. In-place cell edits are covered by the
+    // `cellValueChanged` listener wired in connectedCallback.
+    if (changed.has('data')) this.#dataEpoch += 1;
     super.willUpdate(changed);
   }
 
@@ -694,7 +940,11 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     return items;
   }
 
-  /** The "Chart range ▸ [type]" submenu entry, opening the dialog on the current selection. */
+  /**
+   * The "Chart ▸ [type]" submenu entry. While grouping/pivot is active it charts the **view**
+   * (labelled "Chart this view" — a first-class entry point for a pivot/group chart); otherwise it
+   * charts the current cell-range **selection** ("Chart range").
+   */
   #chartRangeItem(): ContextMenuItem<T> {
     const types: ReadonlyArray<{ type: ChartType | 'auto'; label: string }> = [
       { type: 'column', label: 'Column' },
@@ -706,14 +956,20 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       { type: 'combo', label: 'Combo' },
       { type: 'auto', label: 'Auto' },
     ];
+    const viewMode = this.groupBy.length > 0 || this.#pivotActive;
+    // View charts read the group/pivot model (leave source at its default); range charts snapshot
+    // the active selection.
+    const source: ChartSource | undefined = viewMode ? undefined : 'selection';
     return {
       id: 'chart-range',
-      label: this.localize('chart.chartRange'),
+      label: viewMode
+        ? this.localize('chart.chartView', undefined, 'Chart this view')
+        : this.localize('chart.chartRange'),
       separatorBefore: true,
       submenu: types.map(({ type, label }) => ({
         id: `chart-${type}`,
         label: this.localize(`chart.type.${type}` as GridLocaleKey, undefined, label),
-        run: () => this.#openChartDialog({ source: 'selection', type }),
+        run: () => this.#openChartDialog({ source, type }),
       })),
     };
   }
@@ -747,20 +1003,41 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   /**
    * Fire {@link VIEW_CHANGED_EVENT} when the rendered view actually changed
-   * (columns, row count, grouping, or pivot), so `<apex-grid-chart>` (and future
-   * dashboards) can live-redraw on group/pivot/data changes — which, unlike
-   * header-click sort/filter, emit no `sorted`/`filtered` event. Gated on a cheap
-   * signature so it does not fire on every render.
+   * (columns, row count, grouping, pivot, sort, or filter), so `<apex-grid-chart>`
+   * (and future dashboards) can live-redraw. A view-bound chart must track sort and
+   * filter too: sorting keeps the row count identical, and a filter can preserve it,
+   * so the signature folds in a compact sort/filter/quick-filter fingerprint rather
+   * than relying on row count alone. Gated on the signature so it does not fire on
+   * every render.
    */
   #viewSignature = '';
+  /** Bumped on a `data` array swap or a cell edit, so a value change (invisible to the structural
+   * signature) still moves it and re-signals view-bound charts. */
+  #dataEpoch = 0;
 
   #emitViewChanged(): void {
+    const sortSig = this.sortExpressions
+      .map((expression) => `${String(expression.key)}:${expression.direction}`)
+      .join(',');
+    const filterSig = this.filterExpressions
+      .map((expression) => {
+        const condition = expression.condition as { name?: string } | string | undefined;
+        const operand = typeof condition === 'string' ? condition : (condition?.name ?? '');
+        const criteria =
+          expression.criteria === undefined ? '' : JSON.stringify(expression.criteria);
+        return `${String(expression.key)}:${operand}:${String(expression.searchTerm ?? '')}:${criteria}`;
+      })
+      .join(';');
     const signature = [
       this.columns.length,
       this.pageItems.length,
       this.groupBy.join(','),
       this.pivotOn,
       this.#pivotActive ? '1' : '0',
+      sortSig,
+      filterSig,
+      this.quickFilter ?? '',
+      this.#dataEpoch,
     ].join('|');
     if (signature === this.#viewSignature) return;
     this.#viewSignature = signature;
@@ -1124,11 +1401,14 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * - **Pivot active:** categories = pivot row labels; one series per generated
    *   pivot value column.
    * - **None of the above:** empty model.
+   *
+   * An optional {@link ChartDefinition} steers the range and flat-view paths (category, measures,
+   * per-series aggregation); the grouping/pivot paths use their own configured aggregations.
    */
-  public getChartModel(): ChartModel {
-    const range = this.getRangeChartModel();
+  public getChartModel(definition?: ChartDefinition): ChartModel {
+    const range = this.getRangeChartModel(definition);
     if (range.series.length > 0) return range;
-    return this.getViewChartModel();
+    return this.getViewChartModel(definition);
   }
 
   /**
@@ -1138,9 +1418,14 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * - **Grouping active:** categories = top-level group labels; one series per `aggregations`
    *   measure×fn.
    * - **Pivot active:** categories = pivot row labels; one series per generated pivot value column.
-   * - **Neither:** empty model.
+   * - **Flat grid:** the whole current view (all `pageItems`, in view order) charted via
+   *   {@link buildCategoryModel} — first non-numeric visible column is the category axis, every
+   *   numeric column a series, repeated categories summed. This is what makes a docked
+   *   `source="view"` chart a live companion: sorting, filtering, and edits flow straight through.
+   *   An optional {@link ChartDefinition} overrides the category, measures, and aggregation here.
+   * - **No rows:** empty model.
    */
-  public getViewChartModel(): ChartModel {
+  public getViewChartModel(definition?: ChartDefinition): ChartModel {
     if (this.groupBy.length > 0) {
       const groups = (this.#groupingController()?.getGroups() ?? []).filter((g) => g.depth === 0);
       const categories = groups.map((group) => group.label);
@@ -1169,7 +1454,33 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       return { categories, series };
     }
 
-    return { categories: [], series: [] };
+    // Flat grid: chart the full current view. Visible columns in display order, values read from
+    // the (sorted/filtered) pageItems, so every grid operation is reflected on the next redraw.
+    const columns = getDisplayColumns(this.columns).filter((column) => !column.hidden);
+    const items = this.pageItems as ReadonlyArray<Record<string, unknown>>;
+    if (columns.length === 0 || items.length === 0) return { categories: [], series: [] };
+    const rows = items.map((record) => columns.map((column) => record[String(column.key)]));
+    return buildCategoryModel(columns, rows, definition);
+  }
+
+  /**
+   * The chartable columns of the current flat view — key, label, and whether the column is numeric —
+   * for driving a mapping UI (`<apex-grid-chart>`'s Data popover). Category candidates are all
+   * columns; measure candidates are the numeric ones. Reflects the visible columns and the current
+   * (sorted/filtered) rows; empty while grouping/pivot is active (those views carry their own
+   * aggregation and ignore a {@link ChartDefinition}).
+   */
+  public getChartFields(): ChartField[] {
+    if (this.groupBy.length > 0 || this.#pivotActive) return [];
+    const columns = getDisplayColumns(this.columns).filter((column) => !column.hidden);
+    const items = this.pageItems as ReadonlyArray<Record<string, unknown>>;
+    const rows = items.map((record) => columns.map((column) => record[String(column.key)]));
+    const numeric = detectNumericColumns(columns, rows);
+    return columns.map((column, c) => ({
+      key: String(column.key),
+      label: getColumnLabel(column),
+      numeric: numeric[c],
+    }));
   }
 
   /**
@@ -1179,72 +1490,19 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * all-numeric, row positions (1, 2, 3, …) are the categories and every column is a series.
    *
    * When the category column has **repeated values** (e.g. a `department` column with several rows
-   * per department) the rows are grouped by category and each series is **summed** per category, so
-   * the chart shows one bar/point per distinct category instead of one per row. A category axis of
-   * already-distinct values (or all-numeric row positions) is charted row-for-row.
+   * per department) the rows are grouped by category and each series is aggregated per category
+   * (summed by default), so the chart shows one bar/point per distinct category instead of one per
+   * row. A category axis of already-distinct values (or all-numeric row positions) is charted
+   * row-for-row. An optional {@link ChartDefinition} overrides the category, measures, and
+   * aggregation.
    *
    * Returns an empty model when there is no selection or no numeric series. Uses the active
    * (primary) range under a multi-range selection.
    */
-  public getRangeChartModel(): ChartModel {
+  public getRangeChartModel(definition?: ChartDefinition): ChartModel {
     const active = this.#rangeController()?.getActiveGrid();
     if (!active || active.rows.length === 0) return { categories: [], series: [] };
-    const { columns, rows } = active;
-
-    // A column is numeric if declared `type: 'number'` or every non-blank cell parses to a finite
-    // number (and there is at least one value to judge by).
-    const numeric = columns.map((column, c) => {
-      if (column.type === 'number') return true;
-      let sawValue = false;
-      for (const row of rows) {
-        const value = row[c];
-        if (value === null || value === undefined || value === '') continue;
-        sawValue = true;
-        if (toNumber(value) === null) return false;
-      }
-      return sawValue;
-    });
-
-    const catIndex = numeric.findIndex((isNumeric) => !isNumeric);
-    const labels =
-      catIndex >= 0
-        ? rows.map((row) => String(row[catIndex] ?? ''))
-        : rows.map((_, i) => String(i + 1));
-
-    const valueColumns = columns.filter((_, c) => c !== catIndex && numeric[c]);
-    if (valueColumns.length === 0) return { categories: [], series: [] };
-
-    const perRow: ChartSeries[] = [];
-    columns.forEach((column, c) => {
-      if (c === catIndex || !numeric[c]) return;
-      perRow.push({
-        name: getColumnLabel(column),
-        data: rows.map((row) => toNumber(row[c]) ?? 0),
-      });
-    });
-
-    // Distinct labels → chart row-for-row. Repeats (only possible with a real category column) →
-    // group by category and sum each series, preserving first-seen category order.
-    const hasRepeats = catIndex >= 0 && new Set(labels).size !== labels.length;
-    if (!hasRepeats) return { categories: labels, series: perRow };
-
-    const categories: string[] = [];
-    const index = new Map<string, number>();
-    const sums = perRow.map(() => [] as number[]);
-    labels.forEach((label, r) => {
-      let slot = index.get(label);
-      if (slot === undefined) {
-        slot = categories.length;
-        index.set(label, slot);
-        categories.push(label);
-        for (const sum of sums) sum[slot] = 0;
-      }
-      perRow.forEach((s, si) => {
-        sums[si][slot as number] += s.data[r];
-      });
-    });
-    const series = perRow.map((s, si) => ({ name: s.name, data: sums[si] }));
-    return { categories, series };
+    return buildCategoryModel(active.columns, active.rows, definition);
   }
 
   /**
@@ -1296,7 +1554,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     return renderApexChart(container, this.getRangeChartModel(), options);
   }
 
-  #chartDialog: ApexGridChart | null = null;
+  /** Every open floating chart dialog. A collection (not a singleton) so charts are independent. */
+  #chartDialogs = new Set<ApexGridChart>();
 
   /**
    * Adds a "Create chart" button to the toolbar (on top of the community grid's none). Clicking it
@@ -1344,23 +1603,34 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.#aiDialog.show();
   }
 
+  /**
+   * Open a new floating `<apex-grid-chart mode="dialog">`. Each call mints an **independent** chart
+   * (the dialogs are a collection, not a singleton) and cascades it so it doesn't cover the last.
+   * The chart is a **snapshot** of the current model at creation — the selected range for
+   * `source: 'selection'`, otherwise the auto model — so several charts of different slices can
+   * coexist without one mutating the others. Requires `<apex-grid-chart>` to be registered (the
+   * `/define` entry does so).
+   */
   #openChartDialog(options: { source?: ChartSource; type?: ChartType | 'auto' } = {}): void {
-    if (!this.#chartDialog) {
-      // createElement by tag (not an import) keeps the grid free of a runtime dependency on the
-      // chart element, so it tree-shakes when a consumer never charts.
-      const chart = document.createElement('apex-grid-chart') as ApexGridChart;
-      chart.mode = 'dialog';
-      chart.grid = this as unknown as ApexGridEnterprise<Record<string, unknown>>;
-      chart.addEventListener('apex-chart-closed', () => {
-        chart.remove();
-        this.#chartDialog = null;
-      });
-      document.body.appendChild(chart);
-      this.#chartDialog = chart;
-    }
-    if (options.source) this.#chartDialog.source = options.source;
-    if (options.type) this.#chartDialog.type = options.type;
-    this.#chartDialog.show();
+    // createElement by tag (not an import) keeps the grid free of a runtime dependency on the
+    // chart element, so it tree-shakes when a consumer never charts.
+    const chart = document.createElement('apex-grid-chart') as ApexGridChart;
+    chart.mode = 'dialog';
+    chart.grid = this as unknown as ApexGridEnterprise<Record<string, unknown>>;
+    // Cascade each new dialog by its position in the open set.
+    chart.style.setProperty('--chart-cascade', String(this.#chartDialogs.size));
+    if (options.type) chart.type = options.type;
+    if (options.source) chart.source = options.source;
+    // Freeze the current model so this chart is independent of later selection / data changes.
+    chart.staticModel =
+      options.source === 'selection' ? this.getRangeChartModel() : this.getChartModel();
+    chart.addEventListener('apex-chart-closed', () => {
+      chart.remove();
+      this.#chartDialogs.delete(chart);
+    });
+    document.body.appendChild(chart);
+    this.#chartDialogs.add(chart);
+    chart.show();
   }
 
   /**

@@ -1,6 +1,6 @@
 export { LicenseManager } from 'apex-commons';
 export { AI_TAG, ApexGridAI } from './ai-panel.js';
-export { ApexGridChart, CHART_TAG, type ChartSource } from './chart-panel.js';
+export { ApexGridChart, CHART_TAG, type ChartConfig, type ChartSource } from './chart-panel.js';
 export type {
   AggregationConfig,
   AggregationFn,
@@ -13,13 +13,24 @@ export * from './features/ai/index.js';
 export type { JSONSchema, StatePatch } from './features/ai-schema.js';
 export { toJSONSchema } from './features/ai-schema.js';
 export {
+  buildValueAxes,
+  type CalculatedField,
+  type ChartAggregation,
+  type ChartDefinition,
+  type ChartField,
+  type ChartFormat,
   type ChartModel,
   type ChartSeries,
   type ChartType,
   chartModelToApexOptions,
+  formatToApexOptions,
+  linearForecast,
+  linearForecastBand,
+  linearTrend,
   type RenderChartOptions,
   recommendChartType,
 } from './features/chart.js';
+export { computeCalculatedSeries, isValidChartFormula } from './features/chart-calc.js';
 export {
   CONTEXT_MENU_OPENING_EVENT,
   type ContextMenuConfig,
