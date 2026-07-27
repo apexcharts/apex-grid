@@ -45,6 +45,10 @@ downloads it. Install it only when you chart:
 npm install apexcharts
 ```
 
+Both ApexCharts **5.x and 6.x** are supported (peer range `^5.15.0 || ^6.0.0`);
+a single copy serves the grid's integrated charts and any charts you draw
+yourself with `apexcharts` / `react-apexcharts`.
+
 ## Usage
 
 ```ts

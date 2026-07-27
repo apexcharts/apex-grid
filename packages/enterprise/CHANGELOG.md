@@ -4,6 +4,18 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.1] - 2026-07-27
+
+### Changed
+- **ApexCharts 6.x support.** The optional `apexcharts` peer dependency now
+  accepts `^5.15.0 || ^6.0.0` (was `^5.15.0`). ApexCharts 6.x is the current
+  default install from npm, so this removes the peer conflict (and the
+  `--legacy-peer-deps` workaround) for apps already on the new major, letting a
+  single ApexCharts copy serve both the grid's integrated charts and any charts
+  the app draws itself. The integrated-charts API surface (render,
+  `updateOptions`, image export, destroy) is validated against 6.x; no config
+  changes are required, and 5.x remains supported.
+
 ## [0.6.0] - 2026-07-17
 
 Built on `apex-grid` `3.4.0` (required: this release consumes new core locale
