@@ -148,14 +148,19 @@ function emitElement(el) {
       ? '/**\n * React wrapper for `<apex-grid>`. This base component types `data` /\n * `columns` as `object`; use `createApexGrid<T>()` for row-typed props and events.\n */'
       : `/** React wrapper for \`<${el.tag}>\`. */`;
   return [
+    `'use client';`,
     banner(hash),
     `import * as React from 'react';`,
     `import { createComponent } from '@lit/react';`,
     `import { ${elementImport} } from 'apex-grid';`,
-    // Side-effect registration so the element is defined before first render.
-    // NOTE: not SSR-guarded yet; that lands in P3 (Next.js / server rendering).
-    `import 'apex-grid/define';`,
     `import { ${eventsConst} } from '../events.js';`,
+    '',
+    '// Register the element on the client only. On the server (SSR / RSC) this is',
+    '// a no-op, so importing the wrapper in a server component neither throws nor',
+    '// pollutes the registry; the element registers before its first client render.',
+    `if (typeof window !== 'undefined') {`,
+    `  ${elementRef}.register();`,
+    '}',
     '',
     doc,
     `export const ${el.className} = createComponent({`,

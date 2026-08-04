@@ -1,3 +1,5 @@
+'use client';
+
 import type { WebComponentProps } from '@lit/react';
 import type { ApexGrid as ApexGridElementClass, ApexGridEventMap } from 'apex-grid';
 import type React from 'react';
