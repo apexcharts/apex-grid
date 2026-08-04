@@ -13,9 +13,21 @@
   "license": "SEE LICENSE IN LICENSE.md",
   "author": "ApexCharts",
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": ["**/generated/*.js"],
   "scripts": {
     "generate": "node scripts/generate.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "npm run generate && tsc -p tsconfig.build.json"
   },
   "peerDependencies": {
     "apex-grid": "^3.4.0",
