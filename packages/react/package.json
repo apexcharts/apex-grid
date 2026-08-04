@@ -26,6 +26,9 @@
   "sideEffects": ["**/generated/*.js"],
   "scripts": {
     "generate": "node scripts/generate.js",
+    "check:generated": "node scripts/check-generated.js",
+    "pretest": "node scripts/build-tests.js",
+    "test": "wtr",
     "typecheck": "tsc --noEmit",
     "build": "npm run generate && tsc -p tsconfig.build.json"
   },
@@ -38,9 +41,14 @@
     "@lit/react": "^1.0.8"
   },
   "devDependencies": {
+    "@open-wc/testing": "^4.0.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.0",
+    "@web/test-runner": "^0.20.2",
+    "@web/test-runner-playwright": "^0.11.1",
     "apex-grid": "*",
+    "esbuild": "^0.27.7",
+    "playwright": "^1.53.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   }

@@ -183,15 +183,31 @@ function emitIndex() {
   return lines.join('\n');
 }
 
-// --- Write ------------------------------------------------------------------
-mkdirSync(GENERATED, { recursive: true });
-writeFileSync(path.join(SRC, 'events.ts'), emitEvents());
-for (const el of resolved) {
-  writeFileSync(path.join(GENERATED, `${el.tag}.ts`), emitElement(el));
+// --- Assemble outputs -------------------------------------------------------
+/**
+ * Every generated file as `{ file, content }` with `file` relative to `src/`.
+ * Shared by the CLI writer below and the drift check (scripts/check-generated.js)
+ * so both agree on exactly what the manifest should produce.
+ */
+export function collectOutputs() {
+  return [
+    { file: 'events.ts', content: emitEvents() },
+    ...resolved.map((el) => ({ file: `generated/${el.tag}.ts`, content: emitElement(el) })),
+    { file: 'generated/index.ts', content: emitIndex() },
+  ];
 }
-writeFileSync(path.join(GENERATED, 'index.ts'), emitIndex());
 
-const total = resolved.reduce((n, e) => n + e.events.length, 0);
-console.log(
-  `✓ Generated wrappers for ${resolved.length} elements (${total} events) from manifest ${hash}.`
-);
+export const manifestHash = hash;
+
+// --- Write when run directly ------------------------------------------------
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  mkdirSync(GENERATED, { recursive: true });
+  for (const { file, content } of collectOutputs()) {
+    writeFileSync(path.join(SRC, file), content);
+  }
+  const total = resolved.reduce((n, e) => n + e.events.length, 0);
+  console.log(
+    `✓ Generated wrappers for ${resolved.length} elements (${total} events) from manifest ${hash}.`
+  );
+}

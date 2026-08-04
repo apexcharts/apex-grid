@@ -54,3 +54,6 @@ release-notes
 ## consumed by the website — it exists only for local testing against local changes.
 /apex-grid.min.js
 /apex-grid-enterprise.min.js
+
+# react wrapper test bundles
+.test-build/
