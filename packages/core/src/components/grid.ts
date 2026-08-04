@@ -737,6 +737,21 @@ export interface ApexGridEventMap<T extends object> {
   rowSelected: CustomEvent<ApexRowSelectedEvent<T>>;
 }
 
+/** Known `setState` slice names, used to compute the `skipped` report. */
+const SET_STATE_SLICES = [
+  'columns',
+  'sort',
+  'filter',
+  'quickFilter',
+  'modules',
+  'rowOrder',
+  'tree',
+  'expansion',
+  'rowPinning',
+  'selection',
+  'pagination',
+] as const;
+
 /**
  * Apex grid is a web component for displaying data in a tabular format quick and easy.
  *
@@ -810,22 +825,15 @@ export interface ApexGridEventMap<T extends object> {
  * @cssprop [--ag-fs-cell] - Cell font size.
  *
  * @see {@link https://github.com/apexcharts/apex-grid/blob/main/packages/core/src/styles/_tokens.scss | _tokens.scss} for the complete `--ag-*` token list.
+ *
+ * @fires cellValidationFailed - Emitted when a candidate cell value is rejected by a column validator; the value is not written.
+ * @fires historyChanged - Emitted after the undo / redo stacks change; carries the current `canUndo` / `canRedo`.
+ * @fires stateChanged - Emitted (debounced) whenever the grid's restorable state changes; carries the new `getState` snapshot.
+ * @fires rowPinning - Cancellable. Emitted before a row is pinned, moved between bands, or unpinned.
+ * @fires rowPinned - Emitted after a row's pin state has changed.
+ * @fires rowMoving - Cancellable. Emitted before a row is moved via drag, keyboard, or `moveRow`.
+ * @fires rowMoved - Emitted after a row has been moved.
  */
-/** Known `setState` slice names, used to compute the `skipped` report. */
-const SET_STATE_SLICES = [
-  'columns',
-  'sort',
-  'filter',
-  'quickFilter',
-  'modules',
-  'rowOrder',
-  'tree',
-  'expansion',
-  'rowPinning',
-  'selection',
-  'pagination',
-] as const;
-
 export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMap<T>> {
   public static get tagName(): string {
     return GRID_TAG;
