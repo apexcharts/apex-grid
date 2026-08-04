@@ -28,6 +28,10 @@ export type {
   ColumnDropPosition,
 } from './components/grid.js';
 export { ApexGrid } from './components/grid.js';
+export { default as ApexGridPaginator } from './components/paginator.js';
+// Public sub-elements. Exported so framework wrappers (e.g. react-apex-grid) can
+// reference the element constructors; both render inside the grid at runtime.
+export { default as ApexGridToolbar } from './components/toolbar.js';
 export type { RowPinPosition } from './controllers/row-pin.js';
 export type { RowDropPosition } from './controllers/row-reorder.js';
 export {
