@@ -120,9 +120,9 @@ Cancellable `groupExpanding` and follow-up `groupExpanded` events fire on toggle
 
 ## Pivoting
 
-Reshape data into a cross-tab: pick the row dimension(s), the column to pivot on,
-and the measures aggregated into each cell. Pivot columns are generated from the
-data and recompute on filter. Pivoting and `groupBy` are mutually exclusive
+Reshape data into a cross-tab: pick the row dimension(s), the column(s) to pivot
+on, and the measures aggregated into each cell. Pivot columns are generated from
+the data and recompute on filter. Pivoting and `groupBy` are mutually exclusive
 (pivot wins).
 
 ```ts
@@ -134,6 +134,45 @@ grid.pivotOn = '';                      // disable, restoring the original colum
 ```
 
 `grid.isPivoting` reflects whether a pivot view is currently active.
+
+### Spanning headers, totals, and multi-field column dimensions
+
+With more than one measure, or more than one column-dimension field, the value
+columns group under **spanning headers**. `pivotOn` accepts an ordered list; the
+first field heads the spanning group (core column groups are one level deep, so
+inner fields fold into the leaf header). `getPivotColumnGroups()` returns the
+generated groups.
+
+`pivotOptions` adds **subtotals** (a row after each first-dimension value; needs
+a multi-field row dimension) and a **grand total**:
+
+```ts
+grid.pivotRows = ['region', 'department'];
+grid.pivotOn = ['level', 'quarter'];      // multi-field column dimension
+grid.pivotValues = { salary: ['sum', 'avg'] };
+grid.pivotOptions = { subtotals: true, grandTotal: 'bottom' };
+```
+
+Total rows are ordinary rows carrying the aggregate; `getPivotMeta(row)` returns
+`{ kind: 'subtotal' | 'grandTotal' }` for them (and `'data'` otherwise), so you
+can style or skip them. Both totals are off unless requested.
+
+### Expandable row groups
+
+`pivotOptions.expandable` renders the row dimension as a nested, collapsible tree:
+the per-field leading columns collapse into one auto group column with indentation
+and chevrons, and each parent row carries the aggregate over its subtree.
+
+```ts
+grid.pivotRows = ['region', 'department'];
+grid.pivotOn = 'level';
+grid.pivotValues = { salary: ['sum'] };
+grid.pivotOptions = { expandable: true, defaultExpanded: true, grandTotal: 'bottom' };
+```
+
+`defaultExpanded` accepts `true` / `false` / a depth threshold. Clicking a chevron
+toggles a node; total rows still compose. In expandable mode the `subtotals` option
+is ignored (parent rows already are the subtotals).
 
 ## Set filter
 
@@ -160,6 +199,44 @@ filter.selectedTokens;              // string[]
 The panel includes a search box, a `(Select all)` row, and folds empty values
 (`null` / `undefined` / `''`) into a single entry. CSS parts are exposed for
 styling.
+
+## Advanced filter builder
+
+A nested **AND / OR** visual query builder — beyond the per-column header filters.
+Compose conditions and sub-groups like `(region = EMEA OR region = AMER) AND salary > 80000`.
+
+```html
+<apex-grid-filter-builder id="builder"></apex-grid-filter-builder>
+```
+
+```ts
+builder.grid = grid;                // required
+// Add conditions / groups in the UI, then Apply. Or drive it headlessly:
+grid.applyAdvancedFilter({
+  kind: 'group',
+  join: 'and',
+  children: [
+    {
+      kind: 'group',
+      join: 'or',
+      children: [
+        { kind: 'condition', column: 'region', operator: 'equals', value: 'EMEA' },
+        { kind: 'condition', column: 'region', operator: 'equals', value: 'AMER' },
+      ],
+    },
+    { kind: 'condition', column: 'salary', operator: 'greaterThan', value: 80000 },
+  ],
+});
+grid.clearAdvancedFilter();         // remove it
+grid.advancedFilterModel;           // the active model, or null
+```
+
+Operators come from the same operand tables as the header filters
+(`operatorsForType(type)`), so semantics match. Evaluation is client-side via the
+`dataPipelineConfiguration.filter` hook and composes with sort / pagination /
+grouping. While active, the advanced filter **owns** column filtering (it replaces
+the built-in filter). The model is plain JSON, so it round-trips through storage.
+The pure evaluator (`filterRows`, `isEmptyModel`) is exported for headless use.
 
 ## Columns tool panel
 

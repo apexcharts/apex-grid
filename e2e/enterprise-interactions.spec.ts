@@ -198,6 +198,74 @@ test.describe('pivoting-enterprise', () => {
     expect(flat.keys).toEqual(['name', 'department', 'region', 'salary']);
     expect(flat.rows).toBe(12);
   });
+
+  test('multi-measure pivot renders spanning column groups', async ({ page }) => {
+    await openDemo(page, 'pivoting-enterprise.html');
+    await page.locator('#multi-measure').click();
+    await settle(page);
+    const groups = await page.evaluate(() =>
+      (document.getElementById('grid') as any).getPivotColumnGroups().map((g: any) => g.headerText)
+    );
+    expect(groups).toEqual(['Engineering', 'Marketing', 'Sales']);
+  });
+
+  test('subtotals + grand total inject total rows', async ({ page }) => {
+    await openDemo(page, 'pivoting-enterprise.html');
+    await page.locator('#totals').click();
+    await settle(page);
+    const meta = await page.evaluate(() => {
+      const g = document.getElementById('grid') as any;
+      const last = g.pageItems[g.pageItems.length - 1];
+      return {
+        rows: g.pageItems.length,
+        lastLabel: String(last[g.columns[0].key]),
+      };
+    });
+    // 3 departments × 2 regions + one subtotal per region + one grand total.
+    expect(meta.rows).toBe(9);
+    expect(meta.lastLabel).toBe('Grand Total');
+  });
+
+  test('multi-field pivotOn groups by the outer field', async ({ page }) => {
+    await openDemo(page, 'pivoting-enterprise.html');
+    await page.locator('#multi-field').click();
+    await settle(page);
+    const groups = await page.evaluate(() =>
+      (document.getElementById('grid') as any).getPivotColumnGroups().map((g: any) => g.headerText)
+    );
+    expect(groups).toEqual(['AMER', 'EMEA']);
+  });
+
+  test('expandable mode nests rows and collapses on chevron click', async ({ page }) => {
+    await openDemo(page, 'pivoting-enterprise.html');
+    await page.locator('#expandable').click();
+    await settle(page);
+
+    const before = await page.evaluate(() => (document.getElementById('grid') as any).pageItems.length);
+    // 2 regions + 2×3 departments + grand total = 9 (all expanded by default).
+    expect(before).toBe(9);
+
+    // Click the first region's chevron (rendered in the group cell's shadow root).
+    const collapsed = await page.evaluate(() => {
+      const g = document.getElementById('grid') as any;
+      for (const r of g.renderRoot.querySelectorAll('apex-grid-row')) {
+        const toggle = (r as any).renderRoot
+          ?.querySelector('apex-grid-cell')
+          ?.renderRoot?.querySelector('[part="pivot-group-toggle"]');
+        if (toggle) {
+          toggle.click();
+          return true;
+        }
+      }
+      return false;
+    });
+    expect(collapsed).toBe(true);
+    await settle(page);
+
+    const after = await page.evaluate(() => (document.getElementById('grid') as any).pageItems.length);
+    // First region's 3 children hidden ⇒ 9 - 3 = 6.
+    expect(after).toBe(6);
+  });
 });
 
 // --- 4. Columns tool panel ---------------------------------------------------
@@ -802,5 +870,44 @@ test.describe('xlsx-export-enterprise', () => {
       page.locator('#dl-all').click(),
     ]);
     expect(all.suggestedFilename()).toBe('all.xlsx');
+  });
+});
+
+// --- Advanced filter builder -------------------------------------------------
+
+test.describe('filter-builder-enterprise', () => {
+  test('applying a nested (region OR) AND salary>80000 filters the grid', async ({ page }) => {
+    await openDemo(page, 'filter-builder-enterprise.html');
+
+    const before = await page.evaluate(
+      () => (document.getElementById('grid') as any).pageItems.length
+    );
+    expect(before).toBe(10);
+
+    // The demo seeds the nested model; click Apply inside the builder's shadow root.
+    await page.evaluate(() =>
+      (document.getElementById('builder') as any).renderRoot
+        .querySelector('[part="apply"]')
+        .click()
+    );
+    await settle(page);
+
+    const names = await page.evaluate(() =>
+      (document.getElementById('grid') as any).pageItems.map((r: any) => r.name)
+    );
+    // EMEA/AMER employees earning > 80000.
+    expect([...names].sort()).toEqual(['Ava Morgan', 'Liam Chen', 'Noah Patel']);
+
+    // Clear restores the full set.
+    await page.evaluate(() =>
+      (document.getElementById('builder') as any).renderRoot
+        .querySelector('[part="clear"]')
+        .click()
+    );
+    await settle(page);
+    const after = await page.evaluate(
+      () => (document.getElementById('grid') as any).pageItems.length
+    );
+    expect(after).toBe(10);
   });
 });

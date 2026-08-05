@@ -10,6 +10,8 @@ import type {
   CellInteractionHandler,
   GridFeatureModule,
   PresentedRow,
+  RowAria,
+  RowAriaProvider,
   RowPresenter,
   RowPresenterContext,
   RowTransformer,
@@ -244,6 +246,81 @@ describe('Row transform + presenter seams', () => {
     const groupRows = await deepQueryAllEventually(grid.shadowRoot!, '[part="group-row"]');
     expect(groupRows.length, 'a full-width group row is rendered').to.be.greaterThan(0);
     expect(groupRows[0].textContent ?? '').to.contain('Group');
+  });
+});
+
+describe('RowAriaProvider seam', () => {
+  afterEach(() => fixtureCleanup());
+
+  /** A synthesized expandable "node" row that keeps its normal cells. */
+  const NODE: TestData = { id: -2, name: 'NODE', active: false, importance: 'low' };
+
+  class AriaStub
+    implements ReactiveController, RowTransformer<TestData>, RowAriaProvider<TestData>
+  {
+    constructor(host: GridHost<TestData>) {
+      host.addController(this);
+    }
+    hostConnected() {}
+    processRows(rows: ReadonlyArray<TestData>): TestData[] {
+      return [NODE, ...rows];
+    }
+    describeRow(row: TestData): RowAria | null {
+      if (row !== NODE) return null;
+      return { level: 2, expanded: true };
+    }
+  }
+
+  const ariaStubModule: GridFeatureModule<TestData> = {
+    id: 'aria-stub',
+    create: (host) => new AriaStub(host),
+  };
+
+  class AriaGrid<T extends object> extends ApexGrid<T> {
+    public static override get tagName() {
+      return 'apex-grid-rowaria-test';
+    }
+    public static override register() {
+      if (!customElements.get(AriaGrid.tagName)) {
+        customElements.define(AriaGrid.tagName, AriaGrid);
+      }
+    }
+    protected override createStateController(): StateController<T> {
+      return new StateController<T>(this, [ariaStubModule as unknown as GridFeatureModule<T>]);
+    }
+  }
+
+  async function mount() {
+    AriaGrid.register();
+    const grid = await fixture<AriaGrid<TestData>>(
+      html`<apex-grid-rowaria-test .data=${data}></apex-grid-rowaria-test>`
+    );
+    await grid.updateComplete;
+    await nextFrame();
+    return grid;
+  }
+
+  it('state.describeRow returns the owning module aria (null otherwise)', async () => {
+    const grid = await mount();
+    const state = stateOf(grid);
+    const ctx: RowPresenterContext<TestData> = { columns: grid.columns, rowIndex: 0 };
+    expect(state.describeRow(NODE, ctx)).to.eql({ level: 2, expanded: true });
+    expect(state.describeRow(data[0], ctx)).to.be.null;
+  });
+
+  it('applies aria-level / aria-expanded to the row while keeping its cells', async () => {
+    const grid = await mount();
+    const rowEls = [...grid.shadowRoot!.querySelectorAll('apex-grid-row')];
+    const nodeRow = rowEls.find((r) => (r as { data?: TestData }).data === NODE)!;
+    expect(nodeRow, 'node row rendered').to.exist;
+    expect(nodeRow.getAttribute('aria-level')).to.equal('2');
+    expect(nodeRow.getAttribute('aria-expanded')).to.equal('true');
+    // Unlike a RowPresenter, this seam must NOT render the row full-width — the
+    // row keeps its normal cell grid, so no group-row container is present.
+    expect(
+      nodeRow.shadowRoot!.querySelector('[part="group-row"]'),
+      'not a full-width presenter row'
+    ).to.be.null;
   });
 });
 

@@ -116,6 +116,19 @@ export const EN_LOCALE = {
   'setFilter.clearFilter': 'Clear filter',
   'setFilter.blanks': '(Blanks)',
 
+  // Enterprise: advanced filter builder
+  'filterBuilder.and': 'AND',
+  'filterBuilder.or': 'OR',
+  'filterBuilder.column': 'Column',
+  'filterBuilder.operator': 'Operator',
+  'filterBuilder.value': 'Value',
+  'filterBuilder.addCondition': 'Condition',
+  'filterBuilder.addGroup': 'Group',
+  'filterBuilder.remove': 'Remove',
+  'filterBuilder.removeGroup': 'Remove group',
+  'filterBuilder.apply': 'Apply',
+  'filterBuilder.clear': 'Clear',
+
   // Enterprise: status bar
   'statusBar.selectRange': 'Select a range of cells',
   'statusBar.count': 'Count',
@@ -227,6 +240,8 @@ export const EN_LOCALE = {
 
   // Enterprise: pivot
   'pivot.blank': '(blank)',
+  'pivot.total': 'Total',
+  'pivot.grandTotal': 'Grand Total',
 
   // Enterprise: range selection
   'rangeSelection.copied': 'Copied selection to the clipboard',

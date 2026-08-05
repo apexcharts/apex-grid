@@ -79,15 +79,20 @@
   <body>
     <h2>Pivoting <span class="badge">Enterprise</span></h2>
     <p class="subtitle">
-      Turn a column's distinct values into columns. Set a row dimension (<code>pivotRows</code>), a column dimension (<code>pivotOn</code>), and the measures to aggregate into each cell (<code>pivotValues</code>). Here: region × department, summing salary.
+      Turn a column's distinct values into columns. Set a row dimension (<code>pivotRows</code>), a column dimension (<code>pivotOn</code>), and the measures to aggregate into each cell (<code>pivotValues</code>). v2 adds spanning column headers, subtotals + a grand total (<code>pivotOptions</code>), and multi-field column dimensions.
     </p>
     <div class="toolbar">
       <button id="region-dept">Region × Department (sum salary)</button>
       <button id="dept-region">Department × Region (avg salary)</button>
+      <button id="multi-measure">Multi-measure (sum + avg, spanning headers)</button>
+      <button id="totals">Subtotals + grand total</button>
+      <button id="multi-field">Dept × (Region › Level)</button>
+      <button id="expandable">Expandable groups (Region › Dept)</button>
       <button id="clear">Clear pivot</button>
     </div>
     <apex-grid-enterprise id="grid"></apex-grid-enterprise>
     <script type="module">
+      const L = (id) => (id % 2 === 0 ? 'Senior' : 'Junior');
       const data = [
         { id: 1, name: 'Ava Morgan', department: 'Engineering', region: 'EMEA', salary: 96000 },
         { id: 2, name: 'Liam Chen', department: 'Engineering', region: 'AMER', salary: 104000 },
@@ -101,9 +106,11 @@
         { id: 10, name: 'Mateo Silva', department: 'Sales', region: 'EMEA', salary: 75000 },
         { id: 11, name: 'Mia Johnson', department: 'Marketing', region: 'AMER', salary: 68000 },
         { id: 12, name: 'Lucas Brown', department: 'Engineering', region: 'EMEA', salary: 91000 },
-      ];
+      ].map((r) => ({ ...r, level: L(r.id) }));
 
       const grid = document.getElementById('grid');
+      // `level` rides on the data (used as a pivot dimension) but stays out of the
+      // declared columns, so the flat view keeps its original four columns.
       grid.columns = [
         { key: 'name', headerText: 'Name' },
         { key: 'department', headerText: 'Department' },
@@ -112,16 +119,23 @@
       ];
       grid.data = data;
 
-      function pivot(rows, on, values) {
+      function pivot(rows, on, values, options = {}) {
         grid.pivotRows = rows;
         grid.pivotOn = on;
         grid.pivotValues = values;
+        grid.pivotOptions = options;
       }
       // Default pivot: one row per region, one column per department, salary sum.
       pivot(['region'], 'department', { salary: ['sum'] });
 
       document.getElementById('region-dept').onclick = () => pivot(['region'], 'department', { salary: ['sum'] });
       document.getElementById('dept-region').onclick = () => pivot(['department'], 'region', { salary: ['avg'] });
+      document.getElementById('multi-measure').onclick = () => pivot(['region'], 'department', { salary: ['sum', 'avg'] });
+      document.getElementById('totals').onclick = () =>
+        pivot(['region', 'department'], 'level', { salary: ['sum'] }, { subtotals: true, grandTotal: 'bottom' });
+      document.getElementById('multi-field').onclick = () => pivot(['department'], ['region', 'level'], { salary: ['sum'] });
+      document.getElementById('expandable').onclick = () =>
+        pivot(['region', 'department'], 'level', { salary: ['sum'] }, { expandable: true, grandTotal: 'bottom' });
       document.getElementById('clear').onclick = () => { grid.pivotOn = ''; };
     </script>
   </body>

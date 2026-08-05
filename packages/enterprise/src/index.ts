@@ -1,6 +1,19 @@
 export { LicenseManager } from 'apex-commons';
 export { AI_TAG, ApexGridAI } from './ai-panel.js';
 export { ApexGridChart, CHART_TAG, type ChartConfig, type ChartSource } from './chart-panel.js';
+export {
+  type AdvancedFilterCondition,
+  type AdvancedFilterGroup,
+  type AdvancedFilterJoin,
+  type AdvancedFilterModel,
+  type AdvancedFilterNode,
+  defaultOperator,
+  emptyAdvancedFilter,
+  filterRows,
+  isEmptyModel,
+  operandsForType,
+  operatorsForType,
+} from './features/advanced-filter.js';
 export type {
   AggregationConfig,
   AggregationFn,
@@ -67,7 +80,14 @@ export type {
 } from './features/infinite-row-model.js';
 export { ROWS_LOADED_EVENT } from './features/infinite-row-model.js';
 export type { MasterDetailConfig, MasterDetailContext } from './features/master-detail.js';
-export { pivotModule } from './features/pivot.js';
+export {
+  getPivotMeta,
+  PIVOT_GROUP_KEY,
+  type PivotOptions,
+  type PivotRowKind,
+  type PivotRowMeta,
+  pivotModule,
+} from './features/pivot.js';
 export type {
   RangeBounds,
   RangeChangedDetail,
@@ -75,6 +95,7 @@ export type {
 } from './features/range-selection.js';
 export { RANGE_CHANGED_EVENT, rangeSelectionModule } from './features/range-selection.js';
 export type { XLSXExportOptions } from './features/xlsx.js';
+export { ApexGridFilterBuilder, FILTER_BUILDER_TAG } from './filter-builder.js';
 export { ApexGridEnterprise, ENTERPRISE_TAG, VIEW_CHANGED_EVENT } from './grid-enterprise.js';
 // Aggregate of every built-in feature module, for the batteries-included path.
 export { enterpriseModules } from './modules.js';

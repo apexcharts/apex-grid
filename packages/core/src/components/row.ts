@@ -253,11 +253,30 @@ export default class ApexGridRow<T extends object> extends LitElement {
         this.removeAttribute('aria-expanded');
       }
     } else {
-      this.removeAttribute('aria-level');
-      if (this.state?.expansion.enabled) {
-        this.setAttribute('aria-expanded', this.expanded ? 'true' : 'false');
+      // A module may attach tree/expansion ARIA to a normal cell-rendered row
+      // (e.g. pivoting's expandable parent rows, which keep their value cells).
+      const aria = this.state?.describeRow(this.data, {
+        columns: this.columns,
+        rowIndex: this.index,
+      });
+      if (aria) {
+        if (typeof aria.level === 'number') {
+          this.setAttribute('aria-level', String(aria.level));
+        } else {
+          this.removeAttribute('aria-level');
+        }
+        if (typeof aria.expanded === 'boolean') {
+          this.setAttribute('aria-expanded', aria.expanded ? 'true' : 'false');
+        } else {
+          this.removeAttribute('aria-expanded');
+        }
       } else {
-        this.removeAttribute('aria-expanded');
+        this.removeAttribute('aria-level');
+        if (this.state?.expansion.enabled) {
+          this.setAttribute('aria-expanded', this.expanded ? 'true' : 'false');
+        } else {
+          this.removeAttribute('aria-expanded');
+        }
       }
     }
   }

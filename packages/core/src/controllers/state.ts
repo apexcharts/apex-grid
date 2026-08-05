@@ -9,10 +9,12 @@ import {
   isCellDecorator,
   isCellInteractionHandler,
   isColumnMenuProvider,
+  isRowAriaProvider,
   isRowPresenter,
   isRowTransformer,
   isSerializableModule,
   type PresentedRow,
+  type RowAria,
   type RowPresenterContext,
 } from '../internal/feature-module.js';
 import type { ActiveNode, GridHost } from '../internal/types.js';
@@ -187,6 +189,21 @@ export class StateController<T extends object> implements ReactiveController {
       if (isRowPresenter<T>(controller)) {
         const presented = controller.presentRow(row, ctx);
         if (presented) return presented;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Asks feature modules implementing {@link RowAriaProvider} for ARIA
+   * tree/expansion semantics on a normal (cell-rendered) row — e.g. pivoting's
+   * expandable parent rows. Returns the first non-null result, or `null`.
+   */
+  public describeRow(row: T, ctx: RowPresenterContext<T>): RowAria | null {
+    for (const controller of this.modules.values()) {
+      if (isRowAriaProvider<T>(controller)) {
+        const aria = controller.describeRow(row, ctx);
+        if (aria) return aria;
       }
     }
     return null;

@@ -109,6 +109,39 @@ export function isRowPresenter<T extends object>(
   );
 }
 
+/** ARIA tree/expansion semantics a module can attach to a normal (cell-rendered) row. */
+export interface RowAria {
+  /** 1-based `aria-level` for the row element. */
+  readonly level?: number;
+  /** `aria-expanded` for the row element; omit for non-expandable rows. */
+  readonly expanded?: boolean;
+}
+
+/**
+ * Optional capability a module's controller may implement to attach ARIA
+ * tree/expansion semantics (`aria-level` / `aria-expanded`) to rows that still
+ * render as a normal cell grid — unlike {@link RowPresenter}, which replaces the
+ * cells with full-width content. Used by pivoting's expandable row groups, whose
+ * parent rows must keep showing per-column aggregate values. Returns `null` for
+ * rows the module does not own.
+ *
+ * @remarks Unstable; part of `apex-grid/internal`.
+ */
+export interface RowAriaProvider<T extends object = any> {
+  describeRow(row: T, ctx: RowPresenterContext<T>): RowAria | null;
+}
+
+/** Runtime type-guard for {@link RowAriaProvider}. */
+export function isRowAriaProvider<T extends object>(
+  controller: unknown
+): controller is RowAriaProvider<T> {
+  return (
+    typeof controller === 'object' &&
+    controller !== null &&
+    typeof (controller as RowAriaProvider<T>).describeRow === 'function'
+  );
+}
+
 /** Per-cell context handed to a {@link CellDecorator}. */
 export interface CellDecoratorContext<T extends object = any> {
   /** The row's backing data (or a synthesized row object). */

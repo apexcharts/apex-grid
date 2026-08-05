@@ -122,6 +122,19 @@ export const esLocale: GridLocaleText = {
   'setFilter.clearFilter': 'Borrar filtro',
   'setFilter.blanks': '(Vacíos)',
 
+  // Enterprise: constructor de filtros avanzado
+  'filterBuilder.and': 'Y',
+  'filterBuilder.or': 'O',
+  'filterBuilder.column': 'Columna',
+  'filterBuilder.operator': 'Operador',
+  'filterBuilder.value': 'Valor',
+  'filterBuilder.addCondition': 'Condición',
+  'filterBuilder.addGroup': 'Grupo',
+  'filterBuilder.remove': 'Eliminar',
+  'filterBuilder.removeGroup': 'Eliminar grupo',
+  'filterBuilder.apply': 'Aplicar',
+  'filterBuilder.clear': 'Borrar',
+
   // Enterprise: barra de estado
   'statusBar.selectRange': 'Seleccione un rango de celdas',
   'statusBar.count': 'Recuento',
@@ -233,6 +246,8 @@ export const esLocale: GridLocaleText = {
 
   // Enterprise: tabla dinámica
   'pivot.blank': '(vacío)',
+  'pivot.total': 'Total',
+  'pivot.grandTotal': 'Total general',
 
   // Enterprise: selección de rango
   'rangeSelection.copied': 'Selección copiada al portapapeles',

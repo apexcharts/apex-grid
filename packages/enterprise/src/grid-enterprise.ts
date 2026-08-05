@@ -2,7 +2,10 @@ import { LicenseManager } from 'apex-commons';
 import type {
   ApexCellContext,
   ColumnConfiguration,
+  ColumnGroupConfiguration,
   CSVExportOptions,
+  DataPipelineConfiguration,
+  DataPipelineHook,
   DataType,
   ExportCellValue,
   GetStateOptions,
@@ -35,6 +38,7 @@ import { html, nothing, type PropertyValues } from 'lit';
 import { property } from 'lit/decorators.js';
 import type { ApexGridAI } from './ai-panel.js';
 import type { ApexGridChart, ChartSource } from './chart-panel.js';
+import { type AdvancedFilterModel, filterRows } from './features/advanced-filter.js';
 import {
   AGGREGATION_MODULE_ID,
   type AggregationConfig,
@@ -86,7 +90,7 @@ import {
   InfiniteRowModelManager,
 } from './features/infinite-row-model.js';
 import { type MasterDetailConfig, MasterDetailManager } from './features/master-detail.js';
-import { PIVOT_MODULE_ID, type PivotController } from './features/pivot.js';
+import { PIVOT_MODULE_ID, type PivotController, type PivotOptions } from './features/pivot.js';
 import {
   RANGE_CHANGED_EVENT,
   RANGE_SELECTION_MODULE_ID,
@@ -272,7 +276,7 @@ function buildCategoryModel<T extends object>(
 interface EnterpriseStateBlob {
   groupBy?: string[];
   aggregations?: AggregationConfig;
-  pivotOn?: string;
+  pivotOn?: string | string[];
   pivotRows?: string[];
   pivotValues?: AggregationConfig;
   /** Per-group collapse overrides (group key → expanded). */
@@ -433,12 +437,14 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   public groupingOptions: { defaultExpanded?: boolean | number } = {};
 
   /**
-   * Column-dimension field for pivoting: its distinct values become columns.
-   * Empty disables pivoting. Requires {@link pivotRows} and {@link pivotValues}.
-   * Pivoting and {@link groupBy} are mutually exclusive (pivot wins).
+   * Column-dimension field(s) for pivoting: their distinct value combinations
+   * become columns. Accepts a single field or an ordered list (the first field
+   * heads the spanning column-header group). Empty disables pivoting. Requires
+   * {@link pivotRows} and {@link pivotValues}. Pivoting and {@link groupBy} are
+   * mutually exclusive (pivot wins).
    */
   @property({ attribute: false })
-  public pivotOn = '';
+  public pivotOn: string | string[] = '';
 
   /** Row-dimension field(s) for pivoting (one leading column each). */
   @property({ attribute: false })
@@ -447,6 +453,10 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   /** Measures aggregated into each pivot cell, e.g. `{ salary: ['sum'] }`. */
   @property({ attribute: false })
   public pivotValues: AggregationConfig = {};
+
+  /** Grand-total / subtotal options for the pivot view. */
+  @property({ attribute: false })
+  public pivotOptions: PivotOptions = {};
 
   /**
    * Spreadsheet-style cell range selection (click-drag / shift-click). Enabled
@@ -518,6 +528,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   /** Columns saved before pivoting activated, restored when it deactivates. */
   #savedColumns: ColumnConfiguration<T>[] | null = null;
+  /** Column groups saved before pivoting activated, restored when it deactivates. */
+  #savedColumnGroups: ColumnGroupConfiguration[] | undefined;
   #pivotActive = false;
 
   public static override get tagName(): string {
@@ -527,6 +539,52 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   /** Whether a pivot view is currently active. */
   public get isPivoting(): boolean {
     return this.#pivotActive;
+  }
+
+  /** The spanning column groups generated for the active pivot view (empty if none). */
+  public getPivotColumnGroups(): ColumnGroupConfiguration[] {
+    return this.#pivotActive ? (this.#pivotController()?.computeColumnGroups() ?? []) : [];
+  }
+
+  #advancedFilterModel: AdvancedFilterModel | null = null;
+  #advancedFilterHook: DataPipelineHook<T> | null = null;
+  /** The app's own filter hook (if any), saved so {@link clearAdvancedFilter} restores it. */
+  #savedFilterHook: DataPipelineHook<T> | undefined;
+
+  /** The active advanced filter model, or `null` when none is applied. */
+  public get advancedFilterModel(): AdvancedFilterModel | null {
+    return this.#advancedFilterModel;
+  }
+
+  /**
+   * Apply a nested AND/OR advanced filter. It evaluates client-side through the
+   * `dataPipelineConfiguration.filter` hook and, while active, owns column
+   * filtering (it replaces the built-in filter). Composes with sort / pagination
+   * / grouping. Call {@link clearAdvancedFilter} to remove it.
+   */
+  public applyAdvancedFilter(model: AdvancedFilterModel): void {
+    if (!this.#advancedFilterHook) {
+      // Remember any app-provided filter hook so clearing restores it.
+      this.#savedFilterHook = this.dataPipelineConfiguration?.filter;
+    }
+    this.#advancedFilterModel = model;
+    const hook: DataPipelineHook<T> = (params) => filterRows(params.data, model, this.columns);
+    this.#advancedFilterHook = hook;
+    this.dataPipelineConfiguration = { ...(this.dataPipelineConfiguration ?? {}), filter: hook };
+    this.requestUpdate(PIPELINE);
+  }
+
+  /** Remove the advanced filter, restoring any app-provided filter hook. */
+  public clearAdvancedFilter(): void {
+    if (!this.#advancedFilterHook) return;
+    this.#advancedFilterModel = null;
+    this.#advancedFilterHook = null;
+    const config: DataPipelineConfiguration<T> = { ...(this.dataPipelineConfiguration ?? {}) };
+    if (this.#savedFilterHook) config.filter = this.#savedFilterHook;
+    else delete config.filter;
+    this.#savedFilterHook = undefined;
+    this.dataPipelineConfiguration = config;
+    this.requestUpdate(PIPELINE);
   }
 
   /**
@@ -1104,41 +1162,55 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    */
   #syncPivot(changed: PropertyValues): void {
     const configChanged =
-      changed.has('pivotOn') || changed.has('pivotRows') || changed.has('pivotValues');
+      changed.has('pivotOn') ||
+      changed.has('pivotRows') ||
+      changed.has('pivotValues') ||
+      changed.has('pivotOptions');
     if (!configChanged && !(changed.has('data') && this.#pivotActive)) return;
 
     const pivot = this.#pivotController();
     if (!pivot) return;
 
+    const on = Array.isArray(this.pivotOn)
+      ? this.pivotOn.filter(Boolean)
+      : this.pivotOn
+        ? [this.pivotOn]
+        : [];
     const shouldActivate =
-      this.pivotOn !== '' && this.pivotRows.length > 0 && Object.keys(this.pivotValues).length > 0;
+      on.length > 0 && this.pivotRows.length > 0 && Object.keys(this.pivotValues).length > 0;
 
     if (shouldActivate) {
       pivot.rows = this.pivotRows;
-      pivot.on = this.pivotOn;
+      pivot.on = on;
       pivot.values = this.pivotValues;
+      pivot.options = this.pivotOptions ?? {};
       if (!this.#pivotActive) {
         this.#savedColumns = this.columns;
+        this.#savedColumnGroups = this.columnGroups;
         this.#pivotActive = true;
       }
       // Pivot and row grouping are mutually exclusive — pivot wins.
       const grouping = this.#groupingController();
       if (grouping) grouping.groupBy = [];
       this.groupBy = [];
-      this.columns = pivot.computeColumns(this.data);
+      // Carry width / pin state across a re-pivot for keys that survive.
+      this.columns = pivot.computeColumns(this.data, this.#pivotActive ? this.columns : undefined);
+      this.columnGroups = pivot.computeColumnGroups();
       this.requestUpdate(PIPELINE);
     } else if (this.#pivotActive) {
       this.#deactivatePivot();
     }
   }
 
-  /** Turn pivoting off and restore the pre-pivot columns. */
+  /** Turn pivoting off and restore the pre-pivot columns + column groups. */
   #deactivatePivot(): void {
     const pivot = this.#pivotController();
-    if (pivot) pivot.on = '';
+    if (pivot) pivot.on = [];
     this.#pivotActive = false;
     if (this.#savedColumns) this.columns = this.#savedColumns;
+    this.columnGroups = this.#savedColumnGroups;
     this.#savedColumns = null;
+    this.#savedColumnGroups = undefined;
     this.requestUpdate(PIPELINE);
   }
 

@@ -283,15 +283,24 @@ export class ApexGridToolPanel extends LitElement {
     this.requestUpdate();
   }
 
+  /** The active column-dimension fields as an array (pivotOn may be a string or list). */
+  #columnLabels(): string[] {
+    const on = this.grid?.pivotOn;
+    return Array.isArray(on) ? on.filter(Boolean) : on ? [on] : [];
+  }
+
   #setColumnLabel(key: string): void {
     if (!this.grid) return;
-    this.grid.pivotOn = key;
+    const next = this.#columnLabels();
+    if (!next.includes(key)) next.push(key);
+    this.grid.pivotOn = next.length > 1 ? next : (next[0] ?? '');
     this.requestUpdate();
   }
 
-  #clearColumnLabel(): void {
+  #clearColumnLabel(key: string): void {
     if (!this.grid) return;
-    this.grid.pivotOn = '';
+    const next = this.#columnLabels().filter((k) => k !== key);
+    this.grid.pivotOn = next.length > 1 ? next : (next[0] ?? '');
     this.requestUpdate();
   }
 
@@ -443,9 +452,9 @@ export class ApexGridToolPanel extends LitElement {
         this.pivotMode
           ? this.#renderZone(
               this.#t('toolPanel.columnLabels'),
-              this.grid.pivotOn ? [this.grid.pivotOn] : [],
+              this.#columnLabels(),
               (key) => this.#setColumnLabel(key),
-              (key) => this.#chip(this.#labelFor(key), () => this.#clearColumnLabel())
+              (key) => this.#chip(this.#labelFor(key), () => this.#clearColumnLabel(key))
             )
           : nothing
       }
