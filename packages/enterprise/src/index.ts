@@ -94,6 +94,21 @@ export type {
   RangeStats,
 } from './features/range-selection.js';
 export { RANGE_CHANGED_EVENT, rangeSelectionModule } from './features/range-selection.js';
+export {
+  getServerRowMeta,
+  type PivotResultField,
+  SERVER_ROWS_LOADED_EVENT,
+  SERVER_SIDE_ROW_MODEL_MODULE_ID,
+  type ServerRowMeta,
+  type ServerRowsLoadedDetail,
+  type ServerSideDataSource,
+  type ServerSideGetRowsParams,
+  type ServerSideGetRowsResult,
+  type ServerSideRowModelConfig,
+  ServerSideRowModelManager,
+  SSRM_GROUP_KEY,
+  serverSideRowModelModule,
+} from './features/server-side-row-model.js';
 export type { XLSXExportOptions } from './features/xlsx.js';
 export { ApexGridFilterBuilder, FILTER_BUILDER_TAG } from './filter-builder.js';
 export { ApexGridEnterprise, ENTERPRISE_TAG, VIEW_CHANGED_EVENT } from './grid-enterprise.js';

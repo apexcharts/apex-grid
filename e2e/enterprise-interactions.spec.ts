@@ -911,3 +911,109 @@ test.describe('filter-builder-enterprise', () => {
     expect(after).toBe(10);
   });
 });
+
+// --- Server-side grouping ----------------------------------------------------
+
+test.describe('server-side-grouping-enterprise', () => {
+  test('lazily expands a server group and shows server aggregates', async ({ page }) => {
+    await openDemo(page, 'server-side-grouping-enterprise.html');
+
+    const top = await page.evaluate(() => {
+      const g = document.getElementById('grid') as any;
+      return {
+        rows: g.data.length,
+        emeaSalary: g.data.find((r: any) => r.region === 'EMEA')?.salary,
+        firstCol: String(g.columns[0].key),
+      };
+    });
+    expect(top.rows).toBe(3); // EMEA, AMER, APAC
+    expect(top.firstCol).toBe('__ssrm_group__');
+    expect(top.emeaSalary).toBe(328000); // server-computed sum
+
+    // Expand EMEA via its chevron (in the group cell's shadow root).
+    const clicked = await page.evaluate(() => {
+      const g = document.getElementById('grid') as any;
+      for (const r of g.renderRoot.querySelectorAll('apex-grid-row')) {
+        const cell = (r as any).renderRoot?.querySelector('apex-grid-cell');
+        const btn = cell?.renderRoot?.querySelector('[part="ssrm-toggle"]');
+        if (btn && cell.renderRoot.textContent.includes('EMEA')) {
+          btn.click();
+          return true;
+        }
+      }
+      return false;
+    });
+    expect(clicked).toBe(true);
+    await settle(page);
+
+    const after = await page.evaluate(
+      () => (document.getElementById('grid') as any).data.length
+    );
+    expect(after).toBe(5); // EMEA + (Engineering, Sales) + AMER + APAC
+  });
+
+  test('paginates a large group: placeholders load block-by-block on scroll', async ({ page }) => {
+    await openDemo(page, 'server-side-grouping-enterprise.html');
+
+    // Expand APAC, then its (large) Engineering department.
+    const expand = (label: string) =>
+      page.evaluate((needle) => {
+        const g = document.getElementById('grid') as any;
+        for (const r of g.renderRoot.querySelectorAll('apex-grid-row')) {
+          const cell = (r as any).renderRoot?.querySelector('apex-grid-cell');
+          const btn = cell?.renderRoot?.querySelector('[part="ssrm-toggle"]');
+          if (btn && cell.renderRoot.textContent.includes(needle)) {
+            btn.click();
+            return true;
+          }
+        }
+        return false;
+      }, label);
+
+    expect(await expand('APAC')).toBe(true);
+    await settle(page);
+    expect(await expand('Engineering')).toBe(true);
+    await settle(page);
+
+    // 120 Engineering people are sized in, but only the first block loaded → deep
+    // rows are placeholders (isRowLoading true).
+    const state = await page.evaluate(() => {
+      const g = document.getElementById('grid') as any;
+      const data = g.data as any[];
+      const engIdx = data.findIndex(
+        (r) => g.isServerSideRowModel && r.department === 'Engineering' && r.name === undefined
+      );
+      const children = data.slice(engIdx + 1);
+      const people = children.filter((r) => r.name !== undefined || g.isRowLoading(r));
+      return {
+        loadedFirst: !g.isRowLoading(children[0]),
+        deepIsPlaceholder: g.isRowLoading(children[100]),
+        atLeast120: people.length >= 120,
+      };
+    });
+    expect(state.atLeast120).toBe(true);
+    expect(state.loadedFirst).toBe(true);
+    expect(state.deepIsPlaceholder).toBe(true);
+
+    // Programmatically load a deep block (mirrors a scroll) and confirm it fills.
+    const filled = await page.evaluate(() => {
+      const g = document.getElementById('grid') as any;
+      const vz = g.renderRoot.querySelector('apex-virtualizer');
+      const data = g.data as any[];
+      const engIdx = data.findIndex(
+        (r) => r.department === 'Engineering' && r.name === undefined
+      );
+      const ev = new Event('rangeChanged') as any;
+      ev.first = engIdx + 95;
+      ev.last = engIdx + 105;
+      vz.dispatchEvent(ev);
+      return engIdx;
+    });
+    await settle(page);
+    const deepLoaded = await page.evaluate((engIdx) => {
+      const g = document.getElementById('grid') as any;
+      return !g.isRowLoading((g.data as any[])[engIdx + 100]);
+    }, filled);
+    expect(deepLoaded).toBe(true);
+  });
+});

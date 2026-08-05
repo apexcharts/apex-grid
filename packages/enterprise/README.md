@@ -557,6 +557,66 @@ grid.refreshRows();     // refetch after a server-side mutation
 The grid emits `apex-rows-loaded` (`detail: { rowCount, exact, loadedBlocks,
 blockSize }`) so you can show live load status.
 
+### Server-side grouping + aggregation
+
+For the analytics case, `serverSideRowModel` groups and aggregates **on the
+server**: the grid asks for one group level at a time and lazily fetches a
+group's children when it is expanded. Group rows show server-computed aggregates
+under an auto group column.
+
+```ts
+grid.serverSideRowModel = {
+  datasource: {
+    async getRows({ groupKeys, rowGroupCols, valueCols, sortModel, filterModel, quickFilter }) {
+      // groupKeys is the value path of the parent being expanded ([] = top level).
+      // Return group rows (with the grouped value + aggregates) when
+      // groupKeys.length < rowGroupCols.length, else the leaf rows.
+      return { rows: await fetchLevel(groupKeys, rowGroupCols, valueCols, sortModel, filterModel, quickFilter) };
+    },
+  },
+  rowGroupCols: ['region', 'department'],
+  valueCols: { salary: ['sum'] },
+};
+
+grid.expandServerGroup(['EMEA']);          // programmatic expand/collapse
+grid.collapseServerGroup(['EMEA']);
+grid.refreshServerSide();                  // reload after a server-side mutation
+grid.isServerSideRowModel;                 // boolean
+```
+
+Group rows carry `aria-level` / `aria-expanded` for screen readers. The grid
+emits `apex-server-rows-loaded`. Mutually exclusive with `infiniteRowModel` and
+client `groupBy` / `pivotOn` (the server owns shaping).
+
+**Server-side pivot.** Add `pivotCols` to pivot on the server: the grid passes
+`pivotCols` + `pivotMode` to `getRows`, and the server returns the generated
+value columns in `pivotResultFields` (plus optional `pivotResultGroups` for
+spanning headers), which the grid installs.
+
+```ts
+grid.serverSideRowModel = {
+  datasource,
+  rowGroupCols: ['region'],
+  pivotCols: ['department'],       // ⇒ pivotMode; server returns pivotResultFields
+};
+```
+
+**Intra-group pagination.** By default a group's children load in one request.
+Set `blockSize` to load them a window at a time: the grid passes `startRow` /
+`endRow` to `getRows`, sizes the group from the returned `rowCount`, renders
+not-yet-loaded rows as placeholders, and fetches the next block as you scroll
+into it. Use `grid.isRowLoading(row)` to detect a placeholder (e.g. for a
+skeleton).
+
+```ts
+grid.serverSideRowModel = {
+  datasource,                      // getRows now receives { startRow, endRow, ... }
+  rowGroupCols: ['region', 'department'],
+  valueCols: { salary: ['sum'] },
+  blockSize: 100,                  // children fetched 100 at a time; return `rowCount`
+};
+```
+
 ## AI Toolkit
 
 Drive the grid in natural language. A prompt becomes a schema-validated state

@@ -98,6 +98,11 @@ import {
   type RangeSelectionController,
   type RangeStats,
 } from './features/range-selection.js';
+import {
+  type ServerSideHost,
+  type ServerSideRowModelConfig,
+  ServerSideRowModelManager,
+} from './features/server-side-row-model.js';
 import { buildXLSX, type XLSXExportOptions } from './features/xlsx.js';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -506,6 +511,17 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   public infiniteRowModel: InfiniteRowModelConfig<T> | null = null;
 
   /**
+   * Server-side row model with **grouping + aggregation**: the grid asks a
+   * {@link ServerSideDataSource} for one group level at a time and lazily fetches
+   * a group's children when it is expanded, with server-computed aggregates on
+   * the group rows. Setting this disables client-side sort/filter and is mutually
+   * exclusive with {@link infiniteRowModel} and client {@link groupBy}/{@link pivotOn}.
+   * See {@link ServerSideRowModelConfig}.
+   */
+  @property({ attribute: false })
+  public serverSideRowModel: ServerSideRowModelConfig<T> | null = null;
+
+  /**
    * An optional escalation {@link Reasoner} the AI layer consults when the built-in
    * deterministic rule engine is not confident (e.g. `createClaudeReasoner(...)` for
    * Anthropic/Claude). Unset (the default), {@link runPrompt} is handled entirely by
@@ -525,6 +541,9 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   #infiniteManager: InfiniteRowModelManager<T> | null = null;
   #infiniteNeedsStart = false;
+
+  #ssrmManager: ServerSideRowModelManager<T> | null = null;
+  #ssrmNeedsStart = false;
 
   /** Columns saved before pivoting activated, restored when it deactivates. */
   #savedColumns: ColumnConfiguration<T>[] | null = null;
@@ -631,6 +650,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   public override disconnectedCallback(): void {
     ApexGridEnterprise.#instances.delete(this);
     this.#infiniteManager?.stop();
+    this.#ssrmManager?.stop();
     this.removeEventListener('cellValueChanged', this.#onCellValueChanged);
     (this as EventTarget).removeEventListener(RANGE_CHANGED_EVENT, this.#updateChartAffordance);
     this.removeEventListener('keydown', this.#onChartShortcut);
@@ -907,6 +927,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.#syncContextMenu(changed);
     this.#syncMasterDetail(changed);
     this.#syncInfiniteRowModel(changed);
+    this.#syncServerSideRowModel(changed);
     this.#injectFormulaEditors(changed);
     this.#syncFormulaCoordinates(changed);
     this.#injectFormulaDisplays(changed);
@@ -1052,6 +1073,24 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     }
   }
 
+  /** Create/tear down the server-side (grouping) row-model manager on config change. */
+  #syncServerSideRowModel(changed: PropertyValues): void {
+    if (!changed.has('serverSideRowModel')) return;
+    this.#ssrmManager?.stop();
+    if (this.serverSideRowModel) {
+      // Server owns shaping — client grouping / pivot must be off.
+      this.groupBy = [];
+      this.pivotOn = '';
+      this.#ssrmManager = new ServerSideRowModelManager<T>(
+        this.serverSideRowModel,
+        this as unknown as ServerSideHost<T>
+      );
+      this.#ssrmNeedsStart = true;
+    } else {
+      this.#ssrmManager = null;
+    }
+  }
+
   /** Last editing state seen by `updated`, to sync the chart affordance on change. */
   #wasEditing = false;
 
@@ -1061,8 +1100,14 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       this.#infiniteNeedsStart = false;
       this.#infiniteManager.start();
     }
+    if (this.#ssrmManager && this.#ssrmNeedsStart) {
+      this.#ssrmNeedsStart = false;
+      this.#ssrmManager.start();
+    }
     // Idempotent — binds the virtualizer's rangeChanged once it's rendered.
     this.#infiniteManager?.attach();
+    // SSRM only attaches a range listener when intra-group pagination is on.
+    this.#ssrmManager?.attach();
     this.#emitViewChanged();
     // Entering/leaving edit mode re-renders the grid but fires no range event,
     // so sync the selection-chart affordance here (it hides while editing).
@@ -1116,14 +1161,37 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.dispatchEvent(new CustomEvent(VIEW_CHANGED_EVENT, { bubbles: true, composed: true }));
   }
 
-  /** Whether a row is an unloaded placeholder under the infinite row model. */
+  /** Whether a row is an unloaded placeholder (infinite row model or paginated SSRM group). */
   public isRowLoading(row: T): boolean {
-    return this.#infiniteManager?.isPlaceholder(row) ?? false;
+    return (
+      (this.#infiniteManager?.isPlaceholder(row) ?? false) ||
+      (this.#ssrmManager?.isPlaceholder(row) ?? false)
+    );
   }
 
   /** Discard the infinite-model cache and refetch from the top. */
   public refreshRows(): void {
     this.#infiniteManager?.refresh();
+  }
+
+  /** Whether the server-side (grouping) row model is active. */
+  public get isServerSideRowModel(): boolean {
+    return this.#ssrmManager !== null;
+  }
+
+  /** Discard the server-side tree and reload from the top level. */
+  public refreshServerSide(): void {
+    this.#ssrmManager?.refresh();
+  }
+
+  /** Expand a server-side group by its value path (lazily loads its children). */
+  public expandServerGroup(path: string[]): void {
+    this.#ssrmManager?.expand(path);
+  }
+
+  /** Collapse a server-side group by its value path. */
+  public collapseServerGroup(path: string[]): void {
+    this.#ssrmManager?.collapse(path);
   }
 
   /** Wire the declarative master/detail config onto the grid's expansion. */

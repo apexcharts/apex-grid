@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Server-Side Grouping (Enterprise) - ApexGrid</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="../apex-grid-enterprise.min.js"></script>
+    <style>
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        font-family: 'Inter', sans-serif;
+        background: #fff;
+        padding: 20px;
+      }
+      h2 {
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin: 0 0 4px 0;
+      }
+      .subtitle {
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 16px;
+      }
+      .badge {
+        font-size: 13px;
+        font-weight: 500;
+        color: #92400e;
+        background: #fef3c7;
+        border: 1px solid #fde68a;
+        border-radius: 20px;
+        padding: 2px 10px;
+        vertical-align: middle;
+      }
+      code {
+        background: #f1f1f1;
+        padding: 0 0.25rem;
+        border-radius: 3px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .toolbar button {
+        padding: 6px 12px;
+        font: inherit;
+        font-size: 13px;
+        border: 1px solid #d0d5dd;
+        background: #fff;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .toolbar button:hover {
+        background: #f7f9fc;
+      }
+      apex-grid-enterprise {
+        min-height: 380px;
+        --ig-size: 2;
+      }
+    </style>
+    <script type="module">
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/igniteui-webcomponents@5/themes/light/bootstrap.css');
+        const css = await resp.text();
+        const style = document.createElement('style');
+        style.textContent = css.replaceAll(':root', 'apex-grid-enterprise');
+        document.head.appendChild(style);
+      } catch (e) { /* theme is cosmetic */ }
+    </script>
+  </head>
+  <body>
+    <h2>Server-Side Grouping <span class="badge">Enterprise</span></h2>
+    <p class="subtitle">
+      The grid asks the datasource for one group level at a time. Expanding a group lazily fetches its
+      children (<code>groupKeys</code> = the value path); the server computes the aggregates on group
+      rows. Here: region &rsaquo; department &rsaquo; people, summing salary. With
+      <code>blockSize</code> set, a large group's people load a window at a time as you scroll (expand
+      APAC &rsaquo; Engineering: deeper rows show a placeholder until their block arrives).
+    </p>
+    <div class="toolbar">
+      <button id="group">Group: region &rsaquo; department</button>
+      <button id="pivot">Pivot: region &times; department (server-side)</button>
+    </div>
+    <apex-grid-enterprise id="grid"></apex-grid-enterprise>
+    <script type="module">
+      // In-memory dataset standing in for a database.
+      const PEOPLE = [
+        { region: 'EMEA', department: 'Engineering', name: 'Ava Morgan', salary: 96000 },
+        { region: 'EMEA', department: 'Engineering', name: 'Noah Patel', salary: 88000 },
+        { region: 'EMEA', department: 'Sales', name: 'Olivia Rossi', salary: 69000 },
+        { region: 'EMEA', department: 'Sales', name: 'Mateo Silva', salary: 75000 },
+        { region: 'AMER', department: 'Engineering', name: 'Liam Chen', salary: 104000 },
+        { region: 'AMER', department: 'Engineering', name: 'Isabella Costa', salary: 99000 },
+        { region: 'AMER', department: 'Sales', name: 'Emma Davis', salary: 72000 },
+        { region: 'AMER', department: 'Marketing', name: 'James Muller', salary: 71000 },
+        { region: 'APAC', department: 'Engineering', name: 'Yuki Tanaka', salary: 92000 },
+        { region: 'APAC', department: 'Sales', name: 'Wei Zhang', salary: 78000 },
+      ];
+      // A large team, so expanding APAC > Engineering paginates the people by block.
+      const FIRST = ['Ava', 'Noah', 'Mia', 'Leo', 'Zoe', 'Kai', 'Ivy', 'Max', 'Nia', 'Eli'];
+      const LAST = ['Ito', 'Vega', 'Cruz', 'Bauer', 'Sato', 'Roy', 'Park', 'Nash', 'Lund', 'Frost'];
+      for (let i = 0; i < 120; i++) {
+        PEOPLE.push({
+          region: 'APAC',
+          department: 'Engineering',
+          name: `${FIRST[i % FIRST.length]} ${LAST[(i * 7) % LAST.length]} ${i + 1}`,
+          salary: 70000 + ((i * 137) % 60) * 1000,
+        });
+      }
+
+      // A mock "server": groups + aggregates (and pivots) per requested level.
+      const datasource = {
+        getRows({ groupKeys, rowGroupCols, pivotCols, pivotMode, startRow, endRow }) {
+          const scoped = PEOPLE.filter((row) =>
+            groupKeys.every((v, i) => String(row[rowGroupCols[i]]) === v)
+          );
+          const depth = groupKeys.length;
+          if (depth >= rowGroupCols.length) {
+            // Leaf level: honour the requested block window (intra-group pagination).
+            const start = startRow ?? 0;
+            const end = endRow ?? scoped.length;
+            return { rows: scoped.slice(start, end), rowCount: scoped.length };
+          }
+
+          const field = rowGroupCols[depth];
+          const byValue = new Map();
+          for (const row of scoped) {
+            const key = String(row[field]);
+            (byValue.get(key) ?? byValue.set(key, []).get(key)).push(row);
+          }
+
+          if (pivotMode) {
+            // Pivot the column dimension into synthetic value columns.
+            const pf = pivotCols[0];
+            const pivotValues = [...new Set(PEOPLE.map((r) => String(r[pf])))].sort();
+            const rows = [...byValue.entries()].map(([value, group]) => {
+              const row = { [field]: value };
+              for (const pv of pivotValues) {
+                row[`pv::${pv}`] = group
+                  .filter((r) => String(r[pf]) === pv)
+                  .reduce((sum, r) => sum + r.salary, 0);
+              }
+              return row;
+            });
+            return {
+              rows,
+              pivotResultFields: pivotValues.map((pv) => ({ key: `pv::${pv}`, headerText: pv })),
+            };
+          }
+
+          const rows = [...byValue.entries()].map(([value, group]) => ({
+            [field]: value,
+            salary: group.reduce((sum, r) => sum + r.salary, 0),
+          }));
+          return { rows };
+        },
+      };
+
+      const grid = document.getElementById('grid');
+      const baseColumns = [
+        { key: 'region', headerText: 'Region' },
+        { key: 'department', headerText: 'Department' },
+        { key: 'name', headerText: 'Name' },
+        { key: 'salary', headerText: 'Salary', type: 'number' },
+      ];
+      grid.columns = baseColumns;
+
+      const group = () => {
+        grid.columns = baseColumns;
+        grid.serverSideRowModel = {
+          datasource,
+          rowGroupCols: ['region', 'department'],
+          valueCols: { salary: ['sum'] },
+          blockSize: 25,
+        };
+      };
+      const pivot = () => {
+        grid.columns = baseColumns;
+        grid.serverSideRowModel = {
+          datasource,
+          rowGroupCols: ['region'],
+          pivotCols: ['department'],
+        };
+      };
+      group();
+      document.getElementById('group').onclick = group;
+      document.getElementById('pivot').onclick = pivot;
+    </script>
+  </body>
+</html>

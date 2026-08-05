@@ -80,7 +80,7 @@ describe('ApexGridEnterprise', () => {
       { parentNode: sizedParent() }
     );
     const { modules } = stateOf(grid);
-    expect(modules.size).to.equal(6);
+    expect(modules.size).to.equal(7);
     expect(modules.has('aggregation')).to.be.true;
     expect(modules.has('grouping')).to.be.true;
     expect(modules.has('pivot')).to.be.true;
