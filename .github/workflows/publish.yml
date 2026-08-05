@@ -41,6 +41,7 @@ jobs:
             case "$1" in
               apex-grid) echo packages/core;;
               apex-grid-enterprise) echo packages/enterprise;;
+              react-apex-grid) echo packages/react;;
               *) echo "";;
             esac
           }

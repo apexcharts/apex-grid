@@ -10,7 +10,7 @@
     "apex-grid",
     "web-component"
   ],
-  "license": "SEE LICENSE IN LICENSE.md",
+  "license": "SEE LICENSE IN LICENSE",
   "author": "ApexCharts",
   "type": "module",
   "main": "./dist/index.js",
@@ -30,7 +30,7 @@
     "pretest": "node scripts/build-tests.js",
     "test": "wtr",
     "typecheck": "tsc --noEmit",
-    "build": "npm run generate && tsc -p tsconfig.build.json"
+    "build": "npm run generate && tsc -p tsconfig.build.json && node scripts/pack-dist.js"
   },
   "peerDependencies": {
     "apex-grid": "^3.4.0",

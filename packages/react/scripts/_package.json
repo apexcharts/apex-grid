@@ -1,0 +1,46 @@
+{
+  "name": "react-apex-grid",
+  "version": "0.0.0",
+  "description": "React wrapper for apex-grid, the framework-agnostic web component data grid",
+  "keywords": [
+    "react",
+    "react-component",
+    "data-grid",
+    "data-table",
+    "apex-grid",
+    "web-component"
+  ],
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "ApexCharts",
+  "type": "module",
+  "main": "./index.js",
+  "module": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "sideEffects": ["./generated/*.js"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apexcharts/apex-grid.git",
+    "directory": "packages/react"
+  },
+  "bugs": {
+    "url": "https://github.com/apexcharts/apex-grid/issues"
+  },
+  "homepage": "https://github.com/apexcharts/apex-grid/tree/main/packages/react#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "apex-grid": "^3.4.0",
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "dependencies": {
+    "@lit/react": "^1.0.8"
+  }
+}
