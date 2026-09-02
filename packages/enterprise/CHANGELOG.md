@@ -4,6 +4,25 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Changed
+- **ApexCharts 7.x support.** The optional `apexcharts` peer dependency now
+  accepts `^5.15.0 || ^6.0.0 || ^7.0.0` (was `^5.15.0 || ^6.0.0`). ApexCharts
+  7.x is the current default install from npm, so the previous range had gone
+  stale in exactly the way 0.6.1 fixed for 6.x: an app on the new major sees
+  `npm ls` report the peer as invalid, and one that also depends on a package
+  requiring 7.x (`apexstock` 0.5.x does) has no satisfiable resolution at all.
+  The entire ApexCharts surface the integrated charts touch is four calls, the
+  constructor plus `render()`, `updateOptions()`, `dataURI()` and `destroy()`,
+  and the full enterprise suite (539 tests, the four chart test files included)
+  passes identically against 5.16.0 and 7.1.0. No config changes are required
+  and 5.x remains supported.
+
+  The `apexcharts` **devDependency** stays on `^5.15.0` deliberately: CI tests
+  the floor of the supported range, so the oldest supported major is the one
+  continuously exercised.
+
 ## [0.6.1] - 2026-07-27
 
 ### Changed

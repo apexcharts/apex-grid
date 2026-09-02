@@ -42,7 +42,7 @@
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.40.0",
     "@lit/context": "^1.1.5",
-    "apexcharts": "^5.15.0 || ^6.0.0",
+    "apexcharts": "^5.15.0 || ^6.0.0 || ^7.0.0",
     "lit": "^3.3.0"
   },
   "peerDependenciesMeta": {
