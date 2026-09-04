@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Column Types (Built-in) - Support Tickets</title>
+    <title>Column Types (Built-in) - All 13 Types</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -28,17 +28,50 @@
         color: #888;
         margin-bottom: 16px;
       }
-      apex-grid {
-        min-height: 480px;
+      /* An explicit height, not min-height: the grid virtualizes inside a fixed
+         viewport and scrolls. With only a min-height it grows to fit every row,
+         which here would make the first grid over 1100px tall and push the
+         second one off the screen. */
+      apex-grid#grid {
+        height: 420px;
+      }
+      apex-grid#presentation {
+        height: 340px;
+      }
+      h3 {
+        font-size: 17px;
+        font-weight: 600;
+        color: #1a1a2e;
+        margin: 40px 0 4px 0;
       }
     </style>
   </head>
   <body>
-    <h2>Built-in Column Types — Support Tickets</h2>
+    <h2>Built-in Column Types</h2>
     <p class="subtitle">
-      Every built-in type in one grid: <code>string</code>, <code>number</code>, <code>boolean</code>, <code>select</code>, <code>rating</code>, <code>date</code>, and <code>image</code>. Double-click any cell to see its type-specific editor.
+      All 13 types, split the way they behave. The first grid holds the seven
+      <strong>value types</strong>, which carry the data's own meaning and are editable.
+      The second holds the six <strong>presentation renderers</strong>, which draw a
+      primitive value as a visual and are display only.
+    </p>
+
+    <h3>Value types</h3>
+    <p class="subtitle">
+      <code>string</code>, <code>number</code>, <code>boolean</code>, <code>select</code>,
+      <code>rating</code>, <code>date</code> and <code>image</code>. Double-click any cell
+      to see its type-specific editor.
     </p>
     <apex-grid id="grid"></apex-grid>
+
+    <h3>Presentation renderers</h3>
+    <p class="subtitle">
+      <code>avatar</code>, <code>badge</code>, <code>status</code>, <code>currency</code>,
+      <code>progress</code> and <code>sparkline</code>. These have no editor of their own,
+      so the grid is read-only. Sorting still works, because it compares the stored values
+      rather than what you see.
+    </p>
+    <apex-grid id="presentation"></apex-grid>
+
     <script type="module">
       const data = [
         { id: 'T-2041', subject: 'Login fails with 403 after SSO refresh',         priority: 'high',     csat: 4.5, opened: '2026-05-12', resolved: false, assignee: 'https://api.dicebear.com/9.x/personas/svg?seed=Mira',   ageHours: 8  },
@@ -81,6 +114,42 @@
       ];
       grid.data = data;
       grid.editing = { enabled: true, mode: 'cell', trigger: 'doubleClick' };
+
+      // --- Presentation renderers -------------------------------------------
+      // avatar, badge, status, currency, progress and sparkline. These render a
+      // primitive value as a visual and have no editor of their own, so this
+      // grid is read-only.
+      const accounts = [
+        { owner: 'Mira Kovacs',  account: 'Northwind Traders', plan: 'Enterprise', state: 'Active',   arr: 491611, health: 92, usage: [12, 15, 14, 19, 23, 26] },
+        { owner: 'Otis Brandt',  account: 'Contoso Retail',    plan: 'Enterprise', state: 'Overdue',  arr: 485513, health: 41, usage: [30, 28, 25, 21, 18, 14] },
+        { owner: 'Priya Raman',  account: 'Fabrikam Labs',     plan: 'Pro',        state: 'Active',   arr: 214800, health: 87, usage: [8, 9, 11, 12, 14, 17] },
+        { owner: 'Diego Salas',  account: 'Tailwind Logistics', plan: 'Pro',       state: 'Pending',  arr: 168240, health: 68, usage: [22, 21, 23, 22, 24, 25] },
+        { owner: 'Ana Ferreira', account: 'Litware Health',    plan: 'Starter',    state: 'Trialing', arr: 42000,  health: 74, usage: [4, 6, 5, 8, 11, 13] },
+        { owner: 'Sven Aalto',   account: 'Proseware Media',   plan: 'Pro',        state: 'Cancelled', arr: 96500, health: 23, usage: [19, 16, 12, 9, 6, 4] },
+        { owner: 'Yuki Tanaka',  account: 'Adventure Works',   plan: 'Enterprise', state: 'Active',   arr: 612400, health: 95, usage: [40, 44, 43, 47, 52, 58] },
+        { owner: 'Kofi Mensah',  account: 'Wingtip Toys',      plan: 'Starter',    state: 'Pending',  arr: 38900,  health: 61, usage: [7, 7, 6, 8, 8, 9] },
+        { owner: 'Lena Fischer', account: 'Woodgrove Bank',    plan: 'Enterprise', state: 'Active',   arr: 738050, health: 89, usage: [55, 57, 61, 60, 66, 71] },
+        { owner: 'Rajan Iyer',   account: 'Coho Vineyard',     plan: 'Starter',    state: 'Overdue',  arr: 27300,  health: 34, usage: [11, 10, 8, 7, 5, 5] },
+      ];
+
+      const presentation = document.getElementById('presentation');
+      presentation.columns = [
+        { key: 'owner',   headerText: '',          type: 'avatar', width: '52px' },
+        { key: 'account', headerText: 'Account' },
+        // A literal variant colours every cell the same; a callback picks per value.
+        { key: 'plan',    headerText: 'Plan',      type: 'badge',
+          badgeVariant: (value) =>
+            value === 'Enterprise' ? 'gold' : value === 'Pro' ? 'brand' : 'muted' },
+        // No statusVariant here: the variant is inferred from the value text, so
+        // "Active" reads active, "Pending"/"Trialing" read trial, and
+        // "Overdue"/"Cancelled" read churn.
+        { key: 'state',   headerText: 'Status',    type: 'status' },
+        { key: 'arr',     headerText: 'ARR',       type: 'currency', currency: 'USD' },
+        // max defaults to 100, so these values are already percentages.
+        { key: 'health',  headerText: 'Health',    type: 'progress' },
+        { key: 'usage',   headerText: 'Usage',     type: 'sparkline', showDelta: true },
+      ];
+      presentation.data = accounts;
     </script>
   </body>
 </html>
