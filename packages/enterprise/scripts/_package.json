@@ -34,8 +34,8 @@
     "node": ">=20"
   },
   "dependencies": {
-    "apex-commons": "^0.4.0",
-    "apex-grid": "^3.4.0"
+    "apex-commons": "^0.7.0",
+    "apex-grid": "^3.5.0"
   },
   "peerDependencies": {
     "@lit/context": "~1.1.5",

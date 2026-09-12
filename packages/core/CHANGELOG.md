@@ -4,6 +4,107 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.5.0] - 2026-09-12
+
+A feature and accessibility release. No exported symbol was removed or renamed.
+Two consumer-visible changes are listed under Changed and Removed: the Ignite UI
+dependencies are gone, and `setup({ theme })` is now inert.
+
+### Added
+- **Right-to-left support.** `dir="rtl"` on the grid or any ancestor mirrors it
+  completely. Direction is read from the computed style rather than the `dir`
+  attribute, so an inherited direction works. The stylesheets were already
+  written in logical properties; what changed is the code that reasoned in
+  physical pixels or physical key names: ArrowLeft / ArrowRight map onto
+  previous / next column by inline order, column resize takes width off the
+  inline-start edge, and column reorder flips its midpoint comparison. (The
+  enterprise range and chart-range handles had a matching fix; see that
+  package's 0.7.0 entry.)
+- **`grid.applyEdits(edits)`**, a programmatic batch write. Previously the only
+  write path was `editCell` + `commitEdit`, which drives the editor, so a bulk
+  write meant a thousand undo entries and a thousand re-renders. Each write still
+  emits cancellable `cellValueChanging` then `cellValueChanged` and still runs
+  the column's validators, while the batch lands as one undo step and one
+  pipeline run. It returns a tally rather than a count, splitting `applied` from
+  `unchanged`, `invalid`, `cancelled` and `skipped`, since "nothing changed" and
+  "everything was rejected" are different answers. Out-of-range rows and
+  non-editable columns are skipped rather than thrown on, so a partially stale
+  batch still applies what it can.
+- **Reduced-motion support.** Every transition now routes through one of the
+  `--ag-dur-*` tokens, and those zero under `prefers-reduced-motion: reduce`:
+  24 transitions across 9 stylesheets go instant with their end states
+  unchanged. The JS-driven row reorder and expansion animations already bailed
+  out.
+- **Forced-colors support.** Forced colors paints no `box-shadow`, and the grid
+  leaned on inset shadows for exactly the indicators that matter most, so in
+  Windows High Contrast a keyboard user had no visible cursor and no visible
+  selection. The active-cell ring, invalid-cell ring, selected-row bar and every
+  toolbar and filter focus ring are restated as outlines, which forced colors
+  recolours rather than drops and which sit outside layout, so nothing shifts.
+- **The Custom Elements Manifest is now authoritative for `<apex-grid>`.** The
+  element was missing from `custom-elements.json` entirely: no `tagName`, not
+  flagged `customElement`, and zero named events. It now resolves
+  `customElement`, `tagName`, all 29 `ApexGridEventMap` events, the `theme`
+  attribute and the public `@property` fields, and a build-time drift check
+  fails the build when any of them diverge. This is what the new
+  `react-apex-grid` wrapper package generates from, and what editor tooling
+  reads for completions.
+
+### Changed
+- **Target sizes meet WCAG 2.2 AA 2.5.8 (24x24).** The selection cell and the
+  select-all header cell forward clicks to their checkbox rather than growing a
+  deliberately small 14x14 mark. The header sort / filter / menu buttons reach
+  24x24 through the invisible chip that already expanded them, so the visible
+  16px box and the packed header layout are unchanged and nothing paints at
+  rest. **Paginator buttons grow from 22 to 24, which makes the paginator bar
+  2px taller.** The range fill handle stays a 10px grab band, now documented as
+  a criterion-permitted exception rather than a gap: it is reachable through
+  controls that do meet 24x24, and its position at the range corner is
+  essential to what it means.
+- **`setup({ theme })` is inert and warns once.** It only ever forwarded to
+  Ignite UI's `configureTheme()`, which was already documented as not affecting
+  the grid's appearance. It still compiles, so no consumer code breaks; the
+  warning is there because silently dropping the forwarding would leave an
+  Ignite UI host app unthemed with no clue why.
+
+### Removed
+- **The `igniteui-webcomponents` and `igniteui-theming` dependencies.** Core
+  carried the first as a runtime dependency and enterprise as a peer, so every
+  consumer installed a whole component library (plus `@floating-ui`) for one
+  inert pass-through. The grid registers no Ignite UI element.
+  `igniteui-theming` was a Sass dependency for exactly one function, `rem()`,
+  now reimplemented locally with the same conversion, and it emitted 55 Sass
+  deprecation warnings per build. Five packages leave the lockfile, and the
+  compiled CSS is 3,718 bytes smaller with every `rem()` output byte-identical.
+- **The `--igx-*` custom-property level.** Every colour rule resolved through
+  three levels and the first never fired: `--igx-*` is the igniteui-angular
+  naming convention, not the web-components one, so it was dead indirection in
+  front of the two levels that work. `--ag-*` overrides and the unprefixed
+  semantic variables behave exactly as before. The `--ig-primary-*` and
+  `--ig-font-family` hooks stay, since those are what an Ignite UI theme
+  actually sets and reading a variable with a default costs nothing when absent.
+
+### Fixed
+- **A grid could settle with zero rendered rows at first paint**, silently,
+  while reporting a correct `ariaRowCount` and a correctly sized scroll region
+  ([#31](https://github.com/apexcharts/apex-grid/issues/31)). The virtualizer
+  derives its viewport from the intersection of the body, its clipping ancestors
+  and the window, and clears the rendered range when that intersection is
+  zero-height while still sizing the scroll extent from the full item count. It
+  could not recover, because the only invalidation signals it listens for are
+  size changes and scroll events: a body that moves into view, or a window that
+  resizes around a fixed-size host, fires neither. An iframe sized by its host
+  page after load hits this, as does content above the grid that is still
+  settling. The body now watches its own intersection with the window and
+  re-measures when it gains a visible slice with nothing rendered, bounded to
+  three attempts per geometry change and skipped entirely when there is no
+  visible slice.
+- **A grid moved to another parent left its body permanently stale**, still
+  rendering the old rows after `data` was reassigned. The body awaited
+  virtualizer state before calling `super.connectedCallback()`, which deadlocks
+  on a reconnect: the promise waits on a layout that only runs once the update
+  cycle that call starts.
+
 ## [3.4.0] - 2026-07-17
 
 An accessibility-focused release. The public module API is unchanged (no

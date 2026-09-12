@@ -4,7 +4,59 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.7.0] - 2026-09-12
+
+Built on `apex-grid` 3.5.0. Everything new is opt-in and
+`<apex-grid-enterprise>` stays a drop-in replacement for `<apex-grid>`. The
+headline additions are pivoting v2, an advanced filter builder, a server-side
+row model with real depth, and a live chart range handle.
+
+### Added
+- **Pivoting v2.** Opt-in grand total and subtotals (`pivotOptions`), spanning
+  column headers built on core column groups, multi-field `pivotOn`
+  (`string | string[]`), and expandable nested row groups
+  (`pivotOptions.expandable`) under one auto group column with indent and
+  chevrons, where each parent carries its subtree aggregate. Column width and
+  pin state carry across a re-pivot. `getPivotColumnGroups()`,
+  `getPivotMeta()` and `PIVOT_GROUP_KEY` are exposed, and the surface is
+  localized (en, es).
+- **Advanced filter builder.** A nested AND / OR visual query builder as
+  `<apex-grid-filter-builder>`, backed by a pure, DOM-free model and evaluator
+  that reuses the existing operand tables. `applyAdvancedFilter()`,
+  `clearAdvancedFilter()` and `advancedFilterModel` evaluate client-side through
+  the `dataPipelineConfiguration.filter` hook, so there is no core change;
+  while a model is active it owns column filtering. Localized (en, es).
+- **Server-side row model depth.** A lazy, level-at-a-time row model alongside
+  the flat infinite one: the grid asks a `ServerSideDataSource` for one group
+  level at a time and fetches a group's children on expand, with the server
+  computing the aggregates shown on group rows. Configured through
+  `serverSideRowModel` (datasource, `rowGroupCols`, `valueCols`) with
+  `expandServerGroup` / `collapseServerGroup` / `refreshServerSide` /
+  `isServerSideRowModel`. Server-side pivot via `pivotCols`, where the server
+  returns `pivotResultFields` and the grid installs them as the value columns.
+  Opt-in intra-group block pagination via `blockSize` windows a group's
+  children, rendering unloaded rows as placeholders and fetching blocks as the
+  virtualizer scrolls into them, with `grid.isRowLoading` covering them. Group
+  rows carry `aria-level` and `aria-expanded`. Mutually exclusive with
+  `infiniteRowModel` and with client-side `groupBy` / `pivotOn`, since the
+  server owns shaping. Module count goes from 6 to 7.
+- **In-grid chart range handle.** Charting a selection used to take a snapshot
+  and forget where it came from. The source range now stays outlined in the grid
+  with a bottom-right drag handle, and pulling it resizes the range and live
+  redraws the linked chart. The outline is drawn on `document.body`, like the
+  chart affordance and dialogs, so the grid never clips it, and it is torn down
+  when the chart closes or the grid disconnects.
+- **`grid.totalRow`**, a grand-total row over the whole view. Row grouping
+  totals a group's leaves and pivot has its own grand total, but a flat or
+  grouped grid had no way to answer "what is the sum of this column".
+  Configured with the same `AggregationConfig` as everything else, positionable
+  top or bottom, and it follows filtering, so a filtered grid totals what it
+  shows. Group-header rows are excluded.
+- **Shift+Arrow range extension.** Range selection was pointer-only. Shift with
+  the arrow keys now grows and shrinks the focus corner, Shift+Home / End reach
+  the row edges, and adding Ctrl/Cmd reaches the grid corners, with the anchor
+  staying put. This was the highest item left on the 2026-07 accessibility
+  audit's backlog.
 
 ### Changed
 - **ApexCharts 7.x support.** The optional `apexcharts` peer dependency now
@@ -22,6 +74,26 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   The `apexcharts` **devDependency** stays on `^5.15.0` deliberately: CI tests
   the floor of the supported range, so the oldest supported major is the one
   continuously exercised.
+- **`apex-grid` dependency raised to `^3.5.0`** and **`apex-commons` to
+  `^0.7.0`**.
+- **The licence watermark is painted by `apex-commons`' `Watermark`** instead of
+  a private copy of the overlay. Same z-index and inset, plus tamper-resistant
+  styling the copy did not have. The documented `license-watermark` CSS part is
+  preserved, stamped onto the shared node.
+- **The Ignite UI peer dependency is gone**, following core dropping it. See the
+  `apex-grid` 3.5.0 entry.
+
+### Fixed
+- **A forged licence key could permanently lift the watermark.** Verification is
+  asynchronous while the watermark decision is synchronous, so a well-formed
+  forgery read as valid, removed the watermark, and was never re-checked once
+  the signature verdict flipped. The grid now subscribes to
+  `LicenseManager.onChange` and re-reconciles, so the watermark returns a
+  microtask later.
+- **In RTL, the range fill handle and the chart-range handle were grabbable on
+  the wrong side.** Both are drawn at the cell's `inset-inline-end` corner, so
+  they already mirrored to the physical left, while the grab band still tested
+  the physical right.
 
 ## [0.6.1] - 2026-07-27
 
