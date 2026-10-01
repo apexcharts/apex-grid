@@ -2,7 +2,7 @@
 
 ApexGrid Enterprise is a commercial product, included in the **Premium** plan and above.
 
-**There is no free tier for ApexGrid Enterprise.** The revenue threshold that makes some Apex products free does not apply to this one: a Premium license is required at any revenue, by companies, individuals, non-profits and educators alike. Without a valid license key ApexGrid Enterprise renders with a trial watermark, which is for evaluation only.
+**There is no free tier for ApexGrid Enterprise.** The $2M threshold that makes some Apex products free does not apply to this one: a Premium license is required whatever your financial resources, by companies, individuals, non-profits and educators alike. Without a valid license key ApexGrid Enterprise renders with a trial watermark, which is for evaluation only.
 
 One license key works across every Apex product, so a customer of one does not buy a second for another.
 
@@ -12,7 +12,7 @@ One license key works across every Apex product, so a customer of one does not b
 
 ApexGrid Enterprise requires a **Premium** license or higher. Plans below Premium do not include it, and neither does the free Community License.
 
-Pro and Premium are priced per developer, and priced on the features you use rather than on your revenue.
+Pro and Premium are priced per developer, and priced on the features you use rather than on your size.
 
 ✅ What's included:
 
@@ -68,7 +68,7 @@ For OEM licenses, continued redistribution requires an active subscription.
 
 By installing ApexGrid Enterprise (e.g., via `npm install apex-grid-enterprise`), you are agreeing to the applicable license based on your usage:
 
-- Commercial License (Premium or higher, at any revenue)
+- Commercial License (Premium or higher, whatever your financial resources)
 - OEM License (if redistributing to third-party users)
 
 ---
