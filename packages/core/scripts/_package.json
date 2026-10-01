@@ -7,7 +7,7 @@
     "web-component",
     "lit-element"
   ],
-  "license": "SEE LICENSE IN LICENSE.md",
+  "license": "SEE LICENSE IN LICENSE",
   "author": "apex-grid",
   "exports": {
     ".": {
