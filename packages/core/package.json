@@ -7,7 +7,7 @@
     "web-component",
     "lit-element"
   ],
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "SEE LICENSE IN LICENSE.md",
   "author": "ApexCharts",
   "exports": {
     ".": {

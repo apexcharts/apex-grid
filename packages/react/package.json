@@ -10,7 +10,7 @@
     "apex-grid",
     "web-component"
   ],
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "SEE LICENSE IN LICENSE.md",
   "author": "ApexCharts",
   "type": "module",
   "main": "./dist/index.js",

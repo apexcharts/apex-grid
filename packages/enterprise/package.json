@@ -9,7 +9,7 @@
     "apex-grid",
     "enterprise"
   ],
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "SEE LICENSE IN LICENSE.md",
   "author": "ApexCharts",
   "exports": {
     ".": "./dist/index.js",

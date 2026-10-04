@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
-const RELEASE_FILES = ['LICENSE', 'README.md', 'CHANGELOG.md'];
+const RELEASE_FILES = ['LICENSE.md', 'README.md', 'CHANGELOG.md'];
 
 const [pkg, template] = await Promise.all([
   readFile(path.join(ROOT, 'package.json'), 'utf-8').then(JSON.parse),

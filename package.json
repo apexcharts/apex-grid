@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Monorepo for apex-grid (community) and @apexcharts/grid-enterprise",
-  "license": "SEE LICENSE IN packages/core/LICENSE",
+  "license": "SEE LICENSE IN packages/core/LICENSE.md",
   "author": "ApexCharts",
   "type": "module",
   "engines": {
