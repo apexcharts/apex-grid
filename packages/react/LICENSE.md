@@ -122,4 +122,4 @@ By installing ApexGrid (e.g., via `npm install react-apex-grid`), you are agreei
 
 Copyright © 2026 ApexCharts. All rights reserved.
 
-Thank you for supporting ApexGrid! Your licensing helps keep it free and open for individuals and small teams.
+Thank you for supporting ApexGrid! Your licensing keeps the Community License available to individuals and small teams.
