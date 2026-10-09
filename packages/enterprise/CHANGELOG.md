@@ -4,6 +4,19 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.7.1] - 2026-10-09
+
+### Changed
+- **ApexCharts 8 installs next to the grid without a peer conflict.** The
+  optional `apexcharts` peer range is now `^5.15.0 || ^6.0.0 || ^7.0.0 || ^8.0.0`.
+  No code change: the integrated charts (bar, line, area, pie, donut) all stay
+  in the ApexCharts 8 default bundle.
+
+### Fixed
+- The licence text no longer describes a free Community tier, which
+  ApexGrid Enterprise does not have: it is licensed from the Premium plan.
+  The file is renamed `LICENSE.md` so GitHub renders it.
+
 ## [0.7.0] - 2026-09-12
 
 Built on `apex-grid` 3.5.0. Everything new is opt-in and
