@@ -635,6 +635,9 @@ export interface ApexGridEventMap<T extends object> {
    * Fires for programmatic changes (including `setState`) as well as user
    * interaction. To avoid a save loop, compare the snapshot to your last-saved
    * one before persisting (identical snapshots never fire a second time).
+   * Attach the listener to the grid element itself: the snapshot is computed
+   * only for listeners registered on the grid, so a listener on an ancestor
+   * (event delegation) receives nothing while none is attached to the grid.
    *
    * @event
    */
@@ -1690,10 +1693,13 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   #autoAriaLabel: string | null = null;
 
   /**
-   * Listener count for `stateChanged`, so the (potentially non-trivial) snapshot
-   * is only computed while something is actually listening.
+   * The `stateChanged` listeners registered on the grid, keyed by listener and
+   * capture flag the way the DOM dedupes them, so the (potentially
+   * non-trivial) snapshot is only computed while something is listening. A
+   * `once` listener or one with an aborted `signal` leaves the set when the
+   * DOM drops it.
    */
-  #stateChangedListeners = 0;
+  #stateChangedListeners = new Map<EventListenerOrEventListenerObject, Map<boolean, object>>();
   /** Serialized last-emitted state, to fire `stateChanged` only on real changes. */
   #lastStateJson: string | null = null;
 
@@ -1710,11 +1716,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     listener: EventListenerOrEventListenerObject,
     options?: boolean | AddEventListenerOptions
   ): void {
-    if (type === 'stateChanged') {
-      this.#stateChangedListeners += 1;
-      // Baseline at subscription time so the next real change is the first emit.
-      this.#lastStateJson = this.hasUpdated ? JSON.stringify(this.getState()) : null;
-    }
+    if (type === 'stateChanged' && listener) this.#trackStateChangedListener(listener, options);
     (
       super.addEventListener as (
         t: string,
@@ -1722,6 +1724,52 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
         o?: boolean | AddEventListenerOptions
       ) => void
     )(type, listener, options);
+  }
+
+  #trackStateChangedListener(
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions
+  ): void {
+    const capture = typeof options === 'boolean' ? options : Boolean(options?.capture);
+    const captures = this.#stateChangedListeners.get(listener) ?? new Map<boolean, object>();
+    // The DOM ignores a duplicate (listener, capture) and an already aborted
+    // signal, so neither is tracked.
+    if (!captures.has(capture) && !(options as AddEventListenerOptions)?.signal?.aborted) {
+      if (!this.#stateChangedListeners.size) {
+        // Baseline when the first listener arrives so its first emit is the
+        // next real change; later subscribers share it (no re-baseline).
+        this.#lastStateJson = this.hasUpdated ? JSON.stringify(this.getState()) : null;
+      }
+      // A token per registration, so a hook left over from an earlier one
+      // cannot untrack the same listener after it is added again.
+      const token = {};
+      captures.set(capture, token);
+      this.#stateChangedListeners.set(listener, captures);
+      const forget = () => this.#forgetStateChangedListener(listener, capture, token);
+      if (typeof options === 'object') {
+        // Registered before the caller's listener, so it fires first, when
+        // the DOM has already dropped that listener; one that subscribes
+        // itself again from its callback is then tracked anew.
+        if (options.once) {
+          HTMLElement.prototype.addEventListener.call(this, 'stateChanged', forget, {
+            capture,
+            once: true,
+          });
+        }
+        options.signal?.addEventListener('abort', forget, { once: true });
+      }
+    }
+  }
+
+  #forgetStateChangedListener(
+    listener: EventListenerOrEventListenerObject,
+    capture: boolean,
+    token?: object
+  ) {
+    const captures = this.#stateChangedListeners.get(listener);
+    if (!captures || (token && captures.get(capture) !== token)) return;
+    captures.delete(capture);
+    if (!captures.size) this.#stateChangedListeners.delete(listener);
   }
 
   public override removeEventListener<
@@ -1737,8 +1785,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     listener: EventListenerOrEventListenerObject,
     options?: boolean | EventListenerOptions
   ): void {
-    if (type === 'stateChanged') {
-      this.#stateChangedListeners = Math.max(0, this.#stateChangedListeners - 1);
+    if (type === 'stateChanged' && listener) {
+      const capture = typeof options === 'boolean' ? options : Boolean(options?.capture);
+      this.#forgetStateChangedListener(listener, capture);
     }
     (
       super.removeEventListener as (
@@ -1755,11 +1804,15 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * from `updated()`, so the snapshot reflects the settled post-pipeline view.
    */
   #emitStateChangedIfNeeded(): void {
-    if (this.#stateChangedListeners === 0) return;
+    if (!this.#stateChangedListeners.size) return;
     const snapshot = this.getState();
     const json = JSON.stringify(snapshot);
     if (json === this.#lastStateJson) return;
+    const baseline = this.#lastStateJson;
     this.#lastStateJson = json;
+    // No baseline yet (subscribed before the first render): the first settled
+    // state is the initial one, not a change, so record it without emitting.
+    if (baseline === null) return;
     this.emitEvent('stateChanged', { detail: { state: snapshot } });
   }
 
