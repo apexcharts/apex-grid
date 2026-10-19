@@ -177,6 +177,50 @@ class SortableFixture extends GridTestFixture<TestData> {
   }
 }
 
+function headerEl(f: SortableFixture, key: keyof TestData) {
+  return f.headerRow.headers.find(({ column }) => column.key === key)!;
+}
+
+async function menuSort(f: SortableFixture, key: keyof TestData, index: 0 | 1) {
+  const h = headerEl(f, key);
+  (h.shadowRoot!.querySelector('[part~="menu-btn"]') as HTMLElement).click();
+  await h.updateComplete;
+  const items = h.shadowRoot!.querySelectorAll('[part="col-menu-item"]');
+  (items[index] as HTMLElement).click();
+  await f.waitForUpdate();
+}
+
+describe('Sort: column menu matches a header click (core-header-2)', () => {
+  let f: SortableFixture;
+  beforeEach(async () => {
+    f = new SortableFixture(data);
+    await f.setUp();
+  });
+  afterEach(() => f.tearDown());
+
+  it('replaces the existing sort', async () => {
+    await f.sortHeader('name');
+    await menuSort(f, 'importance', 1);
+    expect(f.grid.sortExpressions.map((e) => [e.key, e.direction])).to.eql([
+      ['importance', 'descending'],
+    ]);
+  });
+
+  it('fires sorting and sorted', async () => {
+    const events: string[] = [];
+    f.grid.addEventListener('sorting', () => events.push('sorting'));
+    f.grid.addEventListener('sorted', () => events.push('sorted'));
+    await menuSort(f, 'importance', 0);
+    expect(events).to.eql(['sorting', 'sorted']);
+  });
+
+  it('is cancelled by preventDefault on sorting', async () => {
+    f.grid.addEventListener('sorting', (e) => e.preventDefault());
+    await menuSort(f, 'importance', 0);
+    expect(f.grid.sortExpressions.length).to.equal(0);
+  });
+});
+
 describe('Sort: header click state (core-sort-filter-controllers-3, -4)', () => {
   let f: SortableFixture;
   beforeEach(async () => {

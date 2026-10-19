@@ -455,7 +455,7 @@ export default class ApexGridHeader<T extends object> extends LitElement {
               role="menuitem"
               tabindex="-1"
               @click=${() => {
-                this.state.sorting.sort({ key: this.column.key, direction: 'ascending' } as any);
+                this.state.sorting.sortFromUI(this.column, { direction: 'ascending' });
                 this.menuOpen = false;
               }}
             >
@@ -467,7 +467,7 @@ export default class ApexGridHeader<T extends object> extends LitElement {
               role="menuitem"
               tabindex="-1"
               @click=${() => {
-                this.state.sorting.sort({ key: this.column.key, direction: 'descending' } as any);
+                this.state.sorting.sortFromUI(this.column, { direction: 'descending' });
                 this.menuOpen = false;
               }}
             >

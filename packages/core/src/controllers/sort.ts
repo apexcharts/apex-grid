@@ -79,8 +79,21 @@ export class SortController<T extends object> implements ReactiveController {
       : this.state.set(expression.key, { ...expression });
   }
 
-  public async sortFromHeaderClick(column: ColumnConfiguration<T>, additive = false) {
-    const expression = this.prepareExpression(column);
+  public sortFromHeaderClick(column: ColumnConfiguration<T>, additive = false) {
+    return this.sortFromUI(column, { additive });
+  }
+
+  /**
+   * The one path for a sort the user starts from the UI (header click, column
+   * menu): fires the cancelable `sorting` event, replaces the sort unless the
+   * gesture is additive in multi-sort mode, announces, then fires `sorted`.
+   * Without a `direction` the column steps to its next direction.
+   */
+  public async sortFromUI(
+    column: ColumnConfiguration<T>,
+    { direction, additive = false }: { direction?: SortingDirection; additive?: boolean } = {}
+  ) {
+    const expression = this.prepareExpression(column, direction);
 
     if (!this.#emitSortingEvent(expression)) {
       return;
@@ -152,12 +165,15 @@ export class SortController<T extends object> implements ReactiveController {
    * The expression a UI sort would apply. Always a fresh object: the stored
    * entry is only replaced once the `sorting` event is not cancelled.
    */
-  public prepareExpression({ key, sort: options }: ColumnConfiguration<T>): SortExpression<T> {
+  public prepareExpression(
+    { key, sort: options }: ColumnConfiguration<T>,
+    direction?: SortingDirection
+  ): SortExpression<T> {
     const expr = this.state.get(key);
 
     return {
       ...(expr ?? this.#createDefaultExpression(key)),
-      direction: this.#orderBy(expr?.direction),
+      direction: direction ?? this.#orderBy(expr?.direction),
       ...this.#resolveSortOptions(options),
     } as SortExpression<T>;
   }
