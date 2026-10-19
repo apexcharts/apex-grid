@@ -302,7 +302,8 @@ export function isCellInteractionHandler<T extends object>(
  * / {@link StateController.restoreModuleState}, driven by `ApexGrid.getState` /
  * `ApexGrid.setState`). The grid collects each implementer's
  * {@link serializeState} output under the module's id and dispatches the
- * matching value back via {@link restoreState} on restore.
+ * matching value back via {@link restoreState} on restore. Ids with no
+ * implementer are reported back by {@link StateController.restoreModuleState}.
  *
  * Controllers that don't implement this are skipped, so the community grid
  * (which registers no modules) contributes nothing to a snapshot.
@@ -312,7 +313,7 @@ export function isCellInteractionHandler<T extends object>(
 export interface SerializableModule {
   /**
    * Return a JSON-serializable snapshot of this module's restorable state
-   * (e.g. grouping's `groupBy` + aggregations). Exclude transient/derived
+   * (e.g. the options the feature was configured with). Exclude transient/derived
    * state and anything not JSON-safe (functions, DOM nodes).
    */
   serializeState(): unknown;

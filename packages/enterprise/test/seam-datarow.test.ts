@@ -244,6 +244,15 @@ describe('seam: data-row predicate and transform order', () => {
     });
   });
 
+  describe('module state restore', () => {
+    it('reports the module ids no registered module consumed', async () => {
+      const grid = await mountGrouped(false);
+      const ignored = stateOf(grid).restoreModuleState({ enterprise: {}, nope: 1 });
+      expect(ignored).to.eql(['enterprise', 'nope']);
+      expect(stateOf(grid).restoreModuleState(undefined)).to.eql([]);
+    });
+  });
+
   describe('community grid', () => {
     it('treats every row as a data row and returns the view unchanged', async () => {
       const data = rows();

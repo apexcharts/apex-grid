@@ -366,16 +366,19 @@ export class StateController<T extends object> implements ReactiveController {
 
   /**
    * Dispatches previously-serialized state back to the matching feature modules
-   * (by id) that implement {@link SerializableModule}. Missing ids and unknown
-   * modules are ignored. Used by `ApexGrid.setState`.
+   * (by id) that implement {@link SerializableModule}, in registration order.
+   * Returns the ids in `data` that no registered module consumed, so the caller
+   * can report them instead of counting them as applied. Used by
+   * `ApexGrid.setState`.
    */
-  public restoreModuleState(data: Record<string, unknown> | undefined): void {
-    if (!data) return;
+  public restoreModuleState(data: Record<string, unknown> | undefined): string[] {
+    if (!data) return [];
     for (const [id, controller] of this.modules) {
       if (isSerializableModule(controller) && Object.hasOwn(data, id)) {
         controller.restoreState(data[id]);
       }
     }
+    return Object.keys(data).filter((id) => !isSerializableModule(this.modules.get(id)));
   }
 
   public hostConnected() {}
