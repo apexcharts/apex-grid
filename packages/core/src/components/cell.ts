@@ -4,8 +4,9 @@ import { property, query } from 'lit/decorators.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
 import { getColumnTypeRenderer } from '../internal/column-types.js';
 import { registerComponent } from '../internal/register.js';
-import { GRID_CELL_TAG } from '../internal/tags.js';
+import { GRID_CELL_TAG, GRID_ROW_TAG } from '../internal/tags.js';
 import type {
+  ActiveNode,
   ApexCellContext,
   ApexEditorContext,
   ColumnConfiguration,
@@ -28,6 +29,84 @@ function isErrorLike(value: unknown): value is { code: string } {
     typeof (value as { code?: unknown }).code === 'string' &&
     (value as { code: string }).code.startsWith('#')
   );
+}
+
+/** The body rows rendered under `body` (the rows' shared parent). */
+function renderedRows<T extends object>(body: Element | null): ApexGridRow<T>[] {
+  if (!body) return [];
+  return Array.from(body.children).filter(
+    (element) => element.localName === GRID_ROW_TAG
+  ) as unknown as ApexGridRow<T>[];
+}
+
+/**
+ * The cell Tab moves to from column `key` of view row `from`: the neighbouring
+ * column (`keys`) of that row or, past the row edge, the first (or last) column
+ * of the nearest row in that direction that renders cells, skipping full-width
+ * rows. `null` at the edge of the grid's `count` view rows.
+ */
+function tabTarget<T extends object>(
+  count: number,
+  from: number,
+  keys: ColumnConfiguration<T>['key'][],
+  key: ColumnConfiguration<T>['key'],
+  step: 1 | -1,
+  isFullWidth: (index: number) => boolean
+): ActiveNode<T> | null {
+  const column = keys[keys.indexOf(key) + step];
+  if (column !== undefined) return { row: from, column };
+  const wrapColumn = keys[step > 0 ? 0 : keys.length - 1];
+  for (let index = from + step; index >= 0 && index < count; index += step) {
+    if (!isFullWidth(index)) return { row: index, column: wrapColumn };
+  }
+  return null;
+}
+
+/**
+ * The view row nearest `start` (clamped to the `count` rows) that renders
+ * cells, looking in the `step` direction first. `-1` when none does.
+ */
+function nearestCellRow(
+  count: number,
+  start: number,
+  step: 1 | -1,
+  isFullWidth: (index: number) => boolean
+): number {
+  const origin = Math.min(Math.max(start, 0), count - 1);
+  for (let distance = 0; distance < count; distance++) {
+    for (const index of [origin + distance * step, origin - distance * step]) {
+      if (index >= 0 && index < count && !isFullWidth(index)) return index;
+    }
+  }
+  return -1;
+}
+
+/** The rendered cell for `node` under `body`, if its row is rendered. */
+function findRenderedCell<T extends object>(body: Element | null, node: ActiveNode<T>) {
+  return renderedRows<T>(body)
+    .find((row) => row.index === node.row)
+    ?.cells.find((cell) => cell.column.key === node.column);
+}
+
+/**
+ * Scrolls `scroller` (the grid host, which owns the body's scrolling) so view
+ * row `index`, outside the rows rendered under `body`, lands about mid-view,
+ * placing it from the rendered rows' positions and average height. The
+ * virtualizer then renders it on the scroll and the landed cell is aligned
+ * exactly. (The virtualizer's own `element(index).scrollIntoView()` pin does
+ * not work with the grid host as the scroller: it jumps to the end of the
+ * range and renders no rows.)
+ */
+function scrollRowIntoRange(scroller: HTMLElement, body: Element | null, index: number) {
+  const rows = renderedRows(body).sort((a, b) => a.index - b.index);
+  const first = rows.at(0);
+  const last = rows.at(-1);
+  if (!first || !last) return;
+  const top = first.getBoundingClientRect().top;
+  const height = (last.getBoundingClientRect().bottom - top) / (last.index - first.index + 1);
+  const view = scroller.getBoundingClientRect();
+  const rowCentre = top + (index - first.index + 0.5) * height;
+  scroller.scrollTop += rowCentre - (view.top + scroller.clientHeight / 2);
 }
 
 /**
@@ -343,6 +422,98 @@ export default class ApexGridCell<T extends object> extends LitElement {
     this.editingController.cancelCell();
   };
 
+  /**
+   * Tab while editing: commits the draft and, once the commit is accepted,
+   * moves the active cell and focus to the next cell (Shift+Tab: the previous
+   * one), wrapping across rows, and scrolls it into view. The landed cell
+   * stays closed (Enter or F2 opens it); a rejected commit keeps the editor
+   * open. With no cell to land on (grid edge, only full-width rows such as
+   * group headers beyond), focus stays on the edited record's cell.
+   *
+   * The target is resolved after the commit settles, from the edited record's
+   * position in {@link ApexGrid.pageItems}: a commit can re-sort or regroup
+   * the rows (the edited value is a sort or group key), so the record may now
+   * sit at another index, outside the rows the virtualizer renders; the target
+   * row is scrolled into view before it is focused. When the commit removed
+   * the record from the view (filtered out, moved into a collapsed group, or
+   * replaced by a listener writing a new object), focus stays in the grid on
+   * the cell nearest the edited position.
+   */
+  #commitAndTab(event: KeyboardEvent): void {
+    event.preventDefault();
+    const step = event.shiftKey ? -1 : 1;
+    const host = this.state.host;
+    const body = this.row.parentElement as
+      | (HTMLElement & { updateComplete?: Promise<unknown> })
+      | null;
+    const record = this.row.data;
+    const origin = this.row.index;
+    const key = this.column.key;
+    const columns = this.row.columns;
+    const keys = this.row.cells.map((cell) => cell.column.key);
+    // The grid, then the rows' container (the virtualizer re-renders its rows
+    // in its own update), then the rows themselves (a row that now holds a
+    // full-width record drops its cells in its own update).
+    const settle = async () => {
+      await host.updateComplete;
+      await body?.updateComplete;
+      await Promise.all(renderedRows<T>(body).map((row) => row.updateComplete));
+    };
+    void this.#commit().then(async (committed) => {
+      if (!committed) return;
+      await settle();
+      const items = host.pageItems;
+      const isFullWidth = (index: number) =>
+        items[index] == null ||
+        this.state.presentRow(items[index], { columns, rowIndex: index }) !== null;
+      const from = items.indexOf(record);
+      let target: ActiveNode<T> | null;
+      if (from >= 0) {
+        target = tabTarget(items.length, from, keys, key, step, isFullWidth) ?? {
+          row: from,
+          column: key,
+        };
+      } else {
+        const row = nearestCellRow(items.length, origin, step, isFullWidth);
+        target = row < 0 ? null : { row, column: key };
+      }
+      if (!target) {
+        body?.focus({ preventScroll: true });
+        return;
+      }
+      this.state.active = target;
+      await settle();
+      let cell = findRenderedCell(body, target);
+      // The target row is outside the rendered range: scroll towards it and
+      // let the virtualizer render (two frames), re-aiming from the newly
+      // rendered rows when the estimate fell short.
+      for (let attempt = 0; !cell && attempt < 3; attempt++) {
+        scrollRowIntoRange(host as unknown as HTMLElement, body, target.row);
+        await new Promise(requestAnimationFrame);
+        await new Promise(requestAnimationFrame);
+        await settle();
+        cell = findRenderedCell(body, target);
+      }
+      if (!cell) {
+        body?.focus({ preventScroll: true });
+        return;
+      }
+      cell.focus({ preventScroll: true });
+      cell.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      // The virtualizer's own layout pass, a frame or two later, can move or
+      // re-create the landed row (an items change from the commit, such as a
+      // quick filter dropping the record), which drops focus to the document.
+      // Land again while the active cell is still the target.
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      const active = this.state.active;
+      const dropped = !document.activeElement || document.activeElement === document.body;
+      if (dropped && active.row === target.row && active.column === target.column) {
+        findRenderedCell(body, target)?.focus({ preventScroll: true });
+      }
+    });
+  }
+
   #handleKeydown = (event: KeyboardEvent) => {
     event.stopPropagation();
     switch (event.key) {
@@ -357,11 +528,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
         this.#cancel();
         return;
       case 'Tab':
-        // Commit first; navigation moves to the next/prev cell. Editing of the
-        // landed cell stays manual (Enter to re-edit) for predictability.
-        event.preventDefault();
-        this.#refocusAfterEdit = true;
-        this.#commit();
+        this.#commitAndTab(event);
         return;
       default:
         return;
@@ -373,7 +540,8 @@ export default class ApexGridCell<T extends object> extends LitElement {
    * editors (the default editor stops propagation on its own input).
    *
    * - Escape always cancels the edit.
-   * - Tab commits the draft (or just closes when nothing was typed).
+   * - Tab commits the draft (or just closes when nothing was typed) and
+   *   moves to the next cell.
    *
    * Per-editor `keydown` handlers that need to consume Enter (e.g. the
    * built-in `<select>` editor) still get the first crack — they call
@@ -387,11 +555,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
       this.#cancel();
       return;
     }
-    if (event.key === 'Tab') {
-      event.preventDefault();
-      this.#refocusAfterEdit = true;
-      this.#commit();
-    }
+    if (event.key === 'Tab') this.#commitAndTab(event);
   };
 
   /**

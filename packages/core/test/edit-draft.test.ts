@@ -1,6 +1,7 @@
 import { expect, html } from '@open-wc/testing';
 import { sendKeys, sendMouse } from '@web/test-runner-commands';
 import type ApexGridCell from '../src/components/cell.js';
+import type { StateController } from '../src/controllers/state.js';
 import type { ColumnConfiguration, GridEditingConfiguration } from '../src/internal/types.js';
 import { required } from '../src/internal/validators.js';
 import GridTestFixture from './utils/grid-fixture.js';
@@ -265,6 +266,134 @@ describe('Editing draft', () => {
     });
   });
 
+  describe('Tab (core-cell-6)', () => {
+    it('commits and moves to the next cell', async () => {
+      await F.open(0, 'name');
+      await sendKeys({ press: 'Backspace' });
+      await sendKeys({ type: 'X' });
+      await sendKeys({ press: 'Tab' });
+      await F.waitForUpdate();
+      expect(F.grid.data[0].name).to.equal('X');
+      expect(F.grid.editingCell).to.be.null;
+      expect(F.deepActive()).to.equal(F.cell(0, 'qty'));
+    });
+
+    it('Shift+Tab commits and moves to the previous cell', async () => {
+      await F.open(0, 'qty');
+      await sendKeys({ press: 'Shift+Tab' });
+      await F.waitForUpdate();
+      expect(F.deepActive()).to.equal(F.cell(0, 'name'));
+    });
+
+    it('wraps to the first cell of the next row from the last column', async () => {
+      await F.grid.editCell(0, 'note');
+      await F.waitForUpdate();
+      F.cell(0, 'note').shadowRoot!.querySelector<HTMLButtonElement>('[data-clear]')!.focus();
+      await sendKeys({ press: 'Tab' });
+      await F.waitForUpdate();
+      expect(F.grid.editingCell).to.be.null;
+      expect(F.deepActive()).to.equal(F.cell(1, 'id'));
+    });
+
+    it('stays on the cell when the commit fails', async () => {
+      await F.open(0, 'name');
+      await sendKeys({ press: 'Backspace' });
+      await sendKeys({ press: 'Tab' });
+      await F.waitForUpdate();
+      expect(F.grid.editingCell).to.deep.equal({ rowIndex: 0, columnKey: 'name' });
+      expect(F.deepActive()).to.equal(F.input(0, 'name'));
+    });
+
+    it('stays on the cell from the last column of the last row', async () => {
+      await F.grid.editCell(2, 'note');
+      await F.waitForUpdate();
+      F.cell(2, 'note').shadowRoot!.querySelector<HTMLButtonElement>('[data-clear]')!.focus();
+      await sendKeys({ press: 'Tab' });
+      await F.waitForUpdate();
+      expect(F.grid.editingCell).to.be.null;
+      expect(F.deepActive()).to.equal(F.cell(2, 'note'));
+    });
+
+    it('skips a full-width row when wrapping', async () => {
+      const header = F.grid.data[1];
+      const state = (F.grid as unknown as { stateController: StateController<Row> })
+        .stateController;
+      state.presentRow = (row) => (row === header ? { content: html`<span>Group</span>` } : null);
+      for (const row of F.grid.rows) row.requestUpdate();
+      await F.waitForUpdate();
+      await F.grid.editCell(0, 'note');
+      await F.waitForUpdate();
+      F.cell(0, 'note').shadowRoot!.querySelector<HTMLButtonElement>('[data-clear]')!.focus();
+      await sendKeys({ press: 'Tab' });
+      await F.waitForUpdate();
+      expect(F.deepActive()).to.equal(F.cell(2, 'id'));
+    });
+
+    it('keeps focus on the cell when no row below renders cells', async () => {
+      const state = (F.grid as unknown as { stateController: StateController<Row> })
+        .stateController;
+      const rest = new Set(F.grid.data.slice(1));
+      state.presentRow = (row) => (rest.has(row) ? { content: html`<span>Group</span>` } : null);
+      for (const row of F.grid.rows) row.requestUpdate();
+      await F.waitForUpdate();
+      await F.grid.editCell(0, 'note');
+      await F.waitForUpdate();
+      F.cell(0, 'note').shadowRoot!.querySelector<HTMLButtonElement>('[data-clear]')!.focus();
+      await sendKeys({ press: 'Tab' });
+      await F.waitForUpdate();
+      expect(F.grid.editingCell).to.be.null;
+      expect(F.deepActive()).to.equal(F.cell(0, 'note'));
+    });
+
+    it('moves from the edited record when the commit re-sorts the rows', async () => {
+      await F.sort({ key: 'name', direction: 'ascending' });
+      const edited = F.grid.data[0];
+      await F.open(0, 'name');
+      await sendKeys({ type: 'Z' });
+      await sendKeys({ press: 'Tab' });
+      await F.waitForUpdate();
+      expect(edited.name).to.equal('Z');
+      expect(F.grid.pageItems.indexOf(edited)).to.equal(2);
+      expect(F.deepActive()).to.equal(F.cell(2, 'qty'));
+    });
+
+    it('lands on a cell when the commit moves full-width rows to the old index', async () => {
+      await F.sort({ key: 'name', direction: 'ascending' });
+      const state = (F.grid as unknown as { stateController: StateController<Row> })
+        .stateController;
+      const rest = new Set(F.grid.data.slice(1));
+      state.presentRow = (row) => (rest.has(row) ? { content: html`<span>Group</span>` } : null);
+      for (const row of F.grid.rows) row.requestUpdate();
+      await F.waitForUpdate();
+      await F.open(0, 'name');
+      await sendKeys({ type: 'Z' });
+      await sendKeys({ press: 'Tab' });
+      await F.waitForUpdate();
+      expect(F.deepActive()).to.equal(F.cell(2, 'qty'));
+      expect(state.active).to.deep.equal({ row: 2, column: 'qty' });
+    });
+
+    it('scrolls the cell it lands on into view', async () => {
+      F.grid.style.width = '400px';
+      F.grid.columns = F.grid.columns.map((column) => ({ ...column, width: '200px' }));
+      await F.waitForUpdate();
+      await F.open(0, 'qty');
+      await sendKeys({ press: 'Tab' });
+      await F.waitForUpdate();
+      await sendKeys({ press: 'Enter' });
+      await F.waitForUpdate();
+      F.input(0, 'price')!.focus();
+      await sendKeys({ press: 'Tab' });
+      await F.waitForUpdate();
+      const landed = F.cell(0, 'joinedAt');
+      expect(F.deepActive()).to.equal(landed);
+      const box = F.grid.getBoundingClientRect();
+      const rect = landed.getBoundingClientRect();
+      expect(rect.left, 'left edge visible').to.be.at.least(box.left - 1);
+      expect(rect.right, 'right edge visible').to.be.at.most(box.right + 1);
+    });
+  });
+
   describe('typed editors (core-column-types-1, -3, -4)', () => {
     it('date: one ArrowUp does not commit or close the editor', async () => {
       const changed: unknown[] = [];
@@ -377,5 +506,139 @@ describe('Editing draft', () => {
       expect(F.grid.data[0].active).to.be.false;
       expect(F.input(0, 'active')!.checked).to.be.false;
     });
+  });
+});
+
+// Tab after a commit that moves the edited record past the rows the
+// virtualizer renders, or replaces it: focus must stay inside the grid.
+
+interface LongRow {
+  id: number;
+  name: string;
+  qty: number;
+  joinedAt: string;
+}
+
+const LONG: LongRow[] = Array.from({ length: 200 }, (_, i) => ({
+  id: i,
+  name: `A${i}`,
+  qty: i,
+  joinedAt: '2025-01-15',
+}));
+
+class LongFixture extends GridTestFixture<LongRow> {
+  public override updateConfig() {
+    this.columnConfig = [
+      { key: 'id', type: 'number' },
+      { key: 'name', editable: true, validators: [required()] },
+      { key: 'qty', type: 'number', editable: true },
+      { key: 'joinedAt', type: 'date', editable: true },
+    ] as ColumnConfiguration<LongRow>[];
+  }
+
+  public override async setUp() {
+    this.data = LONG.map((row) => ({ ...row }));
+    await super.setUp();
+  }
+
+  public override setupParentNode() {
+    const parent = document.createElement('div');
+    Object.assign(parent.style, { height: '400px', width: '600px' });
+    return parent;
+  }
+
+  public override setupTemplate() {
+    return html`<apex-grid
+      .data=${this.data}
+      .columns=${this.columnConfig}
+      .editing=${{ enabled: true, mode: 'cell', trigger: 'doubleClick' }}
+    ></apex-grid>`;
+  }
+
+  public get state() {
+    return (this.grid as unknown as { stateController: StateController<LongRow> }).stateController;
+  }
+
+  /** The rendered cell at a view row index, if its row is rendered. */
+  public cellAt(rowIndex: number, key: keyof LongRow): ApexGridCell<LongRow> | undefined {
+    return this.grid.rows
+      .find((row) => row.index === rowIndex)
+      ?.cells.find((cell) => cell.column.key === key) as ApexGridCell<LongRow> | undefined;
+  }
+
+  public async open(rowIndex: number, key: keyof LongRow) {
+    await this.grid.editCell(rowIndex, key);
+    await this.waitForUpdate();
+    this.cellAt(rowIndex, key)!.shadowRoot!.querySelector<HTMLInputElement>('input')!.focus();
+  }
+
+  public async tab(shift = false) {
+    await sendKeys({ press: shift ? 'Shift+Tab' : 'Tab' });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await this.waitForUpdate();
+  }
+
+  public deepActive(): Element | null {
+    let el: Element | null = document.activeElement;
+    while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+    return el;
+  }
+}
+
+const L = new LongFixture(LONG);
+
+describe('Tab past the rendered rows', () => {
+  beforeEach(async () => await L.setUp());
+  afterEach(() => L.tearDown());
+
+  it('follows the edited record when the commit sorts it past the rendered rows', async () => {
+    await L.sort({ key: 'name', direction: 'ascending' });
+    const edited = L.grid.pageItems[0];
+    await L.open(0, 'name');
+    await sendKeys({ type: 'ZZZ' });
+    await L.tab();
+    expect(edited.name).to.equal('ZZZ');
+    expect(L.grid.pageItems.indexOf(edited)).to.equal(199);
+    expect(L.state.active).to.deep.equal({ row: 199, column: 'qty' });
+    expect(L.deepActive()).to.equal(L.cellAt(199, 'qty'));
+  });
+
+  it('follows the edited record on Shift+Tab past the rendered rows', async () => {
+    await L.sort({ key: 'name', direction: 'ascending' });
+    const edited = L.grid.pageItems[3];
+    await L.open(3, 'name');
+    await sendKeys({ type: 'ZZZ' });
+    await L.tab(true);
+    expect(L.grid.pageItems.indexOf(edited)).to.equal(199);
+    expect(L.state.active).to.deep.equal({ row: 199, column: 'id' });
+    expect(L.deepActive()).to.equal(L.cellAt(199, 'id'));
+  });
+
+  it('keeps focus in the grid when a listener replaces the edited record', async () => {
+    L.grid.addEventListener('cellValueChanged', (event) => {
+      const { data, key, value } = event.detail;
+      L.grid.data = L.grid.data.map((row) => (row === data ? { ...row, [key]: value } : row));
+    });
+    await L.open(1, 'name');
+    await sendKeys({ type: 'Z' });
+    await L.tab();
+    expect(L.grid.data[1].name).to.equal('Z');
+    expect(L.state.active).to.deep.equal({ row: 1, column: 'name' });
+    expect(L.deepActive()).to.equal(L.cellAt(1, 'name'));
+  });
+
+  it('lands again when a deferred listener replaces the edited record', async () => {
+    L.grid.addEventListener('cellValueChanged', (event) => {
+      const { data, key, value } = event.detail;
+      setTimeout(() => {
+        L.grid.data = L.grid.data.map((row) => (row === data ? { ...row, [key]: value } : row));
+      });
+    });
+    await L.open(1, 'name');
+    await sendKeys({ type: 'Z' });
+    await L.tab();
+    expect(L.grid.data[1].name).to.equal('Z');
+    expect(L.state.active).to.deep.equal({ row: 1, column: 'qty' });
+    expect(L.deepActive()).to.equal(L.cellAt(1, 'qty'));
   });
 });
