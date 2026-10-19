@@ -243,20 +243,28 @@ export function deserializeFilter<T extends object>(
  * Serialize a set of rows to {@link RowRef}s. With a `rowId` resolver each row
  * is captured by id; otherwise by its positional index in `universe`
  * (`ApexGrid.data`). Rows not found in `universe` (index mode) are skipped.
+ * Index mode builds one position map per call, so it is linear in the sizes
+ * of `rows` and `universe` rather than their product.
  */
 export function serializeRowRefs<T extends object>(
   rows: ReadonlyArray<T>,
   universe: ReadonlyArray<T>,
   rowId?: (row: T) => string | number
 ): RowRef[] {
+  if (rowId) return rows.map((row) => ({ id: rowId(row) }));
+  if (rows.length < 2) {
+    // A single lookup is cheaper than building the map.
+    const index = rows.length ? universe.indexOf(rows[0]) : -1;
+    return index === -1 ? [] : [{ index }];
+  }
+  const positions = new Map<T, number>();
+  universe.forEach((row, index) => {
+    if (!positions.has(row)) positions.set(row, index);
+  });
   const refs: RowRef[] = [];
   for (const row of rows) {
-    if (rowId) {
-      refs.push({ id: rowId(row) });
-    } else {
-      const index = universe.indexOf(row);
-      if (index !== -1) refs.push({ index });
-    }
+    const index = positions.get(row);
+    if (index !== undefined) refs.push({ index });
   }
   return refs;
 }
