@@ -25,20 +25,20 @@ export class SortController<T extends object> implements ReactiveController {
     return this.host.sortConfiguration.triState;
   }
 
+  /**
+   * Only the options the column config actually sets, so a header click keeps a
+   * comparer or caseSensitive that came in through `grid.sort()` when the column
+   * itself does not define one. The trade-off: a comparer later removed from
+   * the column config stays on the stored expression until that column's sort
+   * is cleared, because its origin is not tracked.
+   */
   #resolveSortOptions(options?: boolean | ColumnSortConfiguration<T>) {
-    const expr: Pick<SortExpression<T>, 'caseSensitive' | 'comparer'> = {
-      caseSensitive: false,
-      comparer: undefined,
-    };
-
-    if (!options || typeof options === 'boolean') {
-      return expr as Partial<SortExpression<T>>;
+    const expr: Partial<SortExpression<T>> = {};
+    if (options && typeof options === 'object') {
+      if (options.caseSensitive !== undefined) expr.caseSensitive = options.caseSensitive;
+      if (options.comparer !== undefined) expr.comparer = options.comparer as any;
     }
-
-    return Object.assign(expr, {
-      caseSensitive: options.caseSensitive,
-      comparer: options.comparer,
-    }) as Partial<SortExpression<T>>;
+    return expr;
   }
 
   #createDefaultExpression(key: Keys<T>) {
@@ -47,6 +47,8 @@ export class SortController<T extends object> implements ReactiveController {
     return {
       key,
       direction: 'ascending',
+      caseSensitive: false,
+      comparer: undefined,
       ...this.#resolveSortOptions(options),
     } as SortExpression<T>;
   }
@@ -146,18 +148,18 @@ export class SortController<T extends object> implements ReactiveController {
     playKeyedFlip(before, (data) => byData.get(data) ?? null, 'y');
   }
 
+  /**
+   * The expression a UI sort would apply. Always a fresh object: the stored
+   * entry is only replaced once the `sorting` event is not cancelled.
+   */
   public prepareExpression({ key, sort: options }: ColumnConfiguration<T>): SortExpression<T> {
-    if (this.state.has(key)) {
-      const expr = this.state.get(key)!;
+    const expr = this.state.get(key);
 
-      return Object.assign(expr, {
-        direction: this.#orderBy(expr.direction),
-        ...this.#resolveSortOptions(options),
-      });
-    }
-
-    // Initial state
-    return this.#createDefaultExpression(key);
+    return {
+      ...(expr ?? this.#createDefaultExpression(key)),
+      direction: this.#orderBy(expr?.direction),
+      ...this.#resolveSortOptions(options),
+    } as SortExpression<T>;
   }
 
   public reset(key?: Keys<T>) {
@@ -189,8 +191,12 @@ export class SortController<T extends object> implements ReactiveController {
 
   public sort(expressions: SortExpression<T> | SortExpression<T>[]) {
     this._sort(
-      asArray(expressions).map((expr) =>
-        Object.assign(this.state.get(expr.key) ?? this.#createDefaultExpression(expr.key), expr)
+      asArray(expressions).map(
+        (expr) =>
+          ({
+            ...(this.state.get(expr.key) ?? this.#createDefaultExpression(expr.key)),
+            ...expr,
+          }) as SortExpression<T>
       )
     );
   }

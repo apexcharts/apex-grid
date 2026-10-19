@@ -1,8 +1,10 @@
 import { expect } from '@open-wc/testing';
+import { PIPELINE } from '../src/internal/constants.js';
 import type { ColumnConfiguration, Keys } from '../src/internal/types.js';
 import type { SortExpression, SortState } from '../src/operations/sort/types.js';
 import SortDataOperation from '../src/operations/sort.js';
 import GridTestFixture from './utils/grid-fixture.js';
+import data, { importanceComparer, type TestData } from './utils/test-data.js';
 
 function runSort<T extends object>(rows: T[], ...expressions: Partial<SortExpression<T>>[]) {
   const state: SortState<T> = new Map();
@@ -166,5 +168,58 @@ describe('Sort: cost does not grow with comparisons', () => {
       String.prototype.toLowerCase = original;
     }
     expect(calls).to.be.at.most(n);
+  });
+});
+
+class SortableFixture extends GridTestFixture<TestData> {
+  public override updateConfig(): void {
+    this.columnConfig = this.columnConfig.map((c) => ({ ...c, sort: true }));
+  }
+}
+
+describe('Sort: header click state (core-sort-filter-controllers-3, -4)', () => {
+  let f: SortableFixture;
+  beforeEach(async () => {
+    f = new SortableFixture(data);
+    await f.setUp();
+  });
+  afterEach(() => f.tearDown());
+
+  it('a cancelled click leaves the stored direction untouched', async () => {
+    await f.sortHeader('id');
+    f.grid.addEventListener('sorting', (e) => e.preventDefault(), { once: true });
+    await f.sortHeader('id');
+    expect(f.grid.sortExpressions.map((e) => e.direction)).to.eql(['ascending']);
+
+    f.grid.requestUpdate(PIPELINE);
+    await f.waitForUpdate();
+    expect(f.grid.dataView[0].id).to.equal(1);
+  });
+
+  it('a cancelled clear in tri-state mode keeps the sort', async () => {
+    await f.updateProperty('sortConfiguration', { multiple: true, triState: true });
+    await f.sortHeader('id');
+    await f.sortHeader('id');
+    f.grid.addEventListener('sorting', (e) => e.preventDefault(), { once: true });
+    await f.sortHeader('id');
+    expect(f.grid.sortExpressions.map((e) => e.direction)).to.eql(['descending']);
+  });
+
+  it('keeps a comparer supplied through grid.sort() across header clicks', async () => {
+    f.grid.sort({ key: 'importance', direction: 'ascending', comparer: importanceComparer });
+    await f.waitForUpdate();
+    await f.sortHeader('importance');
+    // A boolean assertion: a failing diff that holds a function stalls the runner.
+    expect(f.grid.sortExpressions[0].comparer === importanceComparer, 'comparer kept').to.be.true;
+    expect(f.grid.dataView.map((r) => r.importance)).to.eql([
+      'high',
+      'high',
+      'medium',
+      'medium',
+      'medium',
+      'low',
+      'low',
+      'low',
+    ]);
   });
 });
