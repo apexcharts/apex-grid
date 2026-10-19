@@ -650,6 +650,9 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     // A charted range's outline tracks the rows under it as the view changes.
     (this as EventTarget).addEventListener(VIEW_CHANGED_EVENT, this.#repositionChartRanges);
     this.#watchLicense();
+    // `disconnectedCallback` drops the watermark layer and Lit does not re-render on reconnect,
+    // so repaint here. Before the first update there is nothing to restore: `updated` paints.
+    if (this.hasUpdated) this.#syncWatermark();
   }
 
   /** Keep both the selection affordance and any charted-range overlays anchored on scroll/resize. */
