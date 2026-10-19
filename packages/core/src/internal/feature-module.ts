@@ -51,6 +51,23 @@ export interface GridFeatureModule<T extends object = any> {
 export interface RowTransformer<T extends object = any> {
   /** Return the transformed rows. Must not mutate the input array in place. */
   processRows(rows: ReadonlyArray<T>): T[];
+
+  /**
+   * Whether `row` is one this transform synthesized (a group header, a total
+   * row) rather than a data record. Synthesized rows are kept out of row
+   * selection and export (see {@link StateController.isDataRow}). Leave it
+   * unset when the transform's output rows are the view's records (pivot).
+   */
+  isSyntheticRow?(row: T): boolean;
+
+  /**
+   * The data records a synthesized `row` stands for that the view does not
+   * also hold, in view order: a collapsed group header's leaves. Return an
+   * empty array when they are in the view too (an expanded group) or the row
+   * stands for none (a total row). Lets Select all and a `'view'` export
+   * cover collapsed groups (see {@link StateController.viewRecords}).
+   */
+  hiddenRecords?(row: T): ReadonlyArray<T>;
 }
 
 /** Runtime type-guard for {@link RowTransformer}. */

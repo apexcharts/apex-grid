@@ -16,6 +16,7 @@ import {
   type PresentedRow,
   type RowAria,
   type RowPresenterContext,
+  type RowTransformer,
 } from '../internal/feature-module.js';
 import type { ActiveNode, GridHost } from '../internal/types.js';
 import { EditingController } from './editing.js';
@@ -153,7 +154,19 @@ export class StateController<T extends object> implements ReactiveController {
       if (this.modules.has(module.id)) continue;
       this.modules.set(module.id, module.create(this.host, this));
     }
+
+    // Resolve once which row transforms can synthesize rows.
+    const synthesizers: RowTransformer<T>[] = [];
+    for (const controller of this.modules.values()) {
+      if (isRowTransformer<T>(controller) && typeof controller.isSyntheticRow === 'function') {
+        synthesizers.push(controller);
+      }
+    }
+    this.#synthesizers = synthesizers;
   }
+
+  /** The row transformers that can synthesize rows. Empty for the community grid. */
+  #synthesizers: ReadonlyArray<RowTransformer<T>> = [];
 
   /**
    * Look up a feature controller contributed by a {@link GridFeatureModule},
@@ -177,6 +190,58 @@ export class StateController<T extends object> implements ReactiveController {
       }
     }
     return result;
+  }
+
+  /**
+   * Whether `row` is a data record, as opposed to a row a feature module
+   * synthesized into the view (a group header, a grand-total row). Every
+   * consumer that treats the view as records (selection, export, paste, charts,
+   * keyboard actions) should skip rows for which this is `false`. A row is
+   * synthetic when any {@link RowTransformer} claims it through
+   * {@link RowTransformer.isSyntheticRow}. Always `true` for the community grid,
+   * which registers no modules, at the cost of one length check.
+   */
+  public isDataRow(row: T): boolean {
+    for (const transformer of this.#synthesizers) {
+      if (transformer.isSyntheticRow!(row)) return false;
+    }
+    return true;
+  }
+
+  /**
+   * The data records of `rows` (see {@link isDataRow}), in order. Returns `rows`
+   * itself, not a copy, when no module synthesizes rows (the community grid).
+   */
+  public dataRows(rows: ReadonlyArray<T>): ReadonlyArray<T> {
+    if (this.#synthesizers.length === 0) return rows;
+    return rows.filter((row) => this.isDataRow(row));
+  }
+
+  /**
+   * Every data record `rows` (a view) covers, in order: its data rows plus the
+   * records a synthesized row hides through
+   * {@link RowTransformer.hiddenRecords} (a collapsed group's leaves). This is
+   * what Select all selects and a `'view'` export writes. Returns `rows`
+   * itself when no module synthesizes rows (the community grid).
+   */
+  public viewRecords(rows: ReadonlyArray<T>): ReadonlyArray<T> {
+    if (this.#synthesizers.length === 0) return rows;
+    const out: T[] = [];
+    for (const row of rows) {
+      if (this.isDataRow(row)) {
+        out.push(row);
+        continue;
+      }
+      for (const transformer of this.#synthesizers) {
+        const hidden = transformer.hiddenRecords?.(row);
+        if (!hidden?.length) continue;
+        // A loop, not push(...hidden): a collapsed group can hold more leaves
+        // than the engine accepts as call arguments.
+        for (const record of hidden) out.push(record);
+        break;
+      }
+    }
+    return out;
   }
 
   /**

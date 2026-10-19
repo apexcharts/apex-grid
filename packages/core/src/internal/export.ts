@@ -1,4 +1,5 @@
 import type { ApexGrid } from '../components/grid.js';
+import type { StateController } from '../controllers/state.js';
 import type { ColumnConfiguration, ColumnDateFormat, Keys } from './types.js';
 import { getDisplayColumns } from './utils.js';
 
@@ -92,7 +93,12 @@ export function resolveExportColumns<T extends object>(
 }
 
 /**
- * Resolves the rows that should appear in the export.
+ * Resolves the rows that should appear in the export. The `view` and `page`
+ * sources hold only data records: rows a feature module synthesized into the
+ * view (group headers, a grand-total row) are dropped, see
+ * {@link StateController.isDataRow}. `view` also writes the leaves of
+ * collapsed groups ({@link StateController.viewRecords}); `page` writes what
+ * the page shows.
  */
 export function resolveExportRows<T extends object>(
   grid: ApexGrid<T>,
@@ -102,12 +108,16 @@ export function resolveExportRows<T extends object>(
     case 'all':
       return grid.data;
     case 'page':
-      return grid.pageItems;
+      return stateOf(grid)?.dataRows(grid.pageItems) ?? grid.pageItems;
     case 'selected':
       return grid.selectedRows;
     default:
-      return grid.dataView;
+      return stateOf(grid)?.viewRecords(grid.dataView) ?? grid.dataView;
   }
+}
+
+function stateOf<T extends object>(grid: ApexGrid<T>): StateController<T> | undefined {
+  return (grid as unknown as { stateController?: StateController<T> }).stateController;
 }
 
 /**

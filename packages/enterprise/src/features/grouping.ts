@@ -85,6 +85,12 @@ export class GroupingController<T extends object>
   readonly #overrides = new Map<string, boolean>();
   /** Metadata for the groups built in the most recent {@link processRows}. */
   readonly #metaByKey = new Map<string, GroupRowMeta<T>>();
+  /**
+   * Group headers that were built collapsed, so their leaves are not in the
+   * view they belong to. Recorded at build time: the live expansion state can
+   * run ahead of `dataView` until the next update rebuilds it.
+   */
+  readonly #builtCollapsed = new WeakSet<GroupRowMeta<T>>();
 
   constructor(private host: GridHost<T>) {
     host.addController(this);
@@ -93,6 +99,21 @@ export class GroupingController<T extends object>
   public hostConnected(): void {}
 
   // --- RowTransformer ------------------------------------------------------
+
+  /** Group headers are synthesized, so selection and export skip them. */
+  public isSyntheticRow(row: T): boolean {
+    return getGroupMeta(row) !== undefined;
+  }
+
+  /**
+   * A collapsed group's leaves, so Select all and a view export cover them.
+   * Answers for the view `row` was built into, not the live expansion state,
+   * so a collapse or expand not yet rendered neither repeats nor drops leaves.
+   */
+  public hiddenRecords(row: T): ReadonlyArray<T> {
+    const meta = getGroupMeta<T>(row);
+    return meta && this.#builtCollapsed.has(meta) ? meta.leaves : [];
+  }
 
   public processRows(rows: ReadonlyArray<T>): T[] {
     this.#metaByKey.clear();
@@ -128,6 +149,8 @@ export class GroupingController<T extends object>
         out.push(
           ...(depth + 1 < this.groupBy.length ? this.#build(leaves, depth + 1, key) : leaves)
         );
+      } else {
+        this.#builtCollapsed.add(meta);
       }
     }
 

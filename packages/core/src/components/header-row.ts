@@ -156,18 +156,18 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
     }
     const allChecked = selection.allSelected();
     const indeterminate = selection.someSelected();
-    const syncIndeterminate = (el: Element | undefined) => {
+    // Writes the native state on every render: a click flips `checked` before
+    // the selection decides, and when Select all changes nothing the bound
+    // value does not move, so Lit alone would leave the box checked.
+    const syncState = (el: Element | undefined) => {
       if (el instanceof HTMLInputElement) {
+        el.checked = allChecked;
         el.indeterminate = indeterminate;
       }
     };
     const handleChange = (event: Event) => {
       const checked = (event.target as HTMLInputElement).checked;
-      if (checked) {
-        void selection.selectAll();
-      } else {
-        void selection.clear();
-      }
+      void (checked ? selection.selectAll() : selection.clear()).then(() => this.requestUpdate());
     };
     // As in the body's selection cell: the 14x14 checkbox is under the 24x24
     // WCAG 2.2 AA minimum (2.5.8), so the header cell forwards clicks to it
@@ -191,7 +191,7 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
         part="selection-checkbox"
         aria-label=${this.state.localize('header.selectAll')}
         .checked=${allChecked}
-        ${ref(syncIndeterminate)}
+        ${ref(syncState)}
         @change=${handleChange}
       />
     </div>`;

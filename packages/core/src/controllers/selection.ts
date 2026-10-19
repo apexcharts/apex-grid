@@ -1,5 +1,6 @@
 import type { ReactiveController } from 'lit';
 import type { GridHost, SelectionMode } from '../internal/types.js';
+import type { StateController } from './state.js';
 
 /**
  * The default selection configuration used when the grid has none set.
@@ -20,6 +21,10 @@ export const DEFAULT_SELECTION_CONFIG = Object.freeze({
  * pipeline does). Replacing {@link ApexGrid.data} wholesale will invalidate
  * any selected rows that are no longer present in the new array; consumers
  * should call {@link clear} or re-apply selection after such a change.
+ *
+ * Only data records are selectable: rows a feature module synthesizes into the
+ * view (group headers, a grand-total row; see {@link StateController.isDataRow})
+ * are skipped by every mutation and ignored by {@link allSelected}.
  *
  * Mutations go through the cancellable `rowSelecting` event and emit a
  * follow-up `rowSelected` event, mirroring the pattern used by editing.
@@ -79,13 +84,18 @@ export class SelectionController<T extends object> implements ReactiveController
   }
 
   /**
-   * Whether every row in the current view ({@link ApexGrid.dataView}) is
-   * selected. Used by the header checkbox to render its "all" state.
+   * Whether every data record the current view covers is selected, including
+   * the leaves of collapsed groups (see {@link StateController.viewRecords}).
+   * `false` when the view covers none. Used by the header checkbox to render
+   * its "all" state.
    */
   public allSelected(): boolean {
-    const view = this.host.dataView;
-    if (view.length === 0) return false;
-    return view.every((row) => this.selected.has(row as T));
+    const records = this.#records();
+    if (records.length === 0) return false;
+    for (const row of records) {
+      if (!this.selected.has(row)) return false;
+    }
+    return true;
   }
 
   /**
@@ -104,7 +114,7 @@ export class SelectionController<T extends object> implements ReactiveController
    * only selected row.
    */
   public async toggleRow(row: T): Promise<boolean> {
-    if (!this.enabled) return false;
+    if (!this.enabled || !this.#isDataRow(row)) return false;
     const next = new Set(this.selected);
     if (next.has(row)) {
       next.delete(row);
@@ -121,7 +131,7 @@ export class SelectionController<T extends object> implements ReactiveController
    * is cleared first.
    */
   public async selectRow(row: T): Promise<boolean> {
-    if (!this.enabled) return false;
+    if (!this.enabled || !this.#isDataRow(row)) return false;
     const next = new Set(this.mode === 'single' ? [] : this.selected);
     next.add(row);
     this.anchor = row;
@@ -145,7 +155,7 @@ export class SelectionController<T extends object> implements ReactiveController
    * {@link selectRow}.
    */
   public async additiveToggle(row: T): Promise<boolean> {
-    if (!this.enabled) return false;
+    if (!this.enabled || !this.#isDataRow(row)) return false;
     if (this.mode === 'single') return this.toggleRow(row);
     const next = new Set(this.selected);
     if (next.has(row)) {
@@ -163,7 +173,7 @@ export class SelectionController<T extends object> implements ReactiveController
    * in those cases the call falls back to a plain {@link selectRow}.
    */
   public async rangeToggle(row: T): Promise<boolean> {
-    if (!this.enabled) return false;
+    if (!this.enabled || !this.#isDataRow(row)) return false;
     if (this.mode === 'single' || !this.anchor) {
       return this.selectRow(row);
     }
@@ -176,19 +186,19 @@ export class SelectionController<T extends object> implements ReactiveController
     const [lo, hi] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
     const next = new Set(this.selected);
     for (let i = lo; i <= hi; i++) {
-      next.add(pageItems[i] as T);
+      if (this.#isDataRow(pageItems[i])) next.add(pageItems[i]);
     }
     return this.#commit(next);
   }
 
   /**
-   * Selects every row currently in view ({@link ApexGrid.dataView}). No-op
-   * in `'single'` mode.
+   * Selects every data record the current view ({@link ApexGrid.dataView})
+   * covers, including the leaves of collapsed groups. No-op in `'single'`
+   * mode.
    */
   public async selectAll(): Promise<boolean> {
     if (!this.enabled || this.mode === 'single') return false;
-    const next = new Set(this.host.dataView as ReadonlyArray<T>);
-    return this.#commit(next);
+    return this.#commit(new Set(this.#records()));
   }
 
   /**
@@ -206,8 +216,24 @@ export class SelectionController<T extends object> implements ReactiveController
    */
   public async replaceSelection(rows: ReadonlyArray<T>): Promise<boolean> {
     if (!this.enabled) return false;
-    const next = new Set(this.mode === 'single' ? rows.slice(0, 1) : rows);
+    const records = this.#state?.dataRows(rows) ?? rows;
+    const next = new Set(this.mode === 'single' ? records.slice(0, 1) : records);
     return this.#commit(next);
+  }
+
+  /** The owning state controller; absent only while the grid is constructing. */
+  get #state(): StateController<T> | undefined {
+    return (this.host as unknown as { stateController?: StateController<T> }).stateController;
+  }
+
+  /** The data records the current view covers, collapsed group leaves included. */
+  #records(): ReadonlyArray<T> {
+    const view = this.host.dataView as ReadonlyArray<T>;
+    return this.#state?.viewRecords(view) ?? view;
+  }
+
+  #isDataRow(row: T): boolean {
+    return this.#state?.isDataRow(row) ?? true;
   }
 
   async #commit(next: Set<T>): Promise<boolean> {

@@ -81,6 +81,11 @@ export class TotalRowController<T extends object>
     return config.position === 'top' ? [total, ...rows] : [...rows, total];
   }
 
+  /** The total row is synthesized, so selection and export skip it. */
+  public isSyntheticRow(row: T): boolean {
+    return isTotalRow(row);
+  }
+
   // --- RowPresenter --------------------------------------------------------
 
   public presentRow(row: T, _ctx: RowPresenterContext<T>): PresentedRow | null {
