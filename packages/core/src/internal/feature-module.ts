@@ -46,11 +46,24 @@ export interface GridFeatureModule<T extends object = any> {
  * Controllers that don't implement this are skipped, so the community grid
  * (which registers no modules) is unaffected.
  *
+ * Transforms run in a fixed order set by {@link transformOrder}, not in the
+ * order modules were registered, because they do not commute (a grand-total
+ * row appended before grouping would itself be grouped).
+ *
  * @remarks Unstable; part of `apex-grid/internal`.
  */
 export interface RowTransformer<T extends object = any> {
   /** Return the transformed rows. Must not mutate the input array in place. */
   processRows(rows: ReadonlyArray<T>): T[];
+
+  /**
+   * Position of this transform in the module chain: lower runs first, ties keep
+   * registration order, unset means `0`. First-party values: grouping `100`,
+   * pivot `200`, grand-total row `1000`. Transforms that restructure the view
+   * come first; rows that summarise the finished view come last. Leaving it
+   * unset (`0`) runs the transform before grouping.
+   */
+  readonly transformOrder?: number;
 
   /**
    * Whether `row` is one this transform synthesized (a group header, a total

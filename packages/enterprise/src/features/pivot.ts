@@ -125,6 +125,11 @@ export class PivotController<T extends object>
   public values: AggregationConfig = {};
   /** Subtotal / grand-total options. */
   public options: PivotOptions = {};
+  /**
+   * After grouping, before the grand-total row (see `RowTransformer.transformOrder`).
+   * Pivot rows are the view's records, so it does not mark them synthetic.
+   */
+  public readonly transformOrder = 200;
 
   #specs: PivotColumnSpec[] = [];
   #groups: ColumnGroupConfiguration[] = [];

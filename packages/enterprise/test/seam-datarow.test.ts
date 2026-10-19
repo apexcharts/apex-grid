@@ -6,6 +6,7 @@ import {
   ApexGridEnterprise,
   enterpriseModules,
   groupingModule,
+  isTotalRow,
   totalRowModule,
 } from '../src/index.js';
 
@@ -226,6 +227,20 @@ describe('seam: data-row predicate and transform order', () => {
       expect(csv).to.equal(
         'region,product,amount\r\nEMEA,A,10\r\nEMEA,B,20\r\nAMER,A,30\r\nAMER,A,40'
       );
+    });
+  });
+
+  describe('transform order', () => {
+    it('groups first and appends the grand total last, whatever the use() order', async () => {
+      const grid = await mountGrouped(false);
+      grid.totalRow = { aggregations: { amount: ['sum'] } };
+      await settle(grid);
+      const view = grid.dataView as Row[];
+      // 2 group headers + 4 leaves + 1 grand total; no "(blank)" group around it.
+      expect(view.length).to.equal(7);
+      expect(view.filter((r) => getGroupMeta(r)).length, 'group headers').to.equal(2);
+      expect(isTotalRow(view[view.length - 1]), 'total row is last').to.equal(true);
+      expect(grid.getTotals()).to.eql({ amount: { sum: 100 } });
     });
   });
 

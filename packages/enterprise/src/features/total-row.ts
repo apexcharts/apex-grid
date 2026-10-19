@@ -67,6 +67,9 @@ export class TotalRowController<T extends object>
 
   // --- RowTransformer ------------------------------------------------------
 
+  /** Last, so the total row is appended to the finished (grouped) view. */
+  public readonly transformOrder = 1000;
+
   public processRows(rows: ReadonlyArray<T>): T[] {
     const config = this.config;
     if (!config || !Object.keys(config.aggregations).length) return [...rows];

@@ -155,17 +155,22 @@ export class StateController<T extends object> implements ReactiveController {
       this.modules.set(module.id, module.create(this.host, this));
     }
 
-    // Resolve once which row transforms can synthesize rows.
-    const synthesizers: RowTransformer<T>[] = [];
-    for (const controller of this.modules.values()) {
-      if (isRowTransformer<T>(controller) && typeof controller.isSyntheticRow === 'function') {
-        synthesizers.push(controller);
+    // Resolve the row transforms once, in their declared order. Array sort is
+    // stable, so equal (or unset) orders keep registration order.
+    if (this.modules.size) {
+      const transformers: RowTransformer<T>[] = [];
+      for (const controller of this.modules.values()) {
+        if (isRowTransformer<T>(controller)) transformers.push(controller);
       }
+      transformers.sort((a, b) => (a.transformOrder ?? 0) - (b.transformOrder ?? 0));
+      this.#transformers = transformers;
+      this.#synthesizers = transformers.filter((t) => typeof t.isSyntheticRow === 'function');
     }
-    this.#synthesizers = synthesizers;
   }
 
-  /** The row transformers that can synthesize rows. Empty for the community grid. */
+  /** {@link RowTransformer}s sorted by `transformOrder`. Empty for the community grid. */
+  #transformers: ReadonlyArray<RowTransformer<T>> = [];
+  /** The transformers that can synthesize rows. Empty for the community grid. */
   #synthesizers: ReadonlyArray<RowTransformer<T>> = [];
 
   /**
@@ -178,16 +183,15 @@ export class StateController<T extends object> implements ReactiveController {
 
   /**
    * Runs the post-pipeline row transforms contributed by feature modules
-   * implementing {@link RowTransformer}, in registration order. Returns the
-   * input unchanged when no such module is registered — the community grid path
-   * is a no-op pass-through.
+   * implementing {@link RowTransformer}, in ascending
+   * {@link RowTransformer.transformOrder} (registration order breaks ties).
+   * Returns the input unchanged when no such module is registered, so the
+   * community grid path is a no-op pass-through.
    */
   public applyModuleTransforms(rows: T[]): T[] {
     let result = rows;
-    for (const controller of this.modules.values()) {
-      if (isRowTransformer<T>(controller)) {
-        result = controller.processRows(result);
-      }
+    for (const transformer of this.#transformers) {
+      result = transformer.processRows(result);
     }
     return result;
   }

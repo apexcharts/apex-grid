@@ -100,6 +100,9 @@ export class GroupingController<T extends object>
 
   // --- RowTransformer ------------------------------------------------------
 
+  /** Groups before the grand-total row (see `RowTransformer.transformOrder`). */
+  public readonly transformOrder = 100;
+
   /** Group headers are synthesized, so selection and export skip them. */
   public isSyntheticRow(row: T): boolean {
     return getGroupMeta(row) !== undefined;
