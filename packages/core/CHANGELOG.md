@@ -4,6 +4,19 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Changed
+- **`sortExpressions` and `filterExpressions` replace the current sort or filter
+  instead of merging into it**, as documented and as `setState` already did;
+  `[]`, `null` or `undefined` clears it. Apps that assigned one expression at a
+  time to build up a multi-column sort or filter should assign the full list (or
+  call `sort()` / `filter()`, which still add). The assigned list applies at the
+  next update, against the columns as they are then, so a template may bind it
+  before `columns`; reading it back before that returns what was assigned. Sort
+  entries for an unknown column or with an unknown direction are dropped with a
+  console warning (an omitted direction still sorts ascending).
+
 ## [3.5.0] - 2026-09-12
 
 A feature and accessibility release. No exported symbol was removed or renamed.

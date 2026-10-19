@@ -65,7 +65,7 @@ import type {
 import { asArray, autoGenerateColumns, getDisplayColumns } from '../internal/utils.js';
 import { watch } from '../internal/watch.js';
 import type { FilterExpression } from '../operations/filter/types.js';
-import type { SortExpression } from '../operations/sort/types.js';
+import type { SortExpression, SortingDirection } from '../operations/sort/types.js';
 import { styles as gridStyles } from '../styles/grid/grid.css.js';
 import ApexGridCell from './cell.js';
 import ApexFilterRow from './filter-row.js';
@@ -737,6 +737,9 @@ export interface ApexGridEventMap<T extends object> {
    */
   rowSelected: CustomEvent<ApexRowSelectedEvent<T>>;
 }
+
+/** Sort directions a restored sort may carry (getSchema advertises the first two). */
+const SORT_DIRECTIONS: ReadonlyArray<SortingDirection> = ['ascending', 'descending', 'none'];
 
 /** Report a dropped entry from a property setter (no result object to carry it). */
 function warnDropped(message: string): void {
@@ -1418,12 +1421,23 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
-   * Set the sort state for the grid.
+   * Expressions assigned through the setters, applied at the next update once
+   * the columns settle (they may be bound after the sort or filter, in the same
+   * render, or be auto-generated).
    */
-  public set sortExpressions(expressions: SortExpression<T>[]) {
-    if (expressions.length) {
-      this.sort(expressions);
-    }
+  #pendingSort?: SortExpression<T>[];
+  #pendingFilter?: FilterExpression<T>[];
+
+  /**
+   * Set the sort state for the grid.
+   *
+   * @remarks
+   * Replaces the current sort; `[]`, `null` or `undefined` clears it. Applied
+   * at the next update, against the columns as they are then.
+   */
+  public set sortExpressions(expressions: SortExpression<T>[] | null | undefined) {
+    this.#pendingSort = [...(expressions ?? [])];
+    this.requestUpdate(PIPELINE);
   }
 
   /**
@@ -1431,16 +1445,20 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   @property({ attribute: false })
   public get sortExpressions(): SortExpression<T>[] {
+    if (this.#pendingSort) return [...this.#pendingSort];
     return Array.from(this.stateController.sorting.state.values());
   }
 
   /**
    * Set the filter state for the grid.
+   *
+   * @remarks
+   * Replaces the current filter; `[]`, `null` or `undefined` clears it. Applied
+   * at the next update, against the columns as they are then.
    */
-  public set filterExpressions(expressions: FilterExpression<T>[]) {
-    if (expressions.length) {
-      this.filter(expressions);
-    }
+  public set filterExpressions(expressions: FilterExpression<T>[] | null | undefined) {
+    this.#pendingFilter = [...(expressions ?? [])];
+    this.requestUpdate(PIPELINE);
   }
 
   /**
@@ -1448,6 +1466,13 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   @property({ attribute: false })
   public get filterExpressions(): FilterExpression<T>[] {
+    if (this.#pendingFilter) {
+      // Shaped like the applied state where the column already exists.
+      return this.#pendingFilter.map((each) => {
+        const resolved = this.#resolveFilter(each);
+        return typeof resolved === 'string' ? each : resolved;
+      });
+    }
     const expressions: FilterExpression<T>[] = [];
 
     for (const each of this.stateController.filtering.state.values) {
@@ -1613,6 +1638,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
   @watch(PIPELINE)
   protected async pipeline() {
+    this.#flushPendingExpressions();
     this.dataState = await this.dataController.apply([...this.data], this.stateController);
     this.stateController.pagination.reclamp();
   }
@@ -1638,6 +1664,48 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     if (this.hasUpdated) {
       this.pipeline();
     }
+  }
+
+  /** Apply the expressions assigned through the setters, now that columns settled. */
+  #flushPendingExpressions(): void {
+    const sort = this.#pendingSort;
+    const filter = this.#pendingFilter;
+    this.#pendingSort = undefined;
+    this.#pendingFilter = undefined;
+    if (sort) this.#replaceSort(sort, warnDropped);
+    if (filter) this.#replaceFilter(filter);
+  }
+
+  /**
+   * Replace the sort with `entries`, dropping (and reporting) any that is not
+   * an object, names an unknown column, or carries an unknown direction (an
+   * omitted one takes the column default). The one path for the
+   * `sortExpressions` setter and the `setState` sort slice.
+   */
+  #replaceSort(entries: ReadonlyArray<unknown>, warn: (message: string) => void): void {
+    this.stateController.sorting.reset();
+    const valid: SortExpression<T>[] = [];
+    for (const entry of entries) {
+      const { direction, ...rest } = (entry ?? {}) as SortExpression<T>;
+      if (typeof entry !== 'object' || entry === null || !this.getColumn(rest.key)) {
+        warn(`sort: unknown column "${String(rest.key)}"; dropped`);
+      } else if (direction === undefined) {
+        valid.push(rest as SortExpression<T>);
+      } else if (SORT_DIRECTIONS.includes(direction)) {
+        valid.push(entry as SortExpression<T>);
+      } else {
+        warn(`sort: invalid direction "${String(direction)}"; dropped`);
+      }
+    }
+    if (valid.length) this.sort(valid);
+    this.requestUpdate(PIPELINE);
+  }
+
+  /** Replace the filter with `entries` (unresolvable ones are dropped by `filter`). */
+  #replaceFilter(entries: ReadonlyArray<FilterExpression<T>>): void {
+    this.stateController.filtering.reset();
+    if (entries.length) this.filter([...entries]);
+    this.requestUpdate(PIPELINE);
   }
 
   protected override updated(): void {
@@ -1836,6 +1904,12 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * Performs a filter operation in the grid based on the passed expression(s).
    */
   public filter(config: FilterExpression<T> | FilterExpression<T>[]) {
+    if (this.#pendingFilter) {
+      // Adds onto the assigned filter, which applies at the next update.
+      this.#pendingFilter.push(...asArray(config));
+      this.requestUpdate(PIPELINE);
+      return;
+    }
     const expressions: FilterExpression<T>[] = [];
     for (const each of asArray(config)) {
       const resolved = this.#resolveFilter(each);
@@ -1849,6 +1923,12 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * Performs a sort operation in the grid based on the passed expression(s).
    */
   public sort(expressions: SortExpression<T> | SortExpression<T>[]) {
+    if (this.#pendingSort) {
+      // Adds onto the assigned sort, which applies at the next update.
+      this.#pendingSort.push(...asArray(expressions));
+      this.requestUpdate(PIPELINE);
+      return;
+    }
     this.stateController.sorting.sort(expressions);
   }
 
@@ -1914,7 +1994,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       columns: this.columns.map((column) => columnSchema(column)),
       capabilities: {
         sort: {
-          directions: ['ascending', 'descending'],
+          directions: SORT_DIRECTIONS.filter((direction) => direction !== 'none'),
           multi: Boolean(this.sortConfiguration?.multiple),
         },
         filter: { operandsByType: operandsByType(this.columns) },
@@ -1993,28 +2073,20 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
     const sort = asArray<SortStateSnapshot>(state.sort, 'sort');
     if (sort) {
-      this.stateController.sorting.reset();
-      const valid: SortStateSnapshot[] = [];
-      for (const entry of sort) {
-        if (this.getColumn(entry.key as Keys<T>)) {
-          valid.push(entry);
-        } else {
-          warn(`sort: unknown column "${entry.key}"; dropped`);
-        }
-      }
-      if (valid.length) this.sort(valid as unknown as SortExpression<T>[]);
+      this.#pendingSort = undefined;
+      this.#replaceSort(sort, warn);
       applied.push('sort');
     }
 
     const filter = asArray<GridState['filter'][number]>(state.filter, 'filter');
     if (filter) {
-      this.stateController.filtering.reset();
+      this.#pendingFilter = undefined;
       const expressions = deserializeFilter<T>(
         filter,
         (key) => this.getColumn(key as Keys<T>),
         (snapshot, reason) => warn(`filter: "${snapshot.key}" dropped (${reason})`)
       );
-      if (expressions.length) this.filter(expressions);
+      this.#replaceFilter(expressions);
       applied.push('filter');
     }
 
@@ -2176,6 +2248,11 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * Resets the current sort state of the control.
    */
   public clearSort(key?: Keys<T>) {
+    if (this.#pendingSort && key !== undefined) {
+      this.#pendingSort = this.#pendingSort.filter((each) => each.key !== key);
+    } else {
+      this.#pendingSort = undefined;
+    }
     this.stateController.sorting.reset(key);
     this.requestUpdate(PIPELINE);
   }
@@ -2184,6 +2261,11 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * Resets the current filter state of the control.
    */
   public clearFilter(key?: Keys<T>) {
+    if (this.#pendingFilter && key !== undefined) {
+      this.#pendingFilter = this.#pendingFilter.filter((each) => each.key !== key);
+    } else {
+      this.#pendingFilter = undefined;
+    }
     this.stateController.filtering.reset(key);
     this.requestUpdate(PIPELINE);
   }
