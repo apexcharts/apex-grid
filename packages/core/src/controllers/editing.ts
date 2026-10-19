@@ -21,6 +21,9 @@ export const DEFAULT_EDITING_CONFIG = Object.freeze({
   trigger: 'doubleClick' as EditTrigger,
 });
 
+/** {@link EditingController} draft sentinel: the open editor has no typed value yet. */
+const NO_DRAFT = Symbol('no-draft');
+
 interface ActiveCell<T> {
   rowIndex: number;
   columnKey: Keys<T>;
@@ -89,6 +92,17 @@ export class EditingController<T extends object> implements ReactiveController {
   #validationVersion = 0;
 
   /**
+   * The open editor's uncommitted value, or {@link NO_DRAFT}. Held here rather
+   * than in the cell so a re-render of the editing cell cannot reset it and a
+   * bare {@link commitCell} (from `grid.commitEdit()`, a cell switch or a row
+   * commit) writes what the user typed.
+   */
+  #draft: unknown = NO_DRAFT;
+
+  /** Whether {@link #draft} failed validation and has not changed since. */
+  #draftRejected = false;
+
+  /**
    * Monotonic token bumped whenever the validation-error set changes. Forwarded
    * down to each cell as a reactive property so a validation-only change
    * re-renders the affected cells (toggling `aria-invalid` and the error node)
@@ -151,11 +165,12 @@ export class EditingController<T extends object> implements ReactiveController {
 
   /**
    * Begins editing the cell at `(rowIndex, columnKey)`. Auto-commits any cell
-   * already in edit mode (in cell mode); in row mode it switches the active
-   * cell within the same row and rejects cross-row moves.
+   * already in edit mode (in cell mode); in row mode it stages that cell and
+   * commits the row first on a cross-row move.
    *
-   * @returns `true` if edit started, `false` if rejected (column not editable
-   * or row-mode constraint violated).
+   * @returns `true` if edit started, `false` if rejected (column not editable,
+   * the in-flight cell's commit was rejected, or the previous row could not be
+   * committed). A rejected commit keeps the in-flight editor open.
    */
   public async editCell(rowIndex: number, columnKey: Keys<T>): Promise<boolean> {
     if (!this.enabled) return false;
@@ -174,11 +189,17 @@ export class EditingController<T extends object> implements ReactiveController {
         if (!committed) return false;
         await this.editRow(rowIndex);
       }
-    } else if (this.activeCell && !this.isCellEditing(rowIndex, columnKey)) {
-      // Cell mode — commit any in-flight cell before switching.
-      await this.commitCell();
+    }
+    if (this.activeCell && !this.isCellEditing(rowIndex, columnKey)) {
+      // Commit (cell mode) or stage (row mode) the in-flight cell, draft
+      // included, before switching. A rejected commit keeps that editor open
+      // with its error instead of abandoning it over still-valid data. A
+      // draft that already failed validation (the focus loss of the same
+      // click) is not validated a second time.
+      if (this.#draftRejected || !(await this.commitCell())) return false;
     }
 
+    if (!this.isCellEditing(rowIndex, columnKey)) this.#resetDraft();
     this.activeCell = { rowIndex, columnKey, data };
     this.host.requestUpdate();
     return true;
@@ -318,20 +339,44 @@ export class EditingController<T extends object> implements ReactiveController {
   }
 
   /**
+   * Records the open editor's current, uncommitted value. A later
+   * {@link commitCell} without an argument commits it. No-op while no cell is
+   * in edit mode.
+   */
+  public setDraft(value: unknown): void {
+    if (!this.activeCell) return;
+    this.#draft = value;
+    this.#draftRejected = false;
+  }
+
+  #resetDraft(): void {
+    this.#draft = NO_DRAFT;
+    this.#draftRejected = false;
+  }
+
+  #endCellEdit(): void {
+    this.activeCell = null;
+    this.#resetDraft();
+  }
+
+  /**
    * Commits a candidate value for the currently editing cell. In cell mode the
    * value is written through to {@link ApexGrid.data}; in row mode it is staged
    * in {@link pending} until {@link commitRow} is called.
    *
-   * @param value - The candidate value.
+   * @param args - The candidate value, committed as given (`undefined`
+   * included). Called with no argument, it commits the open editor's draft
+   * (see {@link setDraft}), or keeps the current value when nothing was typed.
    * @returns `true` if accepted (or staged), `false` if rejected by
-   * `cellValueChanging.preventDefault()`.
+   * `cellValueChanging.preventDefault()` or a validator.
    */
-  public async commitCell(value?: unknown): Promise<boolean> {
+  public async commitCell(...args: [value?: unknown]): Promise<boolean> {
     const active = this.activeCell;
     if (!active) return false;
     const { rowIndex, columnKey, data } = active;
     const oldValue = (data as Record<string, unknown>)[columnKey as string];
-    const candidate = value === undefined ? oldValue : value;
+    const draft = this.#draft;
+    const candidate = args.length > 0 ? args[0] : draft === NO_DRAFT ? oldValue : draft;
 
     if (this.mode === 'cell') {
       const result = this.applyCellEdit(rowIndex, columnKey, data, candidate);
@@ -339,12 +384,13 @@ export class EditingController<T extends object> implements ReactiveController {
       // A failed validation keeps the editor open so the user can correct the
       // value; re-render to surface `aria-invalid` + the error node.
       if (result === 'invalid') {
+        if (args.length === 0) this.#draftRejected = true;
         this.host.requestUpdate();
         return false;
       }
       // Both 'applied' and 'unchanged' close the editor; only an applied write
       // needs the data pipeline to re-run.
-      this.activeCell = null;
+      this.#endCellEdit();
       if (result === 'applied') {
         this.host.requestUpdate(PIPELINE);
         await this.host.updateComplete;
@@ -358,7 +404,7 @@ export class EditingController<T extends object> implements ReactiveController {
     if (!Object.is(candidate, oldValue)) {
       this.pending.set(columnKey, candidate);
     }
-    this.activeCell = null;
+    this.#endCellEdit();
     this.host.requestUpdate();
     return true;
   }
@@ -403,7 +449,7 @@ export class EditingController<T extends object> implements ReactiveController {
   public cancelCell(): void {
     if (!this.activeCell) return;
     const { data, columnKey } = this.activeCell;
-    this.activeCell = null;
+    this.#endCellEdit();
     // Abandoning the edit discards any validation error raised for the cell.
     this.clearCellErrors(data, columnKey);
     this.host.requestUpdate();
@@ -477,7 +523,7 @@ export class EditingController<T extends object> implements ReactiveController {
   public cancelRow(): void {
     if (!this.activeRow) return;
     const { rowIndex, data } = this.activeRow;
-    this.activeCell = null;
+    this.#endCellEdit();
     this.activeRow = null;
     this.pending.clear();
     // Abandoning the row discards every validation error raised for it.

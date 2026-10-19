@@ -279,6 +279,9 @@ export default class ApexGridCell<T extends object> extends LitElement {
 
   protected override updated(changed: PropertyValues<this>) {
     if (this.isEditing) {
+      // Focus and select only on entering edit mode: a mid-edit re-render
+      // (validation, decoration) must keep the caret and the user's focus.
+      if (!changed.has('editing')) return;
       const editor = this.editorElement;
       editor?.focus();
       if (editor instanceof HTMLInputElement) {
@@ -330,14 +333,11 @@ export default class ApexGridCell<T extends object> extends LitElement {
     this.editingController.editCell(this.row.index, this.column.key);
   }
 
-  #pendingValue: unknown;
-
   /** Set by keyboard-driven commit/cancel so `updated` refocuses the cell host. */
   #refocusAfterEdit = false;
 
-  #commitWith = async (value?: unknown): Promise<boolean> => {
-    return this.editingController.commitCell(value ?? this.#pendingValue);
-  };
+  /** Commits the open editor's draft (held by the editing controller). */
+  #commit = (): Promise<boolean> => this.editingController.commitCell();
 
   #cancel = () => {
     this.editingController.cancelCell();
@@ -349,7 +349,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
       case 'Enter':
         event.preventDefault();
         this.#refocusAfterEdit = true;
-        this.#commitWith();
+        this.#commit();
         return;
       case 'Escape':
         event.preventDefault();
@@ -361,20 +361,10 @@ export default class ApexGridCell<T extends object> extends LitElement {
         // landed cell stays manual (Enter to re-edit) for predictability.
         event.preventDefault();
         this.#refocusAfterEdit = true;
-        this.#commitWith();
+        this.#commit();
         return;
       default:
         return;
-    }
-  };
-
-  #handleBlur = () => {
-    if (!this.isEditing) return;
-    if (this.editingController.mode === 'cell') {
-      this.#commitWith();
-    } else {
-      // Row mode — stash the value and exit the cell editor; the row stays open.
-      this.editingController.commitCell(this.#pendingValue);
     }
   };
 
@@ -383,8 +373,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
    * editors (the default editor stops propagation on its own input).
    *
    * - Escape always cancels the edit.
-   * - Tab commits (or closes when there's no draft — `commitCell()` with
-   *   `undefined` value is treated as "no change" by the controller).
+   * - Tab commits the draft (or just closes when nothing was typed).
    *
    * Per-editor `keydown` handlers that need to consume Enter (e.g. the
    * built-in `<select>` editor) still get the first crack — they call
@@ -401,30 +390,28 @@ export default class ApexGridCell<T extends object> extends LitElement {
     if (event.key === 'Tab') {
       event.preventDefault();
       this.#refocusAfterEdit = true;
-      this.#commitWith();
+      this.#commit();
     }
   };
 
   /**
-   * Cell-level focus-out: commits the active edit when focus truly leaves
-   * the cell (clicking another cell, tabbing past the editor, blurring to
-   * the document body). The default editor's input also has `@blur` which
-   * commits first; by that time `isEditing` is false and this is a no-op.
+   * Cell-level focus-out, the single focus-loss commit path: commits the
+   * editor's draft when focus truly leaves the cell (clicking another cell or
+   * a control outside the grid, blurring to the document body). In row mode
+   * the value is staged and the row stays open.
    *
-   * For built-in registry editors `commitCell()` with no explicit value
-   * resolves to the current data value — same shape as "no change", so
-   * losing focus without picking discards the open editor without writing
-   * spurious data.
+   * With no draft (nothing typed or picked) `commitCell()` resolves to the
+   * current data value, so losing focus closes the editor without writing.
+   * A failed validation keeps the editor open with its error.
    */
   #handleCellFocusOut = (event: FocusEvent) => {
     if (!this.isEditing) return;
     const next = event.relatedTarget as Node | null;
     if (next && (this.contains(next) || this.shadowRoot?.contains(next))) return;
-    if (this.editingController.mode === 'cell') {
-      this.#commitWith();
-    } else {
-      this.editingController.commitCell(this.#pendingValue);
-    }
+    // A pointer exit never hands focus back to the cell, even after an
+    // earlier keyboard commit that failed validation set the flag.
+    this.#refocusAfterEdit = false;
+    this.#commit();
   };
 
   #handleTextInput = (event: Event) => {
@@ -433,23 +420,22 @@ export default class ApexGridCell<T extends object> extends LitElement {
       // An empty (or non-parseable) number field clears the value to null rather
       // than committing NaN, which would render as the text "NaN".
       const numeric = target.valueAsNumber;
-      this.#pendingValue = target.value === '' || Number.isNaN(numeric) ? null : numeric;
+      this.editingController.setDraft(
+        target.value === '' || Number.isNaN(numeric) ? null : numeric
+      );
       return;
     }
-    this.#pendingValue = target.value;
+    this.editingController.setDraft(target.value);
   };
 
   #handleCheckboxChange = (event: Event) => {
-    const target = event.target as HTMLInputElement;
-    this.#pendingValue = target.checked;
     // Booleans commit immediately — toggling is the whole interaction.
-    this.#commitWith(target.checked);
+    this.editingController.commitCell((event.target as HTMLInputElement).checked);
   };
 
   protected renderDefaultEditor() {
     const value = this.value as unknown;
     if (this.column.type === 'boolean') {
-      this.#pendingValue = Boolean(value);
       return html`<input
         type="checkbox"
         part="editor"
@@ -457,11 +443,9 @@ export default class ApexGridCell<T extends object> extends LitElement {
         ?checked=${Boolean(value)}
         @change=${this.#handleCheckboxChange}
         @keydown=${this.#handleKeydown}
-        @blur=${this.#handleBlur}
       />`;
     }
     if (this.column.type === 'number') {
-      this.#pendingValue = value;
       return html`<input
         type="number"
         part="editor"
@@ -469,10 +453,8 @@ export default class ApexGridCell<T extends object> extends LitElement {
         .value=${value == null ? '' : String(value)}
         @input=${this.#handleTextInput}
         @keydown=${this.#handleKeydown}
-        @blur=${this.#handleBlur}
       />`;
     }
-    this.#pendingValue = value;
     return html`<input
       type="text"
       part="editor"
@@ -480,7 +462,6 @@ export default class ApexGridCell<T extends object> extends LitElement {
       .value=${value == null ? '' : String(value)}
       @input=${this.#handleTextInput}
       @keydown=${this.#handleKeydown}
-      @blur=${this.#handleBlur}
     />`;
   }
 
@@ -495,14 +476,10 @@ export default class ApexGridCell<T extends object> extends LitElement {
       cancel: () => this.editingController.cancelCell(),
     };
     if (template) {
-      // For custom editors we don't know the draft shape; reset pending so
-      // cell-level commit doesn't write a stale value from a previous edit.
-      this.#pendingValue = this.value;
       return template(ctx as unknown as ApexEditorContext<T> as never);
     }
     const typeRenderer = getColumnTypeRenderer<T>(this.column.type);
     if (typeRenderer?.editor) {
-      this.#pendingValue = this.value;
       return typeRenderer.editor(ctx as never);
     }
     return this.renderDefaultEditor();
