@@ -3,13 +3,25 @@ import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { checkDistManifest } from '../../../scripts/check-dist-manifest.js';
 
 const exec = promisify(_exec);
-const DEST_DIR = path.join.bind(
-  null,
-  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist')
-);
+const PKG_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const DEST_DIR = path.join.bind(null, PKG_DIR, 'dist');
 const RELEASE_FILES = ['LICENSE.md', 'README.md', 'CHANGELOG.md'];
+
+// Where scripts/_package.json (what consumers install) intentionally differs
+// from package.json (what CI installs). Both sides are pinned so changing
+// either one fails the build until this list is reviewed. Anything else that
+// differs fails the build too; see scripts/check-dist-manifest.js.
+const DELIBERATE_MANIFEST_DIFFERENCES = {
+  // Published as a tilde range on purpose, kept narrower than the workspace.
+  'peerDependencies.@lit/context': { workspace: '^1.1.5', published: '~1.1.5' },
+  // The optional AI SDK peer is deliberately not published yet; adding it
+  // is a separate decision.
+  'peerDependencies.@anthropic-ai/sdk': { workspace: '>=0.40.0', published: undefined },
+  'peerDependenciesMeta.@anthropic-ai/sdk': { workspace: { optional: true }, published: undefined },
+};
 
 async function writeDistPackageJson() {
   // Single source of truth for the published version is the package's
@@ -38,6 +50,7 @@ async function build() {
       copyFile(file, DEST_DIR(file)).catch(() => {})
     ),
   ]);
+  await checkDistManifest({ pkgDir: PKG_DIR, deliberate: DELIBERATE_MANIFEST_DIFFERENCES });
 }
 
 build();

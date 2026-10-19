@@ -3,14 +3,27 @@ import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { checkDistManifest } from '../../../scripts/check-dist-manifest.js';
 import { buildComponents } from './sass.js';
 
 const exec = promisify(_exec);
-const DEST_DIR = path.join.bind(
-  null,
-  path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist')
-);
+const PKG_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const DEST_DIR = path.join.bind(null, PKG_DIR, 'dist');
 const RELEASE_FILES = ['custom-elements.json', 'LICENSE.md', 'README.md', 'CHANGELOG.md'];
+
+// Where scripts/_package.json (what consumers install) intentionally differs
+// from package.json (what CI installs). Both sides are pinned so changing
+// either one fails the build until this list is reviewed. Anything else that
+// differs fails the build too; see scripts/check-dist-manifest.js.
+const DELIBERATE_MANIFEST_DIFFERENCES = {
+  // Published as tilde ranges on purpose, kept narrower than the workspace.
+  'dependencies.@lit-labs/virtualizer': { workspace: '^2.1.0', published: '~2.1.0' },
+  'dependencies.@lit/context': { workspace: '^1.1.5', published: '~1.1.5' },
+  // The workspace manifest omits the field, so in-repo consumers keep every
+  // module. Published, only define.js (registers <apex-grid>) and styles.css
+  // have side effects, so apps that import 'apex-grid/define' keep it.
+  sideEffects: { workspace: undefined, published: ['./define.js', './styles.css'] },
+};
 
 async function writeDistPackageJson() {
   // Single source of truth for the published version is the root package.json.
@@ -39,6 +52,7 @@ async function build() {
     copyFile('src/styles.css', DEST_DIR('styles.css')),
     ...RELEASE_FILES.map((file) => copyFile(file, DEST_DIR(file))),
   ]);
+  await checkDistManifest({ pkgDir: PKG_DIR, deliberate: DELIBERATE_MANIFEST_DIFFERENCES });
 }
 
 build();
