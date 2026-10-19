@@ -47,11 +47,18 @@ export interface ColumnTypeCellContext<T extends object> {
 
 /**
  * Cell context handed to a column-type renderer's `editor` function. Adds the
- * `commit` / `cancel` helpers wired through {@link EditingController}.
+ * `commit` / `cancel` / `setDraft` helpers wired through
+ * {@link EditingController}.
  */
 export interface ColumnTypeEditorContext<T extends object> extends ColumnTypeCellContext<T> {
   commit(value: unknown): Promise<boolean>;
   cancel(): void;
+  /**
+   * Records the editor's uncommitted value without closing the editor. The
+   * cell commits it on Tab and on focus loss, `grid.commitEdit()` commits it
+   * too.
+   */
+  setDraft(value: unknown): void;
 }
 
 /**
@@ -253,6 +260,15 @@ function commitDateInSameShape(original: unknown, next: Date | null): unknown {
   return toDateInputValue(next);
 }
 
+/**
+ * Date inputs the user has typed into. Chromium fires `change` on every
+ * segment keystroke of `<input type="date">`, so once the keyboard is used a
+ * change only stages the draft; a change without typing (a pick from the
+ * calendar popup) still commits at once. Keyed by the element so the state
+ * survives re-renders of the editing cell.
+ */
+const typedDateInputs = new WeakSet<EventTarget>();
+
 const dateType: ColumnTypeRenderer<object> = {
   display(ctx) {
     const style = (ctx.column as { format?: string }).format ?? 'medium';
@@ -263,21 +279,34 @@ const dateType: ColumnTypeRenderer<object> = {
     const initial = parseDate(ctx.value);
     const initialInput = initial ? toDateInputValue(initial) : '';
 
-    const handleChange = (event: Event) => {
-      const raw = (event.target as HTMLInputElement).value;
-      const next = raw ? parseDate(raw) : null;
-      ctx.commit(commitDateInSameShape(ctx.value, next));
+    const read = (input: HTMLInputElement) => {
+      const raw = input.value;
+      return commitDateInSameShape(ctx.value, raw ? parseDate(raw) : null);
     };
-    // Escape / Tab / focus-out are handled at the cell level; we only need
-    // Enter here to commit the typed value without waiting for `change`.
+    const handleChange = (event: Event) => {
+      const input = event.target as HTMLInputElement;
+      // A half-typed date reads as '' (badInput); keep the last full draft
+      // rather than staging a clear.
+      if (input.validity.badInput) return;
+      if (typedDateInputs.has(input)) {
+        ctx.setDraft(read(input));
+      } else {
+        ctx.commit(read(input));
+      }
+    };
+    // Escape / Tab / focus-out are handled at the cell level (Tab and focus-out
+    // commit the draft); Enter commits the typed value here. Enter on a
+    // half-typed date (badInput, which reads as '') keeps the editor open
+    // rather than committing a clear.
     const handleKeydown = (event: KeyboardEvent) => {
+      const input = event.target as HTMLInputElement;
       if (event.key === 'Enter') {
         event.preventDefault();
         event.stopPropagation();
-        const raw = (event.target as HTMLInputElement).value;
-        const next = raw ? parseDate(raw) : null;
-        ctx.commit(commitDateInSameShape(ctx.value, next));
+        if (!input.validity.badInput) ctx.commit(read(input));
+        return;
       }
+      if (event.key !== 'Tab' && event.key !== 'Escape') typedDateInputs.add(input);
     };
     return html`<input
       type="date"
@@ -363,9 +392,12 @@ const booleanType: ColumnTypeRenderer<object> = {
       }}
       @change=${
         editable
-          ? (event: Event) => {
-              const next = (event.target as HTMLInputElement).checked;
-              ctx.commit?.(next);
+          ? async (event: Event) => {
+              const target = event.target as HTMLInputElement;
+              // A rejected commit (cancelled cellValueChanging, failed
+              // validator) leaves the data alone, and Lit sees no binding
+              // change to re-apply, so put the checkbox back by hand.
+              if (!(await ctx.commit?.(target.checked))) target.checked = truthy;
             }
           : undefined
       }
@@ -436,28 +468,7 @@ const currencyType: ColumnTypeRenderer<object> = {
       currency: col.currency ?? 'USD',
     }).format(n)}`;
   },
-
-  editor(ctx) {
-    const commit = (event: Event) => {
-      const raw = (event.target as HTMLInputElement).value;
-      ctx.commit(raw === '' ? null : Number(raw));
-    };
-    const handleKeydown = (event: KeyboardEvent) => {
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        event.stopPropagation();
-        commit(event);
-      }
-    };
-    return html`<input
-      type="number"
-      part="editor"
-      data-apex-editor
-      .value=${ctx.value == null ? '' : String(ctx.value)}
-      @change=${commit}
-      @keydown=${handleKeydown}
-    />`;
-  },
+  // No `editor`: currency cells edit with the cell's built-in number editor.
 };
 
 const avatarType: ColumnTypeRenderer<object> = {

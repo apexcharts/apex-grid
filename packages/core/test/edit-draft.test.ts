@@ -264,4 +264,118 @@ describe('Editing draft', () => {
       expect(F.deepActive()).to.equal(button);
     });
   });
+
+  describe('typed editors (core-column-types-1, -3, -4)', () => {
+    it('date: one ArrowUp does not commit or close the editor', async () => {
+      const changed: unknown[] = [];
+      F.grid.addEventListener('cellValueChanged', (e) => changed.push(e.detail.value));
+      await F.open(0, 'joinedAt');
+      await sendKeys({ press: 'ArrowUp' });
+      await F.waitForUpdate();
+      expect(changed).to.deep.equal([]);
+      expect(F.grid.editingCell).to.not.be.null;
+    });
+
+    // The segment order of <input type="date"> follows the host locale, so
+    // these step the focused segment with ArrowUp instead of typing digits.
+    it('date: keyboard edits commit once, on Enter', async () => {
+      const changed: unknown[] = [];
+      F.grid.addEventListener('cellValueChanged', (e) => changed.push(e.detail.value));
+      const input = await F.open(0, 'joinedAt');
+      for (let i = 0; i < 3; i++) await sendKeys({ press: 'ArrowUp' });
+      await F.waitForUpdate();
+      expect(changed, 'nothing committed while editing').to.deep.equal([]);
+      const typed = input.value;
+      expect(typed).to.not.equal('2025-01-15');
+      await sendKeys({ press: 'Enter' });
+      await F.waitForUpdate();
+      expect(changed).to.deep.equal([typed]);
+    });
+
+    it('date: keyboard edits commit on Tab', async () => {
+      const input = await F.open(0, 'joinedAt');
+      await sendKeys({ press: 'ArrowUp' });
+      await sendKeys({ press: 'ArrowUp' });
+      const typed = input.value;
+      expect(typed).to.not.equal('2025-01-15');
+      expect(F.grid.editingCell, 'still editing before Tab').to.not.be.null;
+      await sendKeys({ press: 'Tab' });
+      await F.waitForUpdate();
+      expect(F.grid.data[0].joinedAt).to.equal(typed);
+    });
+
+    it('date: a pick without typing still commits at once', async () => {
+      const input = await F.open(0, 'joinedAt');
+      input.value = '2026-12-25';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await F.waitForUpdate();
+      expect(F.grid.editingCell).to.be.null;
+      expect(F.grid.data[0].joinedAt).to.equal('2026-12-25');
+    });
+
+    it('date: a leading 0 does not erase the stored date', async () => {
+      const changed: unknown[] = [];
+      F.grid.addEventListener('cellValueChanged', (e) => changed.push(e.detail.value));
+      await F.open(0, 'joinedAt');
+      await sendKeys({ type: '0' });
+      await F.waitForUpdate();
+      expect(changed).to.deep.equal([]);
+      expect(F.grid.data[0].joinedAt).to.equal('2025-01-15');
+    });
+
+    it('date: Enter on a half-typed date keeps the stored date', async () => {
+      const changed: unknown[] = [];
+      F.grid.addEventListener('cellValueChanged', (e) => changed.push(e.detail.value));
+      await F.open(0, 'joinedAt');
+      await sendKeys({ type: '0' });
+      await sendKeys({ press: 'Enter' });
+      await F.waitForUpdate();
+      expect(changed).to.deep.equal([]);
+      expect(F.grid.data[0].joinedAt).to.equal('2025-01-15');
+      expect(F.grid.editingCell, 'editor stays open').to.not.be.null;
+    });
+
+    it('date: Enter after clearing one segment keeps the stored date', async () => {
+      await F.open(0, 'joinedAt');
+      await sendKeys({ press: 'Backspace' });
+      await sendKeys({ press: 'Enter' });
+      await F.waitForUpdate();
+      expect(F.grid.data[0].joinedAt).to.equal('2025-01-15');
+      expect(F.grid.editingCell).to.not.be.null;
+    });
+
+    it('currency: the typed amount commits on Tab', async () => {
+      await F.open(0, 'price');
+      await sendKeys({ press: 'Backspace' });
+      await sendKeys({ press: 'Backspace' });
+      await sendKeys({ type: '99' });
+      await sendKeys({ press: 'Tab' });
+      await F.waitForUpdate();
+      expect(F.grid.data[0].price).to.equal(99);
+    });
+
+    it('boolean: a rejected toggle puts the checkbox back', async () => {
+      F.grid.addEventListener('cellValueChanging', (e) => e.preventDefault());
+      const box = F.cell(0, 'active').shadowRoot!.querySelector<HTMLInputElement>(
+        'input[type="checkbox"]'
+      )!;
+      expect(box.checked).to.be.false;
+      box.click();
+      await F.waitForUpdate();
+      expect(F.grid.data[0].active).to.be.false;
+      expect(box.checked).to.be.false;
+    });
+
+    it('boolean: the default editor reverts a rejected toggle', async () => {
+      F.grid.addEventListener('cellValueChanging', (e) => e.preventDefault());
+      await F.grid.editCell(0, 'active');
+      await F.waitForUpdate();
+      const box = F.input(0, 'active')!;
+      expect(box.checked).to.be.false;
+      box.click();
+      await F.waitForUpdate();
+      expect(F.grid.data[0].active).to.be.false;
+      expect(F.input(0, 'active')!.checked).to.be.false;
+    });
+  });
 });

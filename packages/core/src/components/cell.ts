@@ -414,9 +414,15 @@ export default class ApexGridCell<T extends object> extends LitElement {
     this.#commit();
   };
 
+  /** Number and currency columns share the built-in number editor. */
+  get #isNumeric(): boolean {
+    const type = this.column.type;
+    return type === 'number' || type === 'currency';
+  }
+
   #handleTextInput = (event: Event) => {
     const target = event.target as HTMLInputElement;
-    if (this.column.type === 'number') {
+    if (this.#isNumeric) {
       // An empty (or non-parseable) number field clears the value to null rather
       // than committing NaN, which would render as the text "NaN".
       const numeric = target.valueAsNumber;
@@ -428,9 +434,13 @@ export default class ApexGridCell<T extends object> extends LitElement {
     this.editingController.setDraft(target.value);
   };
 
-  #handleCheckboxChange = (event: Event) => {
-    // Booleans commit immediately — toggling is the whole interaction.
-    this.editingController.commitCell((event.target as HTMLInputElement).checked);
+  #handleCheckboxChange = async (event: Event) => {
+    const target = event.target as HTMLInputElement;
+    // Booleans commit immediately: toggling is the whole interaction. A
+    // rejected toggle flips back so the box never shows an unsaved state.
+    if (!(await this.editingController.commitCell(target.checked))) {
+      target.checked = !target.checked;
+    }
   };
 
   protected renderDefaultEditor() {
@@ -445,7 +455,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
         @keydown=${this.#handleKeydown}
       />`;
     }
-    if (this.column.type === 'number') {
+    if (this.#isNumeric) {
       return html`<input
         type="number"
         part="editor"
@@ -474,6 +484,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
       value: this.value,
       commit: (next: unknown) => this.editingController.commitCell(next),
       cancel: () => this.editingController.cancelCell(),
+      setDraft: (next: unknown) => this.editingController.setDraft(next),
     };
     if (template) {
       return template(ctx as unknown as ApexEditorContext<T> as never);
