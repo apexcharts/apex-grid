@@ -1,5 +1,5 @@
 import { ContextProvider } from '@lit/context';
-import { html, nothing } from 'lit';
+import { html, nothing, type PropertyDeclaration } from 'lit';
 import { eventOptions, property, query, queryAll, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 import { DataOperationsController } from '../controllers/data-operation.js';
@@ -741,6 +741,38 @@ export interface ApexGridEventMap<T extends object> {
 /** Sort directions a restored sort may carry (getSchema advertises the first two). */
 const SORT_DIRECTIONS: ReadonlyArray<SortingDirection> = ['ascending', 'descending', 'none'];
 
+/** Slices that can change the row count, so a page cannot be clamped before they render. */
+const VIEW_SHAPING_SLICES: ReadonlySet<SetStateSlice> = new Set([
+  'columns',
+  'filter',
+  'quickFilter',
+  'modules',
+  'tree',
+]);
+
+/**
+ * Properties whose change can alter the row or page count before the pipeline
+ * reruns, each with the fields that matter for a configuration object (`null`:
+ * compared by identity). A framework re-binding an equal inline object does
+ * not count as a change.
+ */
+const VIEW_SHAPING_PROPERTIES: ReadonlyMap<PropertyKey, readonly string[] | null> = new Map([
+  ['data', null],
+  ['quickFilter', null],
+  ['pagination', ['enabled', 'mode', 'pageSize', 'totalItems']],
+  ['tree', ['enabled', 'getDataPath', 'defaultExpanded']],
+  ['dataPipelineConfiguration', ['sort', 'filter', 'pagination', 'quickFilter']],
+]);
+
+/** Whether a view-shaping property changed in a way that can alter the row count. */
+function viewShapeChanged(fields: readonly string[] | null, before: unknown, after: unknown) {
+  if (Object.is(before, after)) return false;
+  if (!fields) return true;
+  const a = (before ?? {}) as Record<string, unknown>;
+  const b = (after ?? {}) as Record<string, unknown>;
+  return fields.some((field) => !Object.is(a[field], b[field]));
+}
+
 /** Report a dropped entry from a property setter (no result object to carry it). */
 function warnDropped(message: string): void {
   // biome-ignore lint/suspicious/noConsole: the setter has no other channel for a dropped entry
@@ -1458,7 +1490,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   public set filterExpressions(expressions: FilterExpression<T>[] | null | undefined) {
     this.#pendingFilter = [...(expressions ?? [])];
-    this.requestUpdate(PIPELINE);
+    this.#markViewChange();
   }
 
   /**
@@ -1576,6 +1608,13 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
   /**
    * The current zero-based page index.
+   *
+   * @remarks
+   * Navigates like {@link ApexGrid.gotoPage}, with the cancellable
+   * `pageChanging` and the `pageChanged` events. Assigned before the first
+   * render, or while a data, filter or quick filter change has yet to render,
+   * the page is kept as given and clamped once the view settles, without those
+   * events.
    */
   @property({ attribute: false })
   public get page(): number {
@@ -1583,7 +1622,57 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   public set page(value: number) {
-    this.stateController.pagination.gotoPage(value);
+    if (this.#viewStale) {
+      // The row count is about to change: keep the page and let the reclamp
+      // after the pipeline clamp it against the settled view.
+      this.stateController.pagination.page = Number.isFinite(value)
+        ? Math.max(0, Math.trunc(value))
+        : 0;
+      this.requestUpdate(PIPELINE);
+    } else {
+      this.stateController.pagination.gotoPage(value);
+    }
+  }
+
+  /**
+   * A row count changing input (see VIEW_SHAPING_PROPERTIES) has not rendered
+   * yet. Only set alongside a requested update, which clears it.
+   */
+  #viewChangePending = false;
+  /** Pipeline runs carrying such a change that have not settled yet. */
+  #shapingRuns = 0;
+
+  /** Whether the row count may still change, so a page cannot be clamped yet. */
+  get #viewStale(): boolean {
+    return !this.hasUpdated || this.#viewChangePending || this.#shapingRuns > 0;
+  }
+
+  /** Mark the row count as about to change and request the pipeline that settles it. */
+  #markViewChange(): void {
+    this.#viewChangePending = true;
+    this.requestUpdate(PIPELINE);
+  }
+
+  public override requestUpdate(
+    name?: PropertyKey,
+    oldValue?: unknown,
+    options?: PropertyDeclaration,
+    useNewValue?: boolean,
+    newValue?: unknown
+  ): void {
+    // Before the first render the view is stale anyway (and this runs while
+    // the class fields, these flags included, are still being initialised).
+    // A shaping change is also a Lit change (a stricter test than identity),
+    // so the update requested below clears the flag.
+    const fields = name === undefined ? undefined : VIEW_SHAPING_PROPERTIES.get(name);
+    if (
+      this.hasUpdated &&
+      fields !== undefined &&
+      viewShapeChanged(fields, oldValue, useNewValue ? newValue : this[name as keyof this])
+    ) {
+      this.#viewChangePending = true;
+    }
+    super.requestUpdate(name, oldValue, options, useNewValue, newValue);
   }
 
   /**
@@ -1631,16 +1720,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     // injected rows appear on first paint, not only after the async pipeline.
     // Identity pass-through when no modules are registered (community grid).
     this.dataState = this.stateController ? this.stateController.applyModuleTransforms(next) : next;
-    if (this.hasUpdated) {
-      this.pipeline();
-    }
-  }
-
-  @watch(PIPELINE)
-  protected async pipeline() {
-    this.#flushPendingExpressions();
-    this.dataState = await this.dataController.apply([...this.data], this.stateController);
-    this.stateController.pagination.reclamp();
+    // Requested, not called, so every watcher of this update shares one run.
+    if (this.hasUpdated) this.requestUpdate(PIPELINE);
   }
 
   @watch('pagination')
@@ -1654,15 +1735,31 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     if (typeof next.page === 'number') {
       ctrl.page = next.page;
     }
-    if (this.hasUpdated) {
-      this.pipeline();
-    }
+    if (this.hasUpdated) this.requestUpdate(PIPELINE);
   }
 
   @watch('quickFilter')
   protected quickFilterChanged() {
-    if (this.hasUpdated) {
-      this.pipeline();
+    // Also before the first render, so a term set at mount (the attribute or
+    // a bound property) filters the first view.
+    if (this.hasUpdated || this.quickFilter) this.requestUpdate(PIPELINE);
+  }
+
+  // Declared after every watcher that requests it, so each request made while
+  // this update's watchers run is seen here and the pipeline runs once.
+  @watch(PIPELINE)
+  protected async pipeline() {
+    this.#flushPendingExpressions();
+    // The first run, or one carrying a row count change, leaves the page
+    // unsettled until its reclamp.
+    const shaping = this.#viewChangePending || !this.hasUpdated;
+    this.#viewChangePending = false;
+    if (shaping) this.#shapingRuns++;
+    try {
+      this.dataState = await this.dataController.apply([...this.data], this.stateController);
+      this.stateController.pagination.reclamp();
+    } finally {
+      if (shaping && !--this.#shapingRuns) this.#baselineStateIfUnset();
     }
   }
 
@@ -1703,9 +1800,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
   /** Replace the filter with `entries` (unresolvable ones are dropped by `filter`). */
   #replaceFilter(entries: ReadonlyArray<FilterExpression<T>>): void {
+    this.#markViewChange();
     this.stateController.filtering.reset();
     if (entries.length) this.filter([...entries]);
-    this.requestUpdate(PIPELINE);
   }
 
   protected override updated(): void {
@@ -1714,6 +1811,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     // than `willUpdate()` because `@watch('data')` runs *after* the original
     // willUpdate via decorator wrapping — reading `pageItems` earlier would
     // see a stale (empty) `dataState`.
+    // This update's watchers consumed every change requested before it; a
+    // pipeline still running is counted in #shapingRuns.
+    this.#viewChangePending = false;
     this.setAttribute('role', this.stateController.tree.enabled ? 'treegrid' : 'grid');
     const pinned = this.stateController.rowPin.pinnedRows;
     this.setAttribute(
@@ -1873,15 +1973,27 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   #emitStateChangedIfNeeded(): void {
     if (!this.#stateChangedListeners.size) return;
+    // No baseline yet (subscribed before the first render): the first settled
+    // state is the initial one, not a change, so it is recorded, not emitted.
+    if (this.#lastStateJson === null) {
+      this.#baselineStateIfUnset();
+      return;
+    }
     const snapshot = this.getState();
     const json = JSON.stringify(snapshot);
     if (json === this.#lastStateJson) return;
-    const baseline = this.#lastStateJson;
     this.#lastStateJson = json;
-    // No baseline yet (subscribed before the first render): the first settled
-    // state is the initial one, not a change, so record it without emitting.
-    if (baseline === null) return;
     this.emitEvent('stateChanged', { detail: { state: snapshot } });
+  }
+
+  /**
+   * Record the initial state for listeners attached before the first render,
+   * once the first view settles (its reclamp may still move the page).
+   */
+  #baselineStateIfUnset(): void {
+    if (this.#lastStateJson === null && this.#stateChangedListeners.size && !this.#shapingRuns) {
+      this.#lastStateJson = JSON.stringify(this.getState());
+    }
   }
 
   protected override firstUpdated(): void {
@@ -1906,8 +2018,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   public filter(config: FilterExpression<T> | FilterExpression<T>[]) {
     if (this.#pendingFilter) {
       // Adds onto the assigned filter, which applies at the next update.
-      this.#pendingFilter.push(...asArray(config));
-      this.requestUpdate(PIPELINE);
+      const added = asArray(config);
+      this.#pendingFilter.push(...added);
+      if (added.length) this.#markViewChange();
       return;
     }
     const expressions: FilterExpression<T>[] = [];
@@ -1916,7 +2029,10 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       if (typeof resolved === 'string') warnDropped(resolved);
       else expressions.push(resolved);
     }
-    if (expressions.length) this.stateController.filtering.filter(expressions);
+    // Nothing to apply leaves the view, and the page events, as they were.
+    if (!expressions.length) return;
+    this.#markViewChange();
+    this.stateController.filtering.filter(expressions);
   }
 
   /**
@@ -2031,6 +2147,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     const strict = options?.strict ?? false;
     const applied: SetStateSlice[] = [];
     const warnings: string[] = [];
+    // The view is current only when no row count change is waiting to render;
+    // a page can be clamped against it now only if no slice below changes it.
+    const viewSettled = !this.#viewStale;
     const warn = (message: string): void => {
       if (strict) throw new Error(`[apex-grid] setState: ${message}`);
       warnings.push(message);
@@ -2104,6 +2223,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     if (state.modules !== undefined) {
       if (state.modules && typeof state.modules === 'object') {
         this.stateController.restoreModuleState(state.modules);
+        this.#markViewChange();
         applied.push('modules');
       } else {
         warn(`modules: expected an object, got ${typeof state.modules}; skipped`);
@@ -2137,6 +2257,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
         resolveCounted(refs, 'treeExpanded'),
         keys.filter((key) => typeof key === 'string')
       );
+      this.#markViewChange();
       applied.push('tree');
     }
 
@@ -2201,10 +2322,16 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
         if (page !== undefined) {
           if (typeof page === 'number' && Number.isFinite(page)) {
             const requested = Math.trunc(page);
-            this.page = requested;
-            if (this.page !== requested) {
-              warn(`pagination: page ${requested} out of range; clamped to ${this.page}`);
+            const reshaped = applied.some((slice) => VIEW_SHAPING_SLICES.has(slice));
+            const ctrl = this.stateController.pagination;
+            // Against a stale view (before the first render, or with filters
+            // or row structure restored above) keep the page as requested and
+            // let the reclamp after the pipeline clamp it to the restored view.
+            const next = viewSettled && !reshaped ? ctrl.clamp(requested) : Math.max(0, requested);
+            if (next !== requested) {
+              warn(`pagination: page ${requested} out of range; clamped to ${next}`);
             }
+            ctrl.page = next;
           } else {
             warn(`pagination: invalid page ${String(page)}; ignored`);
           }
@@ -2266,8 +2393,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     } else {
       this.#pendingFilter = undefined;
     }
+    this.#markViewChange();
     this.stateController.filtering.reset(key);
-    this.requestUpdate(PIPELINE);
   }
 
   /**
