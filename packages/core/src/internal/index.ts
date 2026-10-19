@@ -60,6 +60,8 @@ export type {
 export {
   applyColumnLayout,
   deserializeFilter,
+  mergeColumnLayout,
+  resolveFilterOperand,
   resolveRowRefs,
   serializeColumnLayout,
   serializeFilter,

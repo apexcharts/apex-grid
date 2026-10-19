@@ -32,9 +32,12 @@ import {
   type GetStateOptions,
   type GridState,
   type RowRef,
+  resolveFilterOperand,
   resolveRowRefs,
+  SET_STATE_SLICES,
   type SetStateOptions,
   type SetStateResult,
+  type SetStateSlice,
   type SortStateSnapshot,
   serializeColumnLayout,
   serializeFilter,
@@ -59,12 +62,7 @@ import type {
   PinPosition,
   ToolbarAction,
 } from '../internal/types.js';
-import {
-  asArray,
-  autoGenerateColumns,
-  getDisplayColumns,
-  getFilterOperandsFor,
-} from '../internal/utils.js';
+import { asArray, autoGenerateColumns, getDisplayColumns } from '../internal/utils.js';
 import { watch } from '../internal/watch.js';
 import type { FilterExpression } from '../operations/filter/types.js';
 import type { SortExpression } from '../operations/sort/types.js';
@@ -737,20 +735,11 @@ export interface ApexGridEventMap<T extends object> {
   rowSelected: CustomEvent<ApexRowSelectedEvent<T>>;
 }
 
-/** Known `setState` slice names, used to compute the `skipped` report. */
-const SET_STATE_SLICES = [
-  'columns',
-  'sort',
-  'filter',
-  'quickFilter',
-  'modules',
-  'rowOrder',
-  'tree',
-  'expansion',
-  'rowPinning',
-  'selection',
-  'pagination',
-] as const;
+/** Report a dropped entry from a property setter (no result object to carry it). */
+function warnDropped(message: string): void {
+  // biome-ignore lint/suspicious/noConsole: the setter has no other channel for a dropped entry
+  console.warn(`[apex-grid] ${message}`);
+}
 
 /**
  * Apex grid is a web component for displaying data in a tabular format quick and easy.
@@ -1466,6 +1455,26 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
+   * `each` resolved against its column on a new object (the caller's may be
+   * frozen): the column's defaults under it and an operand name replaced by
+   * the live operation. Returns the reason instead when it cannot resolve.
+   */
+  #resolveFilter(each: FilterExpression<T>): FilterExpression<T> | string {
+    const column = each ? this.getColumn(each.key) : undefined;
+    if (!column) return `filter: unknown column "${String(each?.key)}"; dropped`;
+    const defaults = this.stateController.filtering.getDefaultExpression(column);
+    const named = each.condition ?? defaults.condition;
+    const condition = typeof named === 'string' ? resolveFilterOperand(column, named) : named;
+    if (!condition) return `filter: unknown operand "${named}" for "${String(each.key)}"; dropped`;
+    return {
+      ...defaults,
+      ...each,
+      condition,
+      criteria: each.criteria ?? 'and',
+    } as unknown as FilterExpression<T>;
+  }
+
+  /**
    * Returns the collection of rendered row elements in the grid.
    *
    * @remarks
@@ -1774,16 +1783,13 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * Performs a filter operation in the grid based on the passed expression(s).
    */
   public filter(config: FilterExpression<T> | FilterExpression<T>[]) {
-    this.stateController.filtering.filter(
-      asArray(config).map((each) =>
-        typeof each.condition === 'string'
-          ? // XXX: Types
-            Object.assign(each, {
-              condition: (getFilterOperandsFor(this.getColumn(each.key)!) as any)[each.condition],
-            })
-          : each
-      )
-    );
+    const expressions: FilterExpression<T>[] = [];
+    for (const each of asArray(config)) {
+      const resolved = this.#resolveFilter(each);
+      if (typeof resolved === 'string') warnDropped(resolved);
+      else expressions.push(resolved);
+    }
+    if (expressions.length) this.stateController.filtering.filter(expressions);
   }
 
   /**
@@ -1821,7 +1827,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       columns: serializeColumnLayout(this.columns),
       sort: serializeSort(this.sortExpressions),
       filter: serializeFilter(this.filterExpressions),
-      quickFilter: this.quickFilter,
+      // Removing the `quick-filter` attribute sets the property to null.
+      quickFilter: this.quickFilter ?? '',
       pagination: { page: this.page, pageSize: this.pageSize },
       selection: serializeRowRefs(this.selectedRows, this.data, rowId),
       expansion: serializeRowRefs(this.expandedRows, this.data, rowId),
@@ -1889,7 +1896,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   public setState(state: Partial<GridState>, options?: SetStateOptions<T>): SetStateResult {
     const rowId = options?.rowId ?? this.rowId;
     const strict = options?.strict ?? false;
-    const applied: string[] = [];
+    const applied: SetStateSlice[] = [];
     const warnings: string[] = [];
     const warn = (message: string): void => {
       if (strict) throw new Error(`[apex-grid] setState: ${message}`);
@@ -1924,6 +1931,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
     const columns = asArray<ColumnLayoutState>(state.columns, 'columns');
     if (columns) {
+      const unkeyed = columns.filter((entry) => typeof entry?.key !== 'string').length;
+      if (unkeyed)
+        warn(`columns: ${unkeyed} entr${unkeyed === 1 ? 'y' : 'ies'} without a key; dropped`);
       this.columns = applyColumnLayout(this.columns, columns);
       applied.push('columns');
     }
@@ -1998,14 +2008,27 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     if (state.treeExpanded !== undefined || state.treeExpandedKeys !== undefined) {
       const refs = asArray<RowRef>(state.treeExpanded, 'treeExpanded') ?? [];
       const keys = asArray<string>(state.treeExpandedKeys, 'treeExpandedKeys') ?? [];
-      this.stateController.tree.restoreExpansion(resolveCounted(refs, 'treeExpanded'), keys);
+      this.stateController.tree.restoreExpansion(
+        resolveCounted(refs, 'treeExpanded'),
+        keys.filter((key) => typeof key === 'string')
+      );
       applied.push('tree');
     }
 
     const expansion = asArray<RowRef>(state.expansion, 'expansion');
     if (expansion) {
-      this.expandedRows = resolveCounted(expansion, 'expansion');
-      applied.push('expansion');
+      const ctrl = this.stateController.expansion;
+      const predicate = this.expansion?.isExpandable;
+      const rows = resolveCounted(expansion, 'expansion');
+      const expected = predicate ? rows.filter((row) => predicate(row)) : rows;
+      if (
+        this.#replaceRows('expansion', ctrl.enabled, expected, warn, () => {
+          void ctrl.replaceExpansion(expected);
+          return ctrl.expandedRows();
+        })
+      ) {
+        applied.push('expansion');
+      }
     }
 
     if (state.rowPinning !== undefined) {
@@ -2026,8 +2049,17 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
     const selection = asArray<RowRef>(state.selection, 'selection');
     if (selection) {
-      this.selectedRows = resolveCounted(selection, 'selection');
-      applied.push('selection');
+      const ctrl = this.stateController.selection;
+      const rows = resolveCounted(selection, 'selection');
+      const expected = ctrl.mode === 'single' ? rows.slice(0, 1) : rows;
+      if (
+        this.#replaceRows('selection', ctrl.enabled, expected, warn, () => {
+          void ctrl.replaceSelection(expected);
+          return ctrl.selectedRows();
+        })
+      ) {
+        applied.push('selection');
+      }
     }
 
     if (state.pagination !== undefined) {
@@ -2062,6 +2094,29 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
     const skipped = SET_STATE_SLICES.filter((slice) => !applied.includes(slice));
     return { applied, skipped, warnings };
+  }
+
+  /**
+   * Restore a row slice (selection or expansion) through its controller and
+   * report whether it took: a disabled feature or a vetoing `rowSelecting` /
+   * `rowExpanding` listener leaves the rows unchanged, which is a warning, not
+   * an applied slice. `replace` runs synchronously up to the veto decision.
+   */
+  #replaceRows(
+    label: SetStateSlice,
+    enabled: boolean,
+    expected: ReadonlyArray<T>,
+    warn: (message: string) => void,
+    replace: () => ReadonlyArray<T>
+  ): boolean {
+    if (!enabled) {
+      if (expected.length) warn(`${label}: the feature is disabled on this grid; skipped`);
+      return !expected.length;
+    }
+    const actual = new Set(replace());
+    const took = actual.size === new Set(expected).size && expected.every((row) => actual.has(row));
+    if (!took) warn(`${label}: the change was cancelled by a listener; skipped`);
+    return took;
   }
 
   /**
