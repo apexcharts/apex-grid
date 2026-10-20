@@ -731,4 +731,18 @@ describe('Master-detail expansion across data refresh', () => {
     expect(fx.grid.expandedRows).to.deep.equal([kept]);
     expect(fx.controller.expanded).to.equal(before);
   });
+
+  it('does not announce a count of expanded rows when one row replaces another', async () => {
+    const messages: string[] = [];
+    const announce = fx.grid.announce.bind(fx.grid);
+    fx.grid.announce = (message: string) => {
+      messages.push(message);
+      announce(message);
+    };
+    await fx.grid.expandRow(fx.grid.data[0]);
+    fx.grid.expandedRows = [fx.grid.data[1]];
+    await fx.waitForUpdate();
+    expect(messages).to.deep.equal(['Row expanded']);
+    expect(fx.grid.expandedRows).to.deep.equal([fx.grid.data[1]]);
+  });
 });

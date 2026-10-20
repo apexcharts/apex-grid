@@ -185,7 +185,9 @@ export class ExpansionController<T extends object> implements ReactiveController
       this.host.announce(this.host.localize('announce.rowExpanded'));
     } else if (added.length === 0 && removed.length === 1) {
       this.host.announce(this.host.localize('announce.rowCollapsed'));
-    } else if (added.length > 0 && next.size === added.length + this.expanded.size - added.length) {
+    } else if (added.length > 0 && removed.length === 0) {
+      // Only a pure expansion has a count to report; a swap that also
+      // collapses rows would be misread as "N rows expanded".
       this.host.announce(this.host.localize('announce.rowsExpanded', { count: added.length }));
     } else if (removed.length > 0 && next.size === 0) {
       this.host.announce(this.host.localize('announce.allRowsCollapsed'));
