@@ -485,6 +485,20 @@ describe('adv-filter: builder model ownership (ent-filter-builder-3, -4, -8)', (
     expect((grid.pageItems as Row[]).map((r) => r.amount)).to.eql([150, 200, 300]);
   });
 
+  it('applyAdvancedFilter keeps a copy of the caller model', async () => {
+    const grid = await mountGrid();
+    const model = over100();
+    grid.applyAdvancedFilter(model);
+    await settle(grid as never);
+    (model.children[0] as AdvancedFilterCondition).operator = 'lessThan';
+    grid.sort({ key: 'amount', direction: 'ascending' });
+    await settle(grid as never);
+    expect((grid.pageItems as Row[]).map((r) => r.amount)).to.eql([150, 200, 300]);
+    expect((grid.advancedFilterModel!.children[0] as AdvancedFilterCondition).operator).to.equal(
+      'greaterThan'
+    );
+  });
+
   it('a builder mounted on a filtered grid shows the applied filter', async () => {
     const grid = await mountGrid();
     grid.applyAdvancedFilter(over100());

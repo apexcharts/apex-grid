@@ -38,7 +38,11 @@ import { html, type PropertyValues } from 'lit';
 import { property } from 'lit/decorators.js';
 import type { ApexGridAI } from './ai-panel.js';
 import type { ApexGridChart, ChartSource } from './chart-panel.js';
-import { type AdvancedFilterModel, filterRows } from './features/advanced-filter.js';
+import {
+  type AdvancedFilterModel,
+  copyAdvancedFilter,
+  filterRows,
+} from './features/advanced-filter.js';
 import {
   AGGREGATION_MODULE_ID,
   type AggregationConfig,
@@ -594,15 +598,17 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * Apply a nested AND/OR advanced filter. It evaluates client-side through the
    * `dataPipelineConfiguration.filter` hook and, while active, owns column
    * filtering (it replaces the built-in filter). Composes with sort / pagination
-   * / grouping. Call {@link clearAdvancedFilter} to remove it.
+   * / grouping. Call {@link clearAdvancedFilter} to remove it. The grid keeps a
+   * copy, so changing `model` afterwards takes effect only on the next apply.
    */
   public applyAdvancedFilter(model: AdvancedFilterModel): void {
     if (!this.#advancedFilterHook) {
       // Remember any app-provided filter hook so clearing restores it.
       this.#savedFilterHook = this.dataPipelineConfiguration?.filter;
     }
-    this.#advancedFilterModel = model;
-    const hook: DataPipelineHook<T> = (params) => filterRows(params.data, model, this.columns);
+    const applied = copyAdvancedFilter(model);
+    this.#advancedFilterModel = applied;
+    const hook: DataPipelineHook<T> = (params) => filterRows(params.data, applied, this.columns);
     this.#advancedFilterHook = hook;
     this.dataPipelineConfiguration = { ...(this.dataPipelineConfiguration ?? {}), filter: hook };
     this.requestUpdate(PIPELINE);
