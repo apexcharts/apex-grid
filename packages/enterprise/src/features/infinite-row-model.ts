@@ -2,6 +2,59 @@ import type { DataPipelineConfiguration, FilterExpression, SortExpression } from
 
 export const ROWS_LOADED_EVENT = 'apex-rows-loaded';
 
+/** Fired on the grid when a block request rejects; see {@link RowsLoadFailedDetail}. */
+export const ROWS_LOAD_FAILED_EVENT = 'apex-rows-load-failed';
+
+/**
+ * How the infinite and server-side row models retry a `getRows` call that
+ * rejects. Retries are bounded: after the last one the rows are reported
+ * failed (a load-failed event with `retrying: false`) and are not requested
+ * again until the next refresh, sort or filter change.
+ */
+export interface RowLoadRetryConfig {
+  /**
+   * Times a rejected request is retried. Default `2`; `0` turns retrying off.
+   * Capped at `10` (so `Infinity` means 10); `NaN` uses the default.
+   */
+  maxRetries?: number;
+  /**
+   * Milliseconds before the first retry, doubled for each later one. Default
+   * `1000`; a value that is not a finite number uses the default.
+   */
+  retryDelay?: number;
+}
+
+/**
+ * Calls `request`, retrying a rejection as {@link RowLoadRetryConfig} says.
+ * `failed` hears every rejection and whether another attempt follows. Gives up
+ * quietly once `current()` turns false (a newer request generation). Resolves
+ * to the result, or `undefined` when every attempt failed or the request went
+ * stale.
+ */
+export async function fetchWithRetry<R>(
+  request: () => Promise<R> | R,
+  config: RowLoadRetryConfig,
+  current: () => boolean,
+  failed: (error: unknown, retrying: boolean) => void
+): Promise<R | undefined> {
+  const max = config.maxRetries;
+  const retries = Math.min(10, Math.max(0, max === undefined || Number.isNaN(max) ? 2 : max));
+  const wait = config.retryDelay;
+  const delay = Number.isFinite(wait) ? Math.max(0, wait as number) : 1000;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await request();
+    } catch (error) {
+      if (!current()) return undefined;
+      const retrying = attempt < retries;
+      failed(error, retrying);
+      if (!retrying) return undefined;
+      await new Promise((resolve) => setTimeout(resolve, delay * 2 ** attempt));
+      if (!current()) return undefined;
+    }
+  }
+}
+
 /** The query fields a server row model sends with every request. */
 export interface ServerQueryHost<T extends object> {
   quickFilter?: string;
@@ -66,8 +119,11 @@ export interface InfiniteDataSource<T extends object> {
   ): Promise<InfiniteGetRowsResult<T>> | InfiniteGetRowsResult<T>;
 }
 
-/** Configuration for the infinite (server-side, lazy-scroll) row model. */
-export interface InfiniteRowModelConfig<T extends object> {
+/**
+ * Configuration for the infinite (server-side, lazy-scroll) row model. A
+ * rejected block is retried as {@link RowLoadRetryConfig} says.
+ */
+export interface InfiniteRowModelConfig<T extends object> extends RowLoadRetryConfig {
   /** The block-loading datasource. */
   datasource: InfiniteDataSource<T>;
   /** Rows per fetched block. Default `100`. */
@@ -86,6 +142,22 @@ export interface RowsLoadedDetail {
   readonly loadedBlocks: number;
   /** Rows per block. */
   readonly blockSize: number;
+}
+
+/** Detail of the {@link ROWS_LOAD_FAILED_EVENT} fired on the grid. */
+export interface RowsLoadFailedDetail {
+  /** First row index of the failed block (inclusive). */
+  readonly startRow: number;
+  /** One past the last row index of the failed block (exclusive). */
+  readonly endRow: number;
+  /** What `getRows` rejected with. */
+  readonly error: unknown;
+  /**
+   * Whether the block is requested again (see {@link RowLoadRetryConfig}). When
+   * `false` its rows stay placeholders until `refreshRows()` or a sort or
+   * filter change.
+   */
+  readonly retrying: boolean;
 }
 
 /** The minimal grid surface the manager drives (avoids a circular import). */
@@ -125,6 +197,8 @@ export class InfiniteRowModelManager<T extends object> {
   #exact = false;
   readonly #loaded = new Map<number, T[]>();
   readonly #loading = new Set<number>();
+  /** Blocks that failed for good this generation, not requested again until a reset. */
+  readonly #failed = new Set<number>();
   #started = false;
   /** Generation token — bumped on reset so in-flight stale blocks are dropped. */
   #seq = 0;
@@ -202,6 +276,7 @@ export class InfiniteRowModelManager<T extends object> {
     this.#seq += 1;
     this.#loaded.clear();
     this.#loading.clear();
+    this.#failed.clear();
     this.#exact = false;
     this.#rowCount = this.config.initialRowCount ?? this.#blockSize;
     this.#rebuild();
@@ -238,33 +313,47 @@ export class InfiniteRowModelManager<T extends object> {
     const lastBlock = Math.floor(Math.max(first, last) / this.#blockSize) + 1;
     for (let block = firstBlock; block <= lastBlock; block += 1) {
       if (this.#exact && block * this.#blockSize >= this.#rowCount) break;
-      if (!this.#loaded.has(block) && !this.#loading.has(block)) this.#loadBlock(block);
+      void this.#loadBlock(block);
     }
   }
 
   async #loadBlock(block: number): Promise<void> {
-    if (this.#loaded.has(block) || this.#loading.has(block)) return;
+    if (this.#loaded.has(block) || this.#loading.has(block) || this.#failed.has(block)) return;
     this.#loading.add(block);
     const seq = this.#seq;
+    const current = () => seq === this.#seq;
     const startRow = block * this.#blockSize;
+    const endRow = startRow + this.#blockSize;
 
-    let result: InfiniteGetRowsResult<T>;
-    try {
-      result = await this.config.datasource.getRows({
-        startRow,
-        endRow: startRow + this.#blockSize,
-        sortModel: this.host.sortExpressions,
-        filterModel: this.host.filterExpressions,
-        quickFilter: this.host.quickFilter ?? '',
-      });
-    } catch {
-      this.#loading.delete(block);
+    const result = await fetchWithRetry(
+      () =>
+        this.config.datasource.getRows({
+          startRow,
+          endRow,
+          sortModel: this.host.sortExpressions,
+          filterModel: this.host.filterExpressions,
+          quickFilter: this.host.quickFilter ?? '',
+        }),
+      this.config,
+      current,
+      (error, retrying) =>
+        this.host.dispatchEvent(
+          new CustomEvent<RowsLoadFailedDetail>(ROWS_LOAD_FAILED_EVENT, {
+            detail: { startRow, endRow, error, retrying },
+            bubbles: true,
+            composed: true,
+          })
+        )
+    );
+
+    // A reset (sort/filter change, refresh, stop) happened while fetching: drop
+    // this block and leave #loading alone, it belongs to the newer generation.
+    if (!current()) return;
+    this.#loading.delete(block);
+    if (!result) {
+      this.#failed.add(block);
       return;
     }
-
-    // A reset (sort/filter change) happened while fetching — drop this block.
-    if (seq !== this.#seq) return;
-    this.#loading.delete(block);
     this.#loaded.set(block, result.rows);
 
     if (typeof result.rowCount === 'number') {

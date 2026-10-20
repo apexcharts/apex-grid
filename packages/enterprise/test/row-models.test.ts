@@ -7,8 +7,12 @@ import {
   type InfiniteDataSource,
   type InfiniteGetRowsParams,
   type InfiniteGetRowsResult,
+  ROWS_LOAD_FAILED_EVENT,
   ROWS_LOADED_EVENT,
   type RowsLoadedDetail,
+  type RowsLoadFailedDetail,
+  SERVER_ROWS_LOAD_FAILED_EVENT,
+  type ServerRowsLoadFailedDetail,
   type ServerSideDataSource,
   type ServerSideGetRowsParams,
   type ServerSideGetRowsResult,
@@ -484,5 +488,191 @@ describe('row models: counts and query keys', () => {
     await toggleCriteria(grid);
     const last = server.calls[server.calls.length - 1];
     expect(last.filterModel.map((expr) => expr.criteria ?? 'and')).to.eql(['and', 'or']);
+  });
+});
+
+describe('row models: rejected getRows', () => {
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+  });
+  afterEach(() => fixtureCleanup());
+
+  const block = (startRow: number, count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      region: 'EMEA',
+      name: `R${startRow + i}`,
+      salary: startRow + i,
+    }));
+
+  async function mountInfinite(
+    getRows: InfiniteDataSource<Row>['getRows'],
+    retry: { maxRetries?: number; retryDelay?: number }
+  ) {
+    const failures: RowsLoadFailedDetail[] = [];
+    const parent = document.createElement('div');
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise
+        .columns=${columns}
+        @apex-rows-load-failed=${(event: CustomEvent<RowsLoadFailedDetail>) =>
+          failures.push(event.detail)}
+        .infiniteRowModel=${{ datasource: { getRows }, blockSize: 100, ...retry }}
+      ></apex-grid-enterprise>`,
+      { parentNode: parent }
+    );
+    await settle(grid);
+    return { grid, failures };
+  }
+
+  it('reports a rejected block and retries it a bounded number of times (ent-irm-detail-total-9)', async () => {
+    let attempts = 0;
+    const { grid, failures } = await mountInfinite(
+      (params) => {
+        if (params.startRow === 0) {
+          attempts += 1;
+          if (attempts === 1) throw new Error('offline');
+        }
+        return { rows: block(params.startRow, 100), rowCount: 300 };
+      },
+      { maxRetries: 1, retryDelay: 0 }
+    );
+    await settle(grid);
+    expect(failures).to.have.length(1);
+    expect(failures[0]).to.include({ startRow: 0, endRow: 100, retrying: true });
+    expect(String(failures[0].error)).to.equal('Error: offline');
+    expect(attempts).to.equal(2);
+    expect(grid.isRowLoading(grid.data[0]), 'loaded on the retry').to.be.false;
+  });
+
+  it('stops asking for a block that failed for good until a refresh', async () => {
+    const asked: number[] = [];
+    let fail = true;
+    const { grid, failures } = await mountInfinite(
+      (params) => {
+        asked.push(params.startRow);
+        if (fail && params.startRow === 0) return Promise.reject(new Error('down'));
+        return { rows: block(params.startRow, 100), rowCount: 300 };
+      },
+      { maxRetries: 0 }
+    );
+    expect(failures.map((f) => [f.startRow, f.retrying])).to.eql([[0, false]]);
+    const vz = grid.renderRoot.querySelector('apex-virtualizer') as HTMLElement;
+    vz.dispatchEvent(Object.assign(new Event('rangeChanged'), { first: 0, last: 10 }));
+    vz.dispatchEvent(Object.assign(new Event('rangeChanged'), { first: 0, last: 10 }));
+    await settle(grid);
+    expect(
+      asked.filter((row) => row === 0),
+      'not asked again while scrolling'
+    ).to.have.length(1);
+    fail = false;
+    grid.refreshRows();
+    await settle(grid);
+    expect(asked.filter((row) => row === 0)).to.have.length(2);
+    expect(grid.isRowLoading(grid.data[0])).to.be.false;
+  });
+
+  it('ignores a rejection from an older request generation', async () => {
+    const server = new PendingServer();
+    const failures: RowsLoadFailedDetail[] = [];
+    const grid = await fixture<ApexGridEnterprise<Row>>(html`<apex-grid-enterprise
+      .columns=${columns}
+      .infiniteRowModel=${{ datasource: server, blockSize: 100, maxRetries: 0 }}
+    ></apex-grid-enterprise>`);
+    grid.addEventListener(ROWS_LOAD_FAILED_EVENT, (event) =>
+      failures.push((event as CustomEvent<RowsLoadFailedDetail>).detail)
+    );
+    await settle(grid);
+    grid.refreshRows();
+    expect(server.calls.map((c) => c.params.startRow)).to.eql([0, 100, 0, 100]);
+    server.calls[0].answer.reject(new Error('stale'));
+    await settle(grid);
+    expect(failures, 'no event for a stale request').to.have.length(0);
+    // The fresh block 0 is still in flight, so a range event does not ask a third time.
+    const vz = grid.renderRoot.querySelector('apex-virtualizer') as HTMLElement;
+    vz.dispatchEvent(Object.assign(new Event('rangeChanged'), { first: 0, last: 10 }));
+    expect(server.calls.map((c) => c.params.startRow)).to.eql([0, 100, 0, 100]);
+  });
+
+  it('retries twice by default, waiting 1 s then 2 s', async () => {
+    const delays: number[] = [];
+    const realSetTimeout = window.setTimeout;
+    window.setTimeout = ((fn: () => void, ms?: number) => {
+      if (ms && ms >= 1000) {
+        delays.push(ms);
+        return realSetTimeout(fn, 0);
+      }
+      return realSetTimeout(fn, ms);
+    }) as typeof window.setTimeout;
+    try {
+      const { grid, failures } = await mountInfinite((params) => {
+        if (params.startRow === 0) throw new Error('down');
+        return { rows: block(params.startRow, 100), rowCount: 300 };
+      }, {});
+      await settle(grid);
+      await settle(grid);
+      expect(failures.map((f) => f.retrying)).to.eql([true, true, false]);
+      expect(delays).to.eql([1000, 2000]);
+    } finally {
+      window.setTimeout = realSetTimeout;
+    }
+  });
+
+  it('caps maxRetries at 10 and treats NaN as the default', async () => {
+    const attempts = async (maxRetries: number) => {
+      let calls = 0;
+      const { grid, failures } = await mountInfinite(
+        (params) => {
+          if (params.startRow === 0) {
+            calls += 1;
+            throw new Error('down');
+          }
+          return { rows: block(params.startRow, 100), rowCount: 300 };
+        },
+        { maxRetries, retryDelay: 0 }
+      );
+      for (let i = 0; i < 4; i += 1) await settle(grid);
+      fixtureCleanup();
+      return { calls, last: failures[failures.length - 1]?.retrying };
+    };
+    expect(await attempts(Number.POSITIVE_INFINITY)).to.eql({ calls: 11, last: false });
+    expect(await attempts(Number.NaN)).to.eql({ calls: 3, last: false });
+  });
+
+  it('collapses a server group whose children failed, so expanding asks again (ent-ssrm-4)', async () => {
+    let failNext = true;
+    const calls: string[][] = [];
+    const failures: ServerRowsLoadFailedDetail[] = [];
+    const datasource: ServerSideDataSource<Row> = {
+      getRows(params) {
+        calls.push(params.groupKeys);
+        if (!params.groupKeys.length) {
+          return { rows: [{ region: 'EMEA', salary: 0 }] as unknown as Row[] };
+        }
+        if (failNext) {
+          failNext = false;
+          throw new Error('timeout');
+        }
+        return { rows: LEAVES.filter((row) => row.region === 'EMEA') };
+      },
+    };
+    const grid = await fixture<ApexGridEnterprise<Row>>(html`<apex-grid-enterprise
+      .columns=${columns}
+      .serverSideRowModel=${{ datasource, rowGroupCols: ['region'], maxRetries: 0 }}
+    ></apex-grid-enterprise>`);
+    grid.addEventListener(SERVER_ROWS_LOAD_FAILED_EVENT, (event) =>
+      failures.push((event as CustomEvent<ServerRowsLoadFailedDetail>).detail)
+    );
+    await settle(grid);
+    grid.expandServerGroup(['EMEA']);
+    await settle(grid);
+    expect(failures).to.have.length(1);
+    expect(failures[0].groupKeys).to.eql(['EMEA']);
+    expect(failures[0].retrying).to.be.false;
+    expect(getServerRowMeta(byLabel(grid, 'EMEA'))?.expanded, 'collapsed again').to.be.false;
+
+    grid.expandServerGroup(['EMEA']);
+    await settle(grid);
+    expect(calls.filter((keys) => keys[0] === 'EMEA')).to.have.length(2);
+    expect(flat(grid).map((row) => row.name)).to.include('Ava');
   });
 });

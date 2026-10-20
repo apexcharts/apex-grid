@@ -9,11 +9,20 @@ import type {
 import type { GridFeatureModule, GridHost, RowAria, RowAriaProvider } from 'apex-grid/internal';
 import { html, type ReactiveController, type TemplateResult } from 'lit';
 import type { AggregationConfig } from './aggregation.js';
-import { listenForRange, type ServerQueryHost, serverQueryKey } from './infinite-row-model.js';
+import {
+  fetchWithRetry,
+  listenForRange,
+  type RowLoadRetryConfig,
+  type ServerQueryHost,
+  serverQueryKey,
+} from './infinite-row-model.js';
 
 export const SERVER_SIDE_ROW_MODEL_MODULE_ID = 'server-side-row-model';
 
 export const SERVER_ROWS_LOADED_EVENT = 'apex-server-rows-loaded';
+
+/** Fired on the grid when a level request rejects; see {@link ServerRowsLoadFailedDetail}. */
+export const SERVER_ROWS_LOAD_FAILED_EVENT = 'apex-server-rows-load-failed';
 
 /** Synthetic key of the auto group column the server-side model prepends. */
 export const SSRM_GROUP_KEY = '__ssrm_group__';
@@ -119,7 +128,7 @@ export interface ServerSideDataSource<T extends object> {
 }
 
 /** Configuration for the server-side (grouping + aggregation) row model. */
-export interface ServerSideRowModelConfig<T extends object> {
+export interface ServerSideRowModelConfig<T extends object> extends RowLoadRetryConfig {
   datasource: ServerSideDataSource<T>;
   /** Ordered group-by column keys. Empty ⇒ a flat server request. */
   rowGroupCols: string[];
@@ -150,6 +159,25 @@ export interface ServerSideRowModelConfig<T extends object> {
 export interface ServerRowsLoadedDetail {
   readonly rows: number;
   readonly loadedGroups: number;
+}
+
+/** Detail of {@link SERVER_ROWS_LOAD_FAILED_EVENT}. */
+export interface ServerRowsLoadFailedDetail {
+  /** Group value path of the level that failed (`[]` = top level). */
+  readonly groupKeys: string[];
+  /** First child index of the failed block, when paginating (see `blockSize`). */
+  readonly startRow?: number;
+  /** One past the last child index of the failed block, when paginating. */
+  readonly endRow?: number;
+  /** What `getRows` rejected with. */
+  readonly error: unknown;
+  /**
+   * Whether the request is made again (see {@link RowLoadRetryConfig}). When
+   * `false`, a group with no rows loaded collapses so the next expand asks
+   * again; other failed rows stay placeholders until `refreshServerSide()` or
+   * a sort or filter change.
+   */
+  readonly retrying: boolean;
 }
 
 /** The minimal grid surface the SSRM manager drives. */
@@ -198,6 +226,8 @@ interface SsrmLevel<T extends object> {
   readonly blocks: Map<number, T[]>;
   /** Blocks currently in flight. */
   readonly loading: Set<number>;
+  /** Blocks that failed for good this generation, not requested again until a reset. */
+  readonly failed: Set<number>;
   /** One shared placeholder row per not-yet-loaded block, created on first use. */
   readonly placeholders: Map<number, T>;
   /** Exact child count once known (from `rowCount` or a short block). */
@@ -205,7 +235,13 @@ interface SsrmLevel<T extends object> {
 }
 
 function emptyLevel<T extends object>(): SsrmLevel<T> {
-  return { blocks: new Map(), loading: new Set(), placeholders: new Map(), total: undefined };
+  return {
+    blocks: new Map(),
+    loading: new Set(),
+    failed: new Set(),
+    placeholders: new Map(),
+    total: undefined,
+  };
 }
 
 /** Which level + block a placeholder row stands for (for range-driven loading). */
@@ -449,29 +485,50 @@ export class ServerSideRowModelManager<T extends object> {
 
   async #loadBlock(levelKey: string, path: string[], block: number): Promise<void> {
     const level = this.#levels.get(levelKey);
-    if (!level || level.blocks.has(block) || level.loading.has(block)) return;
+    if (!level || level.blocks.has(block) || level.loading.has(block) || level.failed.has(block))
+      return;
     level.loading.add(block);
     const seq = this.#seq;
+    const current = () => seq === this.#seq;
     const bs = this.#blockSize;
-    let result: ServerSideGetRowsResult<T>;
-    try {
-      result = await this.config.datasource.getRows({
-        groupKeys: path,
-        rowGroupCols: this.config.rowGroupCols,
-        valueCols: this.config.valueCols ?? {},
-        pivotCols: this.config.pivotCols ?? [],
-        pivotMode: this.#pivotMode(),
-        ...(bs === undefined ? {} : { startRow: block * bs, endRow: block * bs + bs }),
-        sortModel: this.host.sortExpressions,
-        filterModel: this.host.filterExpressions,
-        quickFilter: this.host.quickFilter ?? '',
-      });
-    } catch {
-      level.loading.delete(block);
+    const span = bs === undefined ? {} : { startRow: block * bs, endRow: block * bs + bs };
+    const result = await fetchWithRetry(
+      () =>
+        this.config.datasource.getRows({
+          groupKeys: path,
+          rowGroupCols: this.config.rowGroupCols,
+          valueCols: this.config.valueCols ?? {},
+          pivotCols: this.config.pivotCols ?? [],
+          pivotMode: this.#pivotMode(),
+          ...span,
+          sortModel: this.host.sortExpressions,
+          filterModel: this.host.filterExpressions,
+          quickFilter: this.host.quickFilter ?? '',
+        }),
+      this.config,
+      current,
+      (error, retrying) =>
+        this.host.dispatchEvent(
+          new CustomEvent<ServerRowsLoadFailedDetail>(SERVER_ROWS_LOAD_FAILED_EVENT, {
+            detail: { groupKeys: path, ...span, error, retrying },
+            bubbles: true,
+            composed: true,
+          })
+        )
+    );
+    if (!current()) return; // reset happened while fetching
+    level.loading.delete(block);
+    if (!result) {
+      if (levelKey !== TOP && level.blocks.size === 0) {
+        // Nothing of the group loaded: collapse it so the next expand asks again.
+        this.#levels.delete(levelKey);
+        this.#expanded.delete(levelKey);
+        this.#rebuild();
+      } else {
+        level.failed.add(block);
+      }
       return;
     }
-    if (seq !== this.#seq) return; // reset happened while fetching
-    level.loading.delete(block);
     level.blocks.set(block, result.rows);
     if (typeof result.rowCount === 'number') level.total = result.rowCount;
     else if (bs === undefined) level.total = result.rows.length;

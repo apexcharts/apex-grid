@@ -77,9 +77,11 @@ export type {
   InfiniteGetRowsParams,
   InfiniteGetRowsResult,
   InfiniteRowModelConfig,
+  RowLoadRetryConfig,
   RowsLoadedDetail,
+  RowsLoadFailedDetail,
 } from './features/infinite-row-model.js';
-export { ROWS_LOADED_EVENT } from './features/infinite-row-model.js';
+export { ROWS_LOAD_FAILED_EVENT, ROWS_LOADED_EVENT } from './features/infinite-row-model.js';
 export type { MasterDetailConfig, MasterDetailContext } from './features/master-detail.js';
 export {
   getPivotMeta,
@@ -98,10 +100,12 @@ export { RANGE_CHANGED_EVENT, rangeSelectionModule } from './features/range-sele
 export {
   getServerRowMeta,
   type PivotResultField,
+  SERVER_ROWS_LOAD_FAILED_EVENT,
   SERVER_ROWS_LOADED_EVENT,
   SERVER_SIDE_ROW_MODEL_MODULE_ID,
   type ServerRowMeta,
   type ServerRowsLoadedDetail,
+  type ServerRowsLoadFailedDetail,
   type ServerSideDataSource,
   type ServerSideGetRowsParams,
   type ServerSideGetRowsResult,

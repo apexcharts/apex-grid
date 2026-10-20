@@ -388,6 +388,11 @@ export interface FormulaExportOptions {
  * column aggregations, row grouping, pivoting, integrated charts, cell range
  * selection, XLSX export, and licensing on top.
  *
+ * @fires apex-rows-loaded - Infinite row model: a block arrived, with `{ rowCount, exact, loadedBlocks, blockSize }`.
+ * @fires apex-rows-load-failed - Infinite row model: `getRows` rejected, with `{ startRow, endRow, error, retrying }` (`RowsLoadFailedDetail`).
+ * @fires apex-server-rows-loaded - Server-side row model: the flattened tree changed, with `{ rows, loadedGroups }`.
+ * @fires apex-server-rows-load-failed - Server-side row model: `getRows` rejected, with `{ groupKeys, startRow?, endRow?, error, retrying }` (`ServerRowsLoadFailedDetail`).
+ *
  * @csspart license-watermark - Non-interactive diagonal watermark overlay shown when no valid license is set. Painted by `apex-commons`' shared `Watermark`, so it matches the other Apex products; this part stays on the node for styling.
  */
 export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
@@ -1286,7 +1291,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     );
   }
 
-  /** Discard the infinite-model cache and refetch from the top. */
+  /** Discard the infinite-model cache and refetch from the top, failed blocks included. */
   public refreshRows(): void {
     this.#infiniteManager?.refresh();
   }
@@ -1302,7 +1307,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     return this.#ssrmManager !== null;
   }
 
-  /** Discard the server-side tree and reload from the top level. */
+  /** Discard the server-side tree and reload from the top level, failed blocks included. */
   public refreshServerSide(): void {
     this.#ssrmManager?.refresh();
   }
