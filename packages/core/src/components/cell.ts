@@ -213,10 +213,21 @@ export default class ApexGridCell<T extends object> extends LitElement {
   public colindex = 0;
 
   /**
+   * The parent row's view index, set by the row. Changing it re-decorates the
+   * cell (decoration such as a range selection is positional), so a row that
+   * moves with the same data (sort, filter, an expand above it) never keeps a
+   * stale highlight.
+   *
+   * @internal
+   */
+  @property({ attribute: false })
+  public rowIndex = -1;
+
+  /**
    * Reactive token forwarded from {@link StateController.decorationVersion}.
-   * Changing it re-runs {@link willUpdate} so module-driven cell decoration is
-   * re-evaluated when it changes (e.g. while dragging a selection range). Stays
-   * `0` for the community grid, so cells are never re-decorated there.
+   * Changing it re-applies module-driven cell decoration (e.g. while dragging a
+   * selection range) without re-rendering the cell content. Stays `0` for the
+   * community grid, so cells are never re-decorated there.
    */
   @property({ attribute: false, type: Number })
   public decorationVersion = 0;
@@ -258,7 +269,13 @@ export default class ApexGridCell<T extends object> extends LitElement {
    */
   #resumed: { value: unknown } | null = null;
 
+  /** Set by a reconnect, whose context re-request is a bare requestUpdate(). */
+  #reconnected = false;
+
   public override connectedCallback(): void {
+    // A moved row reconnects its cells; the state context consumer then
+    // requests an update with nothing changed, which needs no render.
+    this.#reconnected = this.hasUpdated && !this.isUpdatePending;
     super.connectedCallback();
     this.setAttribute('role', 'gridcell');
     this.addEventListener('click', this.#handleClick);
@@ -276,17 +293,27 @@ export default class ApexGridCell<T extends object> extends LitElement {
   }
 
   /**
-   * Skips the update when only the data token changed for a cell that renders
-   * nothing but its own value. A cell that reads its row beyond {@link value}
-   * (a `cellTemplate`, which may read other fields, or the tree group cell,
-   * whose chevron shows the row's expansion) still renders.
+   * Skips the render when only positional or decoration tokens changed: the
+   * decoration is host attributes, so it is reconciled here and the cell
+   * template (type renderers, user templates) is not re-run. A cell that reads
+   * its row beyond {@link value} (a `cellTemplate`, which may read other fields
+   * or the row index, or the tree group cell, whose chevron shows the row's
+   * expansion) still renders when the row index or the data token moves.
    */
   protected override shouldUpdate(changed: PropertyValues<this>): boolean {
-    if (!this.hasUpdated || changed.size > 1 || !changed.has('dataVersion')) return true;
+    const reconnected = this.#reconnected;
+    this.#reconnected = false;
+    // A bare requestUpdate() (empty map) renders, as Lit callers expect.
+    if (!this.hasUpdated || (!changed.size && !reconnected)) return true;
     const tree = this.state?.tree;
-    return Boolean(
-      this.column.cellTemplate || (tree?.enabled && tree.isGroupColumn(this.column.key))
-    );
+    const readsRow =
+      this.column.cellTemplate || (tree?.enabled && tree.isGroupColumn(this.column.key));
+    for (const key of changed.keys()) {
+      const token = key === 'rowIndex' || key === 'dataVersion';
+      if (key !== 'decorationVersion' && (readsRow || !token)) return true;
+    }
+    if (changed.has('decorationVersion') || changed.has('rowIndex')) this.#applyDecoration();
+    return false;
   }
 
   protected override willUpdate(changed: PropertyValues<this>) {
@@ -399,7 +426,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
             row: this.row.data,
             // A pinned row is outside the body view (`pageItems`), so its
             // band-local index must not match a body row's.
-            rowIndex: this.#inPinnedBand ? -1 : this.row.index,
+            rowIndex: this.#inPinnedBand ? -1 : this.rowIndex,
             column: this.column,
             value: this.value as unknown,
           })

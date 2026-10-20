@@ -319,7 +319,7 @@ export class StateController<T extends object> implements ReactiveController {
   /**
    * Monotonic token bumped by {@link bumpDecoration} whenever module-driven cell
    * decoration changes. Forwarded down to each cell as a reactive property so a
-   * decoration-only change (e.g. dragging a selection range) re-renders cells
+   * decoration-only change (e.g. dragging a selection range) re-decorates cells
    * without re-running the data pipeline. Always `0` for the community grid.
    */
   #decorationVersion = 0;

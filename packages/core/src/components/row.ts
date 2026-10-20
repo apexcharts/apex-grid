@@ -526,6 +526,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
             .row=${this as ApexGridRow<T>}
             .value=${this.data[column.key]}
             .colindex=${ariaColindex}
+            .rowIndex=${this.index}
             .decorationVersion=${this.decorationVersion}
             .dataVersion=${this.dataVersion}
             .validationVersion=${this.validationVersion}
