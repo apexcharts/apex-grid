@@ -726,8 +726,9 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   public override disconnectedCallback(): void {
     ApexGridEnterprise.#instances.delete(this);
-    this.#infiniteManager?.stop();
-    this.#ssrmManager?.stop();
+    // The row-model managers keep running: they hold no document listener, and
+    // a moved grid (a keyed reorder, a dashboard drag) must come back with its
+    // server pipeline, columns, cache and in-flight blocks intact.
     this.removeEventListener('cellValueChanged', this.#onCellValueChanged);
     (this as EventTarget).removeEventListener(RANGE_CHANGED_EVENT, this.#updateChartAffordance);
     this.removeEventListener('keydown', this.#onChartShortcut);
@@ -1045,7 +1046,10 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   protected override willUpdate(changed: PropertyValues): void {
     // Sync feature config to the controllers *before* super.willUpdate runs the
     // `@watch('data')` handler, so the initial dataState reflects the config on
-    // first paint. Pivot runs first since it disables grouping when active.
+    // first paint. Pivot runs first since it disables grouping when active. The
+    // server-side model runs before both: turning it on clears groupBy and
+    // pivotOn, which those syncs must see in this same update.
+    this.#syncServerSideRowModel(changed);
     this.#syncPivot(changed);
     this.#syncGrouping(changed);
     this.#syncTotalRow(changed);
@@ -1053,7 +1057,6 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.#syncContextMenu(changed);
     this.#syncMasterDetail(changed);
     this.#syncInfiniteRowModel(changed);
-    this.#syncServerSideRowModel(changed);
     this.#injectFormulaEditors(changed);
     this.#syncFormulaCoordinates(changed);
     this.#injectFormulaDisplays(changed);

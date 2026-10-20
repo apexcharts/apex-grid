@@ -9,6 +9,7 @@ import type {
 import type { GridFeatureModule, GridHost, RowAria, RowAriaProvider } from 'apex-grid/internal';
 import { html, type ReactiveController, type TemplateResult } from 'lit';
 import type { AggregationConfig } from './aggregation.js';
+import { listenForRange } from './infinite-row-model.js';
 
 export const SERVER_SIDE_ROW_MODEL_MODULE_ID = 'server-side-row-model';
 
@@ -292,12 +293,16 @@ export class ServerSideRowModelManager<T extends object> {
     this.reset();
   }
 
-  /** Tear down: restore the prior columns + column groups + pipeline. */
+  /**
+   * Tear down: restore the prior columns + column groups + pipeline. Restores
+   * nothing when the manager never started (or already stopped).
+   */
   public stop(): void {
     this.#seq += 1;
     this.#virtualizer?.removeEventListener('rangeChanged', this.#onRange as EventListener);
     this.#virtualizer = null;
-    if (this.#savedColumns) this.host.columns = this.#savedColumns;
+    if (!this.#savedColumns) return;
+    this.host.columns = this.#savedColumns;
     this.host.columnGroups = this.#savedColumnGroups;
     this.host.dataPipelineConfiguration = this.#savedPipeline as DataPipelineConfiguration<T>;
     this.#savedColumns = null;
@@ -306,11 +311,8 @@ export class ServerSideRowModelManager<T extends object> {
 
   /** Attach the virtualizer range listener for intra-group paging (idempotent; call after render). */
   public attach(): void {
-    if (this.#blockSize === undefined || this.#virtualizer) return;
-    const vz = this.host.shadowRoot?.querySelector('apex-virtualizer') as HTMLElement | null;
-    if (!vz) return;
-    this.#virtualizer = vz;
-    vz.addEventListener('rangeChanged', this.#onRange as EventListener);
+    if (this.#blockSize === undefined) return;
+    this.#virtualizer = listenForRange(this.host, this.#virtualizer, this.#onRange);
   }
 
   #pivotMode(): boolean {

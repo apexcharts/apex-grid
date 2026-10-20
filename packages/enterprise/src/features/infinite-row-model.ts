@@ -97,6 +97,7 @@ export class InfiniteRowModelManager<T extends object> {
   #exact = false;
   readonly #loaded = new Map<number, T[]>();
   readonly #loading = new Set<number>();
+  #started = false;
   /** Generation token — bumped on reset so in-flight stale blocks are dropped. */
   #seq = 0;
   #range = { first: 0, last: 0 };
@@ -118,6 +119,7 @@ export class InfiniteRowModelManager<T extends object> {
 
   /** Begin server-side mode: install passthrough pipeline + initial fetch. */
   public start(): void {
+    this.#started = true;
     this.#savedPipeline = this.host.dataPipelineConfiguration;
     // Passthrough hooks: the server owns ordering/filtering, so the client
     // never reorders. Each hook also detects a query change (it runs on every
@@ -136,21 +138,23 @@ export class InfiniteRowModelManager<T extends object> {
     this.reset();
   }
 
-  /** Tear down: remove listeners and restore the prior pipeline config. */
+  /**
+   * Tear down: drop in-flight blocks, remove the listener and restore the prior
+   * pipeline config. Restores nothing when the manager never started.
+   */
   public stop(): void {
+    this.#seq += 1;
+    this.#loading.clear();
     this.#virtualizer?.removeEventListener('rangeChanged', this.#onRange as EventListener);
     this.#virtualizer = null;
+    if (!this.#started) return;
+    this.#started = false;
     this.host.dataPipelineConfiguration = this.#savedPipeline as DataPipelineConfiguration<T>;
-    this.#seq += 1;
   }
 
   /** Attach the virtualizer range listener (idempotent; call after render). */
   public attach(): void {
-    if (this.#virtualizer) return;
-    const vz = this.host.shadowRoot?.querySelector('apex-virtualizer') as HTMLElement | null;
-    if (!vz) return;
-    this.#virtualizer = vz;
-    vz.addEventListener('rangeChanged', this.#onRange as EventListener);
+    this.#virtualizer = listenForRange(this.host, this.#virtualizer, this.#onRange);
   }
 
   // --- public API ----------------------------------------------------------
@@ -289,4 +293,22 @@ export class InfiniteRowModelManager<T extends object> {
       })
     );
   }
+}
+
+/**
+ * Binds `listener` to the host's body virtualizer and returns that element,
+ * moving the listener when the element changed. Shared by both server row
+ * models, so a re-render never leaves the listener on a stale element and a
+ * repeated call never adds it twice.
+ */
+export function listenForRange(
+  host: { readonly shadowRoot: ShadowRoot | null },
+  current: HTMLElement | null,
+  listener: (event: never) => void
+): HTMLElement | null {
+  const vz = host.shadowRoot?.querySelector('apex-virtualizer') as HTMLElement | null;
+  if (!vz || vz === current) return current;
+  current?.removeEventListener('rangeChanged', listener as EventListener);
+  vz.addEventListener('rangeChanged', listener as EventListener);
+  return vz;
 }

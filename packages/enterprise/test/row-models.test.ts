@@ -4,6 +4,9 @@ import {
   ApexGridEnterprise,
   enterpriseModules,
   getServerRowMeta,
+  type InfiniteDataSource,
+  type InfiniteGetRowsParams,
+  type InfiniteGetRowsResult,
   type ServerSideDataSource,
   type ServerSideGetRowsParams,
   type ServerSideGetRowsResult,
@@ -245,5 +248,167 @@ describe('row models: server-side block paging', () => {
       'page rows loaded'
     ).to.be.true;
     expect(grid.pageItems[0].name).to.equal('P500');
+  });
+});
+
+/** A promise with its settle functions, so a test decides when a request answers. */
+function deferred<V>() {
+  let resolve!: (value: V) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<V>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+/** An infinite datasource whose every request waits for the test to answer it. */
+class PendingServer implements InfiniteDataSource<Row> {
+  public calls: Array<{
+    params: InfiniteGetRowsParams<Row>;
+    answer: ReturnType<typeof deferred<InfiniteGetRowsResult<Row>>>;
+  }> = [];
+  getRows(params: InfiniteGetRowsParams<Row>) {
+    const answer = deferred<InfiniteGetRowsResult<Row>>();
+    this.calls.push({ params, answer });
+    return answer.promise;
+  }
+  /** Answers the pending request for `startRow` with `count` rows. */
+  answer(startRow: number, count: number, rowCount?: number) {
+    const call = this.calls.find((c) => c.params.startRow === startRow);
+    const rows = Array.from({ length: count }, (_, i) => ({
+      region: 'EMEA',
+      name: `R${startRow + i}`,
+      salary: startRow + i,
+    }));
+    call!.answer.resolve({ rows, ...(rowCount === undefined ? {} : { rowCount }) });
+  }
+}
+
+function sizedParent() {
+  const node = document.createElement('div');
+  node.style.height = '400px';
+  document.body.appendChild(node);
+  return node;
+}
+
+describe('row models: lifecycle across a DOM move', () => {
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+  });
+  afterEach(() => fixtureCleanup());
+
+  it('keeps the server-side model running when the grid moves (ent-grid-sync-1, ent-ssrm-3)', async () => {
+    const { grid, server } = await mountSsrm();
+    const pipeline = grid.dataPipelineConfiguration;
+    const other = sizedParent();
+    other.appendChild(grid);
+    await settle(grid);
+    expect(String(grid.columns[0].key), 'group column after move').to.equal(SSRM_GROUP_KEY);
+    expect(grid.dataPipelineConfiguration, 'server pipeline kept').to.equal(pipeline);
+    grid.expandServerGroup(['EMEA']);
+    await settle(grid);
+    expect(getServerRowMeta(byLabel(grid, 'EMEA'))?.expanded).to.be.true;
+    expect(server.calls.filter((c) => c.groupKeys[0] === 'EMEA')).to.have.length(1);
+    other.remove();
+  });
+
+  it('keeps the infinite model fetching after a move, applying blocks in flight once (ent-grid-core-3, ent-irm-detail-total-7)', async () => {
+    const server = new PendingServer();
+    const grid = await fixture<ApexGridEnterprise<Row>>(html`<apex-grid-enterprise
+      .columns=${columns}
+      .infiniteRowModel=${{ datasource: server, blockSize: 50 }}
+    ></apex-grid-enterprise>`);
+    await settle(grid);
+    expect(server.calls.map((c) => c.params.startRow)).to.eql([0, 50]);
+
+    // Move the grid while both blocks are in flight, then answer them.
+    const other = sizedParent();
+    other.appendChild(grid);
+    await settle(grid);
+    server.answer(0, 50, 500);
+    server.answer(50, 50, 500);
+    await settle(grid);
+    expect(grid.isRowLoading(grid.data[0]), 'block 0 applied').to.be.false;
+    expect(grid.isRowLoading(grid.data[60]), 'block 1 applied').to.be.false;
+    expect(server.calls, 'no block requested twice').to.have.length(2);
+
+    // The listener is bound once: one range event asks once per block.
+    const vz = grid.renderRoot.querySelector('apex-virtualizer') as HTMLElement;
+    vz.dispatchEvent(Object.assign(new Event('rangeChanged'), { first: 300, last: 310 }));
+    expect(server.calls.map((c) => c.params.startRow).slice(2)).to.eql([300, 350]);
+
+    // Sort still reaches the server through the passthrough pipeline.
+    expect(typeof grid.dataPipelineConfiguration?.sort).to.equal('function');
+    grid.sort([{ key: 'salary', direction: 'descending' }]);
+    await settle(grid);
+    const last = server.calls[server.calls.length - 1].params;
+    expect(last.sortModel[0]?.direction).to.equal('descending');
+    other.remove();
+  });
+
+  it('clears client grouping in the update that turns the server-side model on (ent-grid-sync-2)', async () => {
+    const server = new GroupServer();
+    const grid = await fixture<ApexGridEnterprise<Row>>(html`<apex-grid-enterprise
+      .columns=${columns}
+      .data=${LEAVES.map((row) => ({ ...row }))}
+      .groupBy=${['region']}
+    ></apex-grid-enterprise>`);
+    await settle(grid);
+    grid.serverSideRowModel = { datasource: server, rowGroupCols: ['region'] };
+    await settle(grid);
+    expect(grid.groupBy).to.eql([]);
+    expect(grid.dataView).to.have.length(4);
+    expect(
+      grid.dataView.every((row) => getServerRowMeta(row)?.group),
+      'only server group rows'
+    ).to.be.true;
+  });
+
+  it('restores columns, column groups and pipeline when turned off (ent-ssrm-10)', async () => {
+    const own = { filter: ({ data }: { data: Row[] }) => data };
+    const grid = await fixture<ApexGridEnterprise<Row>>(html`<apex-grid-enterprise
+      .columns=${columns}
+      .dataPipelineConfiguration=${own}
+      .serverSideRowModel=${{ datasource: new GroupServer(), rowGroupCols: ['region'] }}
+    ></apex-grid-enterprise>`);
+    await settle(grid);
+    expect(String(grid.columns[0].key)).to.equal(SSRM_GROUP_KEY);
+    grid.serverSideRowModel = null;
+    await settle(grid);
+    expect(grid.columns.map((column) => String(column.key))).to.eql(['region', 'name', 'salary']);
+    expect(grid.dataPipelineConfiguration).to.equal(own);
+    expect(grid.columnGroups).to.equal(undefined);
+  });
+
+  it('drops a child fetch that answers after a sort reset (ent-ssrm-10)', async () => {
+    const pending: Array<{
+      params: ServerSideGetRowsParams<Row>;
+      answer: ReturnType<typeof deferred<ServerSideGetRowsResult<Row>>>;
+    }> = [];
+    const datasource: ServerSideDataSource<Row> = {
+      getRows(params) {
+        if (!params.groupKeys.length) {
+          return { rows: [{ region: 'EMEA', salary: 0 }] as unknown as Row[] };
+        }
+        const answer = deferred<ServerSideGetRowsResult<Row>>();
+        pending.push({ params, answer });
+        return answer.promise;
+      },
+    };
+    const grid = await fixture<ApexGridEnterprise<Row>>(html`<apex-grid-enterprise
+      .columns=${columns}
+      .serverSideRowModel=${{ datasource, rowGroupCols: ['region'] }}
+    ></apex-grid-enterprise>`);
+    await settle(grid);
+    grid.expandServerGroup(['EMEA']);
+    await settle(grid);
+    grid.sort([{ key: 'name', direction: 'ascending' }]);
+    await settle(grid);
+    pending[0].answer.resolve({ rows: [{ region: 'EMEA', name: 'Stale', salary: 1 }] });
+    await settle(grid);
+    expect(flat(grid).map((row) => row.name)).to.not.include('Stale');
+    expect(getServerRowMeta(flat(grid)[0])?.expanded, 'reset collapsed the tree').to.be.false;
   });
 });
