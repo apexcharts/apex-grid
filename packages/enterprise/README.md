@@ -256,10 +256,14 @@ grid.advancedFilterModel;           // the active model, or null
 ```
 
 Operators come from the same operand tables as the header filters
-(`operatorsForType(type)`), so semantics match. Evaluation is client-side via the
-`dataPipelineConfiguration.filter` hook and composes with sort / pagination /
-grouping. While active, the advanced filter **owns** column filtering (it replaces
-the built-in filter). The model is plain JSON, so it round-trips through storage.
+(`operatorsForType(type)`), so semantics match. On local data, evaluation is
+client-side via the `dataPipelineConfiguration.filter` hook and composes with sort /
+pagination / grouping / pivoting; while active it **owns** column filtering (it
+replaces the built-in filter). Under `infiniteRowModel` or `serverSideRowModel` the
+grid does not filter: it sends the model to your datasource as `advancedFilterModel`
+on the `getRows` params (`null` when none) and reloads from the first block, so apply
+it on the server (`filterRows` does it for in-memory data). The model is plain JSON,
+so it round-trips through storage.
 The pure evaluator (`filterRows`, `isEmptyModel`) is exported for headless use.
 
 ## Columns tool panel
@@ -582,8 +586,10 @@ to your backend.
 ```ts
 grid.infiniteRowModel = {
   datasource: {
-    async getRows({ startRow, endRow, sortModel, filterModel, quickFilter }) {
-      const { rows, total } = await fetchPage(startRow, endRow, sortModel, filterModel, quickFilter);
+    async getRows({ startRow, endRow, sortModel, filterModel, quickFilter, advancedFilterModel }) {
+      const { rows, total } = await fetchPage(startRow, endRow, {
+        sortModel, filterModel, quickFilter, advancedFilterModel,
+      });
       return { rows, rowCount: total }; // omit rowCount for "infinite" mode
     },
   },
@@ -622,11 +628,15 @@ under an auto group column.
 ```ts
 grid.serverSideRowModel = {
   datasource: {
-    async getRows({ groupKeys, rowGroupCols, valueCols, sortModel, filterModel, quickFilter }) {
+    async getRows({ groupKeys, rowGroupCols, valueCols, sortModel, filterModel, quickFilter, advancedFilterModel }) {
       // groupKeys is the value path of the parent being expanded ([] = top level).
       // Return group rows (with the grouped value + aggregates) when
       // groupKeys.length < rowGroupCols.length, else the leaf rows.
-      return { rows: await fetchLevel(groupKeys, rowGroupCols, valueCols, sortModel, filterModel, quickFilter) };
+      return {
+        rows: await fetchLevel(groupKeys, rowGroupCols, valueCols, {
+          sortModel, filterModel, quickFilter, advancedFilterModel,
+        }),
+      };
     },
   },
   rowGroupCols: ['region', 'department'],

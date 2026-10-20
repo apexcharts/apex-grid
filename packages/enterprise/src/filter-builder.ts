@@ -22,9 +22,10 @@ type AnyGrid = ApexGridEnterprise<Record<string, unknown>>;
 
 /**
  * Enterprise **advanced filter builder**: a nested AND/OR visual query builder.
- * Compose conditions and sub-groups, then **Apply** to filter the grid (it
- * evaluates client-side via the grid's `applyAdvancedFilter`, owning column
- * filtering while active) or **Clear** to remove it.
+ * Compose conditions and sub-groups, then **Apply** to filter the grid through
+ * its `applyAdvancedFilter` (client side on local data, owning column filtering
+ * while active; under a server row model it is sent to the datasource as
+ * `advancedFilterModel`) or **Clear** to remove it.
  *
  * A light-DOM sibling element — set its `grid` property and mount it beside the
  * grid. Pure UI on top of {@link ApexGridEnterprise.applyAdvancedFilter}.
