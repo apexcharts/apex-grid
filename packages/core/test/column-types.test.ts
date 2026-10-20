@@ -904,6 +904,26 @@ describe('Column types: export and formatting', () => {
     });
   });
 
+  describe('selected rows export', () => {
+    it('writes selected rows in view order, not selection order', async () => {
+      fx.grid.selection = { enabled: true, mode: 'multiple' };
+      await fx.sort({ key: 'id', direction: 'descending' });
+      await fx.grid.selectRow(fx.grid.data[1]);
+      await fx.grid.selectRow(fx.grid.data[3]);
+      const ids = fx.csvRows({ source: 'selected' }).map((cells) => cells[0]);
+      expect(ids).to.deep.equal(['3', '1']);
+    });
+
+    it('still writes selected rows the filter hides', async () => {
+      fx.grid.selection = { enabled: true, mode: 'multiple' };
+      await fx.grid.selectRow(fx.grid.data[4]);
+      await fx.grid.selectRow(fx.grid.data[0]);
+      await fx.filter({ key: 'id', condition: 'greaterThan', searchTerm: 2 } as never);
+      const ids = fx.csvRows({ source: 'selected' }).map((cells) => cells[0]);
+      expect(ids).to.deep.equal(['4', '0']);
+    });
+  });
+
   describe('Intl formatter caching', () => {
     it('builds no date formatter per row when exporting 100k rows', async function () {
       this.timeout(30000);

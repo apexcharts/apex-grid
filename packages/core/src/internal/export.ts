@@ -17,10 +17,12 @@ export type ExportCellValue = string | number | boolean | Date | null | undefine
 /**
  * Which row set should drive the export.
  *
- * - `'view'` (default) — post-filter, post-sort rows across all pages.
- * - `'all'` — the raw `data` array as supplied by the consumer.
- * - `'page'` — only the rows in the current page slice.
- * - `'selected'` — the current row selection (insertion order).
+ * - `'view'` (default): post-filter, post-sort rows across all pages.
+ * - `'all'`: the raw `data` array as supplied by the consumer.
+ * - `'page'`: only the rows in the current page slice.
+ * - `'selected'`: the selected rows, in view order. Selected rows the
+ *   current view hides (filtered out or under a collapsed parent) follow,
+ *   in the order they were selected.
  */
 export type ExportSource = 'view' | 'all' | 'page' | 'selected';
 
@@ -33,8 +35,10 @@ export interface ExportOptions<T extends object> {
   /** Row set to export. Defaults to `'view'`. */
   source?: ExportSource;
   /**
-   * Column keys to include. When omitted, every visible non-hidden column with
-   * `exportable !== false` is exported, in display order.
+   * Narrows the export to these column keys. The list filters the visible
+   * columns with `exportable !== false`, so a hidden or non-exportable key is
+   * skipped, and the output keeps display order rather than the list's order.
+   * When omitted, every visible exportable column is exported.
    */
   columns?: ReadonlyArray<Keys<T>>;
   /** Whether to emit a header row. Defaults to `true`. */
@@ -110,11 +114,21 @@ export function resolveExportRows<T extends object>(
       return grid.data;
     case 'page':
       return stateOf(grid)?.dataRows(grid.pageItems) ?? grid.pageItems;
-    case 'selected':
-      return grid.selectedRows;
+    case 'selected': {
+      // Selection is a Set in the order rows were picked; write the rows the
+      // way the screen lists them, then any the view hides (filtered out or
+      // under a collapsed parent).
+      const selected = new Set(grid.selectedRows);
+      const inView = viewRows(grid).filter((row) => selected.delete(row));
+      return [...inView, ...selected];
+    }
     default:
-      return stateOf(grid)?.viewRecords(grid.dataView) ?? grid.dataView;
+      return viewRows(grid);
   }
+}
+
+function viewRows<T extends object>(grid: ApexGrid<T>): ReadonlyArray<T> {
+  return stateOf(grid)?.viewRecords(grid.dataView) ?? grid.dataView;
 }
 
 function stateOf<T extends object>(grid: ApexGrid<T>): StateController<T> | undefined {
