@@ -51,6 +51,33 @@ class TreeFixture extends GridTestFixture<OrgRow> {
   }
 }
 
+/** Paths are an editable column, so a cell edit can move a row in the tree. */
+class EditableTreeFixture extends TreeFixture {
+  public override updateConfig() {
+    this.columnConfig = [
+      { key: 'name' },
+      { key: 'role' },
+      { key: 'path', editable: true },
+    ] as ColumnConfiguration<OrgRow>[];
+  }
+
+  public override setupTemplate() {
+    return html`<apex-grid
+      .data=${this.data}
+      .columns=${this.columnConfig}
+      .editing=${{ enabled: true }}
+      .tree=${this.tree}
+    ></apex-grid>`;
+  }
+
+  public async editPath(row: OrgRow, path: string[]) {
+    const rowIndex = this.grid.pageItems.indexOf(row);
+    const result = this.grid.applyEdits([{ rowIndex, column: 'path', value: path }]);
+    expect(result.applied).to.equal(1);
+    await this.waitForUpdate();
+  }
+}
+
 describe('Tree (nested rows)', () => {
   let fx: TreeFixture;
 
@@ -230,6 +257,146 @@ describe('Tree (nested rows)', () => {
       const ok = await fx.grid.expandTreeRow(fx.grid.data[0]);
       expect(ok).to.equal(false);
       expect(fx.visibleNames()).to.deep.equal(['Adrian', 'Cheryl']);
+    });
+  });
+
+  describe('filter interplay', () => {
+    describe('after a path changed in place', () => {
+      let ed: EditableTreeFixture;
+      const mount = async (rows: OrgRow[]) => {
+        fx.tearDown();
+        fx = ed = new EditableTreeFixture(rows);
+        ed.tree = { enabled: true, getDataPath: (row) => row.path, defaultExpanded: true };
+        await ed.setUp();
+      };
+      const filterBy = async (text: string) => {
+        ed.grid.quickFilter = text;
+        await ed.waitForUpdate();
+        await ed.waitForUpdate();
+      };
+      const letters = (): OrgRow[] => [
+        { name: 'Alpha', role: 'IC', path: ['A'] },
+        { name: 'Alphabet', role: 'IC', path: ['A', 'x'] },
+        { name: 'Beta', role: 'IC', path: ['B'] },
+        { name: 'Bee', role: 'IC', path: ['B', 'y'] },
+      ];
+
+      it('does not show a row twice when an edit moved it off an ancestor path', async () => {
+        await mount(letters());
+        const alpha = ed.grid.data[0];
+        // A filtered pass that needs an ancestor record builds the lookup.
+        await filterBy('Bee');
+        expect(ed.visibleNames()).to.deep.equal(['Beta', 'Bee']);
+        await filterBy('');
+
+        await ed.editPath(alpha, ['Z']);
+        await ed.grid.expandAllTreeRows();
+        await ed.waitForUpdate();
+        expect(ed.visibleNames()).to.deep.equal(['Alpha', undefined, 'Alphabet', 'Beta', 'Bee']);
+
+        await filterBy('Alpha');
+        expect(ed.grid.pageItems.filter((row) => row === alpha)).to.have.length(1);
+        expect(ed.visibleNames()).to.deep.equal(['Alpha', undefined, 'Alphabet']);
+      });
+
+      it('adopts a row an edit moved onto an ancestor path', async () => {
+        await mount([
+          { name: 'Alpha', role: 'IC', path: ['Q'] },
+          { name: 'Alphabet', role: 'IC', path: ['A', 'x'] },
+        ]);
+        const alpha = ed.grid.data[0];
+        await filterBy('Alphabet');
+        expect(ed.visibleNames()).to.deep.equal([undefined, 'Alphabet']);
+        await filterBy('');
+
+        await ed.editPath(alpha, ['A']);
+        await filterBy('Alphabet');
+        expect(ed.grid.pageItems[0]).to.equal(alpha);
+        await ed.grid.expandTreeRow(alpha);
+        await ed.waitForUpdate();
+        expect(ed.visibleNames()).to.deep.equal(['Alpha', 'Alphabet']);
+      });
+
+      it('does not show a row twice after a path changed without an edit event', async () => {
+        await mount(letters());
+        const alpha = ed.grid.data[0];
+        await filterBy('Bee');
+        await filterBy('');
+
+        alpha.path = ['Z'];
+        await filterBy('Alpha');
+        expect(ed.grid.pageItems.filter((row) => row === alpha)).to.have.length(1);
+        // The A level now has no record, so it is a collapsed placeholder.
+        expect(ed.visibleNames()).to.deep.equal(['Alpha', undefined]);
+      });
+    });
+
+    it('a quick filter keeps a matched grandchild reachable under its expanded ancestors', async () => {
+      await fx.grid.expandTreeRow(fx.grid.data[0]); // Adrian
+      await fx.grid.expandTreeRow(fx.grid.data[1]); // Bryan
+      await fx.waitForUpdate();
+
+      fx.grid.quickFilter = 'Gregory';
+      await fx.waitForUpdate();
+      await fx.waitForUpdate();
+
+      expect(fx.visibleNames()).to.deep.equal(['Adrian', 'Bryan', 'Gregory']);
+      // The ancestors are their own records, not blank placeholders.
+      const items = fx.grid.pageItems as readonly OrgRow[];
+      expect(items[0]).to.equal(fx.grid.data[0]);
+      expect(items.map((row) => row.role)).to.deep.equal(['COO', 'VP', 'IC']);
+    });
+
+    it('a column filter keeps a matched grandchild reachable under its expanded ancestors', async () => {
+      await fx.grid.expandTreeRow(fx.grid.data[0]);
+      await fx.grid.expandTreeRow(fx.grid.data[1]);
+      await fx.waitForUpdate();
+
+      fx.grid.filter({ key: 'name', condition: 'equals', searchTerm: 'Gregory' } as never);
+      await fx.waitForUpdate();
+      await fx.waitForUpdate();
+
+      expect(fx.visibleNames()).to.deep.equal(['Adrian', 'Bryan', 'Gregory']);
+      expect(fx.grid.isTreeRowExpanded(fx.grid.data[0])).to.equal(true);
+    });
+
+    it('a filtered pass does not rescan the data for parents that have no record', async () => {
+      // Folders exist only as path segments, so no ancestor ever has a record.
+      const rows = Array.from({ length: 2000 }, (_, i) => ({
+        name: `f${i}`,
+        role: 'IC',
+        path: [`d${i % 10}`, `f${i}`],
+      }));
+      let calls = 0;
+      fx.tearDown();
+      fx = new TreeFixture(rows);
+      fx.tree = {
+        enabled: true,
+        defaultExpanded: true,
+        getDataPath: (row) => {
+          calls++;
+          return row.path;
+        },
+      };
+      await fx.setUp();
+
+      fx.grid.quickFilter = 'f777';
+      await fx.waitForUpdate();
+      await fx.waitForUpdate();
+      expect(fx.visibleNames()).to.deep.equal([undefined, 'f777']);
+
+      const folder = fx.grid.pageItems[0];
+      calls = 0;
+      await fx.grid.collapseTreeRow(folder);
+      await fx.waitForUpdate();
+      expect(fx.visibleNames()).to.deep.equal([undefined]);
+      expect(calls).to.be.lessThan(rows.length / 10);
+
+      calls = 0;
+      fx.grid.quickFilter = 'f1777';
+      await fx.waitForUpdate();
+      await fx.waitForUpdate();
+      expect(calls).to.be.lessThan(rows.length / 10);
     });
   });
 
