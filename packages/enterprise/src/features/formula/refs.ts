@@ -182,8 +182,8 @@ export function normalizeRange(range: RangeAddress): RangeAddress {
 }
 
 /**
- * Enumerate every cell in a range in row-major order. Used by the dependency
- * graph (F3) to wire each cell of a range to the formula that reads it.
+ * Enumerate every cell in a range in row-major order. Allocates one address per
+ * cell, so a range typed by a user goes through {@link clipRange} first.
  */
 export function rangeCells(range: RangeAddress): CellAddress[] {
   const { start, end } = normalizeRange(range);
@@ -194,6 +194,17 @@ export function rangeCells(range: RangeAddress): CellAddress[] {
     }
   }
   return cells;
+}
+
+/**
+ * The part of `range` inside a sheet of `rows` by `cols` cells, normalized, or
+ * `null` when they do not overlap. Lets a caller enumerate a typed range such
+ * as `A1:ZZ1000000` without walking cells that do not exist.
+ */
+export function clipRange(range: RangeAddress, rows: number, cols: number): RangeAddress | null {
+  const { start, end } = normalizeRange(range);
+  const last = { row: Math.min(end.row, rows - 1), col: Math.min(end.col, cols - 1) };
+  return start.row > last.row || start.col > last.col ? null : { start, end: last };
 }
 
 /**

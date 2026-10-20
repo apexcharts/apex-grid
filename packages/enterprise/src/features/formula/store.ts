@@ -40,6 +40,8 @@ import {
 } from './parser.js';
 import {
   type CellAddress,
+  clipRange,
+  formatA1,
   formatCell,
   indexToColumnLetter,
   normalizeRange,
@@ -86,6 +88,11 @@ export interface FormulaEngineHost {
   writeValue(address: CellAddress, value: CellValue): void;
   /** Whether an address is within the current data + columns. */
   isValidAddress(address: CellAddress): boolean;
+  /**
+   * The sheet's size in rows and A1 columns. When given, a range is clipped to
+   * it before its cells are read, and the part outside reads as one `#REF!`.
+   */
+  extent?(): { rows: number; cols: number };
   /** Available functions, keyed by upper-case name. */
   functions: Map<string, FormulaFn>;
 }
@@ -404,17 +411,23 @@ export class FormulaStore {
   }
 
   #context(): FormulaContext {
+    const read = (address: CellAddress): CellValue =>
+      this.host.isValidAddress(address)
+        ? this.host.readValue(address)
+        : refError(formatCell(address));
     return {
-      getRef: (address) =>
-        this.host.isValidAddress(address)
-          ? this.host.readValue(address)
-          : refError(formatCell(address)),
-      getRange: (range) =>
-        rangeCells(range).map((address) =>
-          this.host.isValidAddress(address)
-            ? this.host.readValue(address)
-            : refError(formatCell(address))
-        ),
+      getRef: read,
+      getRange: (range) => {
+        const whole = normalizeRange(range);
+        const size = this.host.extent?.();
+        const part = size ? clipRange(whole, size.rows, size.cols) : whole;
+        const values = part ? rangeCells(part).map(read) : [];
+        // Cells past the sheet read as one #REF!, never one per missing cell.
+        if (part?.end.row !== whole.end.row || part.end.col !== whole.end.col) {
+          values.push(refError(formatA1(range)));
+        }
+        return values;
+      },
       functions: this.host.functions,
     };
   }
@@ -549,6 +562,12 @@ export class FormulaController<T extends object> implements ReactiveController, 
       address.row < this.#frame().length &&
       this.#keyForIndex(address.col) !== undefined
     );
+  }
+
+  /** The row frame's length and the A1 letter count, for clipping ranges. */
+  public extent(): { rows: number; cols: number } {
+    this.#syncColumns();
+    return { rows: this.#frame().length, cols: this.#letterOrder.length };
   }
 
   public readValue(address: CellAddress): CellValue {
@@ -738,7 +757,7 @@ export class FormulaController<T extends object> implements ReactiveController, 
     }
     const r = normalizeRange(range);
     const next = new Map<T, Map<string, string>>();
-    for (const cell of rangeCells(r)) {
+    for (const cell of this.#cellsIn(r)) {
       const data = this.#frame()[cell.row];
       const key = this.#keyForIndex(cell.col);
       if (data === undefined || key === undefined) {
@@ -793,7 +812,7 @@ export class FormulaController<T extends object> implements ReactiveController, 
     }
     for (const range of refs.ranges) {
       const r = normalizeRange(range);
-      paint(rangeCells(range), `r:${r.start.row}:${r.start.col}:${r.end.row}:${r.end.col}`);
+      paint(this.#cellsIn(r), `r:${r.start.row}:${r.start.col}:${r.end.row}:${r.end.col}`);
     }
     this.#setHighlights(next.size ? next : null);
   }
@@ -902,6 +921,13 @@ export class FormulaController<T extends object> implements ReactiveController, 
   }
 
   // --- internals ------------------------------------------------------------
+
+  /** The cells of `range` that exist, so a typed A1:ZZ1000000 stays cheap. */
+  #cellsIn(range: RangeAddress): CellAddress[] {
+    const { rows, cols } = this.extent();
+    const part = clipRange(range, rows, cols);
+    return part ? rangeCells(part) : [];
+  }
 
   /** Swap the highlight map and refresh cell decoration (no-op for null→null). */
   #setHighlights(next: Map<T, Map<string, number>> | null): void {
