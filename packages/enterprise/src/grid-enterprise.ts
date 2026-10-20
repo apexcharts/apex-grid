@@ -667,6 +667,9 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   #onCellValueChanged = (): void => {
     this.#dataEpoch += 1;
+    // A formula recalc re-emits one event per recomputed cell, then requests one
+    // pipeline update whose `updated` signals the view once for the whole pass.
+    if (this.#formulaController()?.settling) return;
     this.#emitViewChanged();
   };
 
