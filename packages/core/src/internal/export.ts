@@ -64,6 +64,14 @@ export interface CSVExportOptions<T extends object> extends ExportOptions<T> {
   bom?: boolean;
   /** Line separator. Defaults to `'\r\n'` (RFC 4180). */
   newline?: string;
+  /**
+   * Prefix an apostrophe to a text cell or header that starts with `=`, `+`,
+   * `-`, `@`, a tab or a carriage return, so a spreadsheet opening the file
+   * shows it as text instead of evaluating it as a formula. Numbers and text
+   * that is a plain signed decimal (`-5`, `+1.5`) are written as they are.
+   * Pass `false` to write such text unchanged. Defaults to `true`.
+   */
+  escapeFormulas?: boolean;
 }
 
 /**
@@ -208,6 +216,21 @@ export function formatDateForCSV<T extends object>(
   return Number.isNaN(value.getTime()) ? '' : dateFormatter(column.format).format(value);
 }
 
+/** Text a spreadsheet would evaluate: a formula trigger first, not a signed decimal. */
+const FORMULA_LEADING = /^(?![+-]\d*\.?\d+$)[=+\-@\t\r]/;
+
+/**
+ * Prefixes an apostrophe to text a spreadsheet would read as a formula (it
+ * starts with `=`, `+`, `-`, `@`, a tab or a carriage return and is not a
+ * plain signed decimal), the usual way to keep it text. Any other value is
+ * returned as is, a boxed `String` included: an export formatter returns one
+ * to mark text it means to keep raw, such as a formula source. CSV export
+ * and clipboard copy share this rule.
+ */
+export function escapeFormula<V>(value: V): V | string {
+  return typeof value === 'string' && FORMULA_LEADING.test(value) ? `'${value}` : value;
+}
+
 /**
  * Quotes one delimited-text field when it holds the delimiter, a double quote
  * or a line break (doubling inner quotes), the convention CSV files and
@@ -236,14 +259,14 @@ export function buildCSV<T extends object>(
   const delimiter = opts.delimiter ?? ',';
   const newline = opts.newline ?? '\r\n';
   const includeHeader = opts.includeHeader ?? true;
+  const cell = (value: ExportCellValue) =>
+    escapeCSVCell(opts.escapeFormulas === false ? value : escapeFormula(value), delimiter);
   const columns = resolveExportColumns(grid, opts);
   const rows = resolveExportRows(grid, opts.source);
 
   const lines: string[] = [];
   if (includeHeader) {
-    lines.push(
-      columns.map((column) => escapeCSVCell(getColumnLabel(column), delimiter)).join(delimiter)
-    );
+    lines.push(columns.map((column) => cell(getColumnLabel(column))).join(delimiter));
   }
   for (const row of rows) {
     const cells = columns.map((column) => {
@@ -251,7 +274,7 @@ export function buildCSV<T extends object>(
       if (value instanceof Date) {
         value = formatDateForCSV(column, value);
       }
-      return escapeCSVCell(value, delimiter);
+      return cell(value);
     });
     lines.push(cells.join(delimiter));
   }

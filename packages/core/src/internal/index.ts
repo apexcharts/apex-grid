@@ -26,6 +26,7 @@ export type { ExportCellValue, ExportFormat, ExportOptions } from './export.js';
 export {
   downloadBlob,
   escapeCSVCell,
+  escapeFormula,
   getColumnLabel,
   resolveExportColumns,
   resolveExportRows,
