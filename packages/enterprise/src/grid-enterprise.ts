@@ -95,6 +95,7 @@ import {
   type InfiniteHost,
   type InfiniteRowModelConfig,
   InfiniteRowModelManager,
+  serverQueryKey,
 } from './features/infinite-row-model.js';
 import { type MasterDetailConfig, MasterDetailManager } from './features/master-detail.js';
 import { PIVOT_MODULE_ID, type PivotController, type PivotOptions } from './features/pivot.js';
@@ -1263,27 +1264,13 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   #dataEpoch = 0;
 
   #emitViewChanged(): void {
-    const sortSig = this.sortExpressions
-      .map((expression) => `${String(expression.key)}:${expression.direction}`)
-      .join(',');
-    const filterSig = this.filterExpressions
-      .map((expression) => {
-        const condition = expression.condition as { name?: string } | string | undefined;
-        const operand = typeof condition === 'string' ? condition : (condition?.name ?? '');
-        const criteria =
-          expression.criteria === undefined ? '' : JSON.stringify(expression.criteria);
-        return `${String(expression.key)}:${operand}:${String(expression.searchTerm ?? '')}:${criteria}`;
-      })
-      .join(';');
     const signature = [
       this.columns.length,
       this.pageItems.length,
       this.groupBy.join(','),
       this.pivotOn,
       this.#pivotActive ? '1' : '0',
-      sortSig,
-      filterSig,
-      this.quickFilter ?? '',
+      serverQueryKey(this),
       this.#dataEpoch,
     ].join('|');
     if (signature === this.#viewSignature) return;

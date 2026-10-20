@@ -9,7 +9,7 @@ import type {
 import type { GridFeatureModule, GridHost, RowAria, RowAriaProvider } from 'apex-grid/internal';
 import { html, type ReactiveController, type TemplateResult } from 'lit';
 import type { AggregationConfig } from './aggregation.js';
-import { listenForRange } from './infinite-row-model.js';
+import { listenForRange, type ServerQueryHost, serverQueryKey } from './infinite-row-model.js';
 
 export const SERVER_SIDE_ROW_MODEL_MODULE_ID = 'server-side-row-model';
 
@@ -153,16 +153,13 @@ export interface ServerRowsLoadedDetail {
 }
 
 /** The minimal grid surface the SSRM manager drives. */
-export interface ServerSideHost<T extends object> {
+export interface ServerSideHost<T extends object> extends ServerQueryHost<T> {
   data: T[];
   /** The rows the body renders (the page slice, pinned rows excluded). */
   readonly pageItems: ReadonlyArray<T>;
   readonly updateComplete: Promise<boolean>;
   columns: ColumnConfiguration<T>[];
   columnGroups?: ColumnGroupConfiguration[];
-  quickFilter?: string;
-  readonly sortExpressions: SortExpression<T>[];
-  readonly filterExpressions: FilterExpression<T>[];
   dataPipelineConfiguration: DataPipelineConfiguration<T>;
   readonly shadowRoot: ShadowRoot | null;
   localize(key: string, params?: Record<string, string | number>, fallback?: string): string;
@@ -289,7 +286,7 @@ export class ServerSideRowModelManager<T extends object> {
       quickFilter: passthrough,
     };
     this.host.columns = this.#buildColumns();
-    this.#lastKey = this.#stateKey();
+    this.#lastKey = serverQueryKey(this.host);
     this.reset();
   }
 
@@ -407,23 +404,8 @@ export class ServerSideRowModelManager<T extends object> {
     ];
   }
 
-  #stateKey(): string {
-    const sort = this.host.sortExpressions
-      .map((expr) => `${String(expr.key)}:${expr.direction}`)
-      .join(',');
-    const filter = this.host.filterExpressions
-      .map((expr) => {
-        const condition = expr.condition as { name?: string } | string;
-        const name = typeof condition === 'string' ? condition : (condition?.name ?? '');
-        const term = (expr as { searchTerm?: unknown }).searchTerm;
-        return `${String(expr.key)}:${name}:${term === undefined ? '' : String(term)}`;
-      })
-      .join(',');
-    return `${sort}|${filter}|${this.host.quickFilter ?? ''}`;
-  }
-
   #detectChange(): void {
-    const key = this.#stateKey();
+    const key = serverQueryKey(this.host);
     if (key === this.#lastKey) return;
     this.#lastKey = key;
     if (this.#resetQueued) return;

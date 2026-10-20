@@ -7,6 +7,8 @@ import {
   type InfiniteDataSource,
   type InfiniteGetRowsParams,
   type InfiniteGetRowsResult,
+  ROWS_LOADED_EVENT,
+  type RowsLoadedDetail,
   type ServerSideDataSource,
   type ServerSideGetRowsParams,
   type ServerSideGetRowsResult,
@@ -410,5 +412,77 @@ describe('row models: lifecycle across a DOM move', () => {
     await settle(grid);
     expect(flat(grid).map((row) => row.name)).to.not.include('Stale');
     expect(getServerRowMeta(flat(grid)[0])?.expanded, 'reset collapsed the tree').to.be.false;
+  });
+});
+
+describe('row models: counts and query keys', () => {
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+  });
+  afterEach(() => fixtureCleanup());
+
+  async function mountInfinite(server: InfiniteDataSource<Row>, blockSize = 100) {
+    const grid = await fixture<ApexGridEnterprise<Row>>(html`<apex-grid-enterprise
+      .columns=${columns}
+      .infiniteRowModel=${{ datasource: server, blockSize }}
+    ></apex-grid-enterprise>`);
+    await settle(grid);
+    return grid;
+  }
+
+  it('keeps the exact end-of-data count when an earlier block answers late (ent-irm-detail-total-1)', async () => {
+    const server = new PendingServer();
+    const grid = await mountInfinite(server);
+    const events: RowsLoadedDetail[] = [];
+    grid.addEventListener(ROWS_LOADED_EVENT, (event) =>
+      events.push((event as CustomEvent<RowsLoadedDetail>).detail)
+    );
+    expect(server.calls.map((c) => c.params.startRow)).to.eql([0, 100]);
+    server.answer(100, 50); // the short last block first
+    await settle(grid);
+    server.answer(0, 100);
+    await settle(grid);
+    const last = events[events.length - 1];
+    expect(last.rowCount, 'rowCount in last apex-rows-loaded').to.equal(150);
+    expect(last.exact).to.be.true;
+    expect(grid.data).to.have.length(150);
+    expect(
+      grid.data.some((row) => grid.isRowLoading(row)),
+      'no placeholders left'
+    ).to.be.false;
+  });
+
+  /** Two conditions on one column, then the AND/OR chip flipped to OR. */
+  async function toggleCriteria(grid: ApexGridEnterprise<Row>) {
+    const conditions = (criteria: 'and' | 'or') => [
+      { key: 'name' as const, condition: 'contains' as const, searchTerm: 'a' },
+      { key: 'name' as const, condition: 'contains' as const, searchTerm: 'v', criteria },
+    ];
+    grid.filter(conditions('and'));
+    await settle(grid);
+    grid.clearFilter('name');
+    grid.filter(conditions('or'));
+    await settle(grid);
+  }
+
+  it('refetches infinite rows when only the AND/OR criteria change (ent-irm-detail-total-8)', async () => {
+    const calls: InfiniteGetRowsParams<Row>[] = [];
+    const grid = await mountInfinite({
+      getRows(params) {
+        calls.push(params);
+        return { rows: [], rowCount: 0 };
+      },
+    });
+    await toggleCriteria(grid);
+    const last = calls[calls.length - 1];
+    expect(last.filterModel.map((expr) => expr.criteria ?? 'and')).to.eql(['and', 'or']);
+  });
+
+  it('refetches server-side rows when only the AND/OR criteria change (ent-ssrm-5)', async () => {
+    const { grid, server } = await mountSsrm();
+    await toggleCriteria(grid);
+    const last = server.calls[server.calls.length - 1];
+    expect(last.filterModel.map((expr) => expr.criteria ?? 'and')).to.eql(['and', 'or']);
   });
 });

@@ -2,6 +2,37 @@ import type { DataPipelineConfiguration, FilterExpression, SortExpression } from
 
 export const ROWS_LOADED_EVENT = 'apex-rows-loaded';
 
+/** The query fields a server row model sends with every request. */
+export interface ServerQueryHost<T extends object> {
+  quickFilter?: string;
+  readonly sortExpressions: SortExpression<T>[];
+  readonly filterExpressions: FilterExpression<T>[];
+}
+
+/**
+ * Serialized server query (sort, filter and quick filter), compared to decide
+ * whether to refetch. Covers every field a datasource receives, including a
+ * filter's AND/OR `criteria` and `caseSensitive`, so toggling either reloads.
+ * The one serializer for both server row models and the grid's view signature.
+ */
+export function serverQueryKey<T extends object>(host: ServerQueryHost<T>): string {
+  return JSON.stringify([
+    host.sortExpressions.map((expr) => [expr.key, expr.direction, expr.caseSensitive]),
+    host.filterExpressions.map((expr) => {
+      const condition = expr.condition as { name?: string } | string | undefined;
+      const term: unknown = expr.searchTerm;
+      return [
+        expr.key,
+        typeof condition === 'string' ? condition : condition?.name,
+        term !== null && typeof term === 'object' ? JSON.stringify(term) : String(term),
+        expr.criteria,
+        expr.caseSensitive,
+      ];
+    }),
+    host.quickFilter ?? '',
+  ]);
+}
+
 /** The block of rows the grid is asking the datasource to fetch. */
 export interface InfiniteGetRowsParams<T extends object> {
   /** First row index to fetch (inclusive). */
@@ -58,11 +89,8 @@ export interface RowsLoadedDetail {
 }
 
 /** The minimal grid surface the manager drives (avoids a circular import). */
-export interface InfiniteHost<T extends object> {
+export interface InfiniteHost<T extends object> extends ServerQueryHost<T> {
   data: T[];
-  quickFilter?: string;
-  readonly sortExpressions: SortExpression<T>[];
-  readonly filterExpressions: FilterExpression<T>[];
   dataPipelineConfiguration: DataPipelineConfiguration<T>;
   readonly shadowRoot: ShadowRoot | null;
   addEventListener: HTMLElement['addEventListener'];
@@ -134,7 +162,7 @@ export class InfiniteRowModelManager<T extends object> {
       filter: passthrough,
       quickFilter: passthrough,
     };
-    this.#lastKey = this.#stateKey();
+    this.#lastKey = serverQueryKey(this.host);
     this.reset();
   }
 
@@ -183,24 +211,8 @@ export class InfiniteRowModelManager<T extends object> {
 
   // --- internals -----------------------------------------------------------
 
-  /** Serialized server query — sort + filter + quick-filter. */
-  #stateKey(): string {
-    const sort = this.host.sortExpressions
-      .map((expr) => `${String(expr.key)}:${expr.direction}`)
-      .join(',');
-    const filter = this.host.filterExpressions
-      .map((expr) => {
-        const condition = expr.condition as { name?: string } | string;
-        const name = typeof condition === 'string' ? condition : (condition?.name ?? '');
-        const term = (expr as { searchTerm?: unknown }).searchTerm;
-        return `${String(expr.key)}:${name}:${term === undefined ? '' : String(term)}`;
-      })
-      .join(',');
-    return `${sort}|${filter}|${this.host.quickFilter ?? ''}`;
-  }
-
   #detectChange(): void {
-    const key = this.#stateKey();
+    const key = serverQueryKey(this.host);
     if (key === this.#lastKey) return;
     this.#lastKey = key;
     this.#scheduleReset();
@@ -262,8 +274,9 @@ export class InfiniteRowModelManager<T extends object> {
       // Short block ⇒ we've hit the end.
       this.#rowCount = startRow + result.rows.length;
       this.#exact = true;
-    } else if (startRow + result.rows.length + this.#blockSize > this.#rowCount) {
-      // Keep a trailing placeholder block so the user can scroll further.
+    } else if (!this.#exact && startRow + result.rows.length + this.#blockSize > this.#rowCount) {
+      // Keep a trailing placeholder block so the user can scroll further. A full
+      // block answering after the short last one must not grow the exact count.
       this.#rowCount = startRow + result.rows.length + this.#blockSize;
     }
 
