@@ -4,8 +4,9 @@
  * carries. The default detector is lexical: a table of scored patterns, a
  * productionized generalization of the old mock's regex list. It is a pure
  * function of the utterance (the context is available for future
- * schema-aware scoring but the default does not need it), so the highest-scoring
- * matching rule wins and anything unmatched is `unknown`.
+ * schema-aware scoring but the default does not need it). The leftmost matching
+ * rule wins (confidence breaks a tie at the same position) and anything unmatched
+ * is `unknown`.
  *
  * @see plans/ai-reasoning-layer-spec.md (section 4.4)
  */
@@ -25,6 +26,14 @@ interface IntentRule {
   pattern: RegExp;
   /** Map capture-group numbers to named slots. */
   groups?: Record<string, number>;
+  /** A generic fallback: any other matching rule wins over it, wherever it matched. */
+  fallback?: boolean;
+  /**
+   * A generic control command whose words also open analytical questions ("max and
+   * median of bonus", "show top 5 by salary", "find distinct countries"): any `analyze`
+   * match wins over it, wherever it matched.
+   */
+  yieldsToAnalyze?: boolean;
 }
 
 /** Build the named {@link RawSlot} map for a match, using capture-group offsets when present. */
@@ -44,16 +53,70 @@ function slotsFrom(
   return slots;
 }
 
-// Order is for readability only: detection picks the highest-confidence match,
-// not the first. Confidences encode specificity (a keyworded command outranks a
-// bare question marker).
+/**
+ * One character of a column name in a command. Unicode letters plus the punctuation
+ * real headers carry ("E-mail", "Owner's Name", "Growth %", "No.", "Categoría"); the
+ * resolver grounds the span against the real column names.
+ */
+const NAME = "[\\p{L}\\p{N}\\p{M}_ '’#%./&()-]";
+/** {@link NAME} plus the comma that separates several columns. */
+const NAMES = "[\\p{L}\\p{N}\\p{M}_ ,'’#%./&()-]";
+/**
+ * {@link NAME} that stops before a trailing clause ("show salary where age is over 30"),
+ * so the clause reaches the filter rule instead of being read as part of a column name.
+ */
+const SPAN_NAME = `(?:(?!\\s+(?:where|with|whose|having)\\b)${NAME})`;
+/** A sort direction word; a range ("high to low") is read by its first endpoint. */
+const DIRECTION =
+  '(?:asc(?:ending)?|desc(?:ending)?|a-z|z-a|a to z|z to a|high(?:est)?|low(?:est)?|large(?:st)?|small(?:est)?|biggest|most|least|newest|latest|oldest|earliest)';
+
+/** A polite opener for a whole-command rule: "please", "can you", "could you please". */
+const POLITE = '(?:please\\s+|(?:can|could|would|will)\\s+you\\s+(?:please\\s+)?)?';
+/** A polite closer and end punctuation for a whole-command rule. */
+const PLEASE = '(?:,?\\s+please)?\\s*[.!?]?';
+
+/** A Unicode-aware pattern with capture offsets (`d`), case-insensitive. */
+const rule = (source: string) => new RegExp(source, 'diu');
+
+// Detection picks the match that starts leftmost (the command verb comes first, so a
+// command word inside a column label never wins); confidence breaks a tie at the same
+// position, a generic `ask` fallback loses to any other match, and the generic aggregate,
+// show and find commands lose to any analytical question. Confidences encode
+// specificity (a keyworded command outranks a bare question marker).
 const RULES: IntentRule[] = [
+  // Reset and undo only as whole commands, so "go back to page 1" or "search for undo"
+  // reach their own rule instead of discarding the view. Clearing only the filters or
+  // only the sort is its own command below, not a full reset.
   {
     kind: 'reset',
     confidence: 0.9,
-    pattern: /\b(?:reset|clear all|clear everything|start over)\b/di,
+    pattern: rule(
+      `^${POLITE}(?:reset|clear all|clear everything|start over)(?:\\s+(?:everything|all|it all|the view|the grid|the table|view|grid|table))?${PLEASE}$`
+    ),
   },
-  { kind: 'undo', confidence: 0.85, pattern: /\b(?:undo|revert|go back)\b/di },
+  {
+    kind: 'undo',
+    confidence: 0.85,
+    pattern: rule(
+      `^${POLITE}(?:undo|revert|go back)(?:\\s+(?:(?:the\\s+)?(?:last|previous)(?:\\s+\\p{L}+)?|(?:that|this|the)(?:\\s+\\p{L}+)?|it|once))?${PLEASE}$`
+    ),
+  },
+  {
+    kind: 'filter',
+    confidence: 0.85,
+    pattern: rule(
+      `^${POLITE}(?:clear|reset|remove)\\s+(?:all\\s+)?(?:the\\s+)?(?:column\\s+)?filters?${PLEASE}$`
+    ),
+    groups: { clear: 0 },
+  },
+  {
+    kind: 'sort',
+    confidence: 0.85,
+    pattern: rule(
+      `^${POLITE}(?:clear|reset|remove)\\s+(?:all\\s+)?(?:the\\s+)?sort(?:ing|s)?${PLEASE}$`
+    ),
+    groups: { clear: 0 },
+  },
   {
     kind: 'ungroup',
     confidence: 0.85,
@@ -69,35 +132,40 @@ const RULES: IntentRule[] = [
   {
     kind: 'sort',
     confidence: 0.82,
-    pattern:
-      /\b(?:sort|order)(?:\s+by)?\s+([\w ,]+?)(?:\s+(ascending|descending|asc|desc|a-z|z-a|highest|lowest|high|low|largest|smallest|most|least)(?:\s+first)?(?:\s+order)?)?\s*$/di,
+    pattern: rule(
+      `\\b(?:sort|order)(?:\\s+by)?\\s+(${NAMES}+?)(?:,?\\s+(?:from\\s+)?(${DIRECTION}(?:\\s+to\\s+${DIRECTION})?)(?:\\s+first)?(?:\\s+order)?)?\\s*$`
+    ),
     groups: { column: 1, direction: 2 },
   },
   {
     kind: 'group',
     confidence: 0.82,
-    pattern: /\bgroup(?:\s+rows)?(?:\s+by)?\s+([\w ,]+?)\s*$/di,
+    pattern: rule(`\\bgroup(?:\\s+rows)?(?:\\s+by)?\\s+(${NAMES}+?)\\s*$`),
     groups: { columns: 1 },
   },
   {
     kind: 'pivot',
     confidence: 0.8,
-    pattern: /\bpivot(?:\s+(?:on|by))?\s+([\w ]+?)\s*$/di,
+    pattern: rule(`\\bpivot(?:\\s+(?:on|by))?\\s+(${NAME}+?)\\s*$`),
     groups: { column: 1 },
   },
   {
     kind: 'aggregate',
     confidence: 0.7,
-    pattern:
-      /\b(sum|total|average|avg|mean|count|min(?:imum)?|max(?:imum)?)\s+(?:of\s+)?([\w ]+?)\s*$/di,
+    pattern: rule(
+      `\\b(sum|total|average|avg|mean|count|min(?:imum)?|max(?:imum)?)\\s+(?:of\\s+)?(${SPAN_NAME}+?)\\s*$`
+    ),
     groups: { func: 1, column: 2 },
+    yieldsToAnalyze: true,
   },
+  // A condition, in either argument order: the resolver grounds the column against the
+  // real names and reads the operator from one table, so an operator spelled inside a
+  // column name ("discount", "visits") is never split out of it.
   {
     kind: 'filter',
     confidence: 0.82,
-    pattern:
-      /\b(?:filter|where|only show|show only)\s+([\w ]+?)\s*(is not|is|=|==|!=|equals?|contains?|has|includes?|starts with|ends with|greater than or equal|less than or equal|greater than|less than|more than|at least|at most|>=|<=|>|<)\s*(.+?)\s*$/di,
-    groups: { column: 1, operator: 2, value: 3 },
+    pattern: /\b(?:filter|where|only show|show only)\s+(?:by\s+)?(.+?)\s*$/di,
+    groups: { predicate: 1 },
   },
   // Remove / exclude rows matching a condition -> a filter that keeps the complement
   // (the operand is inverted in the resolver). Requires "rows" so "remove grouping" /
@@ -120,21 +188,38 @@ const RULES: IntentRule[] = [
   {
     kind: 'columns',
     confidence: 0.8,
-    pattern: /\b(hide|show)\s+(?!me\b)(?:the\s+)?(?:column\s+)?([\w ]+?)(?:\s+column)?\s*$/di,
+    pattern: rule(`\\b(hide)\\s+(?:the\\s+)?(?:column\\s+)?(${SPAN_NAME}+?)(?:\\s+column)?\\s*$`),
     groups: { action: 1, column: 2 },
   },
   {
     kind: 'columns',
+    confidence: 0.8,
+    pattern: rule(
+      `\\b(show)\\s+(?!me\\b)(?:the\\s+)?(?:column\\s+)?(${SPAN_NAME}+?)(?:\\s+column)?\\s*$`
+    ),
+    groups: { action: 1, column: 2 },
+    yieldsToAnalyze: true,
+  },
+  {
+    kind: 'columns',
     confidence: 0.78,
-    pattern:
-      /\b(?:pin|freeze)\s+(?:the\s+)?([\w ]+?)(?:\s+(?:to\s+(?:the\s+)?)?(left|right|start|end))?\s*$/di,
+    pattern: rule(
+      `\\b(?:pin|freeze)\\s+(?:the\\s+)?(${NAME}+?)(?:\\s+(?:to\\s+(?:the\\s+)?)?(left|right|start|end))?\\s*$`
+    ),
     groups: { pinColumn: 1, pinSide: 2 },
   },
   {
     kind: 'quick-filter',
     confidence: 0.75,
-    pattern: /\b(?:search|find|quick\s*filter)\s+(?:for\s+)?(.+?)\s*$/di,
+    pattern: /\b(?:search|quick\s*filter)\s+(?:for\s+)?(.+?)\s*$/di,
     groups: { text: 1 },
+  },
+  {
+    kind: 'quick-filter',
+    confidence: 0.75,
+    pattern: /\bfind\s+(?:for\s+)?(.+?)\s*$/di,
+    groups: { text: 1 },
+    yieldsToAnalyze: true,
   },
   {
     kind: 'paginate',
@@ -156,9 +241,9 @@ const RULES: IntentRule[] = [
   },
   // Analytical (read-only) questions -> 'analyze'. The resolver parses the metrics,
   // measure column, group-by, scope, and rank from the raw utterance (it has the
-  // schema + data). Confidence sits above generic `ask` (0.8) and the control
-  // `aggregate` command (0.7), but below the anchored control verbs (0.82), so a
-  // real "sort/filter/group ..." still wins when its keyword is present.
+  // schema + data). Any of them outranks the generic aggregate, show and find commands
+  // (`yieldsToAnalyze`), so "max and median of bonus" or "show top 5 by salary" is
+  // answered; a sort, filter or group verb that comes first still wins.
   {
     // analytical-only words never appear in a control command
     kind: 'analyze',
@@ -196,27 +281,43 @@ const RULES: IntentRule[] = [
     kind: 'ask',
     confidence: 0.8,
     pattern: /\b(?:how many|number of|what'?s|what is|what are)\b/di,
+    fallback: true,
   },
-  { kind: 'ask', confidence: 0.6, pattern: /\?\s*$/d },
+  { kind: 'ask', confidence: 0.6, pattern: /\?\s*$/d, fallback: true },
 ];
+
+/**
+ * Where a match ranks: lower wins. A fallback ranks after every other match, and a
+ * command that yields to analytics ranks after any `analyze` match.
+ */
+function rankOf(rule: IntentRule, match: RegExpMatchArray, analyzes: boolean): number {
+  if (rule.fallback) return Number.POSITIVE_INFINITY;
+  if (rule.yieldsToAnalyze && analyzes) return Number.MAX_SAFE_INTEGER;
+  return match.index ?? 0;
+}
 
 class RuleIntentDetector implements IntentDetector {
   detect(utterance: string, _ctx: GridContext): Intent {
     const raw = utterance.trim();
-    let best: Intent | null = null;
-    for (const rule of RULES) {
-      const match = raw.match(rule.pattern);
+    const matches = RULES.map((r) => ({ rule: r, match: raw.match(r.pattern) }));
+    const analyzes = matches.some(({ rule: r, match }) => match && r.kind === 'analyze');
+    let best: { intent: Intent; at: number } | null = null;
+    for (const { rule: r, match } of matches) {
       if (!match) continue;
-      if (!best || rule.confidence > best.confidence) {
+      const at = rankOf(r, match, analyzes);
+      if (!best || at < best.at || (at === best.at && r.confidence > best.intent.confidence)) {
         best = {
-          kind: rule.kind,
-          confidence: rule.confidence,
-          slots: rule.groups ? slotsFrom(match, rule.groups) : {},
-          raw,
+          intent: {
+            kind: r.kind,
+            confidence: r.confidence,
+            slots: r.groups ? slotsFrom(match, r.groups) : {},
+            raw,
+          },
+          at,
         };
       }
     }
-    return best ?? { kind: 'unknown', confidence: 0, slots: {}, raw };
+    return best?.intent ?? { kind: 'unknown', confidence: 0, slots: {}, raw };
   }
 }
 

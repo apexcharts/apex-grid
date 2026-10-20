@@ -58,6 +58,15 @@ class RulePlanner implements Planner {
 
     switch (intent.kind) {
       case 'sort': {
+        // "clear the sort": an empty sort.
+        if (intent.slots.clear) {
+          return {
+            mode: 'control',
+            steps: [{ tool: 'sort', args: { by: [] } }],
+            confidence,
+            source,
+          };
+        }
         if (resolved.columns.length === 0) {
           return fail((resolved.errors[0] ?? 'I could not find that column.') + columnHint(ctx));
         }
@@ -69,6 +78,19 @@ class RulePlanner implements Planner {
       }
 
       case 'filter': {
+        // "clear all filters": no column filter and no quick filter, so no row stays
+        // hidden, while the sort and grouping are left alone.
+        if (intent.slots.clear) {
+          return {
+            mode: 'control',
+            steps: [
+              { tool: 'filter', args: { where: [] } },
+              { tool: 'quickFilter', args: { text: '' } },
+            ],
+            confidence,
+            source,
+          };
+        }
         const column = resolved.columns[0];
         if (!column || resolved.operand === undefined) {
           return fail((resolved.errors[0] ?? 'I could not find that column.') + columnHint(ctx));

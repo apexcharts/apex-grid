@@ -2,8 +2,9 @@
  * The Reasoner seam: the one interface an LLM later implements. A reasoner turns an
  * utterance plus a {@link GridContext} into a {@link Plan}. {@link RuleBasedReasoner}
  * is the default, LLM-free reasoner: it composes intent detection, entity
- * resolution, and planning. Its `score` is the detector's confidence, which the
- * Router (P3) uses to decide whether to escalate to an LLM reasoner.
+ * resolution, and planning. Its `score` is the confidence of the plan it would
+ * return (grounded, not the raw keyword match), which the Router (P3) uses to
+ * decide whether to escalate to an LLM reasoner.
  *
  * @see plans/ai-reasoning-layer-spec.md (section 4.8)
  */
@@ -79,17 +80,24 @@ export class RuleBasedReasoner implements Reasoner {
     this.#planner = deps.planner ?? createRulePlanner();
   }
 
+  /**
+   * The grounded confidence of the plan {@link reason} would return, so a keyword that
+   * matches a column the grid lacks ("sort by revenue") scores low under any policy.
+   */
   score(utterance: string, ctx: GridContext): number {
-    return this.#detector.detect(utterance, ctx).confidence;
+    return this.#plan(utterance, ctx).confidence;
   }
 
   reason(utterance: string, ctx: GridContext): Promise<Plan> {
+    return Promise.resolve(this.#plan(utterance, ctx));
+  }
+
+  /** Pure and synchronous: the shared body of {@link score} and {@link reason}. */
+  #plan(utterance: string, ctx: GridContext): Plan {
     const clauses = segmentClauses(utterance);
-    const plan =
-      clauses.length <= 1
-        ? this.#planOne(utterance, ctx)
-        : this.#planCompound(utterance, clauses, ctx);
-    return Promise.resolve(plan);
+    return clauses.length <= 1
+      ? this.#planOne(utterance, ctx)
+      : this.#planCompound(utterance, clauses, ctx);
   }
 
   /** Detect -> resolve -> plan for a single command clause. */

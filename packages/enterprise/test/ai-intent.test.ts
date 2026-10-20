@@ -24,12 +24,10 @@ describe('AI reasoning layer — IntentDetector', () => {
     expect(intent.slots.columns?.text).to.equal('region');
   });
 
-  it('classifies filter with column, operator, and value', () => {
+  it('classifies filter with one predicate slot (the resolver reads column and operator)', () => {
     const intent = detector.detect('filter region = EMEA', ctx);
     expect(intent.kind).to.equal('filter');
-    expect(intent.slots.column?.text).to.equal('region');
-    expect(intent.slots.operator?.text).to.equal('=');
-    expect(intent.slots.value?.text).to.equal('EMEA');
+    expect(intent.slots.predicate?.text).to.equal('region = EMEA');
   });
 
   it('classifies hide/show column (but not "show me ...")', () => {
