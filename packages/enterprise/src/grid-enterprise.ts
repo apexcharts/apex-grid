@@ -119,6 +119,14 @@ import { buildXLSX, type XLSXExportOptions } from './features/xlsx.js';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
+/** The panel elements the toolbar opens, named by tag so the grid does not import them. */
+const CHART_PANEL = 'apex-grid-chart';
+const AI_PANEL = 'apex-grid-ai';
+
+/** Whether a panel element is registered; the toolbar offers only those that are. */
+const panelDefined = (tag: string): boolean =>
+  typeof customElements !== 'undefined' && !!customElements.get(tag);
+
 /**
  * Attribute converter for the features that are on by default: the literal
  * `"false"` turns them off, where a plain boolean attribute would read it as
@@ -745,14 +753,27 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    */
   public static setLicense(key: string): void {
     LicenseManager.setLicense(key);
+    ApexGridEnterprise.#refreshAll();
+  }
+
+  static #refreshAll(): void {
     for (const grid of ApexGridEnterprise.#instances) {
       grid.requestUpdate();
     }
   }
 
+  static #panelsWatched = false;
+
   public override connectedCallback(): void {
     super.connectedCallback();
     ApexGridEnterprise.#instances.add(this);
+    // A toolbar panel registered after a grid renders adds its button then.
+    if (!ApexGridEnterprise.#panelsWatched) {
+      ApexGridEnterprise.#panelsWatched = true;
+      for (const tag of [CHART_PANEL, AI_PANEL]) {
+        customElements.whenDefined(tag).then(ApexGridEnterprise.#refreshAll);
+      }
+    }
     // A cell edit changes a value without changing the view's shape, so the structural view
     // signature would not move. Bump the data epoch and re-signal so a view-bound chart redraws.
     this.addEventListener('cellValueChanged', this.#onCellValueChanged);
@@ -810,21 +831,35 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.#chartRangeManagerInstance?.destroy();
     for (const chart of this.#chartDialogs) chart.remove();
     this.#chartDialogs.clear();
+    // The Ask AI dialog keeps its conversation across a move (disconnected and connected again in
+    // the same task) and closes with the grid otherwise.
+    const ai = this.#aiDialog;
+    if (ai) {
+      queueMicrotask(() => {
+        if (!this.isConnected && this.#aiDialog === ai) {
+          ai.remove();
+          this.#aiDialog = null;
+        }
+      });
+    }
     super.disconnectedCallback();
   }
 
   /** The floating "Chart" button shown over a non-empty range selection (lazily created). */
   #chartAffordance: HTMLButtonElement | null = null;
 
-  /** True when the range-selection module has a non-empty active range to chart. */
-  #hasRangeSelection(): boolean {
+  /**
+   * True when the range-selection module has a non-empty active range and
+   * `<apex-grid-chart>` is registered to chart it.
+   */
+  #canChartSelection(): boolean {
     const active = this.#rangeController()?.getActiveGrid();
-    return !!active && active.rows.length > 0;
+    return !!active && active.rows.length > 0 && panelDefined(CHART_PANEL);
   }
 
-  /** Alt+F1 charts the current selection (a no-op without one). */
+  /** Alt+F1 charts the current selection (a no-op without one, or without the chart panel). */
   #onChartShortcut = (event: KeyboardEvent): void => {
-    if (event.altKey && event.key === 'F1' && this.#hasRangeSelection()) {
+    if (event.altKey && event.key === 'F1' && this.#canChartSelection()) {
       event.preventDefault();
       this.#openChartDialog({ source: 'selection' });
     }
@@ -840,7 +875,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     // grid cells and swallow clicks the editor needs (e.g. the formula editor's
     // click-to-insert-reference).
     const editing = this.editingCell !== null || this.editingRow !== null;
-    if (!this.#hasRangeSelection() || editing) {
+    if (!this.#canChartSelection() || editing) {
       if (this.#chartAffordance) this.#chartAffordance.style.display = 'none';
       return;
     }
@@ -1147,13 +1182,14 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     const userItems = config && typeof config === 'object' ? config.items : undefined;
     // Default items, shared by the right-click menu and the header kebab button:
     // the controller's built-ins (sort / pin / hide), the grouping actions when
-    // the grouping module is present, and a "Chart range" submenu.
+    // the grouping module is present, and a "Chart range" submenu while
+    // <apex-grid-chart> is registered.
     controller.items =
       userItems ??
       ((target) => [
         ...controller.defaultItems(target),
         ...this.#groupingMenuItems(target),
-        this.#chartRangeItem(),
+        ...(panelDefined(CHART_PANEL) ? [this.#chartRangeItem()] : []),
       ]);
   }
 
@@ -1956,24 +1992,28 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   /**
-   * Adds a "Create chart" button to the toolbar (on top of the community grid's none). Clicking it
-   * opens a floating `<apex-grid-chart mode="dialog">` bound to this grid. Requires
-   * `<apex-grid-chart>` to be registered (the `/define` entry does so).
+   * Adds "Create chart" and "Ask AI" buttons to the toolbar (on top of the community grid's none),
+   * each once its panel element is registered (the `/define` entry registers both). Clicking one
+   * opens a floating `<apex-grid-chart mode="dialog">` or `<apex-grid-ai mode="dialog">` bound to
+   * this grid.
    */
   public override get toolbarActions(): ReadonlyArray<ToolbarAction> {
-    return [
-      ...super.toolbarActions,
-      {
+    const actions = [...super.toolbarActions];
+    if (panelDefined(CHART_PANEL)) {
+      actions.push({
         id: 'create-chart',
         label: this.localize('toolbar.createChart'),
         run: () => this.#openChartDialog(),
-      },
-      {
+      });
+    }
+    if (panelDefined(AI_PANEL)) {
+      actions.push({
         id: 'ask-ai',
         label: this.localize('toolbar.askAI'),
         run: () => this.#openAIDialog(),
-      },
-    ];
+      });
+    }
+    return actions;
   }
 
   #aiDialog: ApexGridAI | null = null;
@@ -1985,10 +2025,11 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * Requires `<apex-grid-ai>` to be registered (the `/define` entry does so).
    */
   #openAIDialog(): void {
+    if (!panelDefined(AI_PANEL)) return;
     if (!this.#aiDialog) {
       // createElement by tag (not an import) keeps the grid free of a runtime
       // dependency on the element, so it tree-shakes when a consumer never asks.
-      const ai = document.createElement('apex-grid-ai') as ApexGridAI;
+      const ai = document.createElement(AI_PANEL) as ApexGridAI;
       ai.mode = 'dialog';
       ai.grid = this as unknown as ApexGridEnterprise<Record<string, unknown>>;
       ai.addEventListener('apex-ai-closed', () => {
@@ -2010,9 +2051,10 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * `/define` entry does so).
    */
   #openChartDialog(options: { source?: ChartSource; type?: ChartType | 'auto' } = {}): void {
+    if (!panelDefined(CHART_PANEL)) return;
     // createElement by tag (not an import) keeps the grid free of a runtime dependency on the
     // chart element, so it tree-shakes when a consumer never charts.
-    const chart = document.createElement('apex-grid-chart') as ApexGridChart;
+    const chart = document.createElement(CHART_PANEL) as ApexGridChart;
     chart.mode = 'dialog';
     chart.grid = this as unknown as ApexGridEnterprise<Record<string, unknown>>;
     // Cascade each new dialog by its position in the open set.
