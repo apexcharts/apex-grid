@@ -120,11 +120,14 @@ import { buildXLSX, type XLSXExportOptions } from './features/xlsx.js';
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 /**
- * Attribute converter for the features that are on by default: only the
- * literal `"false"` turns them off, where a plain boolean attribute would read
- * any value (`"false"` too) as on, and a removed attribute as off.
+ * Attribute converter for the features that are on by default: the literal
+ * `"false"` turns them off, where a plain boolean attribute would read it as
+ * on. Any other value turns them on, and removing the attribute turns them
+ * off, as with a boolean attribute.
  */
-const ON_UNLESS_FALSE = { fromAttribute: (value: string | null) => value !== 'false' };
+const ON_UNLESS_FALSE = {
+  fromAttribute: (value: string | null) => value !== null && value !== 'false',
+};
 
 /** Aggregation functions advertised by {@link ApexGridEnterprise.getSchema}. */
 const AGGREGATION_FUNCS: AggregationFn[] = ['sum', 'avg', 'min', 'max', 'count'];
@@ -537,7 +540,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   /**
    * Spreadsheet-style cell range selection (click-drag / shift-click). Enabled
    * by default; set `range-selection="false"` (or the property) to turn it off.
-   * Any other attribute value, and removing the attribute, leaves it on.
+   * Any other attribute value leaves it on; removing the attribute turns it off.
    * Pairs with `<apex-grid-status-bar>` for live selection aggregates and with
    * {@link copySelection} for clipboard export.
    */
@@ -557,7 +560,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   /**
    * Right-click context menu on cells and headers (sort / pin / hide / copy, plus "Chart range").
    * Enabled by default; set `context-menu="false"` (or the property) to turn it
-   * off; any other attribute value, and removing the attribute, leaves it on.
+   * off; any other attribute value leaves it on, and removing the attribute
+   * turns it off.
    * Assign a {@link ContextMenuConfig} (via property) to replace the items.
    */
   @property({ attribute: 'context-menu', converter: ON_UNLESS_FALSE })

@@ -532,6 +532,13 @@ describe('Context menu: targets, events and entry points (ctx-menu batch)', () =
     await grid.updateComplete;
     expect(grid.contextMenu).to.equal(true);
     expect(grid.rangeSelection).to.equal(true);
+
+    // Removing the attribute turns the feature off, as a boolean attribute does.
+    grid.removeAttribute('context-menu');
+    grid.removeAttribute('range-selection');
+    await grid.updateComplete;
+    expect(grid.contextMenu).to.equal(false);
+    expect(grid.rangeSelection).to.equal(false);
   });
 
   function kebab(grid: ApexGridEnterprise<Row>, key: keyof Row) {
