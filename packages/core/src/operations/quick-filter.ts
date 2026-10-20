@@ -1,3 +1,4 @@
+import { normalizeCase } from '../internal/normalize-case.js';
 import type { ColumnConfiguration, Keys } from '../internal/types.js';
 import DataOperation from './base.js';
 
@@ -32,11 +33,7 @@ export default class QuickFilterDataOperation<T extends object> extends DataOper
 
     return data.filter((record) => {
       for (const key of keys) {
-        const value = record[key];
-        if (value === null || value === undefined) {
-          continue;
-        }
-        if (String(value).toLowerCase().includes(term)) {
+        if (normalizeCase(record[key]).includes(term)) {
           return true;
         }
       }

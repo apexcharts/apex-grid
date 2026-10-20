@@ -17,6 +17,19 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   entries for an unknown column or with an unknown direction are dropped with a
   console warning (an omitted direction still sorts ascending).
 
+### Fixed
+- **Text filter conditions no longer throw on a cell that is not a string.**
+  Contains, Starts with, Equals and the rest read `null` and `undefined` as
+  empty text and match numbers, dates and other values on their text. In 3.5.0
+  one such cell (an optional field left empty, a Date in a date column) made
+  the filter apply nothing and stopped later sorts until it was removed.
+- `OperandKeys` offers the text operand names for a field whose type is not
+  number, string or boolean (a `Date`, for example), matching what the grid
+  applies, instead of accepting the value type itself as a condition. A
+  nullable or optional field keeps the names of its type (`number | null`
+  still takes the number names only), and a field typed `unknown`, such as
+  every field of a `Record<string, unknown>` row, keeps every operand name.
+
 ## [3.5.0] - 2026-09-12
 
 A feature and accessibility release. No exported symbol was removed or renamed.

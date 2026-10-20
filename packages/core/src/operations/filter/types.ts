@@ -67,10 +67,26 @@ export interface BaseFilterExpression<T, K extends Keys<T> = Keys<T>> {
 export type FilterExpression<T, K extends Keys<T> = Keys<T>> =
   K extends Keys<T> ? BaseFilterExpression<T, K> : never;
 
-export type OperandKeys<Type> = Type extends number
-  ? keyof typeof NumberOperands
-  : Type extends string
-    ? keyof typeof StringOperands
-    : Type extends boolean
-      ? keyof typeof BooleanOperands
-      : Type;
+/**
+ * The operand names a filter `condition` may use for a value of `Type`.
+ *
+ * @remarks
+ * Any other value type (a `Date`, an array, an object) offers the string
+ * operand names, the set the grid applies to a column with no numeric or
+ * boolean type. `null` and `undefined` add no names, so a `number | null` or
+ * optional number field keeps the number operand names only. A field typed
+ * `unknown` (or `any`), such as every field of a `Record<string, unknown>`
+ * row, keeps every operand name: the grid picks the operands from the
+ * column type at runtime, which the value type does not tell.
+ */
+export type OperandKeys<Type> = unknown extends Type
+  ? keyof typeof NumberOperands | keyof typeof StringOperands | keyof typeof BooleanOperands
+  : Type extends null | undefined
+    ? never
+    : Type extends number
+      ? keyof typeof NumberOperands
+      : Type extends string
+        ? keyof typeof StringOperands
+        : Type extends boolean
+          ? keyof typeof BooleanOperands
+          : keyof typeof StringOperands;

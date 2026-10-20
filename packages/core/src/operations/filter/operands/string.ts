@@ -1,4 +1,3 @@
-import { isDefined } from '../../../internal/is-defined.js';
 import { normalizeCase } from '../../../internal/normalize-case.js';
 import type { FilterOperands } from '../types.js';
 
@@ -61,13 +60,13 @@ export const StringOperands = Object.freeze<FilterOperands<string, StringKeys>>(
     name: 'empty',
     label: 'Empty',
     unary: true,
-    logic: (target) => !isDefined(target) || target.length < 1,
+    logic: (target) => normalizeCase(target, true).length < 1,
   },
 
   notEmpty: {
     name: 'notEmpty',
     label: 'Not empty',
     unary: true,
-    logic: (target) => isDefined(target) && target.length > 0,
+    logic: (target) => normalizeCase(target, true).length > 0,
   },
 });
