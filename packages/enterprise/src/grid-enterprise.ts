@@ -5,7 +5,6 @@ import type {
   ColumnGroupConfiguration,
   CSVExportOptions,
   DataPipelineConfiguration,
-  DataPipelineHook,
   DataType,
   ExportCellValue,
   GetStateOptions,
@@ -631,9 +630,12 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   #advancedFilterModel: AdvancedFilterModel | null = null;
-  #advancedFilterHook: DataPipelineHook<T> | null = null;
-  /** The app's own filter hook (if any), saved so {@link clearAdvancedFilter} restores it. */
-  #savedFilterHook: DataPipelineHook<T> | undefined;
+  /** The app's own `dataPipelineConfiguration`, which `#composePipeline` builds on. */
+  #appPipeline: DataPipelineConfiguration<T> | undefined;
+  /** The configuration the grid last installed, to tell an app's assignment from its own. */
+  #ownPipeline: DataPipelineConfiguration<T> | undefined;
+  /** Every hook the grid has installed, so it never passes one off as an app hook. */
+  readonly #gridHooks = new WeakSet<object>();
 
   /** The active advanced filter model, or `null` when none is applied. */
   public get advancedFilterModel(): AdvancedFilterModel | null {
@@ -641,36 +643,75 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   /**
-   * Apply a nested AND/OR advanced filter. It evaluates client-side through the
-   * `dataPipelineConfiguration.filter` hook and, while active, owns column
-   * filtering (it replaces the built-in filter). Composes with sort / pagination
-   * / grouping. Call {@link clearAdvancedFilter} to remove it. The grid keeps a
-   * copy, so changing `model` afterwards takes effect only on the next apply.
+   * Apply a nested AND/OR advanced filter. On client data it evaluates through
+   * the `dataPipelineConfiguration.filter` hook and, while active, owns column
+   * filtering (it replaces the built-in filter and any app filter hook).
+   * Composes with sort / pagination / grouping. Under
+   * `infiniteRowModel` or `serverSideRowModel` it is sent to the datasource as
+   * `advancedFilterModel` instead, and the rows reload. Call
+   * {@link clearAdvancedFilter} to remove it. The grid keeps a copy, so
+   * changing `model` afterwards takes effect only on the next apply.
    */
   public applyAdvancedFilter(model: AdvancedFilterModel): void {
-    if (!this.#advancedFilterHook) {
-      // Remember any app-provided filter hook so clearing restores it.
-      this.#savedFilterHook = this.dataPipelineConfiguration?.filter;
-    }
-    const applied = copyAdvancedFilter(model);
-    this.#advancedFilterModel = applied;
-    const hook: DataPipelineHook<T> = (params) => filterRows(params.data, applied, this.columns);
-    this.#advancedFilterHook = hook;
-    this.dataPipelineConfiguration = { ...(this.dataPipelineConfiguration ?? {}), filter: hook };
+    this.#advancedFilterModel = copyAdvancedFilter(model);
+    this.#composePipeline();
     this.requestUpdate(PIPELINE);
   }
 
   /** Remove the advanced filter, restoring any app-provided filter hook. */
   public clearAdvancedFilter(): void {
-    if (!this.#advancedFilterHook) return;
+    if (!this.#advancedFilterModel) return;
     this.#advancedFilterModel = null;
-    this.#advancedFilterHook = null;
-    const config: DataPipelineConfiguration<T> = { ...(this.dataPipelineConfiguration ?? {}) };
-    if (this.#savedFilterHook) config.filter = this.#savedFilterHook;
-    else delete config.filter;
-    this.#savedFilterHook = undefined;
-    this.dataPipelineConfiguration = config;
+    this.#composePipeline();
     this.requestUpdate(PIPELINE);
+  }
+
+  /**
+   * Install the one pipeline the enterprise features agree on, built on the
+   * app's own configuration: a running server row model owns sort, filter and
+   * quick filter (the server applies them, the advanced filter included);
+   * otherwise an advanced filter replaces the app's filter hook; otherwise the
+   * app's configuration stands. Every start and stop recomposes from the app's
+   * configuration, so no feature puts back a stale snapshot of another.
+   */
+  #composePipeline(): void {
+    const current = this.dataPipelineConfiguration;
+    if (current !== this.#ownPipeline) this.#appPipeline = this.#appHooks(current);
+    const model = this.#advancedFilterModel;
+    let next = this.#infiniteManager?.pipeline ?? this.#ssrmManager?.pipeline;
+    if (next) {
+      for (const hook of Object.values(next)) if (hook) this.#gridHooks.add(hook);
+    } else if (model) {
+      const filter = ({ data }: { data: T[] }) => filterRows(data, model, this.columns);
+      this.#gridHooks.add(filter);
+      next = { ...this.#appPipeline, filter };
+    } else {
+      next = this.#appPipeline;
+    }
+    this.#ownPipeline = next ?? undefined;
+    if (next !== current) this.dataPipelineConfiguration = next as DataPipelineConfiguration<T>;
+  }
+
+  /**
+   * An app's new configuration with the grid's own hooks, which it carries over
+   * when it spreads an installed configuration (the current one or one it read
+   * earlier) into a new object, mapped back to the app hooks they stood in for
+   * (or dropped where the app had none).
+   */
+  #appHooks(config: DataPipelineConfiguration<T> | undefined) {
+    if (!config) return config;
+    const app = this.#appPipeline as Record<string, unknown> | undefined;
+    let changed = false;
+    const kept: [string, unknown][] = [];
+    for (const [key, hook] of Object.entries(config)) {
+      if (typeof hook !== 'function' || !this.#gridHooks.has(hook)) {
+        kept.push([key, hook]);
+        continue;
+      }
+      changed = true;
+      if (app?.[key] !== undefined) kept.push([key, app[key]]);
+    }
+    return changed ? (Object.fromEntries(kept) as DataPipelineConfiguration<T>) : config;
   }
 
   /**
@@ -1053,6 +1094,11 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   protected override willUpdate(changed: PropertyValues): void {
+    // An app assigned its own pipeline: compose the active features over it.
+    const pipeline = this.dataPipelineConfiguration;
+    if (changed.has('dataPipelineConfiguration') && pipeline !== this.#ownPipeline) {
+      this.#composePipeline();
+    }
     // Sync feature config to the controllers *before* super.willUpdate runs the
     // `@watch('data')` handler, so the initial dataState reflects the config on
     // first paint. Pivot runs first since it disables grouping when active. The
@@ -1209,6 +1255,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     } else {
       this.#infiniteManager = null;
     }
+    this.#composePipeline();
   }
 
   /** Create/tear down the server-side (grouping) row-model manager on config change. */
@@ -1227,6 +1274,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     } else {
       this.#ssrmManager = null;
     }
+    this.#composePipeline();
   }
 
   /** Last editing state seen by `updated`, to sync the chart affordance on change. */
@@ -1238,10 +1286,12 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     if (this.#infiniteManager && this.#infiniteNeedsStart) {
       this.#infiniteNeedsStart = false;
       this.#infiniteManager.start();
+      this.#composePipeline();
     }
     if (this.#ssrmManager && this.#ssrmNeedsStart) {
       this.#ssrmNeedsStart = false;
       this.#ssrmManager.start();
+      this.#composePipeline();
     }
     // Idempotent — binds the virtualizer's rangeChanged once it's rendered.
     this.#infiniteManager?.attach();

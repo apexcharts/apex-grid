@@ -14,10 +14,12 @@ import type {
   RowTransformer,
 } from 'apex-grid/internal';
 import { html, type ReactiveController, type TemplateResult } from 'lit';
+import type { AdvancedFilterModel } from './advanced-filter.js';
 import type { AggregationConfig } from './aggregation.js';
 import {
   fetchWithRetry,
   listenForRange,
+  passthroughPipeline,
   type RowLoadRetryConfig,
   type ServerQueryHost,
   serverQueryKey,
@@ -88,6 +90,11 @@ export interface ServerSideGetRowsParams<T extends object> {
   readonly sortModel: SortExpression<T>[];
   readonly filterModel: FilterExpression<T>[];
   readonly quickFilter: string;
+  /**
+   * The advanced filter, or `null`; the server should apply it. Same contract
+   * as `InfiniteGetRowsParams.advancedFilterModel`.
+   */
+  readonly advancedFilterModel: AdvancedFilterModel | null;
 }
 
 /** A server-generated pivot result column (the server did the pivot; it knows the values). */
@@ -194,7 +201,6 @@ export interface ServerSideHost<T extends object> extends ServerQueryHost<T> {
   readonly updateComplete: Promise<boolean>;
   columns: ColumnConfiguration<T>[];
   columnGroups?: ColumnGroupConfiguration[];
-  dataPipelineConfiguration: DataPipelineConfiguration<T>;
   readonly shadowRoot: ShadowRoot | null;
   localize(key: string, params?: Record<string, string | number>, fallback?: string): string;
   dispatchEvent: HTMLElement['dispatchEvent'];
@@ -268,9 +274,9 @@ interface SsrmSlot<T extends object> {
  * Implemented enterprise-side with no core change: the manager keeps the loaded
  * tree, flattens the expanded nodes into `grid.data`, and prepends an auto group
  * column whose `cellTemplate` renders indent + a chevron + the group label. A
- * short-circuit {@link DataPipelineConfiguration} keeps the client from
- * reordering (the server owns shaping); sort / filter / quick-filter changes
- * reset the tree.
+ * passthrough {@link DataPipelineConfiguration}, which the grid installs, keeps
+ * the client from reordering (the server owns shaping); sort / filter /
+ * quick-filter / advanced filter changes reset the tree.
  *
  * By default a group's children load in one request. Setting
  * {@link ServerSideRowModelConfig.blockSize} switches to **intra-group block
@@ -281,7 +287,9 @@ interface SsrmSlot<T extends object> {
 export class ServerSideRowModelManager<T extends object> {
   #savedColumns: ColumnConfiguration<T>[] | null = null;
   #savedColumnGroups: ColumnGroupConfiguration[] | undefined;
-  #savedPipeline: DataPipelineConfiguration<T> | undefined;
+  readonly #pipeline = passthroughPipeline<T>(() => {
+    if (this.#savedColumns) this.#detectChange();
+  });
   /** Whether the server-provided pivot columns have been installed this generation. */
   #pivotColsInstalled = false;
 
@@ -313,28 +321,22 @@ export class ServerSideRowModelManager<T extends object> {
 
   // --- lifecycle -----------------------------------------------------------
 
-  /** Begin server-side mode: install the group column + passthrough pipeline + load the top level. */
+  /**
+   * Begin server-side mode: install the group column + load the top level. The
+   * grid then installs `pipeline`.
+   */
   public start(): void {
     this.#savedColumns = this.host.columns;
     this.#savedColumnGroups = this.host.columnGroups;
-    this.#savedPipeline = this.host.dataPipelineConfiguration;
-    const passthrough = (params: { data: T[] }) => {
-      this.#detectChange();
-      return params.data;
-    };
-    this.host.dataPipelineConfiguration = {
-      sort: passthrough,
-      filter: passthrough,
-      quickFilter: passthrough,
-    };
     this.host.columns = this.#buildColumns();
     this.#lastKey = serverQueryKey(this.host);
     this.reset();
   }
 
   /**
-   * Tear down: restore the prior columns + column groups + pipeline. Restores
-   * nothing when the manager never started (or already stopped).
+   * Tear down: restore the prior columns + column groups (the grid puts back
+   * the pipeline). Restores nothing when the manager never started (or already
+   * stopped).
    */
   public stop(): void {
     this.#seq += 1;
@@ -343,9 +345,16 @@ export class ServerSideRowModelManager<T extends object> {
     if (!this.#savedColumns) return;
     this.host.columns = this.#savedColumns;
     this.host.columnGroups = this.#savedColumnGroups;
-    this.host.dataPipelineConfiguration = this.#savedPipeline as DataPipelineConfiguration<T>;
     this.#savedColumns = null;
     this.#savedColumnGroups = undefined;
+  }
+
+  /**
+   * The passthrough pipeline while started, else `null`. Its hooks refetch on
+   * a query change and do nothing more once the model stopped.
+   */
+  public get pipeline(): DataPipelineConfiguration<T> | null {
+    return this.#savedColumns ? this.#pipeline : null;
   }
 
   /** Attach the virtualizer range listener for intra-group paging (idempotent; call after render). */
@@ -510,6 +519,7 @@ export class ServerSideRowModelManager<T extends object> {
           sortModel: this.host.sortExpressions,
           filterModel: this.host.filterExpressions,
           quickFilter: this.host.quickFilter ?? '',
+          advancedFilterModel: this.host.advancedFilterModel ?? null,
         }),
       this.config,
       current,

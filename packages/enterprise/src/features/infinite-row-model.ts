@@ -1,4 +1,5 @@
 import type { DataPipelineConfiguration, FilterExpression, SortExpression } from 'apex-grid';
+import type { AdvancedFilterModel } from './advanced-filter.js';
 
 export const ROWS_LOADED_EVENT = 'apex-rows-loaded';
 
@@ -60,13 +61,15 @@ export interface ServerQueryHost<T extends object> {
   quickFilter?: string;
   readonly sortExpressions: SortExpression<T>[];
   readonly filterExpressions: FilterExpression<T>[];
+  readonly advancedFilterModel?: AdvancedFilterModel | null;
 }
 
 /**
- * Serialized server query (sort, filter and quick filter), compared to decide
- * whether to refetch. Covers every field a datasource receives, including a
- * filter's AND/OR `criteria` and `caseSensitive`, so toggling either reloads.
- * The one serializer for both server row models and the grid's view signature.
+ * Serialized server query (sort, filter, quick filter and advanced filter),
+ * compared to decide whether to refetch. Covers every field a datasource
+ * receives, including a filter's AND/OR `criteria` and `caseSensitive`, so
+ * toggling either reloads. The one serializer for both server row models and
+ * the grid's view signature.
  */
 export function serverQueryKey<T extends object>(host: ServerQueryHost<T>): string {
   return JSON.stringify([
@@ -83,7 +86,24 @@ export function serverQueryKey<T extends object>(host: ServerQueryHost<T>): stri
       ];
     }),
     host.quickFilter ?? '',
+    host.advancedFilterModel ?? null,
   ]);
+}
+
+/**
+ * The pipeline a server row model runs on while it is active: every hook
+ * passes the rows through (the server owns ordering and filtering) and calls
+ * `onPass` first, since the hooks run on every pipeline pass and so notice a
+ * header click and a programmatic sort or filter change alike.
+ */
+export function passthroughPipeline<T extends object>(
+  onPass: () => void
+): DataPipelineConfiguration<T> {
+  const hook = (params: { data: T[] }) => {
+    onPass();
+    return params.data;
+  };
+  return { sort: hook, filter: hook, quickFilter: hook };
 }
 
 /** The block of rows the grid is asking the datasource to fetch. */
@@ -98,6 +118,15 @@ export interface InfiniteGetRowsParams<T extends object> {
   readonly filterModel: FilterExpression<T>[];
   /** Current quick-filter (global search) term. */
   readonly quickFilter: string;
+  /**
+   * The advanced filter (`grid.applyAdvancedFilter`, the filter builder), or
+   * `null`. A server row model sends it here instead of filtering the loaded
+   * rows, so the server should apply it. On client data it replaces the column
+   * filters while applied, so a server matching that ignores `filterModel`
+   * when this is set. The exported `filterRows` evaluates it the way the grid
+   * does on client data.
+   */
+  readonly advancedFilterModel: AdvancedFilterModel | null;
 }
 
 /** What the datasource returns for a block request. */
@@ -163,7 +192,6 @@ export interface RowsLoadFailedDetail {
 /** The minimal grid surface the manager drives (avoids a circular import). */
 export interface InfiniteHost<T extends object> extends ServerQueryHost<T> {
   data: T[];
-  dataPipelineConfiguration: DataPipelineConfiguration<T>;
   readonly shadowRoot: ShadowRoot | null;
   addEventListener: HTMLElement['addEventListener'];
   removeEventListener: HTMLElement['removeEventListener'];
@@ -184,8 +212,8 @@ interface RangeEvent extends Event {
  *
  * Implementation: the manager keeps a block cache and rebuilds `grid.data` as a
  * placeholder array of the (known or estimated) total length, patching in
- * loaded blocks. Client-side sort/filter are disabled via passthrough
- * {@link DataPipelineConfiguration} hooks (the server owns ordering), and the
+ * loaded blocks. Client-side sort/filter are disabled via the passthrough
+ * `pipeline`, which the grid installs (the server owns ordering), and the
  * body virtualizer's `rangeChanged` event drives which blocks to fetch — so the
  * feature needs no core change.
  */
@@ -207,7 +235,9 @@ export class InfiniteRowModelManager<T extends object> {
   #lastKey = '';
   #resetQueued = false;
   #virtualizer: HTMLElement | null = null;
-  #savedPipeline: DataPipelineConfiguration<T> | undefined;
+  readonly #pipeline = passthroughPipeline<T>(() => {
+    if (this.#started) this.#detectChange();
+  });
 
   constructor(
     private config: InfiniteRowModelConfig<T>,
@@ -219,39 +249,31 @@ export class InfiniteRowModelManager<T extends object> {
 
   // --- lifecycle -----------------------------------------------------------
 
-  /** Begin server-side mode: install passthrough pipeline + initial fetch. */
+  /** Begin server-side mode: initial fetch. The grid then installs `pipeline`. */
   public start(): void {
     this.#started = true;
-    this.#savedPipeline = this.host.dataPipelineConfiguration;
-    // Passthrough hooks: the server owns ordering/filtering, so the client
-    // never reorders. Each hook also detects a query change (it runs on every
-    // pipeline pass) and refetches — this catches header-click *and*
-    // programmatic sort/filter/quick-filter alike.
-    const passthrough = (params: { data: T[] }) => {
-      this.#detectChange();
-      return params.data;
-    };
-    this.host.dataPipelineConfiguration = {
-      sort: passthrough,
-      filter: passthrough,
-      quickFilter: passthrough,
-    };
     this.#lastKey = serverQueryKey(this.host);
     this.reset();
   }
 
   /**
-   * Tear down: drop in-flight blocks, remove the listener and restore the prior
-   * pipeline config. Restores nothing when the manager never started.
+   * Tear down: drop in-flight blocks and remove the listener. The grid then
+   * puts back the pipeline it composes without this model.
    */
   public stop(): void {
     this.#seq += 1;
     this.#loading.clear();
     this.#virtualizer?.removeEventListener('rangeChanged', this.#onRange as EventListener);
     this.#virtualizer = null;
-    if (!this.#started) return;
     this.#started = false;
-    this.host.dataPipelineConfiguration = this.#savedPipeline as DataPipelineConfiguration<T>;
+  }
+
+  /**
+   * The passthrough pipeline while started, else `null`. Its hooks refetch on
+   * a query change and do nothing more once the model stopped.
+   */
+  public get pipeline(): DataPipelineConfiguration<T> | null {
+    return this.#started ? this.#pipeline : null;
   }
 
   /** Attach the virtualizer range listener (idempotent; call after render). */
@@ -333,6 +355,7 @@ export class InfiniteRowModelManager<T extends object> {
           sortModel: this.host.sortExpressions,
           filterModel: this.host.filterExpressions,
           quickFilter: this.host.quickFilter ?? '',
+          advancedFilterModel: this.host.advancedFilterModel ?? null,
         }),
       this.config,
       current,
