@@ -149,28 +149,47 @@ export default class ApexGridHeader<T extends object> extends LitElement {
   #handleReorderPointerDown = (event: PointerEvent) => {
     if (!this.isDraggable) return;
     if (event.button !== 0) return;
-    // Skip if the user grabbed an interactive sub-part of the header — the
-    // resize handle, sort/action icons, filter button, menu button, or the
-    // column menu dropdown. Those have their own handlers and should not arm
-    // a drag.
-    const path = event.composedPath();
-    const target = path[0];
+    // Skip if the user grabbed an interactive part of the header (the resize
+    // handle, sort/action icons, filter button, menu button, or the column
+    // menu dropdown) or interactive content from a `headerTemplate` (an input,
+    // a button). Those have their own behaviour, and selecting text in a
+    // header input or clicking a custom button must not start a drag.
+    const target = event.composedPath()[0];
     if (
       target instanceof Element &&
-      target.closest?.('[part~="resizable"], [part~="action"], [part~="col-menu"]')
+      target.closest(
+        '[part~="resizable"],[part~="action"],[part~="col-menu"],input,textarea,select,button,a[href],[contenteditable]:not([contenteditable="false"])'
+      )
     ) {
       return;
     }
     this.#dragStartX = event.clientX;
     this.#dragStartY = event.clientY;
     this.#dragPointerId = event.pointerId;
-    this.addEventListener('pointermove', this.#handleReorderPointerMove);
-    this.addEventListener('pointerup', this.#handleReorderPointerUp);
-    this.addEventListener('pointercancel', this.#handleReorderPointerUp);
+    this.#listenReorder(true);
   };
+
+  /**
+   * Tracks the armed or dragging pointer on the document, not on this header.
+   * A live swap re-inserts this element into the header row, which releases
+   * its pointer capture, so after the first swap later moves and the release
+   * land on other elements. Listening on the document (capture phase) sees
+   * them wherever they land, and also sees a release outside the header that
+   * would otherwise leave the drag armed.
+   */
+  #listenReorder(on: boolean) {
+    const doc = this.ownerDocument;
+    const toggle = on ? doc.addEventListener.bind(doc) : doc.removeEventListener.bind(doc);
+    toggle('pointermove', this.#handleReorderPointerMove, true);
+    toggle('pointerup', this.#handleReorderPointerUp, true);
+    toggle('pointercancel', this.#handleReorderPointerUp, true);
+  }
 
   #handleReorderPointerMove = (event: PointerEvent) => {
     if (event.pointerId !== this.#dragPointerId) return;
+    // A mouse move with the primary button up means the release was lost
+    // (window blur, a dialog while held), so disarm instead of dragging.
+    if (event.pointerType === 'mouse' && !(event.buttons & 1)) return this.#endReorder();
     if (!this.#isDragging) {
       const dx = event.clientX - this.#dragStartX;
       const dy = event.clientY - this.#dragStartY;
@@ -194,9 +213,6 @@ export default class ApexGridHeader<T extends object> extends LitElement {
 
   #handleReorderPointerUp = (event: PointerEvent) => {
     if (event.pointerId !== this.#dragPointerId) return;
-    this.removeEventListener('pointermove', this.#handleReorderPointerMove);
-    this.removeEventListener('pointerup', this.#handleReorderPointerUp);
-    this.removeEventListener('pointercancel', this.#handleReorderPointerUp);
     try {
       if (this.hasPointerCapture(event.pointerId)) {
         this.releasePointerCapture(event.pointerId);
@@ -204,13 +220,19 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     } catch {
       /* capture was already released */
     }
+    this.#endReorder();
+  };
+
+  /** Disarms the reorder and ends a drag in progress. */
+  #endReorder() {
+    this.#listenReorder(false);
     if (this.#isDragging) {
       this.#isDragging = false;
       this.removeAttribute('data-dragging');
       this.reorderController.end();
     }
     this.#dragPointerId = -1;
-  };
+  }
 
   // --- Filter button --------------------------------------------------
 
@@ -362,6 +384,14 @@ export default class ApexGridHeader<T extends object> extends LitElement {
   public override disconnectedCallback(): void {
     this.removeEventListener('pointerdown', this.#handleReorderPointerDown);
     document.removeEventListener('pointerdown', this.#handleMenuOutside, true);
+    // A live swap moves this header, which disconnects and reconnects it in
+    // the same task, so only a header still detached a microtask later (its
+    // column hidden mid-drag, or the grid removed) ends the drag.
+    if (this.#dragPointerId !== -1) {
+      queueMicrotask(() => {
+        if (!this.isConnected) this.#endReorder();
+      });
+    }
     super.disconnectedCallback();
   }
 
