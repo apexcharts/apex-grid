@@ -25,6 +25,7 @@ import {
 } from '../analytics.js';
 import type { GridContext } from '../context.js';
 import { isNumericColumn, mentionsColumn } from '../entities.js';
+import type { MemorySnapshot } from '../memory.js';
 import {
   createToolRegistry,
   type Tool,
@@ -72,18 +73,78 @@ function normalizePin(value: unknown): 'start' | 'end' | null | undefined {
   return undefined;
 }
 
+type Blob = Record<string, unknown>;
+
+/**
+ * The slices of `state` that `shape` names, and inside the enterprise blob only
+ * the fields `shape` names (other module blobs are taken whole): the undo
+ * baseline of a patch. Restoring it puts back exactly what the patch changed, so
+ * cell formulas, ranges and every slice the patch left alone keep whatever the
+ * user did after the AI turn.
+ */
+function sliceOf(state: GridState, shape: Partial<GridState>): StatePatch {
+  const source = state as unknown as Blob;
+  const out: Blob = {};
+  for (const key of Object.keys(shape)) {
+    if (key !== 'modules') {
+      out[key] = source[key];
+      continue;
+    }
+    const modules: Blob = {};
+    for (const [id, fields] of Object.entries(shape.modules ?? {})) {
+      const live = state.modules?.[id];
+      if (live === undefined) continue;
+      modules[id] =
+        id === 'enterprise' && isRecord(fields) && isRecord(live)
+          ? Object.fromEntries(Object.keys(fields).map((field) => [field, live[field]]))
+          : live;
+    }
+    out.modules = modules;
+  }
+  return out as StatePatch;
+}
+
+/** A snapshot without its cell content (formulas, ranges): data, not view. */
+function withoutCells(state: GridState): GridState {
+  const blob = state.modules?.enterprise;
+  if (!isRecord(blob)) return state;
+  const { formulas: _formulas, ranges: _ranges, ...view } = blob;
+  return { ...state, modules: { ...state.modules, enterprise: view } };
+}
+
+/**
+ * The slices that differ between two snapshots, as a shape for {@link sliceOf}:
+ * `modules` is compared per module, and each module blob per field.
+ */
+function changedShape(before: Blob, after: Blob, level = 0): Blob {
+  const out: Blob = {};
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    const x = before[key];
+    const y = after[key];
+    if ((level === 1 || (level === 0 && key === 'modules')) && isRecord(x) && isRecord(y)) {
+      const inner = changedShape(x, y, level + 1);
+      if (Object.keys(inner).length > 0) out[key] = inner;
+    } else if (JSON.stringify(x) !== JSON.stringify(y)) {
+      out[key] = true;
+    }
+  }
+  return out;
+}
+
 /**
  * Sanitize a raw view-state patch against the live schema, apply it, and return an
- * outcome whose `undo` restores the pre-apply snapshot. The single code path shared
+ * outcome whose `undo` restores what the patch changed. The single code path shared
  * by every view-state tool, so they all inherit the same guardrails.
  */
 function applyViewState(raw: Partial<GridState>, tc: ToolContext): ToolOutcome {
   const { patch, warnings } = sanitizePatch(raw, tc.ctx.schema);
-  const before = tc.api.getState();
+  const before = sliceOf(tc.api.getState(), patch);
   const result = tc.api.applyState(patch);
+  const applied: string[] = result.applied;
   return {
-    applied: result.applied,
-    skipped: result.skipped,
+    applied,
+    // Slices the tool asked for that did not land (dropped or refused).
+    skipped: Object.keys(raw).filter((key) => key !== 'version' && !applied.includes(key)),
     warnings: [...warnings, ...result.warnings],
     undo: () => {
       tc.api.applyState(before);
@@ -569,6 +630,29 @@ const exportTool: Tool<ExportArgs> = {
   },
 };
 
+/**
+ * What the "undo" prompt puts back: the slices the latest applied turn that
+ * changed the view had before it. Turns that changed nothing (an export) are
+ * passed over, and later edits (a formula typed after the turn, a sort the
+ * user picked) are not the turn's to take back. `null` when there is nothing.
+ */
+function undoRestore(memory: MemorySnapshot): StatePatch | null {
+  const { turns, lastControlBefore } = memory;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const { outcome, stateBefore: before, stateAfter: after } = turns[i];
+    if (outcome !== 'applied' || !before) continue;
+    // A custom Memory may keep no after state: fall back to the view slices.
+    if (!after) return sliceOf(before, withoutCells(before));
+    const shape = changedShape(before as unknown as Blob, after as unknown as Blob);
+    if (Object.keys(shape).length > 0) return sliceOf(before, shape as Partial<GridState>);
+  }
+  // A custom Memory that reports a baseline but keeps no turns.
+  if (turns.length === 0 && lastControlBefore) {
+    return sliceOf(lastControlBefore, withoutCells(lastControlBefore));
+  }
+  return null;
+}
+
 const undoTool: Tool<Record<string, never>> = {
   name: 'undo',
   description: 'Undo the last change: restore the view to before the previous control turn.',
@@ -578,12 +662,12 @@ const undoTool: Tool<Record<string, never>> = {
     return ok({});
   },
   execute(_args, tc) {
-    const target = tc.ctx.memory.lastControlBefore;
-    if (!target) {
+    const restore = undoRestore(tc.ctx.memory);
+    if (!restore) {
       return { applied: [], warnings: ['Nothing to undo.'], undo: noop };
     }
-    const before = tc.api.getState();
-    tc.api.applyState(target);
+    const before = sliceOf(tc.api.getState(), restore);
+    tc.api.applyState(restore);
     return {
       applied: ['undo'],
       warnings: [],
