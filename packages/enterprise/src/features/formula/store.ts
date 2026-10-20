@@ -56,11 +56,23 @@ function parseCellKey(key: string): CellAddress {
   return { row: Number(key.slice(0, separator)), col: Number(key.slice(separator + 1)) };
 }
 
+/** The value under `key` in `map`, created by `make` on first use. */
+function slot<K, V>(map: Map<K, V>, key: K, make: () => V): V {
+  let value = map.get(key);
+  if (value === undefined) {
+    value = make();
+    map.set(key, value);
+  }
+  return value;
+}
+
 interface FormulaEntry {
   src: string;
   ast: FormulaAst;
-  /** Cell keys this formula reads (range cells expanded), for graph edges. */
-  precedents: Set<string>;
+  /** Single-cell keys this formula reads, for graph edges. */
+  cells: Set<string>;
+  /** Ranges this formula reads, normalized and never expanded per cell. */
+  ranges: RangeAddress[];
 }
 
 /** The grid binding the {@link FormulaStore} needs to read, write, and validate cells. */
@@ -85,11 +97,17 @@ export interface RecalcChange {
  * Pure recalc core: the formula set, the dependency graph, and a topological
  * recompute with cycle detection. No DOM and no grid knowledge beyond the
  * injected {@link FormulaEngineHost}.
+ *
+ * Single-cell references are edges in a reverse map. Range references stay
+ * un-expanded: each is indexed once per column it spans, so a fill-down of
+ * `=A1/SUM($A$1:$A$10000)` costs one index entry per formula, not one per cell.
  */
 export class FormulaStore {
   readonly #entries = new Map<string, FormulaEntry>();
   /** precedent cell key -> set of formula cells that read it. */
   readonly #dependents = new Map<string, Set<string>>();
+  /** column -> (formula key -> ranges of that formula over the column). */
+  readonly #rangeDependents = new Map<number, Map<string, RangeAddress[]>>();
 
   constructor(private readonly host: FormulaEngineHost) {}
 
@@ -121,29 +139,7 @@ export class FormulaStore {
    * dependents. Throws `ParseError` for malformed input (nothing is mutated).
    */
   public set(address: CellAddress, src: string): RecalcChange[] {
-    const ast = parseFormula(src);
-    const precedents = new Set<string>();
-    const refs = formulaReferences(ast);
-    for (const cell of refs.cells) {
-      precedents.add(cellKey(cell));
-    }
-    for (const range of refs.ranges) {
-      for (const cell of rangeCells(range)) {
-        precedents.add(cellKey(cell));
-      }
-    }
-
-    const key = cellKey(address);
-    this.#removeEdges(key);
-    this.#entries.set(key, { src, ast, precedents });
-    for (const precedent of precedents) {
-      let set = this.#dependents.get(precedent);
-      if (!set) {
-        set = new Set();
-        this.#dependents.set(precedent, set);
-      }
-      set.add(key);
-    }
+    this.#insert(address, src, parseFormula(src));
     return this.recalc([address], true);
   }
 
@@ -152,13 +148,18 @@ export class FormulaStore {
    * (which now read whatever literal value the cell holds).
    */
   public clear(address: CellAddress): RecalcChange[] {
-    const key = cellKey(address);
-    if (!this.#entries.has(key)) {
-      return [];
+    return this.release([address]);
+  }
+
+  /**
+   * A literal landed on each seed: drop any formula stored there, then
+   * recompute the seeds' dependents.
+   */
+  public release(seeds: CellAddress[]): RecalcChange[] {
+    for (const seed of seeds) {
+      this.#remove(cellKey(seed));
     }
-    this.#removeEdges(key);
-    this.#entries.delete(key);
-    return this.recalc([address], false);
+    return this.recalc(seeds, false);
   }
 
   /** Recompute every stored formula (e.g. after the data array is replaced). */
@@ -166,10 +167,43 @@ export class FormulaStore {
     return this.recalc([...this.#entries.keys()].map(parseCellKey), true);
   }
 
+  /**
+   * Replace every formula with `entries` (already parsed) and recompute them
+   * all in one pass. `entries` carry their AST so callers can validate first.
+   */
+  public load(entries: ReadonlyArray<{ address: CellAddress; src: string; ast: FormulaAst }>) {
+    this.clearAll();
+    for (const { address, src, ast } of entries) {
+      this.#insert(address, src, ast);
+    }
+    return this.recalcAll();
+  }
+
+  /**
+   * Move each formula to the data row `moveRow(row, col)` returns (`-1` drops
+   * it), shifting its relative references by the same delta, as a fill would,
+   * so a formula keeps reading its own row. Recomputes everything afterwards.
+   */
+  public moveRows(moveRow: (row: number, col: number) => number): RecalcChange[] {
+    const moved: Array<{ address: CellAddress; src: string; ast: FormulaAst }> = [];
+    for (const [key, { src, ast }] of this.#entries) {
+      const { row, col } = parseCellKey(key);
+      const next = moveRow(row, col);
+      if (next === row) {
+        moved.push({ address: { row, col }, src, ast });
+      } else if (next >= 0) {
+        const shifted = offsetReferences(ast, next - row, 0);
+        moved.push({ address: { row: next, col }, src: stringifyFormula(shifted), ast: shifted });
+      }
+    }
+    return this.load(moved);
+  }
+
   /** Drop every formula and dependency edge (values are left untouched). */
   public clearAll(): void {
     this.#entries.clear();
     this.#dependents.clear();
+    this.#rangeDependents.clear();
   }
 
   /**
@@ -178,7 +212,7 @@ export class FormulaStore {
    * recomputed as well (used when a formula is set or on a full recompute).
    */
   public recalc(seeds: CellAddress[], includeSeeds: boolean): RecalcChange[] {
-    const affected = this.#collectAffected(seeds.map(cellKey), includeSeeds);
+    const affected = this.#collectAffected(seeds, includeSeeds);
     if (!affected.size) {
       return [];
     }
@@ -206,12 +240,31 @@ export class FormulaStore {
     return changes;
   }
 
-  #removeEdges(key: string): void {
+  #insert(address: CellAddress, src: string, ast: FormulaAst): void {
+    const key = cellKey(address);
+    this.#remove(key);
+    const refs = formulaReferences(ast);
+    const cells = new Set(refs.cells.map(cellKey));
+    const ranges = refs.ranges.map(normalizeRange);
+    this.#entries.set(key, { src, ast, cells, ranges });
+    for (const precedent of cells) {
+      slot(this.#dependents, precedent, () => new Set<string>()).add(key);
+    }
+    for (const range of ranges) {
+      for (let col = range.start.col; col <= range.end.col; col++) {
+        const byFormula = slot(this.#rangeDependents, col, () => new Map());
+        slot(byFormula, key, () => []).push(range);
+      }
+    }
+  }
+
+  #remove(key: string): void {
     const entry = this.#entries.get(key);
     if (!entry) {
       return;
     }
-    for (const precedent of entry.precedents) {
+    this.#entries.delete(key);
+    for (const precedent of entry.cells) {
       const set = this.#dependents.get(precedent);
       if (set) {
         set.delete(key);
@@ -220,33 +273,52 @@ export class FormulaStore {
         }
       }
     }
+    for (const range of entry.ranges) {
+      for (let col = range.start.col; col <= range.end.col; col++) {
+        this.#rangeDependents.get(col)?.delete(key);
+      }
+    }
   }
 
-  /** Formula cells transitively dependent on the seeds (plus the seeds if asked). */
-  #collectAffected(seedKeys: string[], includeSeeds: boolean): Set<string> {
-    const affected = new Set<string>();
-    if (includeSeeds) {
-      for (const key of seedKeys) {
-        if (this.#entries.has(key)) {
-          affected.add(key);
+  /** Formula cells that read `address` through a single-cell or a range reference. */
+  *#readersOf(address: CellAddress, key: string): Iterable<string> {
+    yield* this.#dependents.get(key) ?? [];
+    const byFormula = this.#rangeDependents.get(address.col);
+    if (byFormula) {
+      for (const [reader, ranges] of byFormula) {
+        if (ranges.some((r) => r.start.row <= address.row && address.row <= r.end.row)) {
+          yield reader;
         }
       }
     }
-    const seen = new Set<string>(seedKeys);
-    const queue = [...seedKeys];
-    while (queue.length) {
-      const key = queue.shift() as string;
-      const dependents = this.#dependents.get(key);
-      if (!dependents) {
-        continue;
+  }
+
+  /** Formula cells transitively dependent on the seeds (plus the seeds if asked). */
+  #collectAffected(seeds: CellAddress[], includeSeeds: boolean): Set<string> {
+    const affected = new Set<string>();
+    const seen = new Set<string>();
+    const queue: CellAddress[] = [];
+    for (const seed of seeds) {
+      const key = cellKey(seed);
+      if (includeSeeds && this.#entries.has(key)) {
+        affected.add(key);
       }
-      for (const dependent of dependents) {
-        if (this.#entries.has(dependent)) {
-          affected.add(dependent);
-        }
-        if (!seen.has(dependent)) {
-          seen.add(dependent);
-          queue.push(dependent);
+      if (!seen.has(key)) {
+        seen.add(key);
+        queue.push(seed);
+      }
+    }
+    // Every formula is already in: their dependents are formulas too.
+    if (affected.size === this.#entries.size) {
+      return affected;
+    }
+    for (let head = 0; head < queue.length; head++) {
+      const address = queue[head];
+      for (const reader of this.#readersOf(address, cellKey(address))) {
+        affected.add(reader);
+        if (!seen.has(reader)) {
+          seen.add(reader);
+          queue.push(parseCellKey(reader));
         }
       }
     }
@@ -257,23 +329,35 @@ export class FormulaStore {
   #topoSort(affected: Set<string>): { order: string[]; cyclic: string[] } {
     const indegree = new Map<string, number>();
     const adjacency = new Map<string, string[]>();
+    // Affected formulas per column, so a range finds the ones it covers
+    // without walking its cells.
+    const byColumn = new Map<number, CellAddress[]>();
     for (const key of affected) {
       indegree.set(key, 0);
+      const address = parseCellKey(key);
+      slot(byColumn, address.col, () => []).push(address);
     }
+    const edge = (precedent: string, key: string): void => {
+      slot(adjacency, precedent, () => []).push(key);
+      indegree.set(key, (indegree.get(key) ?? 0) + 1);
+    };
     for (const key of affected) {
       const entry = this.#entries.get(key);
       if (!entry) {
         continue;
       }
-      for (const precedent of entry.precedents) {
+      for (const precedent of entry.cells) {
         if (affected.has(precedent)) {
-          const list = adjacency.get(precedent);
-          if (list) {
-            list.push(key);
-          } else {
-            adjacency.set(precedent, [key]);
+          edge(precedent, key);
+        }
+      }
+      for (const range of entry.ranges) {
+        for (let col = range.start.col; col <= range.end.col; col++) {
+          for (const address of byColumn.get(col) ?? []) {
+            if (range.start.row <= address.row && address.row <= range.end.row) {
+              edge(cellKey(address), key);
+            }
           }
-          indegree.set(key, (indegree.get(key) ?? 0) + 1);
         }
       }
     }
@@ -285,8 +369,8 @@ export class FormulaStore {
       }
     }
     const order: string[] = [];
-    while (queue.length) {
-      const key = queue.shift() as string;
+    for (let head = 0; head < queue.length; head++) {
+      const key = queue[head];
       order.push(key);
       for (const dependent of adjacency.get(key) ?? []) {
         const next = (indegree.get(dependent) ?? 0) - 1;
