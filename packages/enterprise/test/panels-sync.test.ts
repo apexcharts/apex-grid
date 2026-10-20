@@ -419,6 +419,23 @@ describe('panels follow the grid', () => {
       );
     });
 
+    it('lists the source fields and labels while pivoting', async () => {
+      const grid = await mountGrid();
+      const panel = await mountPanel(grid);
+      pivotToggle(panel).click();
+      await settle(grid, panel);
+      drop(zone(panel, 'Row Groups (pivot rows)'), 'id');
+      drop(zone(panel, 'Column Labels'), 'name');
+      drop(zone(panel, 'Values'), 'amount');
+      await settle(grid, panel);
+      expect(grid.isPivoting).to.be.true;
+      expect(listKeys(panel)).to.eql(['id', 'name', 'amount']);
+      expect(chips(panel)).to.eql(['ID', 'Amount (sum)', 'Name']);
+      // Column controls would edit the throwaway generated columns.
+      expect(control(panel, 'name', 'visible')).to.be.null;
+      expect(control(panel, 'name', 'pin')).to.be.null;
+    });
+
     it('opens in pivot mode on a grid that is already pivoting', async () => {
       const grid = await mountGrid({
         pivotRows: ['id'],
@@ -429,6 +446,9 @@ describe('panels follow the grid', () => {
       const panel = await mountPanel(grid);
       expect(pivotToggle(panel).checked).to.be.true;
       expect(panel.pivotMode).to.be.true;
+      // The panel never saw the pre-pivot columns, so it lists the data fields.
+      expect(listKeys(panel)).to.include.members(['id', 'name', 'amount']);
+      expect(listKeys(panel).some((key) => key?.startsWith('pivot::'))).to.be.false;
     });
 
     it('keeps existing pivot rows when entering pivot mode with no grouping', async () => {

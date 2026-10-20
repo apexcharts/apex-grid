@@ -25,7 +25,8 @@ const PIN_GLYPH: Record<string, string> = { start: '⇤', end: '⇥' };
  * the grid's display order (pinned columns first), and pin and move go through
  * `pinColumn` / `moveColumn`, so their cancellable events apply. The panel
  * re-renders whenever the grid does, so changes made elsewhere (header menu,
- * `setState`, app code, a new `localeText`) show up in it.
+ * `setState`, app code, a new `localeText`) show up in it. While a pivot is
+ * active it lists the grid's source fields, not the generated pivot columns.
  *
  * @element apex-grid-tool-panel
  */
@@ -177,6 +178,8 @@ export class ApexGridToolPanel extends LitElement {
   #pendingPivot = false;
   /** The grid willUpdate last bound; `grid` differs from it until the next update. */
   #bound: ApexGridEnterprise<Record<string, unknown>> | null | undefined;
+  /** The grid's columns from its last unpivoted render (a pivot swaps in generated ones). */
+  #source: AnyColumn[] | null = null;
   readonly #link = new GridLink(this);
 
   /**
@@ -207,6 +210,7 @@ export class ApexGridToolPanel extends LitElement {
     if (grid !== this.#bound) {
       this.#bound = grid;
       this.#link.grid = grid;
+      this.#source = null;
       if (grid) {
         // Only an explicit request converts grouping; the old grid's mode never does.
         this.#pivotMode = false;
@@ -216,6 +220,7 @@ export class ApexGridToolPanel extends LitElement {
     if (!grid) return;
     // A bound grid has taken the request, so it never reaches a later bind.
     this.#pendingPivot = false;
+    if (!grid.isPivoting) this.#source = grid.columns as AnyColumn[];
     if (this.#columnLabels().length) this.#pivotMode = true;
     else if (grid.groupBy?.length) this.#pivotMode = false;
   }
@@ -227,7 +232,12 @@ export class ApexGridToolPanel extends LitElement {
 
   /** The grid's source columns, also while a pivot shows generated ones. */
   #columns(): AnyColumn[] {
-    return (this.grid?.columns ?? []) as AnyColumn[];
+    const grid = this.grid;
+    if (!grid) return [];
+    // `?? []` covers a grid element that is not upgraded yet.
+    if (!grid.isPivoting) return (grid.columns ?? []) as AnyColumn[];
+    // Bound to a grid that was already pivoting: its data fields are the sources.
+    return this.#source ?? Object.keys(grid.data[0] ?? {}).map((key) => ({ key }));
   }
 
   #label(column: AnyColumn): string {
@@ -401,6 +411,8 @@ export class ApexGridToolPanel extends LitElement {
     const groupKeys = this.#groupKeys();
     const values = this.#valuesConfig();
     const labels = this.#columnLabels();
+    // Generated pivot columns are throwaway: only the dimension toggles apply then.
+    const pivoting = grid.isPivoting;
     const display = getDisplayColumns(this.#columns());
 
     return html`
@@ -432,18 +444,25 @@ export class ApexGridToolPanel extends LitElement {
             @dragstart=${(event: DragEvent) => event.dataTransfer?.setData('text/plain', key)}
           >
             <label part="label">
-              <input type="checkbox" part="visible" .checked=${!column.hidden} @change=${() =>
-                grid.updateColumns({ key, hidden: !column.hidden })} />
+              ${
+                pivoting
+                  ? nothing
+                  : html`<input type="checkbox" part="visible" .checked=${!column.hidden} @change=${() =>
+                      grid.updateColumns({ key, hidden: !column.hidden })} />`
+              }
               <span>${label}</span>
             </label>
             <span part="actions" role="group" aria-label=${label}>
-              ${this.#action(
-                'pin',
-                'toolPanel.pinColumn',
-                column.pinned ? PIN_GLYPH[column.pinned] : '⇆',
-                () => void grid.pinColumn(key, nextPin),
-                !!column.pinned
-              )}
+              ${
+                pivoting
+                  ? nothing
+                  : html`${this.#action(
+                      'pin',
+                      'toolPanel.pinColumn',
+                      column.pinned ? PIN_GLYPH[column.pinned] : '⇆',
+                      () => void grid.pinColumn(key, nextPin),
+                      !!column.pinned
+                    )}
                     ${this.#action(
                       'up',
                       'toolPanel.moveUp',
@@ -459,7 +478,8 @@ export class ApexGridToolPanel extends LitElement {
                       () => void grid.moveColumn(key, down!.key, 'after'),
                       undefined,
                       !down
-                    )}
+                    )}`
+              }
               ${this.#action(
                 'group',
                 'toolPanel.groupByColumn',
