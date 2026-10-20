@@ -1,5 +1,7 @@
 import { isRTL } from 'apex-commons';
 import {
+  type ActiveNode,
+  ApexGrid,
   type CellDecoration,
   type CellDecorator,
   type CellDecoratorContext,
@@ -42,6 +44,16 @@ export const RANGE_CHANGED_EVENT = 'apex-range-changed';
  * at the range's corner is essential to what it means.
  */
 const FILL_HANDLE_HIT = 10;
+
+/** The grid body's visible area in client coordinates (see `#bodyViewport`). */
+interface BodyViewport {
+  readonly top: number;
+  readonly bottom: number;
+  readonly left: number;
+  readonly right: number;
+  readonly outerLeft: number;
+  readonly outerRight: number;
+}
 
 /** A cell coordinate within the current page/view (visible-column index). */
 interface CellRef {
@@ -134,6 +146,27 @@ function sameBounds(a: RangeBounds, b: RangeBounds): boolean {
 }
 
 /**
+ * The grid a node renders in: the nearest grid up its ancestors, crossing
+ * shadow roots. For a cell of a master/detail child grid that is the child,
+ * not the master it sits in. `null` when a cell being edited comes first:
+ * whatever the editor is made of, its keys and clipboard are its own.
+ */
+function owningGrid(node: Node | null | undefined): Node | null {
+  for (let at = node ?? null; at; at = at.parentNode ?? (at as ShadowRoot).host ?? null) {
+    if (at instanceof ApexGrid) return at;
+    if ((at as Element).hasAttribute?.('editing')) return null;
+  }
+  return null;
+}
+
+/** The focused element, looked up through open shadow roots. */
+function deepActiveElement(): Element | null {
+  let el = globalThis.document?.activeElement ?? null;
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+  return el;
+}
+
+/**
  * Enterprise feature: spreadsheet-style cell **range selection** and the
  * productivity tools built on it — multi-range (Ctrl-click), clipboard
  * copy/paste (TSV), and a drag **fill handle** (copy or numeric series).
@@ -194,6 +227,8 @@ export class RangeSelectionController<T extends object>
    */
   #dragPointer: { x: number; y: number } | null = null;
   #autoScrollFrame = 0;
+  /** The `pointerId` of the press that started the current drag. */
+  #dragPointerId: number | undefined;
 
   constructor(
     private host: GridHost<T>,
@@ -213,8 +248,11 @@ export class RangeSelectionController<T extends object>
     // the active cell had already moved; capturing on the host runs first,
     // which is what lets an extension key be claimed outright.
     el.addEventListener('keydown', this.#onExtendKeydown, true);
-    // Catch pointer release outside the grid body so a drag always ends.
+    // Catch pointer release outside the grid body so a drag always ends, and
+    // a cancelled pointer (a touch pan, a native drag of an image or link)
+    // so it ends without a pointerup ever arriving.
     globalThis.addEventListener?.('pointerup', this.#onWindowPointerUp);
+    globalThis.addEventListener?.('pointercancel', this.#onWindowPointerCancel);
     // With no text selection the browser aims copy and paste at the document,
     // not at the focused grid, so they are heard there.
     globalThis.document?.addEventListener('copy', this.#onClipboard);
@@ -233,9 +271,12 @@ export class RangeSelectionController<T extends object>
     el.removeEventListener('keydown', this.#onKeydown);
     el.removeEventListener('keydown', this.#onExtendKeydown, true);
     globalThis.removeEventListener?.('pointerup', this.#onWindowPointerUp);
+    globalThis.removeEventListener?.('pointercancel', this.#onWindowPointerCancel);
     globalThis.document?.removeEventListener('copy', this.#onClipboard);
     globalThis.document?.removeEventListener('paste', this.#onClipboard);
-    this.#endDrag();
+    // A drag cut short by the grid leaving the page is abandoned, not
+    // committed: the next pointerup after a reconnect is someone else's.
+    this.#abortDrag();
   }
 
   #onWindowPointerUp = (): void => {
@@ -243,6 +284,27 @@ export class RangeSelectionController<T extends object>
     this.#mode = 'idle';
     this.#endDrag();
   };
+
+  #onWindowPointerCancel = (event: PointerEvent): void => {
+    // Only the pointer that pressed: a touch cancelled elsewhere on the
+    // page leaves a mouse drag running.
+    if (this.#mode === 'idle' || event.pointerId !== this.#dragPointerId) return;
+    this.#abortDrag();
+    this.#commit();
+  };
+
+  /**
+   * Abandons any drag in progress without applying it: back to idle, the
+   * fill source and preview dropped (so a stale preview no longer stands in
+   * for the selection), pointer tracking and auto-scroll stopped. Every way
+   * a drag can end other than its own pointerup goes through here.
+   */
+  #abortDrag(): void {
+    this.#mode = 'idle';
+    this.#fillSource = null;
+    this.#fillPreview = null;
+    this.#endDrag();
+  }
 
   /**
    * Keyboard range extension: Shift+Arrows grow or shrink the selection one
@@ -267,11 +329,7 @@ export class RangeSelectionController<T extends object>
     const lastCol = columns.length - 1;
     if (lastRow < 0 || lastCol < 0) return;
 
-    // Only keys pressed on the body itself (the scroll container or a
-    // non-editing cell) extend; anything from inside an editor or an embedded
-    // control keeps its own meaning.
-    const origin = event.composedPath()[0] as HTMLElement | undefined;
-    if (!this.#isBodyOrigin(origin)) return;
+    if (!this.#isOwnBodyEvent(event)) return;
 
     const accel = event.ctrlKey || event.metaKey;
     const from = this.#focus ?? this.#seedFromActive(columns);
@@ -286,11 +344,13 @@ export class RangeSelectionController<T extends object>
         next = { row: Math.min(lastRow, from.row + 1), col: from.col };
         break;
       case 'ArrowLeft':
-        next = { row: from.row, col: Math.max(0, from.col - 1) };
+      case 'ArrowRight': {
+        // Physical keys: which way is the end of the column order depends
+        // on the direction, by the same rule plain arrow navigation uses.
+        const step = this.state.navigation.towardsInlineEnd(event.key) ? 1 : -1;
+        next = { row: from.row, col: Math.min(lastCol, Math.max(0, from.col + step)) };
         break;
-      case 'ArrowRight':
-        next = { row: from.row, col: Math.min(lastCol, from.col + 1) };
-        break;
+      }
       case 'Home':
         next = accel ? { row: 0, col: 0 } : { row: from.row, col: 0 };
         break;
@@ -309,18 +369,37 @@ export class RangeSelectionController<T extends object>
     if (!this.#anchor) this.#anchor = from;
     if (this.#focus && this.#focus.row === next.row && this.#focus.col === next.col) return;
     this.#focus = next;
-    this.#mode = 'idle';
+    this.#abortDrag();
     this.#commit();
+    // The focus corner is where the user is looking: keep it on screen the
+    // way arrow navigation keeps the active cell there.
+    this.state.navigation.revealCell({
+      row: next.row,
+      column: columns[next.col].key,
+    } as ActiveNode<T>);
   };
 
-  /** Whether a keydown came from the grid body rather than an editor or control. */
-  #isBodyOrigin(origin: HTMLElement | undefined): boolean {
-    if (!origin) return false;
-    const tag = origin.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return false;
-    if (origin.isContentEditable) return false;
-    // A cell mid-edit hosts the editor; its keys belong to the editor.
-    return !origin.hasAttribute?.('editing');
+  /**
+   * Whether a key or clipboard event is this grid body's to act on: nothing
+   * handled it already, it came from the scroll container or a cell, not
+   * from an embedded control or from anywhere inside a cell being edited,
+   * and that cell is this grid's own, not one of a grid nested inside it (a
+   * master/detail child), whose keys are its own business. `button` admits
+   * a focused button, which has no clipboard of its own, so a copy or paste
+   * made while a toolbar button holds focus still reaches the range.
+   */
+  #isOwnBodyEvent(
+    event: Event,
+    origin: EventTarget | null | undefined = event.composedPath()[0],
+    button = false
+  ): boolean {
+    if (event.defaultPrevented) return false;
+    const el = origin as HTMLElement | null | undefined;
+    if (!el?.tagName) return false;
+    const tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return false;
+    if ((tag === 'BUTTON' && !button) || el.isContentEditable) return false;
+    return owningGrid(el) === (this.host as unknown as Node);
   }
 
   /**
@@ -341,14 +420,13 @@ export class RangeSelectionController<T extends object>
   }
 
   #onKeydown = (event: KeyboardEvent): void => {
-    if (!this.enabled || !this.hasSelection()) return;
+    if (!this.enabled || !this.hasSelection() || !this.#isOwnBodyEvent(event)) return;
     if (event.key === 'Escape') {
       this.clearSelection();
       return;
     }
     const key = event.key.toLowerCase();
     if (!(event.ctrlKey || event.metaKey) || (key !== 'c' && key !== 'v')) return;
-    if (!this.#isBodyOrigin(event.composedPath()[0] as HTMLElement | undefined)) return;
     // The key is left to the browser: its copy or paste event carries the
     // clipboard with no secure origin or permission needed (#onClipboard).
     // Where none follows (some browsers send none without a text selection),
@@ -370,11 +448,12 @@ export class RangeSelectionController<T extends object>
    */
   #onClipboard = (event: ClipboardEvent): void => {
     const data = event.clipboardData;
-    const host = this.host as unknown as HTMLElement;
     const path = event.composedPath();
     if (!this.enabled || !this.hasSelection() || !data) return;
-    if (!path.includes(host) && !host.matches(':focus-within')) return;
-    if (!this.#isBodyOrigin(path[0] as HTMLElement | undefined)) return;
+    // Aimed at the document rather than the grid, it belongs to whatever
+    // holds focus.
+    const own = path.includes(this.host as unknown as HTMLElement);
+    if (!this.#isOwnBodyEvent(event, own ? path[0] : deepActiveElement(), !own)) return;
     this.#clipboardKey = null;
     if (event.type === 'paste') {
       event.preventDefault();
@@ -392,6 +471,10 @@ export class RangeSelectionController<T extends object>
 
   public handleCellInteraction(interaction: CellInteraction<T>): void {
     if (!this.enabled) return;
+    // A pinned row's index counts within its sticky band, not the body view
+    // ranges index into, so its cells take no part in a range.
+    const rowPin = this.state.rowPin;
+    if (rowPin.enabled && rowPin.isPinned(interaction.row)) return;
     const col = this.#colIndex(interaction.column);
     if (col < 0) return;
     const ref: CellRef = { row: interaction.rowIndex, col };
@@ -400,6 +483,9 @@ export class RangeSelectionController<T extends object>
       case 'down': {
         // Primary button only; let right-click / middle-click pass through.
         if (interaction.originalEvent.button !== 0) return;
+        // A new press ends whatever drag came before it without applying it.
+        this.#abortDrag();
+        this.#dragPointerId = interaction.originalEvent.pointerId;
 
         // Grabbing the fill handle starts a fill-drag rather than a selection.
         if (this.#isHandleGrab(interaction, ref)) {
@@ -522,7 +608,7 @@ export class RangeSelectionController<T extends object>
     this.#additional = [];
     this.#anchor = { row: from.row, col: anchorCol };
     this.#focus = { row: to.row, col: focusCol };
-    this.#mode = 'idle';
+    this.#abortDrag();
     this.#commit();
   }
 
@@ -532,19 +618,37 @@ export class RangeSelectionController<T extends object>
    * the visible columns), so this round-trips within a session. The last range
    * becomes the active one; earlier ranges restore as additional (Ctrl-click)
    * selections. An empty list clears the selection.
+   *
+   * The input is untrusted (a saved state, an AI plan): anything that is not
+   * an array is ignored, an entry whose four bounds are not non-negative
+   * integers is dropped, and each kept entry is normalised so `top <= bottom`
+   * and `left <= right`. Bounds past the current rows or columns are kept, as
+   * the view they index into may still be on its way, and are clipped
+   * wherever they are read.
    */
   public restoreRanges(ranges: ReadonlyArray<RangeBounds>): void {
-    if (!ranges.length) {
+    if (!Array.isArray(ranges)) return;
+    const valid: RangeBounds[] = [];
+    for (const entry of ranges as unknown[]) {
+      const { top, bottom, left, right } = (entry ?? {}) as Partial<RangeBounds>;
+      const bounds = [top, bottom, left, right] as number[];
+      if (!bounds.every((n) => Number.isSafeInteger(n) && n >= 0)) continue;
+      valid.push({
+        top: Math.min(bounds[0], bounds[1]),
+        bottom: Math.max(bounds[0], bounds[1]),
+        left: Math.min(bounds[2], bounds[3]),
+        right: Math.max(bounds[2], bounds[3]),
+      });
+    }
+    const active = valid.pop();
+    if (!active) {
       this.clearSelection();
       return;
     }
-    const active = ranges[ranges.length - 1];
-    this.#additional = ranges.slice(0, -1);
+    this.#additional = valid;
     this.#anchor = { row: active.top, col: active.left };
     this.#focus = { row: active.bottom, col: active.right };
-    this.#fillSource = null;
-    this.#fillPreview = null;
-    this.#mode = 'idle';
+    this.#abortDrag();
     this.#commit();
   }
 
@@ -684,10 +788,7 @@ export class RangeSelectionController<T extends object>
     this.#anchor = null;
     this.#focus = null;
     this.#additional = [];
-    this.#fillSource = null;
-    this.#fillPreview = null;
-    this.#mode = 'idle';
-    this.#endDrag();
+    this.#abortDrag();
     this.#commit();
   }
 
@@ -1249,7 +1350,7 @@ export class RangeSelectionController<T extends object>
 
   // --- edge auto-scroll ----------------------------------------------------
 
-  /** How close (px) to the body's top/bottom edge starts an auto-scroll. */
+  /** How close (px) to an edge of the body starts an auto-scroll. */
   static readonly #EDGE_BAND = 28;
   /** Max scroll speed (px/frame) at the deepest point of the edge band. */
   static readonly #MAX_SPEED = 24;
@@ -1291,66 +1392,122 @@ export class RangeSelectionController<T extends object>
   }
 
   /**
-   * One auto-scroll frame: if the pointer is inside the top/bottom edge band,
-   * scroll the body and extend the selection to the furthest visible row.
-   * Returns `true` while it should keep scrolling (in-band with room left).
+   * One auto-scroll frame: if the pointer is inside an edge band of the body
+   * (or past that edge), scroll the body that way and extend the selection
+   * to the edge-most visible row or column. Both axes at once in a corner.
+   * Returns `true` while it should keep scrolling (in a band with room left).
    */
   #autoScrollStep(): boolean {
     const pointer = this.#dragPointer;
     if (!pointer) return false;
     const viewport = this.#bodyViewport();
-    const band = RangeSelectionController.#EDGE_BAND;
-
-    let dir = 0;
-    let intensity = 0;
-    if (pointer.y > viewport.bottom - band) {
-      dir = 1;
-      intensity = Math.min(1, (pointer.y - (viewport.bottom - band)) / band);
-    } else if (pointer.y < viewport.top + band) {
-      dir = -1;
-      intensity = Math.min(1, (viewport.top + band - pointer.y) / band);
-    } else {
-      return false;
-    }
+    const dy = RangeSelectionController.#edgeSpeed(pointer.y, viewport.top, viewport.bottom);
+    const dx = RangeSelectionController.#edgeSpeed(
+      pointer.x,
+      viewport.left,
+      viewport.right,
+      viewport.outerLeft,
+      viewport.outerRight
+    );
+    if (!dy && !dx) return false;
 
     const scroller = this.#scrollElement();
-    const before = scroller.scrollTop;
-    const maxScroll = scroller.scrollHeight - scroller.clientHeight;
-    const delta = dir * (4 + RangeSelectionController.#MAX_SPEED * intensity);
-    scroller.scrollTop = Math.max(0, Math.min(maxScroll, before + delta));
+    const { scrollTop, scrollLeft } = scroller;
+    if (dy) {
+      const maxScroll = scroller.scrollHeight - scroller.clientHeight;
+      scroller.scrollTop = Math.max(0, Math.min(maxScroll, scrollTop + dy));
+    }
+    // Physical, like the pointer: under `dir="rtl"` scrollLeft runs from 0
+    // down to negative values, and the browser clamps it either way.
+    if (dx) scroller.scrollLeft = scrollLeft + dx;
 
-    // Extend to the furthest visible row even when we've hit the scroll limit, so
-    // the selection still reaches the last/first data row.
-    this.#extendToEdgeRow(dir, viewport);
-    return scroller.scrollTop !== before;
+    // Extend to the edge-most visible row or column even when we've hit the
+    // scroll limit, so the selection still reaches the first or last one.
+    this.#extendToEdge(Math.sign(dy), Math.sign(dx), viewport);
+    return scroller.scrollTop !== scrollTop || scroller.scrollLeft !== scrollLeft;
   }
 
-  /** Extend the active selection (or fill preview) to the edge-most visible row. */
-  #extendToEdgeRow(dir: number, viewport: { top: number; bottom: number }): void {
-    let target: number | null = null;
-    for (const row of this.#bodyRows()) {
-      const rect = row.el.getBoundingClientRect();
+  /**
+   * Scroll speed (px per frame) along one axis: positive when the pointer is
+   * in the band at the `end` edge or beyond it, negative at `start`, zero
+   * elsewhere. Between `outerStart` and `start` (or `end` and `outerEnd`)
+   * sit pinned columns, cells the pointer is selecting, so a pointer over
+   * them does not scroll; past the grid's own edge it does, at full speed.
+   */
+  static #edgeSpeed(
+    at: number,
+    start: number,
+    end: number,
+    outerStart = start,
+    outerEnd = end
+  ): number {
+    const band = RangeSelectionController.#EDGE_BAND;
+    let depth: number;
+    if (at > end - band && (at <= end || at > outerEnd)) depth = at - (end - band);
+    else if (at < start + band && (at >= start || at < outerStart)) depth = at - (start + band);
+    else return 0;
+    const intensity = Math.min(1, Math.abs(depth) / band);
+    return Math.sign(depth) * (4 + RangeSelectionController.#MAX_SPEED * intensity);
+  }
+
+  /**
+   * Extend the active selection (or fill preview) to the edge-most visible
+   * row (`dy`) and column (`dx`) in the direction of travel. An axis that is
+   * not scrolling keeps the focus corner where the pointer put it.
+   */
+  #extendToEdge(dy: number, dx: number, viewport: BodyViewport): void {
+    let row: number | null = null;
+    let col: number | null = null;
+    for (const body of this.#bodyRows()) {
+      const rect = body.el.getBoundingClientRect();
       // Skip rows entirely outside the visible body band.
       if (rect.bottom <= viewport.top || rect.top >= viewport.bottom) continue;
-      if (target === null || (dir > 0 ? row.index > target : row.index < target)) {
-        target = row.index;
-      }
+      if (dy && (row === null || (dy > 0 ? body.index > row : body.index < row))) row = body.index;
+      if (dx && col === null) col = this.#edgeColumn(body.el, dx, viewport);
     }
-    if (target === null) return;
+    if (row === null && col === null) return;
 
     if (this.#mode === 'fill' && this.#fillSource) {
-      const col = this.#fillPreview?.right ?? this.#fillSource.right;
-      const preview = this.#computeFillPreview(this.#fillSource, { row: target, col });
+      const preview = this.#computeFillPreview(this.#fillSource, {
+        row: row ?? this.#fillPreview?.bottom ?? this.#fillSource.bottom,
+        col: col ?? this.#fillPreview?.right ?? this.#fillSource.right,
+      });
       if (!this.#fillPreview || !sameBounds(this.#fillPreview, preview)) {
         this.#fillPreview = preview;
         this.#commit();
       }
       return;
     }
-    if (this.#focus && this.#focus.row === target) return;
-    const col = this.#focus?.col ?? this.#anchor?.col ?? 0;
-    this.#focus = { row: target, col };
+    const from = this.#focus ?? this.#anchor;
+    if (!from) return;
+    const next = { row: row ?? from.row, col: col ?? from.col };
+    if (this.#focus && this.#focus.row === next.row && this.#focus.col === next.col) return;
+    this.#focus = next;
     this.#commit();
+  }
+
+  /**
+   * The visible column whose cell in `row` reaches furthest towards the
+   * physical side `dx` points at (right when positive), among the cells
+   * showing between the pinned columns; `null` when none is rendered.
+   */
+  #edgeColumn(row: HTMLElement, dx: number, viewport: { left: number; right: number }) {
+    let col: number | null = null;
+    let reach = Number.NEGATIVE_INFINITY;
+    for (const cell of row.shadowRoot?.querySelectorAll('apex-grid-cell') ?? []) {
+      const column = (cell as unknown as { column?: ColumnConfiguration<T> }).column;
+      const index = column ? this.#colIndex(column) : -1;
+      if (index < 0) continue;
+      const rect = cell.getBoundingClientRect();
+      // A pixel of slack keeps a pinned cell that ends right at the edge out.
+      if (rect.right <= viewport.left + 1 || rect.left >= viewport.right - 1) continue;
+      const at = dx > 0 ? rect.right : -rect.left;
+      if (at > reach) {
+        reach = at;
+        col = index;
+      }
+    }
+    return col;
   }
 
   /** Rendered body rows (excluding pinned) with their view index. */
@@ -1367,11 +1524,16 @@ export class RangeSelectionController<T extends object>
 
   /**
    * The body viewport in client coordinates: the grid host's box minus the sticky
-   * chrome (header / filter / pinned rows / paginator) that overlays its edges.
+   * chrome (header / filter / pinned rows / paginator) that overlays its edges,
+   * and inline minus the pinned columns either side, measured the way keyboard
+   * scrolling keeps clear of them. `outerLeft` / `outerRight` are the inline
+   * edges of the host's client box, the pinned columns' outer edges.
    */
-  #bodyViewport(): { top: number; bottom: number } {
+  #bodyViewport(): BodyViewport {
     const host = this.host as unknown as HTMLElement;
     const rect = host.getBoundingClientRect();
+    const inset = this.state.navigation.scrollInsets();
+    const inlineStart = rect.left + host.clientLeft;
     let top = rect.top;
     let bottom = rect.bottom;
     const root = host.shadowRoot;
@@ -1385,7 +1547,14 @@ export class RangeSelectionController<T extends object>
         if (el) bottom = Math.min(bottom, el.getBoundingClientRect().top);
       }
     }
-    return { top, bottom };
+    return {
+      top,
+      bottom,
+      left: inlineStart + inset.left,
+      right: inlineStart + host.clientWidth - inset.right,
+      outerLeft: inlineStart,
+      outerRight: inlineStart + host.clientWidth,
+    };
   }
 
   /** The element that actually scrolls the body (the host, per grid CSS). */
