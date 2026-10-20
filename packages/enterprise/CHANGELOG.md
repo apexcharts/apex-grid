@@ -4,6 +4,75 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Changed
+- **Formulas stay on their rows.** Reordering rows with `applyToData`,
+  deleting rows, or reloading data with a `rowId` moves each formula with its
+  row and shifts its relative references, instead of recomputing at the old
+  positions and overwriting other rows. Without a `rowId`, a new row object at
+  a formula's old position keeps the formula only while it still holds the
+  value the formula computed there; otherwise the new value is kept and the
+  formula is dropped. References to other rows shift like a fill; they do not
+  follow the row they pointed at.
+- **Formula state honours `rowId` and `allowFormula`.** `getState` and
+  `setState` key formulas by `rowId`, and formulas saved with a `rowId` record
+  their data index (a new `origin` field). `getState` saves only formulas in
+  `allowFormula` columns; `setState` restores only into them, leaves formulas
+  that code set on other columns in place, and reports each skipped or
+  malformed entry in `SetStateResult.warnings` instead of throwing (with
+  `strict`, the first one throws before any stored formula changes). The fill
+  handle and paste copy the value into a column without `allowFormula`.
+- **Coordinate hints match what formulas read.** In grids with
+  `allowFormula` columns the row gutter numbers rows by their position in
+  data (it no longer renumbers after sorting, filtering or paging), pinned
+  rows show their number, and header letters skip hidden columns and keep
+  their letter after a column move.
+- `cellValueChanged` events raised by formula recalculation report `rowIndex`
+  as the view index, or -1 when the row is off the page, like any other edit.
+- **Advanced filter: currency and progress columns filter as numbers**, with
+  number operators and a number input in the builder, like the core filter
+  row. A saved model that used a text operator such as `contains` on such a
+  column no longer applies that condition; the builder shows it as a disabled
+  choice until a number operator is picked.
+- **Advanced filter honours a column's `filter.caseSensitive`**, so the
+  builder and the filter row of one grid agree.
+- The filter builder's Apply, and `applyAdvancedFilter`, keep a copy of the
+  model: later edits in the open builder, or to the object passed in, take
+  effect only on the next apply. The `apex-advanced-filter-changed` event
+  detail is its own copy.
+- A filter builder attached to a grid that already has an advanced filter
+  opens with that filter, and a condition on a column hidden after it was
+  applied keeps its column, operators and input type.
+
+### Fixed
+- **Integrated charts show cell text as text.** Categories and series names
+  in the legend and tooltip are escaped, so a cell holding markup can no
+  longer run script when it is charted. Ordinary labels such as `<18`,
+  `a < b` or `R&D` look exactly as before. A `legend.formatter`,
+  `tooltip.x.formatter` or tooltip title formatter passed through
+  `apexOptions` still wins and must escape its own output.
+- Min and max aggregations (total row, grouped aggregates, pivot values,
+  `getAggregations`), grouping with a very large expanded group, AI questions
+  about the minimum, maximum or range of a column, and formulas over very
+  large ranges such as `=SUM(A1:A200000)` no longer throw on more than about
+  120k values.
+- Writing a literal over a formula cell by paste, fill, `applyEdits`, undo or
+  redo replaces the formula, as typing in the editor already did.
+- An app listener that edits a cell while formulas recalculate updates that
+  cell's dependents; `clearFormula` refreshes show formulas and emits
+  `stateChanged` even when nothing depends on the cleared cell.
+- With show formulas on, cells without a formula keep their column type
+  rendering, and formula sources read left to right in RTL grids.
+
+### Performance
+- Range formulas index their precedents instead of one key per cell, so a
+  share of total or running total filled down no longer builds a graph that
+  grows with the square of the row count, and a full recalculation signals a
+  bound chart once.
+- Advanced filter evaluation compiles the model once per run instead of per
+  row.
+
 ## [0.7.1] - 2026-10-09
 
 ### Changed
