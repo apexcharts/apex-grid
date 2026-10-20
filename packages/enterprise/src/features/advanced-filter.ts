@@ -175,3 +175,16 @@ export function filterRows<T extends object>(
 export function emptyAdvancedFilter(): AdvancedFilterModel {
   return { kind: 'group', join: 'and', children: [] };
 }
+
+/**
+ * A deep copy of a model node that shares nothing with it. Spreads each node
+ * instead of using structuredClone, which throws on a framework's reactive
+ * Proxy; the model is plain data by contract, so spreading is enough.
+ */
+export function copyAdvancedFilter<N extends AdvancedFilterNode>(node: N): N {
+  return (
+    node.kind === 'condition'
+      ? { ...node }
+      : { ...node, children: node.children.map((child) => copyAdvancedFilter(child)) }
+  ) as N;
+}

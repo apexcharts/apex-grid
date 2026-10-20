@@ -384,3 +384,171 @@ describe('adv-filter: compiled once per call (ent-filter-builder-6)', () => {
     expect(isEmptyModel(model, columns)).to.be.false;
   });
 });
+
+describe('adv-filter: builder model ownership (ent-filter-builder-3, -4, -8)', () => {
+  interface Row {
+    name: string;
+    amount: number;
+  }
+  const columns: ColumnConfiguration<Row>[] = [
+    { key: 'name', type: 'string', sort: true },
+    { key: 'amount', type: 'number', sort: true },
+  ];
+  const data: Row[] = [
+    { name: 'A', amount: 150 },
+    { name: 'B', amount: 50 },
+    { name: 'C', amount: 200 },
+    { name: 'D', amount: 300 },
+  ];
+  const over100 = () =>
+    where({ kind: 'condition', column: 'amount', operator: 'greaterThan', value: 100 });
+
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+    ApexGridFilterBuilder.register();
+  });
+  afterEach(() => fixtureCleanup());
+
+  async function mountGrid(cols: ColumnConfiguration<Row>[] = columns) {
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise .data=${[...data]} .columns=${cols}></apex-grid-enterprise>`
+    );
+    await settle(grid as never);
+    return grid;
+  }
+
+  async function mountBuilder(grid: ApexGridEnterprise<Row>) {
+    const builder = await fixture<ApexGridFilterBuilder>(
+      html`<apex-grid-filter-builder .grid=${grid}></apex-grid-filter-builder>`
+    );
+    await builder.updateComplete;
+    return builder;
+  }
+
+  it('edits after Apply do not reach the applied filter until the next Apply', async () => {
+    const grid = await mountGrid();
+    const builder = await mountBuilder(grid);
+    const details: AdvancedFilterModel[] = [];
+    builder.addEventListener('apex-advanced-filter-changed', (e) =>
+      details.push((e as CustomEvent<{ model: AdvancedFilterModel }>).detail.model)
+    );
+    builder.model = over100();
+    await builder.updateComplete;
+    builder.renderRoot.querySelector<HTMLButtonElement>('[part="apply"]')!.click();
+    await settle(grid as never);
+    expect((grid.pageItems as Row[]).map((r) => r.amount)).to.eql([150, 200, 300]);
+
+    const op = builder.renderRoot.querySelector<HTMLSelectElement>('[part="op"]')!;
+    op.value = 'lessThan';
+    op.dispatchEvent(new Event('change'));
+    await builder.updateComplete;
+
+    grid.sort({ key: 'amount', direction: 'ascending' });
+    await settle(grid as never);
+    const applied = grid.advancedFilterModel!.children[0] as AdvancedFilterCondition;
+    expect(applied.operator, 'applied model operator').to.equal('greaterThan');
+    expect((details[0].children[0] as AdvancedFilterCondition).operator, 'event detail').to.equal(
+      'greaterThan'
+    );
+    expect(
+      (grid.pageItems as Row[]).map((r) => r.amount),
+      'rows after sort'
+    ).to.eql([150, 200, 300]);
+
+    builder.renderRoot.querySelector<HTMLButtonElement>('[part="apply"]')!.click();
+    await settle(grid as never);
+    expect((grid.pageItems as Row[]).map((r) => r.amount)).to.eql([50]);
+  });
+
+  it('a controlled builder that writes the event detail back keeps the applied filter', async () => {
+    const grid = await mountGrid();
+    const builder = await mountBuilder(grid);
+    builder.addEventListener('apex-advanced-filter-changed', (e) => {
+      builder.model = (e as CustomEvent<{ model: AdvancedFilterModel }>).detail.model;
+    });
+    builder.model = over100();
+    await builder.updateComplete;
+    builder.renderRoot.querySelector<HTMLButtonElement>('[part="apply"]')!.click();
+    await settle(grid as never);
+    await builder.updateComplete;
+    expect(builder.model, 'detail is its own copy').to.not.equal(grid.advancedFilterModel);
+
+    const op = builder.renderRoot.querySelector<HTMLSelectElement>('[part="op"]')!;
+    op.value = 'lessThan';
+    op.dispatchEvent(new Event('change'));
+    await builder.updateComplete;
+    grid.sort({ key: 'amount', direction: 'ascending' });
+    await settle(grid as never);
+    const applied = grid.advancedFilterModel!.children[0] as AdvancedFilterCondition;
+    expect(applied.operator, 'applied model operator').to.equal('greaterThan');
+    expect((grid.pageItems as Row[]).map((r) => r.amount)).to.eql([150, 200, 300]);
+  });
+
+  it('a builder mounted on a filtered grid shows the applied filter', async () => {
+    const grid = await mountGrid();
+    grid.applyAdvancedFilter(over100());
+    await settle(grid as never);
+    const builder = await mountBuilder(grid);
+    expect(builder.model.children).to.have.length(1);
+    expect(builder.renderRoot.querySelectorAll('[part="condition"]')).to.have.length(1);
+    // A copy, so editing it does not change the applied filter.
+    (builder.model.children[0] as AdvancedFilterCondition).operator = 'lessThan';
+    expect((grid.advancedFilterModel!.children[0] as AdvancedFilterCondition).operator).to.equal(
+      'greaterThan'
+    );
+  });
+
+  // A reactive framework model: every nested object read comes back proxied,
+  // and structuredClone throws DataCloneError on it.
+  function reactive<T extends object>(target: T): T {
+    return new Proxy(target, {
+      get(t, p, r) {
+        const v = Reflect.get(t, p, r);
+        return v && typeof v === 'object' ? reactive(v) : v;
+      },
+    });
+  }
+
+  it('applies a reactive Proxy model', async () => {
+    const grid = await mountGrid();
+    const builder = await mountBuilder(grid);
+    builder.model = reactive(over100());
+    await builder.updateComplete;
+    builder.renderRoot.querySelector<HTMLButtonElement>('[part="apply"]')!.click();
+    await settle(grid as never);
+    expect((grid.pageItems as Row[]).map((r) => r.amount)).to.eql([150, 200, 300]);
+    // The grid holds a plain copy, not the caller's Proxy.
+    expect(() => structuredClone(grid.advancedFilterModel)).not.to.throw();
+  });
+
+  it('adopts a reactive Proxy model from the grid', async () => {
+    const grid = await mountGrid();
+    grid.applyAdvancedFilter(reactive(over100()));
+    await settle(grid as never);
+    const builder = await mountBuilder(grid);
+    expect(builder.renderRoot.querySelectorAll('[part="condition"]')).to.have.length(1);
+    expect(builder.renderRoot.querySelector<HTMLSelectElement>('[part="op"]')!.value).to.equal(
+      'greaterThan'
+    );
+  });
+
+  it('a condition on a hidden column keeps its column, operators and input type', async () => {
+    const grid = await mountGrid([columns[0], { ...columns[1], hidden: true }]);
+    const builder = await mountBuilder(grid);
+    builder.model = over100();
+    await builder.updateComplete;
+    const col = builder.renderRoot.querySelector<HTMLSelectElement>('[part="col"]')!;
+    expect(col.value).to.equal('amount');
+    const op = builder.renderRoot.querySelector<HTMLSelectElement>('[part="op"]')!;
+    expect(op.value).to.equal('greaterThan');
+    expect(builder.renderRoot.querySelector<HTMLInputElement>('input[part="val"]')!.type).to.equal(
+      'number'
+    );
+    // New conditions still only offer visible columns.
+    builder.renderRoot.querySelectorAll<HTMLButtonElement>('[part="adders"] button')[0].click();
+    await builder.updateComplete;
+    const second = builder.renderRoot.querySelectorAll<HTMLSelectElement>('[part="col"]')[1];
+    expect([...second.options].map((o) => o.value)).to.eql(['name']);
+  });
+});

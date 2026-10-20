@@ -1,12 +1,13 @@
 import { type ColumnConfiguration, type GridLocaleKey, localize } from 'apex-grid';
 import { registerComponent } from 'apex-grid/internal';
-import { css, html, LitElement, nothing, type TemplateResult } from 'lit';
+import { css, html, LitElement, nothing, type PropertyValues, type TemplateResult } from 'lit';
 import { property } from 'lit/decorators.js';
 import { live } from 'lit/directives/live.js';
 import {
   type AdvancedFilterCondition,
   type AdvancedFilterGroup,
   type AdvancedFilterModel,
+  copyAdvancedFilter,
   defaultOperator,
   emptyAdvancedFilter,
   isNumericType,
@@ -161,19 +162,34 @@ export class ApexGridFilterBuilder extends LitElement {
   @property({ attribute: false })
   public grid: AnyGrid | null = null;
 
-  /** The editable root group (mirrors `grid.advancedFilterModel` when applied). */
+  /**
+   * The editable root group. An empty builder given a `grid` that already has
+   * an advanced filter starts from a copy of `grid.advancedFilterModel`.
+   * Edits stay in this draft until Apply, which hands the grid a snapshot.
+   *
+   * The draft is read from the grid only when `grid` is set. A filter applied
+   * or cleared from code later (an async state restore, say) is not shown
+   * here, and the next Apply replaces it: set `model` to a copy of
+   * `grid.advancedFilterModel` after such a change to keep them in step.
+   */
   @property({ attribute: false })
   public model: AdvancedFilterModel = emptyAdvancedFilter();
 
   #t = (key: GridLocaleKey, fallback: string): string =>
     localize(this.grid?.localeText, key) || fallback;
 
+  /** The columns a new condition can pick (visible ones). */
   #columns(): Array<ColumnConfiguration<Record<string, unknown>>> {
     return (this.grid?.columns ?? []).filter((column) => !column.hidden && column.key != null);
   }
 
+  /** Any grid column by key, hidden ones included, as the evaluator resolves it. */
+  #column(key: string): ColumnConfiguration<Record<string, unknown>> | undefined {
+    return this.grid?.columns.find((column) => column.key != null && String(column.key) === key);
+  }
+
   #columnType(key: string) {
-    return this.#columns().find((column) => String(column.key) === key)?.type;
+    return this.#column(key)?.type;
   }
 
   #newCondition(): AdvancedFilterCondition {
@@ -205,20 +221,25 @@ export class ApexGridFilterBuilder extends LitElement {
   }
 
   #apply(): void {
-    this.grid?.applyAdvancedFilter(this.model);
-    this.#emit();
+    // A snapshot, so later edits to the draft wait for the next Apply.
+    const applied = copyAdvancedFilter(this.model);
+    this.grid?.applyAdvancedFilter(applied);
+    // The event gets its own copy: a listener that keeps or binds the detail
+    // (a controlled builder writing it back to model) must not get a handle
+    // on the filter the grid applies.
+    this.#emit(copyAdvancedFilter(applied));
   }
 
   #clear(): void {
     this.model = emptyAdvancedFilter();
     this.grid?.clearAdvancedFilter();
-    this.#emit();
+    this.#emit(emptyAdvancedFilter());
   }
 
-  #emit(): void {
+  #emit(model: AdvancedFilterModel): void {
     this.dispatchEvent(
       new CustomEvent('apex-advanced-filter-changed', {
-        detail: { model: this.model },
+        detail: { model },
         bubbles: true,
         composed: true,
       })
@@ -230,8 +251,11 @@ export class ApexGridFilterBuilder extends LitElement {
     parent: AdvancedFilterGroup,
     index: number
   ): TemplateResult {
-    const type = this.#columnType(condition.column);
+    const current = this.#column(condition.column);
+    const type = current?.type;
     const operators = operatorsForType(type);
+    // A condition on a hidden column keeps showing that column.
+    const choices = current?.hidden ? [...this.#columns(), current] : this.#columns();
     const operand = operandsForType(type)[condition.operator];
     const unary = operand?.unary ?? false;
 
@@ -242,7 +266,7 @@ export class ApexGridFilterBuilder extends LitElement {
         .value=${condition.column}
         @change=${(e: Event) => this.#setColumn(condition, (e.target as HTMLSelectElement).value)}
       >
-        ${this.#columns().map(
+        ${choices.map(
           (column) =>
             html`<option
               value=${String(column.key)}
@@ -375,6 +399,13 @@ export class ApexGridFilterBuilder extends LitElement {
         </button>
       </div>
     </div>`;
+  }
+
+  protected override willUpdate(changed: PropertyValues<this>): void {
+    const applied = this.grid?.advancedFilterModel;
+    if (changed.has('grid') && applied && !this.model.children.length) {
+      this.model = copyAdvancedFilter(applied);
+    }
   }
 
   protected override render() {
