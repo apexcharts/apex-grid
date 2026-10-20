@@ -30,17 +30,29 @@ export interface CellChange<T extends object> {
 export interface EditCommand {
   apply(): void;
   revert(): void;
+  /** The record the command acts on: history is cleared once a reload drops it. */
+  readonly record?: object;
+  /**
+   * For a command staged with a row edit: the value to stage for its cell,
+   * re-read from the row's staged values just before the row commits, so
+   * validation judges what the command will leave there.
+   */
+  stagedValue?(staged: ReadonlyMap<PropertyKey, unknown>): unknown;
 }
 
 /**
  * One or more cell mutations that undo / redo as a single step. A single-cell
  * edit holds one change; a row-mode commit or a bulk paste / fill holds many so
- * one Ctrl+Z reverts the whole batch.
+ * one Ctrl+Z reverts the whole batch. `commands` are other commands pushed in
+ * the same batch (a feature's state riding with the edit, such as a formula):
+ * they replay after the cell values in both directions, so a value write can
+ * never undo the state they restore.
  */
 export class CellEditCommand<T extends object> implements EditCommand {
   constructor(
     private host: GridHost<T>,
-    public readonly changes: ReadonlyArray<CellChange<T>>
+    public readonly changes: ReadonlyArray<CellChange<T>>,
+    public readonly commands: ReadonlyArray<EditCommand> = []
   ) {}
 
   public apply(): void {
@@ -48,6 +60,7 @@ export class CellEditCommand<T extends object> implements EditCommand {
     for (const change of this.changes) {
       this.#write(change, change.newValue, indexOf);
     }
+    for (const command of this.commands) command.apply();
   }
 
   public revert(): void {
@@ -56,6 +69,7 @@ export class CellEditCommand<T extends object> implements EditCommand {
     for (let i = this.changes.length - 1; i >= 0; i -= 1) {
       this.#write(this.changes[i], this.changes[i].oldValue, indexOf);
     }
+    for (let i = this.commands.length - 1; i >= 0; i -= 1) this.commands[i].revert();
   }
 
   #write(change: CellChange<T>, value: unknown, indexOf: (record: T) => number): void {
@@ -103,6 +117,8 @@ export class HistoryController<T extends object> implements ReactiveController {
   #redo: EditCommand[] = [];
   /** Changes recorded by the open batch, pushed as one command when it closes. */
   #batch: CellChange<T>[] = [];
+  /** Commands {@link push}ed while the batch is open, replayed after its changes. */
+  #commands: EditCommand[] = [];
   /** Open {@link beginBatch} calls; only the outermost {@link endBatch} commits. */
   #depth = 0;
 
@@ -148,6 +164,17 @@ export class HistoryController<T extends object> implements ReactiveController {
   }
 
   /**
+   * Records a command that is not a plain cell write (its first `apply` has
+   * already run). Joins the open batch, replaying after the batch's cell
+   * changes, otherwise pushed as its own step. No-op when history is disabled.
+   */
+  public push(command: EditCommand): void {
+    if (!this.enabled) return;
+    if (this.#depth > 0) this.#commands.push(command);
+    else this.#push(command);
+  }
+
+  /**
    * Opens a batch so subsequent {@link record} calls coalesce into one command.
    * Nested calls are flattened: a batch opened while another is open (a
    * `cellValueChanged` listener that calls `applyEdits`, say) joins it, and
@@ -165,9 +192,11 @@ export class HistoryController<T extends object> implements ReactiveController {
   public endBatch(): void {
     if (this.#depth === 0 || --this.#depth > 0) return;
     const batch = this.#batch;
+    const commands = this.#commands;
     this.#batch = [];
-    if (batch.length > 0) {
-      this.#push(new CellEditCommand(this.host, batch));
+    this.#commands = [];
+    if (batch.length > 0 || commands.length > 0) {
+      this.#push(new CellEditCommand(this.host, batch, commands));
     }
   }
 
@@ -192,6 +221,7 @@ export class HistoryController<T extends object> implements ReactiveController {
   /** Clears both stacks, and the changes an open batch has captured so far. */
   public clear(): void {
     this.#batch = [];
+    this.#commands = [];
     if (this.#undo.length === 0 && this.#redo.length === 0) return;
     this.#undo = [];
     this.#redo = [];
@@ -200,7 +230,8 @@ export class HistoryController<T extends object> implements ReactiveController {
 
   /**
    * Clears both stacks when the grid's data was replaced and a recorded change
-   * names a record that `records` no longer yields (a reload with new objects).
+   * (or a command's {@link EditCommand.record}) names a record that `records`
+   * no longer yields (a reload with new objects).
    * Replaying onto such a detached record would change nothing on screen while
    * still reporting the edit. New data that keeps the edited records (an
    * append, a re-sorted copy) keeps its history. `records` is read only while
@@ -209,9 +240,11 @@ export class HistoryController<T extends object> implements ReactiveController {
   public reconcile(records: () => Iterable<T>): void {
     if (this.#undo.length === 0 && this.#redo.length === 0) return;
     const live = new Set(records());
-    const stale = (command: EditCommand) =>
-      command instanceof CellEditCommand &&
-      command.changes.some((change: CellChange<T>) => !live.has(change.record));
+    const stale = (command: EditCommand): boolean =>
+      (command.record !== undefined && !live.has(command.record as T)) ||
+      (command instanceof CellEditCommand &&
+        (command.changes.some((change: CellChange<T>) => !live.has(change.record)) ||
+          command.commands.some(stale)));
     if (this.#undo.some(stale) || this.#redo.some(stale)) this.clear();
   }
 
@@ -228,7 +261,7 @@ export class HistoryController<T extends object> implements ReactiveController {
 
   #afterReplay(command: EditCommand, kind: 'undo' | 'redo'): void {
     this.host.requestUpdate(PIPELINE);
-    const count = command instanceof CellEditCommand ? command.changes.length : 1;
+    const count = command instanceof CellEditCommand ? command.changes.length || 1 : 1;
     const key =
       kind === 'undo'
         ? count === 1

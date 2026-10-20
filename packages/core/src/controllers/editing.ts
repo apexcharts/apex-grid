@@ -10,7 +10,7 @@ import type {
   ValidatorContext,
 } from '../internal/types.js';
 import { runValidators } from '../internal/validators.js';
-import type { HistoryController } from './history.js';
+import type { EditCommand, HistoryController } from './history.js';
 
 /**
  * The default editing configuration used when the grid has none set.
@@ -96,6 +96,12 @@ export class EditingController<T extends object> implements ReactiveController {
    * {@link commitRow}. Holds only values that differ from the record.
    */
   public pending: Map<Keys<T>, unknown> = new Map();
+
+  /**
+   * Commands staged with the row edit, keyed by column (see
+   * {@link commitCell}): run when the row commits, dropped when it cancels.
+   */
+  #effects: Map<Keys<T>, EditCommand> = new Map();
 
   /**
    * Per-record validation errors, keyed by the live data reference and then by
@@ -299,6 +305,7 @@ export class EditingController<T extends object> implements ReactiveController {
     const rowIndex = this.#indexOf(data);
     this.activeRow = { rowIndex, data };
     this.pending.clear();
+    this.#effects.clear();
     this.host.requestUpdate();
     this.host.emitEvent('rowEditStarted', { detail: { rowIndex } });
     return true;
@@ -406,12 +413,26 @@ export class EditingController<T extends object> implements ReactiveController {
     return this.activeRow?.data === data ? this.pending : null;
   }
 
+  /** The command staged with the row edit of `data` for `columnKey`, if any. */
+  public stagedEffect(data: T, columnKey: Keys<T>): EditCommand | undefined {
+    return this.activeRow?.data === data ? this.#effects.get(columnKey) : undefined;
+  }
+
+  /** Runs a command riding with an accepted edit and records it for undo. */
+  #run(effect: EditCommand): void {
+    effect.apply();
+    this.history?.push(effect);
+  }
+
   /**
    * Stages `value` for the active row's `columnKey`. A value equal to the
    * record's is unstaged (and its stale error cleared), so re-entering the
-   * original undoes a staged edit.
+   * original undoes a staged edit. `effect` replaces the command staged for
+   * the column; `undefined` drops it and `null` keeps it.
    */
-  #stage(data: T, columnKey: Keys<T>, value: unknown): void {
+  #stage(data: T, columnKey: Keys<T>, value: unknown, effect?: EditCommand | null): void {
+    if (effect) this.#effects.set(columnKey, effect);
+    else if (effect === undefined) this.#effects.delete(columnKey);
     if (Object.is(value, (data as Record<string, unknown>)[columnKey as string])) {
       if (this.pending.delete(columnKey)) this.#validationVersion += 1;
       this.clearCellErrors(data, columnKey);
@@ -502,10 +523,13 @@ export class EditingController<T extends object> implements ReactiveController {
    * @param args - The candidate value, committed as given (`undefined`
    * included). Called with no argument, it commits the open editor's draft
    * (see {@link setDraft}), or keeps the current value when nothing was typed.
+   * An optional command rides with the value: it runs once the value is
+   * accepted (or, in row mode, when the row commits), joins the same undo
+   * step, and is dropped when the edit is rejected or the row cancelled.
    * @returns `true` if accepted (or staged), `false` if rejected by
    * `cellValueChanging.preventDefault()` or a validator.
    */
-  public async commitCell(...args: [value?: unknown]): Promise<boolean> {
+  public async commitCell(...args: [value?: unknown, effect?: EditCommand]): Promise<boolean> {
     const active = this.activeCell;
     if (!active) return false;
     const { rowIndex, columnKey, data } = active;
@@ -518,8 +542,17 @@ export class EditingController<T extends object> implements ReactiveController {
     const draft = this.#draft;
     const candidate = args.length > 0 ? args[0] : draft === NO_DRAFT ? current : draft;
 
+    const effect = args[1];
     if (this.mode === 'cell') {
-      const result = this.applyCellEdit(rowIndex, columnKey, data, candidate);
+      let result: CellEditResult;
+      // The value and its command undo as one step.
+      if (effect) this.history?.beginBatch();
+      try {
+        result = this.applyCellEdit(rowIndex, columnKey, data, candidate);
+        if (effect && (result === 'applied' || result === 'unchanged')) this.#run(effect);
+      } finally {
+        if (effect) this.history?.endBatch();
+      }
       if (result === 'cancelled') return false;
       // A failed validation keeps the editor open so the user can correct the
       // value; re-render to surface `aria-invalid` + the error node.
@@ -540,8 +573,9 @@ export class EditingController<T extends object> implements ReactiveController {
       return true;
     }
 
-    // Row mode: stage and exit cell edit (row stays open).
-    this.#stage(data, columnKey, candidate);
+    // Row mode: stage and exit cell edit (row stays open). A bare commit
+    // keeps the command staged for the cell.
+    this.#stage(data, columnKey, candidate, args.length > 0 ? effect : null);
     this.#endCellEdit();
     this.host.requestUpdate();
     return true;
@@ -624,6 +658,14 @@ export class EditingController<T extends object> implements ReactiveController {
     }
     const rowIndex = active.rowIndex;
     const record = data as Record<string, unknown>;
+    // A staged command may compute its value from cells staged after it.
+    for (const [columnKey, effect] of this.#effects) {
+      if (!effect.stagedValue) continue;
+      const value = effect.stagedValue(this.pending);
+      if (this.pending.has(columnKey) || !Object.is(value, record[columnKey as string])) {
+        this.pending.set(columnKey, value);
+      }
+    }
     const changes = [...this.pending].filter(
       ([columnKey, candidate]) => !Object.is(candidate, record[columnKey as string])
     );
@@ -643,6 +685,7 @@ export class EditingController<T extends object> implements ReactiveController {
       for (const [columnKey, candidate] of changes) {
         this.applyCellEdit(rowIndex, columnKey, data, candidate, { validate: false, gate: false });
       }
+      for (const effect of this.#effects.values()) this.#run(effect);
     } finally {
       this.history?.endBatch();
     }
@@ -651,6 +694,7 @@ export class EditingController<T extends object> implements ReactiveController {
     // value ended where it started gets no new value binding: re-render them.
     if (this.pending.size > 0) this.#validationVersion += 1;
     this.pending.clear();
+    this.#effects.clear();
     this.activeRow = null;
     this.host.requestUpdate(PIPELINE);
     await this.host.updateComplete;
@@ -723,6 +767,7 @@ export class EditingController<T extends object> implements ReactiveController {
     // Staged values were showing in the row's cells: re-render them.
     if (this.pending.size > 0) this.#validationVersion += 1;
     this.pending.clear();
+    this.#effects.clear();
     // Abandoning the row discards every validation error raised for it.
     this.clearRecordErrors(data);
     this.host.requestUpdate();
