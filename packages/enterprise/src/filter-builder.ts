@@ -2,12 +2,14 @@ import { type ColumnConfiguration, type GridLocaleKey, localize } from 'apex-gri
 import { registerComponent } from 'apex-grid/internal';
 import { css, html, LitElement, nothing, type TemplateResult } from 'lit';
 import { property } from 'lit/decorators.js';
+import { live } from 'lit/directives/live.js';
 import {
   type AdvancedFilterCondition,
   type AdvancedFilterGroup,
   type AdvancedFilterModel,
   defaultOperator,
   emptyAdvancedFilter,
+  isNumericType,
   operandsForType,
   operatorsForType,
 } from './features/advanced-filter.js';
@@ -242,7 +244,10 @@ export class ApexGridFilterBuilder extends LitElement {
       >
         ${this.#columns().map(
           (column) =>
-            html`<option value=${String(column.key)} ?selected=${String(column.key) === condition.column}>
+            html`<option
+              value=${String(column.key)}
+              .selected=${live(String(column.key) === condition.column)}
+            >
               ${column.headerText ?? String(column.key)}
             </option>`
         )}
@@ -250,18 +255,31 @@ export class ApexGridFilterBuilder extends LitElement {
       <select
         part="op"
         aria-label=${this.#t('filterBuilder.operator' as GridLocaleKey, 'Operator')}
-        .value=${condition.operator}
         @change=${(e: Event) => {
           condition.operator = (e.target as HTMLSelectElement).value;
           this.requestUpdate();
         }}
       >
-        ${operators.map(
-          (op) =>
-            html`<option value=${op.name} ?selected=${op.name === condition.operator}>
+        ${
+          // An operator this type does not offer (a saved model) shows as
+          // itself, so the select does not pretend it is the first option.
+          operand
+            ? nothing
+            : html`<option value=${condition.operator} disabled .selected=${live(true)}>
+                ${condition.operator}
+              </option>`
+        }
+        ${
+          // Selection follows the model on each option, not via the select's
+          // value: that commits before a column switch rewrites the options
+          // in place, so it would land on whatever now sits at the old index.
+          operators.map(
+            (op) =>
+              html`<option value=${op.name} .selected=${live(op.name === condition.operator)}>
               ${op.label}
             </option>`
-        )}
+          )
+        }
       </select>
       ${
         unary
@@ -281,7 +299,7 @@ export class ApexGridFilterBuilder extends LitElement {
               </select>`
             : html`<input
                 part="val"
-                type=${type === 'number' || type === 'rating' ? 'number' : 'text'}
+                type=${isNumericType(type) ? 'number' : 'text'}
                 aria-label=${this.#t('filterBuilder.value' as GridLocaleKey, 'Value')}
                 .value=${String(condition.value ?? '')}
                 @input=${(e: Event) => {

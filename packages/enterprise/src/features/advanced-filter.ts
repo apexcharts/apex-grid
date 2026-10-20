@@ -6,6 +6,7 @@ import {
   NumberOperands,
   StringOperands,
 } from 'apex-grid';
+import { StateController } from 'apex-grid/internal';
 
 /** How a group's children combine. */
 export type AdvancedFilterJoin = 'and' | 'or';
@@ -35,19 +36,24 @@ export type AdvancedFilterModel = AdvancedFilterGroup;
 
 type OperandTable = Record<string, FilterOperation<unknown>>;
 
-const OPERANDS_BY_TYPE: Partial<Record<DataType, OperandTable>> = {
-  number: NumberOperands as unknown as OperandTable,
-  rating: NumberOperands as unknown as OperandTable,
-  boolean: BooleanOperands as unknown as OperandTable,
-  string: StringOperands as unknown as OperandTable,
-  select: StringOperands as unknown as OperandTable,
-  image: StringOperands as unknown as OperandTable,
-  date: StringOperands as unknown as OperandTable,
-};
+/**
+ * Whether a column type holds numbers (`number`, `currency`, `rating`,
+ * `progress`). Reads the core rule ({@link StateController.isNumericColumn})
+ * so the advanced filter, the builder and the core filter row agree. The
+ * method keeps no instance state, and this pure evaluator has no grid, so it
+ * is called on the prototype.
+ */
+export function isNumericType(type: DataType | undefined): boolean {
+  return StateController.prototype.isNumericColumn({ type });
+}
 
-/** The operand table for a column type (string operands by default). */
+/**
+ * The operand table for a column type: the same choice the core filter makes
+ * (boolean, number for the numeric types, string otherwise).
+ */
 export function operandsForType(type: DataType | undefined): OperandTable {
-  return OPERANDS_BY_TYPE[type ?? 'string'] ?? (StringOperands as unknown as OperandTable);
+  if (type === 'boolean') return BooleanOperands as unknown as OperandTable;
+  return (isNumericType(type) ? NumberOperands : StringOperands) as unknown as OperandTable;
 }
 
 /** The selectable operators (name + label + arity) for a column type. */
@@ -66,21 +72,72 @@ export function defaultOperator(type: DataType | undefined): string {
   return operatorsForType(type)[0]?.name ?? 'contains';
 }
 
-function columnType<T extends object>(
-  columns: ReadonlyArray<ColumnConfiguration<T>>,
-  key: string
-): DataType | undefined {
-  return columns.find((column) => String(column.key) === key)?.type;
-}
-
 /** Coerce a text input value to the type the operand expects. */
 function coerce(type: DataType | undefined, value: unknown): unknown {
-  if ((type === 'number' || type === 'rating') && typeof value === 'string') {
+  if (typeof value !== 'string') return value;
+  if (isNumericType(type)) {
     const parsed = Number(value);
     return Number.isNaN(parsed) ? value : parsed;
   }
-  if (type === 'boolean' && typeof value === 'string') return value === 'true';
+  if (type === 'boolean') return value === 'true';
   return value;
+}
+
+type RowPredicate = (row: Record<string, unknown>) => boolean;
+
+/** Columns by key (first wins on a duplicate key), built once per call. */
+function indexColumns<T extends object>(
+  columns: ReadonlyArray<ColumnConfiguration<T>>
+): Map<string, ColumnConfiguration<T>> {
+  const byKey = new Map<string, ColumnConfiguration<T>>();
+  for (const column of columns) {
+    const key = String(column.key);
+    if (!byKey.has(key)) byKey.set(key, column);
+  }
+  return byKey;
+}
+
+/**
+ * Compile a node into a row predicate, resolving each condition's column,
+ * operand, term and case sensitivity once instead of per row. Returns `null`
+ * for a node that contributes nothing: an unknown or empty condition, or a
+ * group whose children all do (so a half-built row never hides everything).
+ */
+function compile<T extends object>(
+  node: AdvancedFilterNode,
+  byKey: Map<string, ColumnConfiguration<T>>
+): RowPredicate | null {
+  if (node.kind === 'condition') {
+    if (!node.column) return null;
+    const column = byKey.get(node.column);
+    const operand = operandsForType(column?.type)[node.operator];
+    if (!operand) return null;
+    if (!operand.unary && (node.value === undefined || node.value === '')) return null;
+    const key = node.column;
+    const logic = operand.logic;
+    const term = coerce(column?.type, node.value);
+    // The core filter row's expression, verbatim (FilterController), so a
+    // `filter: null` column is tolerated there and here alike.
+    const caseSensitive =
+      typeof column?.filter === 'boolean' ? false : Boolean(column?.filter?.caseSensitive);
+    return (row) => logic(row[key], term, caseSensitive);
+  }
+  const parts: RowPredicate[] = [];
+  for (const child of node.children) {
+    const part = compile(child, byKey);
+    if (part) parts.push(part);
+  }
+  if (parts.length < 2) return parts[0] ?? null;
+  const count = parts.length;
+  return node.join === 'and'
+    ? (row) => {
+        for (let i = 0; i < count; i++) if (!parts[i](row)) return false;
+        return true;
+      }
+    : (row) => {
+        for (let i = 0; i < count; i++) if (parts[i](row)) return true;
+        return false;
+      };
 }
 
 /**
@@ -92,33 +149,7 @@ export function isIgnored<T extends object>(
   node: AdvancedFilterNode,
   columns: ReadonlyArray<ColumnConfiguration<T>>
 ): boolean {
-  if (node.kind === 'condition') {
-    if (!node.column) return true;
-    const operand = operandsForType(columnType(columns, node.column))[node.operator];
-    if (!operand) return true;
-    return !operand.unary && (node.value === undefined || node.value === '');
-  }
-  return node.children.every((child) => isIgnored(child, columns));
-}
-
-/** Evaluate one node against a row (assumes non-ignored). */
-function evaluateNode<T extends object>(
-  row: T,
-  node: AdvancedFilterNode,
-  columns: ReadonlyArray<ColumnConfiguration<T>>
-): boolean {
-  if (node.kind === 'condition') {
-    const type = columnType(columns, node.column);
-    const operand = operandsForType(type)[node.operator];
-    if (!operand) return true;
-    const target = (row as Record<string, unknown>)[node.column];
-    return operand.logic(target, coerce(type, node.value), undefined);
-  }
-  const active = node.children.filter((child) => !isIgnored(child, columns));
-  if (!active.length) return true;
-  return node.join === 'and'
-    ? active.every((child) => evaluateNode(row, child, columns))
-    : active.some((child) => evaluateNode(row, child, columns));
+  return compile(node, indexColumns(columns)) === null;
 }
 
 /** Whether the model has no effective conditions (a pass-through). */
@@ -135,8 +166,9 @@ export function filterRows<T extends object>(
   model: AdvancedFilterModel,
   columns: ReadonlyArray<ColumnConfiguration<T>>
 ): T[] {
-  if (isEmptyModel(model, columns)) return data as T[];
-  return data.filter((row) => evaluateNode(row, model, columns));
+  const predicate = compile(model, indexColumns(columns));
+  if (!predicate) return data as T[];
+  return data.filter(predicate as unknown as (row: T) => boolean);
 }
 
 /** A fresh, empty root group (AND). */
