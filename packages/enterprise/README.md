@@ -982,8 +982,19 @@ grid.showFormulas = true; // reveal sources; set back to false to restore
 ### Export formulas
 
 `exportToCSV` and `exportToXLSX` accept a `formulas` option: when set, cells that
-hold a formula export their source (`=A1*B1`) rather than the computed value;
-other cells export normally.
+hold a formula export the formula rather than the computed value; other cells
+export normally. `exportToXLSX` writes real formula cells that keep the computed
+value, so the workbook shows it before it recalculates.
+
+Each reference is moved to where its cell sits in the file: below the header
+row and in the exported row and column order, so `=A1*B1` on the first data row
+is written `=A2*B2`. The formula is written as a spreadsheet reads it, with the
+same result: `%` becomes `MOD`, `AVG` becomes `AVERAGE`, `CONCATENATE` over a
+range becomes `CONCAT`, and a sign over a power or a power exponent keeps its
+parentheses (`=-(A2^2)`). A formula exports its
+computed value instead when it reads a cell the export leaves out (a hidden
+column, a filtered row, a `columns` subset), reads a range the export reorders
+(a sort), or calls a function registered with `registerFormulaFunction`.
 
 ```ts
 grid.exportToCSV({ filename: 'budget', formulas: true });

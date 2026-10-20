@@ -537,16 +537,32 @@ function nodePrecedence(node: FormulaAst): number {
 function stringifyChild(
   child: FormulaAst,
   parentPrecedence: number,
-  wrapWhenEqual: boolean
+  wrapWhenEqual: boolean,
+  sheet: boolean
 ): string {
-  const text = stringifyNode(child);
+  const text = stringifyNode(child, sheet);
   const precedence = nodePrecedence(child);
   const needsParens =
     precedence < parentPrecedence || (precedence === parentPrecedence && wrapWhenEqual);
   return needsParens ? `(${text})` : text;
 }
 
-function stringifyNode(node: FormulaAst): string {
+/**
+ * The spreadsheet name of a call. AVG is this engine's alias of AVERAGE. Here
+ * CONCATENATE is CONCAT and joins ranges, but a spreadsheet's CONCATENATE does
+ * not, so over a range it is written as CONCAT.
+ */
+function sheetName(node: CallNode): string {
+  if (node.name === 'AVG') {
+    return 'AVERAGE';
+  }
+  if (node.name === 'CONCATENATE' && node.args.some((arg) => arg.type === 'range')) {
+    return 'CONCAT';
+  }
+  return node.name;
+}
+
+function stringifyNode(node: FormulaAst, sheet: boolean): string {
   switch (node.type) {
     case 'number':
       return String(node.value);
@@ -564,17 +580,32 @@ function stringifyNode(node: FormulaAst): string {
     case 'unary':
       // The operand was parsed at unary level, so only a lower-precedence
       // parenthesized expression (e.g. `-(a+b)`) needs its parentheses back.
-      return `${node.operator}${stringifyChild(node.operand, UNARY_PRECEDENCE, false)}`;
+      // A spreadsheet binds the sign tighter than `^` (-2^2 is 4 there), so
+      // its dialect also keeps a power operand in parentheses.
+      return `${node.operator}${stringifyChild(
+        node.operand,
+        sheet ? BINARY_PRECEDENCE['^'] : UNARY_PRECEDENCE,
+        sheet,
+        sheet
+      )}`;
     case 'binary': {
+      // `%` is modulo here but a postfix percent in a spreadsheet: MOD there.
+      if (sheet && node.operator === '%') {
+        return `MOD(${stringifyNode(node.left, sheet)},${stringifyNode(node.right, sheet)})`;
+      }
       const precedence = BINARY_PRECEDENCE[node.operator];
       // `^` is right-associative; every other binary operator is left-associative.
+      // A spreadsheet reads `^` left to right, so its dialect keeps a power
+      // exponent in parentheses.
       const rightAssociative = node.operator === '^';
-      const left = stringifyChild(node.left, precedence, rightAssociative);
-      const right = stringifyChild(node.right, precedence, !rightAssociative);
+      const left = stringifyChild(node.left, precedence, rightAssociative, sheet);
+      const right = stringifyChild(node.right, precedence, !rightAssociative || sheet, sheet);
       return `${left}${node.operator}${right}`;
     }
     case 'call':
-      return `${node.name}(${node.args.map(stringifyNode).join(',')})`;
+      return `${sheet ? sheetName(node) : node.name}(${node.args
+        .map((arg) => stringifyNode(arg, sheet))
+        .join(',')})`;
     case 'error':
       return '#REF!';
   }
@@ -583,14 +614,46 @@ function stringifyNode(node: FormulaAst): string {
 /**
  * Serialize an AST back to canonical formula source, including the leading `=`.
  * References emit their `$` absolute markers; the minimum parentheses needed to
- * round-trip the operator precedence are kept. Pure.
+ * round-trip the operator precedence are kept. With `sheet`, writes the
+ * spreadsheet dialect instead, which this engine also reads with the same
+ * result: `%` as MOD, AVG as AVERAGE, CONCATENATE over a range as CONCAT,
+ * and a sign over a power or a power exponent in parentheses.
+ * Pure.
  */
-export function stringifyFormula(ast: FormulaAst): string {
-  return `=${stringifyNode(ast)}`;
+export function stringifyFormula(ast: FormulaAst, sheet = false): string {
+  return `=${stringifyNode(ast, sheet)}`;
 }
 
 /** Whether a shifted address fell before row 1 or column A. */
 const offSheet = ({ row, col }: CellAddress): boolean => row < 0 || col < 0;
+
+/**
+ * Return a copy of the AST with each reference and range replaced by what
+ * `map` returns for it; every other node is copied. Pure.
+ */
+export function mapReferences(
+  ast: FormulaAst,
+  map: (node: ReferenceNode | RangeNode) => FormulaAst
+): FormulaAst {
+  switch (ast.type) {
+    case 'ref':
+    case 'range':
+      return map(ast);
+    case 'unary':
+      return { type: 'unary', operator: ast.operator, operand: mapReferences(ast.operand, map) };
+    case 'binary':
+      return {
+        type: 'binary',
+        operator: ast.operator,
+        left: mapReferences(ast.left, map),
+        right: mapReferences(ast.right, map),
+      };
+    case 'call':
+      return { type: 'call', name: ast.name, args: ast.args.map((arg) => mapReferences(arg, map)) };
+    default:
+      return { ...ast };
+  }
+}
 
 /**
  * Return a copy of the AST with every **relative** reference shifted by
@@ -602,43 +665,20 @@ const offSheet = ({ row, col }: CellAddress): boolean => row < 0 || col < 0;
  * knowledge of relative-ness. Pure.
  */
 export function offsetReferences(ast: FormulaAst, dRow: number, dCol: number): FormulaAst {
-  switch (ast.type) {
-    case 'ref': {
-      const address = offsetAddress(ast.address, dRow, dCol, ast);
-      return offSheet(address) ? { type: 'error' } : { ...ast, address };
+  return mapReferences(ast, (node) => {
+    if (node.type === 'ref') {
+      const address = offsetAddress(node.address, dRow, dCol, node);
+      return offSheet(address) ? { type: 'error' } : { ...node, address };
     }
-    case 'range': {
-      const start = offsetAddress(ast.range.start, dRow, dCol, ast.startFlags);
-      const end = offsetAddress(ast.range.end, dRow, dCol, ast.endFlags);
-      return offSheet(start) || offSheet(end)
-        ? { type: 'error' }
-        : {
-            ...ast,
-            range: { start, end },
-            startFlags: { ...ast.startFlags },
-            endFlags: { ...ast.endFlags },
-          };
-    }
-    case 'unary':
-      return {
-        type: 'unary',
-        operator: ast.operator,
-        operand: offsetReferences(ast.operand, dRow, dCol),
-      };
-    case 'binary':
-      return {
-        type: 'binary',
-        operator: ast.operator,
-        left: offsetReferences(ast.left, dRow, dCol),
-        right: offsetReferences(ast.right, dRow, dCol),
-      };
-    case 'call':
-      return {
-        type: 'call',
-        name: ast.name,
-        args: ast.args.map((arg) => offsetReferences(arg, dRow, dCol)),
-      };
-    default:
-      return { ...ast };
-  }
+    const start = offsetAddress(node.range.start, dRow, dCol, node.startFlags);
+    const end = offsetAddress(node.range.end, dRow, dCol, node.endFlags);
+    return offSheet(start) || offSheet(end)
+      ? { type: 'error' }
+      : {
+          ...node,
+          range: { start, end },
+          startFlags: { ...node.startFlags },
+          endFlags: { ...node.endFlags },
+        };
+  });
 }

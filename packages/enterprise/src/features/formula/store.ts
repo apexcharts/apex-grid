@@ -35,6 +35,7 @@ import {
   type FormulaAst,
   formulaReferences,
   isFunctionName,
+  mapReferences,
   offsetReferences,
   parseFormula,
   stringifyFormula,
@@ -60,6 +61,34 @@ const cellKey = (address: CellAddress): string => `${address.row}:${address.col}
 function parseCellKey(key: string): CellAddress {
   const separator = key.indexOf(':');
   return { row: Number(key.slice(0, separator)), col: Number(key.slice(separator + 1)) };
+}
+
+/**
+ * Where each index lands in an exported file: `items[i]` goes to place
+ * `i + offset` (`-1` for an index no item names), plus a test of whether the
+ * indices `a..b` (either order) land on consecutive places, in order, so a
+ * range written over them reads the same cells.
+ */
+function filePlaces<K>(
+  size: number,
+  items: ReadonlyArray<K>,
+  indexOf: (item: K) => number | undefined,
+  offset: number
+): [Int32Array, (a: number, b: number) => boolean] {
+  const places = new Int32Array(size).fill(-1);
+  items.forEach((item, i) => {
+    const index = indexOf(item);
+    if (index !== undefined) places[index] = i + offset;
+  });
+  // Each index's run start: the first index of the in-order run of places it ends.
+  const starts = new Int32Array(size);
+  for (let i = 1; i < size; i++) {
+    starts[i] = places[i] > 0 && places[i] === places[i - 1] + 1 ? starts[i - 1] : i;
+  }
+  return [
+    places,
+    (a, b) => places[Math.min(a, b)] >= 0 && starts[Math.max(a, b)] <= Math.min(a, b),
+  ];
 }
 
 /** The value under `key` in `map`, created by `make` on first use. */
@@ -130,6 +159,11 @@ export class FormulaStore {
   /** The formula source at the address, if any. */
   public get(address: CellAddress): string | undefined {
     return this.#entries.get(cellKey(address))?.src;
+  }
+
+  /** The parsed formula at the address, if any. */
+  public ast(address: CellAddress): FormulaAst | undefined {
+    return this.#entries.get(cellKey(address))?.ast;
   }
 
   /** Every stored formula as `{ address, src }`, for persistence. */
@@ -625,6 +659,68 @@ export class FormulaController<T extends object> implements ReactiveController, 
     }
     const address = this.#addressOf(row, columnKey);
     return address ? this.#store.get(address) : undefined;
+  }
+
+  /**
+   * Formula sources for a file that lists `rows` in order below `headerRows`
+   * header rows, with the columns `keys` in order. The lookup returns a
+   * formula cell's source in the spreadsheet dialect (see
+   * {@link stringifyFormula}) with each reference moved to where that cell
+   * sits in the file, or `undefined` for a cell outside a formula column,
+   * without a formula, reading a cell the file leaves out or reorders, or
+   * calling a custom function a spreadsheet does not have (the cell's value is
+   * exported then). Built once per export in O(rows); `null` when no formula
+   * is stored.
+   */
+  public exportSources(
+    rows: ReadonlyArray<T>,
+    keys: ReadonlyArray<string>,
+    headerRows: number
+  ): ((row: T, key: string) => string | undefined) | null {
+    this.#sync();
+    if (!this.#store.size) return null;
+    const [fileRow, rowsSpan] = filePlaces(
+      this.#frame().length,
+      rows,
+      (row) => this.#indexOf(row),
+      headerRows
+    );
+    const [fileCol, colsSpan] = filePlaces(
+      this.#letterOrder.length,
+      keys,
+      (key) => this.#letterIndex.get(key),
+      0
+    );
+    const place = ({ row, col }: CellAddress): CellAddress => ({
+      row: fileRow[row],
+      col: fileCol[col],
+    });
+    // A registered function a spreadsheet lacks would show #NAME? there.
+    const builtins = createFunctionRegistry();
+    const custom = (ast: FormulaAst): boolean =>
+      ast.type === 'call'
+        ? this.functions.get(ast.name) !== builtins.get(ast.name) || ast.args.some(custom)
+        : ast.type === 'unary'
+          ? custom(ast.operand)
+          : ast.type === 'binary' && (custom(ast.left) || custom(ast.right));
+    return (row, key) => {
+      const index = this.#indexOf(row);
+      const ast =
+        index !== undefined && this.#formulaColumns.has(key)
+          ? this.#store.ast({ row: index, col: this.#indexForKey(key) })
+          : undefined;
+      if (!ast || custom(ast)) return undefined;
+      let lost = false;
+      const moved = mapReferences(ast, (node) => {
+        const { start, end } =
+          node.type === 'ref' ? { start: node.address, end: node.address } : node.range;
+        lost ||= !rowsSpan(start.row, end.row) || !colsSpan(start.col, end.col);
+        return node.type === 'ref'
+          ? { ...node, address: place(node.address) }
+          : { ...node, range: { start: place(start), end: place(end) } };
+      });
+      return lost ? undefined : stringifyFormula(moved, true);
+    };
   }
 
   /** Remove a formula from a cell and recompute its dependents. */

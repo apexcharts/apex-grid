@@ -178,23 +178,45 @@ const STYLE_DEFAULT = 0;
 const STYLE_HEADER = 1;
 const STYLE_DATE = 2;
 
-function renderCell(ref: string, value: ExportCellValue, styleIndex?: number): string {
-  const s = styleIndex && styleIndex !== STYLE_DEFAULT ? ` s="${styleIndex}"` : '';
+/**
+ * A formula cell: the formula text without its leading `=`, already in the
+ * sheet's A1 coordinates, and the value it computed (cached in the file, so
+ * the workbook shows it before any recalculation).
+ */
+export interface XLSXFormulaCell {
+  formula: string;
+  value: ExportCellValue;
+}
+
+/** One cell handed to {@link buildXLSX}. */
+export type XLSXCell = ExportCellValue | XLSXFormulaCell;
+
+/** The formula engine's error codes that a spreadsheet shares (not #CYCLE!). */
+const SHEET_ERROR = /^#(?:REF!|NAME\?|DIV\/0!|VALUE!)$/;
+
+function renderCell(ref: string, cell: XLSXCell, styleIndex?: number): string {
+  let s = styleIndex && styleIndex !== STYLE_DEFAULT ? ` s="${styleIndex}"` : '';
+  const formula = cell !== null && typeof cell === 'object' && !(cell instanceof Date) && cell;
+  const f = formula ? `<f>${escapeXml(formula.formula)}</f>` : '';
+  let value = formula ? formula.value : (cell as ExportCellValue);
+  if (value instanceof Date) {
+    value = toExcelSerial(value);
+    s = ` s="${STYLE_DATE}"`;
+  }
   if (value === null || value === undefined || value === '') {
-    return styleIndex ? `<c r="${ref}"${s}/>` : '';
+    return f ? `<c r="${ref}"${s}>${f}</c>` : styleIndex ? `<c r="${ref}"${s}/>` : '';
   }
   if (typeof value === 'boolean') {
-    return `<c r="${ref}"${s} t="b"><v>${value ? 1 : 0}</v></c>`;
-  }
-  if (value instanceof Date) {
-    return `<c r="${ref}" s="${STYLE_DATE}"><v>${toExcelSerial(value)}</v></c>`;
+    return `<c r="${ref}"${s} t="b">${f}<v>${value ? 1 : 0}</v></c>`;
   }
   if (typeof value === 'number' && Number.isFinite(value)) {
-    return `<c r="${ref}"${s}><v>${value}</v></c>`;
+    return `<c r="${ref}"${s}>${f}<v>${value}</v></c>`;
   }
-  return `<c r="${ref}"${s} t="inlineStr"><is><t xml:space="preserve">${escapeXml(
-    String(value)
-  )}</t></is></c>`;
+  const text = escapeXml(String(value));
+  // A formula error the spreadsheet also knows is cached as one (t="e").
+  return f
+    ? `<c r="${ref}"${s} t="${SHEET_ERROR.test(text) ? 'e' : 'str'}">${f}<v>${text}</v></c>`
+    : `<c r="${ref}"${s} t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
 }
 
 /** A worksheet representation passed to {@link buildXLSX}. */
@@ -203,8 +225,8 @@ export interface XLSXSheetData {
   name?: string;
   /** Header row labels (rendered with bold styling). */
   headers: string[];
-  /** Data rows. Each row is an array of cell values, aligned to `headers`. */
-  rows: ExportCellValue[][];
+  /** Data rows. Each row is an array of cells, aligned to `headers`. */
+  rows: XLSXCell[][];
 }
 
 /**

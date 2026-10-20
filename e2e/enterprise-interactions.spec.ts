@@ -745,13 +745,14 @@ test.describe('formula-engine', () => {
     const withFormulas = await page.evaluate(() =>
       (document.getElementById('grid') as any).exportToCSV({ filename: '', formulas: true })
     );
-    expect(withFormulas).toContain('=B1*C1');
-    expect(withFormulas).toContain('=ROUND(SUM(D1:D5),2)');
+    // References point at the file's cells, one row below the header.
+    expect(withFormulas).toContain('=B2*C2');
+    expect(withFormulas).toContain('=ROUND(SUM(D2:D6),2)');
     const plain = await page.evaluate(() =>
       (document.getElementById('grid') as any).exportToCSV({ filename: '' })
     );
     expect(plain).toContain('25');
-    expect(plain).not.toContain('=B1*C1');
+    expect(plain).not.toContain('=B2*C2');
   });
 
   test('Export formulas button downloads budget-formulas.csv', async ({ page }) => {
@@ -762,7 +763,7 @@ test.describe('formula-engine', () => {
     ]);
     expect(download.suggestedFilename()).toBe('budget-formulas.csv');
     const path = await download.path();
-    expect(readFileSync(path, 'utf8')).toContain('=B1*C1');
+    expect(readFileSync(path, 'utf8')).toContain('=B2*C2');
   });
 
   test('function library + error sentinels', async ({ page }) => {

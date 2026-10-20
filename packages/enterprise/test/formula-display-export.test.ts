@@ -100,8 +100,9 @@ describe('formula show-formulas + export (Tier 2, P4/P5)', () => {
     controllerOf(grid).setFormula(data[0], 'total', '=A1*B1'); // total computes to 10
     await grid.updateComplete;
 
+    // References point at the file's cells: data row 1 sits below the header row.
     const withFormulas = grid.exportToCSV({ filename: '', formulas: true });
-    expect(withFormulas).to.contain('=A1*B1');
+    expect(withFormulas).to.contain('=A2*B2');
 
     const plain = grid.exportToCSV({ filename: '' });
     expect(plain).to.contain('10');

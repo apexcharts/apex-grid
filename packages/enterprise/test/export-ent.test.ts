@@ -5,6 +5,11 @@ import {
   type ContextMenuController,
   type ContextMenuTarget,
 } from '../src/features/context-menu.js';
+import {
+  FORMULA_MODULE_ID,
+  type FormulaController,
+  formulaModule,
+} from '../src/features/formula/index.js';
 import { ApexGridAI, ApexGridChart, ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 
 // Enterprise export and grid API: synthesized rows stay out of exports and
@@ -88,9 +93,37 @@ function storedEntry(bytes: Uint8Array, filename: string): { text: string; crc: 
 
 const sheetOf = (bytes: Uint8Array) => storedEntry(bytes, 'xl/worksheets/sheet1.xml')!.text;
 
+function formulaOf<R extends object>(grid: ApexGridEnterprise<R>): FormulaController<R> {
+  return (
+    grid as unknown as { stateController: { module(id: string): FormulaController<R> } }
+  ).stateController.module(FORMULA_MODULE_ID);
+}
+
+interface Line {
+  qty: number; // A
+  price: number; // B
+  total: number; // C
+}
+
+async function mountFormulas(data: Line[], cols?: ColumnConfiguration<Line>[]) {
+  const grid = await fixture<ApexGridEnterprise<Line>>(html`<apex-grid-enterprise
+    .data=${data}
+    .columns=${
+      cols ?? [
+        { key: 'qty', type: 'number' },
+        { key: 'price', type: 'number' },
+        { key: 'total', type: 'number', allowFormula: true },
+      ]
+    }
+  ></apex-grid-enterprise>`);
+  await grid.updateComplete;
+  await nextFrame();
+  return grid;
+}
+
 describe('enterprise export and grid API', () => {
   before(() => {
-    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.use(...enterpriseModules, formulaModule);
     ApexGridEnterprise.register();
   });
   afterEach(() => fixtureCleanup());
@@ -248,6 +281,188 @@ describe('enterprise export and grid API', () => {
       expect(single.categoryKey).to.equal('amount');
       expect(single.model.categories).to.eql(['10', '20', '30', '40']);
       expect(single.model.series[0].data).to.eql([1, 1, 1, 1]);
+    });
+  });
+
+  describe('formula export', () => {
+    it('CSV references point at the exported cells under the header row', async () => {
+      const data: Line[] = [
+        { qty: 2, price: 5, total: 0 },
+        { qty: 3, price: 7, total: 0 },
+      ];
+      const grid = await mountFormulas(data);
+      formulaOf(grid).setFormula(data[0], 'total', '=A1*B1');
+      formulaOf(grid).setFormula(data[1], 'total', '=SUM($A$1:A2)+C1');
+      await grid.updateComplete;
+      expect(grid.exportToCSV({ filename: '', bom: false, formulas: true })).to.equal(
+        'qty,price,total\r\n2,5,=A2*B2\r\n3,7,=SUM($A$2:A3)+C2'
+      );
+      expect(
+        grid.exportToCSV({ filename: '', bom: false, formulas: true, includeHeader: false })
+      ).to.equal('2,5,=A1*B1\r\n3,7,=SUM($A$1:A2)+C1');
+    });
+
+    it('CSV references follow sorting and moved columns', async () => {
+      const data: Line[] = [
+        { qty: 2, price: 5, total: 0 },
+        { qty: 3, price: 7, total: 0 },
+      ];
+      const grid = await mountFormulas(data);
+      formulaOf(grid).setFormula(data[0], 'total', '=A1*B1');
+      await grid.updateComplete;
+      grid.columns = [
+        { key: 'price', type: 'number' },
+        { key: 'qty', type: 'number' },
+        { key: 'total', type: 'number', allowFormula: true },
+      ];
+      await grid.updateComplete;
+      grid.sort({ key: 'qty', direction: 'descending' });
+      await grid.updateComplete;
+      expect(grid.exportToCSV({ filename: '', bom: false, formulas: true })).to.equal(
+        'price,qty,total\r\n7,3,0\r\n5,2,=B3*A3'
+      );
+    });
+
+    it('a formula that reads a cell outside the export falls back to its value', async () => {
+      const data: Line[] = [
+        { qty: 2, price: 5, total: 0 },
+        { qty: 3, price: 7, total: 0 },
+      ];
+      const grid = await mountFormulas(data);
+      formulaOf(grid).setFormula(data[0], 'total', '=A1*B1');
+      formulaOf(grid).setFormula(data[1], 'total', '=SUM(A1:A2)');
+      await grid.updateComplete;
+      // `price` (B) is not exported, so `=A1*B1` cannot be written.
+      expect(
+        grid.exportToCSV({ filename: '', bom: false, formulas: true, columns: ['qty', 'total'] })
+      ).to.equal('qty,total\r\n2,10\r\n3,=SUM(A2:A3)');
+      // Sorted descending, A1:A2 no longer covers consecutive file rows in order.
+      grid.sort({ key: 'qty', direction: 'descending' });
+      await grid.updateComplete;
+      expect(grid.exportToCSV({ filename: '', bom: false, formulas: true })).to.equal(
+        'qty,price,total\r\n3,7,5\r\n2,5,=A3*B3'
+      );
+    });
+
+    it('CSV keeps formula sources raw and escapes other formula-like text', async () => {
+      type Note = { note: string; qty: number; total: number };
+      const data: Note[] = [{ note: '=HYPERLINK("x")', qty: 4, total: 0 }];
+      const grid = await fixture<ApexGridEnterprise<Note>>(html`<apex-grid-enterprise
+        .data=${data}
+        .columns=${[
+          { key: 'note' },
+          { key: 'qty', type: 'number' },
+          { key: 'total', type: 'number', allowFormula: true },
+        ]}
+      ></apex-grid-enterprise>`);
+      await grid.updateComplete;
+      formulaOf(grid).setFormula(data[0], 'total', '=B1*2');
+      await grid.updateComplete;
+      expect(grid.exportToCSV({ filename: '', bom: false, formulas: true })).to.equal(
+        `note,qty,total\r\n"'=HYPERLINK(""x"")",4,=B2*2`
+      );
+    });
+
+    it('XLSX writes formula cells as formulas with their computed value', async () => {
+      const data: Line[] = [
+        { qty: 2, price: 5, total: 0 },
+        { qty: 3, price: 7, total: 0 },
+      ];
+      // An untyped column keeps a text result as text.
+      const grid = await mountFormulas(data, [
+        { key: 'qty', type: 'number' },
+        { key: 'price', type: 'number' },
+        { key: 'total', allowFormula: true },
+      ]);
+      formulaOf(grid).setFormula(data[0], 'total', '=A1*B1');
+      formulaOf(grid).setFormula(data[1], 'total', '=IF(A2>2,"big","small")');
+      await grid.updateComplete;
+      const sheet = sheetOf(grid.exportToXLSX({ filename: '', formulas: true }));
+      expect(sheet).to.include('<c r="C2"><f>A2*B2</f><v>10</v></c>');
+      expect(sheet).to.include(
+        '<c r="C3" t="str"><f>IF(A3&gt;2,&quot;big&quot;,&quot;small&quot;)</f><v>big</v></c>'
+      );
+      // Without the option the computed values are written.
+      const plain = sheetOf(grid.exportToXLSX({ filename: '' }));
+      expect(plain).to.include('<c r="C2"><v>10</v></c>');
+      expect(plain).to.not.include('<f>');
+    });
+
+    it('writes the spreadsheet dialect: MOD, AVERAGE and power parentheses', async () => {
+      const data: Line[] = [
+        { qty: 7, price: 1, total: 0 },
+        { qty: 2, price: 2, total: 0 },
+        { qty: 3, price: 2, total: 0 },
+        { qty: 2, price: 3, total: 0 },
+      ];
+      const grid = await mountFormulas(data);
+      const formulas = formulaOf(grid);
+      formulas.setFormula(data[0], 'total', '=A1%3');
+      formulas.setFormula(data[1], 'total', '=AVG(A1:A2)');
+      formulas.setFormula(data[2], 'total', '=-A3^2');
+      formulas.setFormula(data[3], 'total', '=A4^B4^2');
+      await grid.updateComplete;
+      expect(data.map((row) => row.total)).to.eql([1, 4.5, -9, 512]);
+      expect(grid.exportToCSV({ filename: '', bom: false, formulas: true })).to.equal(
+        'qty,price,total\r\n7,1,"=MOD(A2,3)"\r\n2,2,=AVERAGE(A2:A3)\r\n3,2,=-(A4^2)\r\n2,3,=A5^(B5^2)'
+      );
+      const sheet = sheetOf(grid.exportToXLSX({ filename: '', formulas: true }));
+      expect(sheet).to.include('<c r="C2"><f>MOD(A2,3)</f><v>1</v></c>');
+      expect(sheet).to.include('<c r="C3"><f>AVERAGE(A2:A3)</f><v>4.5</v></c>');
+      expect(sheet).to.include('<c r="C4"><f>-(A4^2)</f><v>-9</v></c>');
+      expect(sheet).to.include('<c r="C5"><f>A5^(B5^2)</f><v>512</v></c>');
+      // The engine reads the dialect back to the same values.
+      formulas.setFormula(data[0], 'total', '=MOD(A1,3)');
+      formulas.setFormula(data[2], 'total', '=-(A3^2)');
+      formulas.setFormula(data[3], 'total', '=A4^(B4^2)');
+      expect(data.map((row) => row.total)).to.eql([1, 4.5, -9, 512]);
+    });
+
+    it('writes CONCATENATE over a range as CONCAT, which joins ranges', async () => {
+      const data: Line[] = [
+        { qty: 7, price: 4, total: 0 },
+        { qty: 1, price: 2, total: 0 },
+      ];
+      const grid = await mountFormulas(data);
+      const formulas = formulaOf(grid);
+      formulas.setFormula(data[0], 'total', '=CONCATENATE(A1:B1)');
+      formulas.setFormula(data[1], 'total', '=CONCATENATE(A2,B2)');
+      await grid.updateComplete;
+      expect(data.map((row) => String(row.total))).to.eql(['74', '12']);
+      expect(
+        grid.exportToCSV({ filename: '', bom: false, formulas: true, includeHeader: false })
+      ).to.equal('7,4,=CONCAT(A1:B1)\r\n1,2,"=CONCATENATE(A2,B2)"');
+      const sheet = sheetOf(grid.exportToXLSX({ filename: '', formulas: true }));
+      expect(sheet).to.include('<f>CONCAT(A2:B2)</f><v>74</v></c>');
+      expect(sheet).to.include('<f>CONCATENATE(A3,B3)</f><v>12</v></c>');
+    });
+
+    it('a formula calling a custom function exports its value', async () => {
+      const data: Line[] = [{ qty: 2, price: 5, total: 0 }];
+      const grid = await mountFormulas(data);
+      grid.registerFormulaFunction('DOUBLE', (args) => Number(args[0]) * 2);
+      formulaOf(grid).setFormula(data[0], 'total', '=DOUBLE(A1)+SUM(B1)');
+      await grid.updateComplete;
+      expect(grid.exportToCSV({ filename: '', bom: false, formulas: true })).to.equal(
+        'qty,price,total\r\n2,5,9'
+      );
+      expect(sheetOf(grid.exportToXLSX({ filename: '', formulas: true }))).to.include(
+        '<c r="C2"><v>9</v></c>'
+      );
+    });
+
+    it('XLSX caches a formula error as an error cell', async () => {
+      const data: Line[] = [{ qty: 2, price: 0, total: 0 }];
+      const grid = await mountFormulas(data, [
+        { key: 'qty', type: 'number' },
+        { key: 'price', type: 'number' },
+        { key: 'total', allowFormula: true },
+      ]);
+      formulaOf(grid).setFormula(data[0], 'total', '=A1/B1');
+      await grid.updateComplete;
+      expect(sheetOf(grid.exportToXLSX({ filename: '', formulas: true }))).to.include(
+        '<c r="C2" t="e"><f>A2/B2</f><v>#DIV/0!</v></c>'
+      );
     });
   });
 });

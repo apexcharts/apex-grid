@@ -121,7 +121,7 @@ import {
   type TotalRowConfig,
   type TotalRowController,
 } from './features/total-row.js';
-import { buildXLSX, type XLSXExportOptions } from './features/xlsx.js';
+import { buildXLSX, type XLSXCell, type XLSXExportOptions } from './features/xlsx.js';
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -390,7 +390,14 @@ function formulaDisplayTemplate<T extends object>(
 
 /** Enterprise export option: emit each formula cell's `=...` source instead of its value. */
 export interface FormulaExportOptions {
-  /** When true, cells holding a formula export their source; others export normally. */
+  /**
+   * When true, cells holding a formula export it as a spreadsheet reads it,
+   * with references pointing at the cells' places in the file (below the
+   * header row, in the exported row and column order). XLSX writes them as
+   * formula cells that keep the computed value. A formula reading a cell the
+   * file leaves out or reorders, or calling a custom function, exports its
+   * value. Other cells export normally.
+   */
   formulas?: boolean;
 }
 
@@ -2118,48 +2125,55 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   /**
    * CSV export with the enterprise `formulas` option: when set, `allowFormula`
-   * cells export their formula source (`=A1*B1`) rather than the computed value.
+   * cells export their formula source rather than the computed value, with
+   * references moved to the file's cells (`=A1*B1` on the first data row is
+   * written `=A2*B2` below the header row; see {@link FormulaExportOptions}).
    * Formula sources are written as they are, while headers and every other
    * text cell keep the `escapeFormulas` rule. Otherwise identical to the
    * community {@link ApexGrid.exportToCSV}.
    */
   public override exportToCSV(options: CSVExportOptions<T> & FormulaExportOptions = {}): string {
-    return super.exportToCSV(this.#withFormulaFormatter(options, true));
-  }
-
-  /**
-   * When `options.formulas` is set, return a copy of the options whose
-   * `formatter` emits each formula cell's source; cells without a formula fall
-   * back to the user's formatter or the default formatting (via
-   * {@link resolveExportValue} over the original options). A no-op when the
-   * option is off or no formula module is registered. With `keep`, each
-   * source is returned as a boxed `String`, which the CSV formula escaping
-   * leaves alone, so sources stay raw while headers and other text are
-   * escaped.
-   */
-  #withFormulaFormatter<O extends ExportOptions<T>>(
-    options: O & FormulaExportOptions,
-    keep?: boolean
-  ): O {
-    const controller = this.#formulaController();
-    if (!options.formulas || !controller) {
-      return options;
-    }
-    const base = options; // keeps any user-supplied formatter for non-formula cells
+    const sources =
+      options.formulas &&
+      this.#formulaSources(
+        options,
+        resolveExportColumns(this, options),
+        resolveExportRows(this, options.source)
+      );
+    if (!sources) return super.exportToCSV(options);
+    // A source comes back as a boxed `String`, which the CSV formula escaping leaves alone, so
+    // sources stay raw while headers and other text are escaped.
     const formatter = (
       column: ColumnConfiguration<T>,
       _value: unknown,
       row: T
     ): ExportCellValue => {
-      if (column.allowFormula) {
-        const src = controller.getFormula(row, column.key as keyof T & string);
-        if (src !== undefined) {
-          return keep ? (new String(src) as unknown as string) : src;
-        }
-      }
-      return resolveExportValue(column, row, base);
+      const src = sources(row, String(column.key));
+      return src === undefined
+        ? resolveExportValue(column, row, options)
+        : (new String(src) as unknown as string);
     };
-    return { ...options, formatter } as O;
+    return super.exportToCSV({ ...options, formatter });
+  }
+
+  /**
+   * When `options.formulas` is set and the grid holds formulas, a lookup of
+   * each formula cell's source in the file's coordinates (see
+   * {@link FormulaController.exportSources}); `null` otherwise.
+   */
+  #formulaSources(
+    options: ExportOptions<T> & FormulaExportOptions,
+    columns: ReadonlyArray<ColumnConfiguration<T>>,
+    rows: ReadonlyArray<T>
+  ): ((row: T, key: string) => string | undefined) | null {
+    const controller = options.formulas ? this.#formulaController() : undefined;
+    return (
+      controller?.exportSources(
+        rows,
+        columns.map((column) => String(column.key)),
+        options.includeHeader === false ? 0 : 1
+      ) ?? null
+    );
   }
 
   /**
@@ -2169,7 +2183,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * @remarks
    * Produces a single-sheet workbook with a bold header row. Numbers, booleans
    * and `Date` values keep their native cell type in Excel; everything else is
-   * written as inline strings. Shares the same `source` / `columns` /
+   * written as inline strings. With `formulas`, formula cells are written as
+   * formulas that keep their computed value. Shares the same `source` / `columns` /
    * `formatter` options as the community grid's `exportToCSV`, plus an optional
    * `sheetName`. Pass `filename: ''` to skip the download and only receive the
    * bytes back.
@@ -2180,15 +2195,21 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * grid.exportToXLSX({ filename: 'users', sheetName: 'Users' });
    * ```
    */
-  public exportToXLSX(options: XLSXExportOptions<T> & FormulaExportOptions = {}): Uint8Array {
-    const opts = this.#withFormulaFormatter(options);
+  public exportToXLSX(opts: XLSXExportOptions<T> & FormulaExportOptions = {}): Uint8Array {
     const columns = resolveExportColumns(this, opts);
     const rows = resolveExportRows(this, opts.source);
     const includeHeader = opts.includeHeader ?? true;
+    const sources = this.#formulaSources(opts, columns, rows);
     const bytes = buildXLSX({
       name: opts.sheetName ?? 'Sheet1',
       headers: includeHeader ? columns.map((column) => getColumnLabel(column)) : [],
-      rows: rows.map((row) => columns.map((column) => resolveExportValue(column, row, opts))),
+      rows: rows.map((row) =>
+        columns.map((column): XLSXCell => {
+          const value = resolveExportValue(column, row, opts);
+          const src = sources?.(row, String(column.key));
+          return src === undefined ? value : { formula: src.slice(1), value };
+        })
+      ),
     });
     const filename = opts.filename;
     if (filename) {
