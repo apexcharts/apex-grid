@@ -44,6 +44,67 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - A filter builder attached to a grid that already has an advanced filter
   opens with that filter, and a condition on a column hidden after it was
   applied keeps its column, operators and input type.
+- **Paste and fill now need editing on the target column.** Range paste
+  (Ctrl/Cmd+V, `pasteText`) and the fill handle (drag or `fillTo`) write only
+  cells the user could edit by hand: `editing.enabled` on the grid and
+  `editable: true` on the column. A read-only grid or column is no longer
+  changed. Apps that pasted or filled without editing configured must turn it
+  on for the columns that should accept it.
+- Pasted text is stored as the column type, the way the cell editor commits
+  it: numbers for number, currency and progress columns, a rating clamped to
+  its stars, the matching option for a select (by value, then by label),
+  `TRUE` or `FALSE` in any case for booleans, and dates in the shape the cell
+  already holds. An empty pasted cell clears a typed cell to `null` instead of
+  storing an empty string.
+- Formula paste and fill go through the same path as typed edits: validators
+  run on the computed value, `cellValueChanging` can cancel them, and with
+  `editing.history` one undo reverts the whole paste or fill.
+- Copy quotes a value holding a tab, a line break or a double quote, the way
+  spreadsheets do, and paste reads quoted cells, so multi-line text survives a
+  round trip within the grid or to and from a spreadsheet. Plain values copy
+  exactly as before.
+- Fill extends a number series only in numeric columns and in untyped columns
+  that hold real numbers; text that looks numeric, such as a zip code `02139`,
+  is copied unchanged.
+- **Grouping keys.** Equal dates group together even when each row holds its
+  own `Date` object. Rows whose value is `null`, `undefined` or `''` share one
+  (Blank) group. Group keys are now unique: a value containing `/` is escaped
+  (`A/B` becomes `//A%2FB`), a literal `(blank)` value gets its own key, and a
+  date with milliseconds keys by its ISO instant. Every other value keeps the
+  key earlier releases wrote, so saved expand and collapse state still
+  restores the same groups.
+- Collapse all and expand all survive `getState` and `setState` through a new
+  optional `groupDefaultExpanded` state field; older snapshots restore as
+  before. `groupingOptions.defaultExpanded` is applied only when its value
+  changes, so a later `groupBy` or `aggregations` change, or a framework
+  passing an equal inline `groupingOptions` on every render, no longer undoes
+  collapse all. Call `expandAllGroups()` to re-expand.
+- Aggregations (group headers, total row, pivot) skip `NaN` and `Infinity`
+  cells and count numeric strings, the rule the status bar uses, so one `NaN`
+  cell no longer shows `NaN` for sum, avg, min or max. A column of numeric
+  strings now sums to its real total instead of 0.
+- **Formula results that change.** A `Date` cell reads as its epoch
+  milliseconds in arithmetic, comparisons and text (`=A1+86400000` is one day
+  later); any other object reads as `#VALUE!`. A blank cell equals `""`, `0`
+  and `FALSE`, so `=A1=""` and `=A1=0` are TRUE for an empty `A1`. The `%`
+  operator follows the MOD rule, taking the sign of the divisor (`=-7%3` is 2,
+  was -1). A result that is not a finite number is `#VALUE!`, so
+  `=POWER(0,-1)` and `=10^308*10` no longer write `Infinity`. A range of more
+  than one cell passed to a fixed-argument function such as `ROUND`, `ABS` or
+  `LEFT` is `#VALUE!` instead of feeding later cells in as extra arguments.
+  Numbers turned into text keep 15 significant digits (`=(0.1+0.2)&" kg"` is
+  `0.3 kg`), and text reads as a number only when it is a plain decimal, so
+  `0x10` or `1e999` is `#VALUE!`.
+- Filling or pasting a formula up or left past row 1 or column A, or moving a
+  formula's row above the references it reads, writes `#REF!` for the
+  references that leave the sheet instead of pointing them at row 1 or
+  column A.
+- Custom functions whose names contain digits, underscores or dots (`LOG10`,
+  `VAT_RATE`, `STDEV.S`) can be called from formulas, and
+  `registerFormulaFunction` throws a `TypeError` for a name no formula could
+  call, including `IF`, `TRUE` and `FALSE`. Formulas accept exponent notation
+  such as `2E5`. Formula error positions count from the text as typed,
+  including the leading `=`.
 
 ### Fixed
 - **Integrated charts show cell text as text.** Categories and series names
@@ -64,6 +125,23 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   `stateChanged` even when nothing depends on the cleared cell.
 - With show formulas on, cells without a formula keep their column type
   rendering, and formula sources read left to right in RTL grids.
+- Formulas that read a `Date` cell no longer throw a `TypeError`.
+- `ROUND`, `ROUNDUP` and `ROUNDDOWN` round in decimal: `=ROUNDUP(0.07,2)` is
+  0.07 and `=ROUND(1.005,2)` is 1.01.
+- A custom function that throws shows `#VALUE!` in its cell instead of
+  stopping recalculation.
+- Typing a very large range such as `=SUM(A1:J1000000)` on a small grid no
+  longer freezes the page: only cells that exist are read, and the part past
+  the data still gives `#REF!`.
+- `setState` with a malformed `groupExpand` (null, a number or an array)
+  reports a warning, or throws in strict mode before applying anything,
+  instead of throwing after `groupBy` and `aggregations` were already applied.
+- Paste, fill and copy skip group header rows and the grand total row, and an
+  in-grid formula paste onto a range that overlaps its source reads the
+  source formulas as they were before the paste.
+- Keyboard copy and paste work where the async Clipboard API is unavailable,
+  such as an http origin: the grid uses the browser's copy and paste events.
+  Inside a cell editor the keys keep their usual text behaviour.
 
 ### Performance
 - Range formulas index their precedents instead of one key per cell, so a
@@ -72,6 +150,8 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   bound chart once.
 - Advanced filter evaluation compiles the model once per run instead of per
   row.
+- Aggregations collect count, sum, min and max in one pass per column instead
+  of one reduction per function.
 
 ## [0.7.1] - 2026-10-09
 
