@@ -1,6 +1,6 @@
 import type { ApexGrid } from '../components/grid.js';
 import type { StateController } from '../controllers/state.js';
-import { dateFormatter } from './column-types.js';
+import { dateFormatter, parseDate } from './column-types.js';
 import type { ColumnConfiguration, Keys } from './types.js';
 import { getDisplayColumns } from './utils.js';
 
@@ -152,11 +152,11 @@ export function defaultExportFormat<T extends object>(
       }
       return typeof value === 'number' || typeof value === 'boolean' ? value : String(value);
     }
-    case 'date': {
-      if (value instanceof Date) return value;
-      const parsed = new Date(value as string | number);
-      return Number.isNaN(parsed.getTime()) ? String(value) : parsed;
-    }
+    // The cell's own parse: a 'YYYY-MM-DD' string is the local date the cell
+    // shows (not UTC midnight), and an invalid Date is empty, as on screen.
+    // Text that is no date stays text.
+    case 'date':
+      return parseDate(value) ?? (typeof value === 'object' ? '' : String(value));
     case 'boolean':
       return Boolean(value);
     case 'number':
@@ -179,7 +179,11 @@ export function resolveExportValue<T extends object>(
   opts: ExportOptions<T>
 ): ExportCellValue {
   const raw = (row as Record<string, unknown>)[column.key as string];
-  return opts.formatter ? opts.formatter(column, raw, row) : defaultExportFormat(column, raw);
+  const value = opts.formatter
+    ? opts.formatter(column, raw, row)
+    : defaultExportFormat(column, raw);
+  // An invalid Date from a user formatter has no text or serial to write.
+  return value instanceof Date && Number.isNaN(value.getTime()) ? '' : value;
 }
 
 /** Formats a `Date` into the configured date style for CSV output. */
@@ -187,7 +191,7 @@ export function formatDateForCSV<T extends object>(
   column: ColumnConfiguration<T>,
   value: Date
 ): string {
-  return dateFormatter(column.format).format(value);
+  return Number.isNaN(value.getTime()) ? '' : dateFormatter(column.format).format(value);
 }
 
 function escapeCSVCell(value: ExportCellValue, delimiter: string): string {

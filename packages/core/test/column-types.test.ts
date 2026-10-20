@@ -1,6 +1,6 @@
 import { expect, html } from '@open-wc/testing';
 import type { ApexGrid } from '../src/components/grid.js';
-import { buildCSV } from '../src/internal/export.js';
+import { buildCSV, defaultExportFormat, resolveExportValue } from '../src/internal/export.js';
 import type { ColumnConfiguration, GridEditingConfiguration } from '../src/internal/types.js';
 import GridTestFixture from './utils/grid-fixture.js';
 import data, { type TestData } from './utils/test-data.js';
@@ -853,6 +853,36 @@ describe('Column types: export and formatting', () => {
     await fx.setUp();
   });
   afterEach(() => fx.tearDown());
+
+  describe('date export', () => {
+    it('exports a YYYY-MM-DD string as the local date, not UTC midnight', () => {
+      const value = defaultExportFormat({ key: 'when', type: 'date' }, '2024-01-15');
+      expect(value).to.be.instanceOf(Date);
+      expect((value as Date).getTime()).to.equal(new Date(2024, 0, 15).getTime());
+    });
+
+    it('writes the same calendar day to CSV that the cell shows', () => {
+      expect(fx.csvRows()[0][1]).to.equal(fx.cellText(0, 'when'));
+    });
+
+    it('exports an invalid Date as an empty cell instead of throwing', async () => {
+      await fx.updateProperty('data', [{ ...exportRows()[0], when: new Date(Number.NaN) }]);
+      expect(fx.cellText(0, 'when')).to.equal('');
+      expect(fx.csvRows()[0][1]).to.equal('');
+      expect(defaultExportFormat({ key: 'when', type: 'date' }, new Date(Number.NaN))).to.equal('');
+    });
+
+    it('drops an invalid Date returned by a user formatter', () => {
+      const formatter = () => new Date(Number.NaN);
+      const row = exportRows()[0];
+      expect(resolveExportValue({ key: 'when', type: 'date' }, row, { formatter })).to.equal('');
+      expect(fx.csvRows({ formatter })[0][1]).to.equal('');
+    });
+
+    it('keeps an unparseable date string as text', () => {
+      expect(defaultExportFormat({ key: 'when', type: 'date' }, 'TBD')).to.equal('TBD');
+    });
+  });
 
   describe('Intl formatter caching', () => {
     it('builds no date formatter per row when exporting 100k rows', async function () {
