@@ -1,6 +1,8 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame, waitUntil } from '@open-wc/testing';
+import type ApexGridCell from '../src/components/cell.js';
 import type { ApexCellValueChangedEvent } from '../src/components/grid.js';
 import { ApexGrid } from '../src/components/grid.js';
+import type ApexGridRow from '../src/components/row.js';
 import type { ColumnConfiguration, PaginationConfiguration } from '../src/internal/types.js';
 
 // Undo history and bulk edits: history follows data replacement, nested
@@ -52,6 +54,13 @@ async function mount(options: { data?: Row[]; pagination?: PaginationConfigurati
   await nextFrame();
   await waitUntil(() => grid.rows.length > 0, 'body rows never rendered');
   return grid;
+}
+
+function cellOf(grid: ApexGrid<Row>, record: Row, key: keyof Row): ApexGridCell<Row> {
+  const row = Array.from(grid.renderRoot.querySelectorAll<ApexGridRow<Row>>('apex-grid-row')).find(
+    (r) => r.data === record
+  )!;
+  return row.cells.find((cell) => cell.column.key === key)!;
 }
 
 function changedEvents(grid: ApexGrid<Row>) {
@@ -207,6 +216,49 @@ describe('undo history and bulk edits', () => {
       expect(events).to.have.length(1);
       expect(events[0].data).to.equal(grid.data[2]);
       expect(events[0].rowIndex).to.equal(-1);
+    });
+  });
+
+  describe('applyEdits', () => {
+    it('edits records on other pages when addressed by row', async () => {
+      const grid = await mount({ pagination: { enabled: true, pageSize: 2 } });
+      const events = changedEvents(grid);
+      const tally = grid.applyEdits(
+        grid.data.map((row) => ({ row, column: 'amount' as const, value: 0 }))
+      );
+      await grid.updateComplete;
+
+      expect(tally.applied).to.equal(5);
+      expect(tally.unchanged).to.equal(1);
+      expect(tally.skipped).to.equal(0);
+      expect(grid.data.every((r) => r.amount === 0)).to.be.true;
+      expect(events.map((e) => e.rowIndex)).to.eql([1, -1, -1, -1, -1]);
+
+      grid.undo();
+      expect(grid.data.map((r) => r.amount)).to.eql([0, 10, 20, 30, 40, 50]);
+    });
+
+    it('skips a negative, fractional or out-of-range rowIndex', async () => {
+      const grid = await mount();
+      const tally = grid.applyEdits([
+        { rowIndex: -1, column: 'name', value: 'X' },
+        { rowIndex: 1.5, column: 'name', value: 'X' },
+        { rowIndex: 99, column: 'name', value: 'X' },
+      ]);
+
+      expect(tally.skipped).to.equal(3);
+      expect(grid.data.some((r) => r.name === 'X')).to.be.false;
+    });
+
+    it('shows the invalid state when every edit in the batch is rejected', async () => {
+      const grid = await mount();
+      const record = grid.data[1];
+      const tally = grid.applyEdits([{ rowIndex: 1, column: 'amount', value: -1 }]);
+      await grid.updateComplete;
+      await nextFrame();
+
+      expect(tally.invalid).to.equal(1);
+      expect(cellOf(grid, record, 'amount').getAttribute('aria-invalid')).to.equal('true');
     });
   });
 });

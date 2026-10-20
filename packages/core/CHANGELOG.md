@@ -6,6 +6,14 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **`applyEdits()` entries can name their row by record**: `{ row, column,
+  value }` alongside the positional `{ rowIndex, column, value }`. A record
+  reaches rows on other pages, pinned rows and rows under a collapsed tree
+  parent, so `grid.selectedRows.map((row) => ({ row, column, value }))` now
+  edits the whole selection; with `rowIndex` such rows were skipped. Events
+  and validators for those rows see `rowIndex` -1.
+
 ### Changed
 - **Replacing `grid.data` with new records clears the undo history** (and
   fires `historyChanged`). Undo used to replay onto the old, detached records:
@@ -19,6 +27,9 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   record is pinned or on another page**, instead of the index it had when
   edited (which could name a different row). Listeners that read `rowIndex`
   from a replayed change should identify the row by the event's `data`.
+- `applyEdits()` skips an entry whose `rowIndex` is negative or fractional,
+  as it already skipped one past the end of the page. 3.5.0 counted a negative
+  index from the end of the page and rounded a fraction down.
 - **`sortExpressions` and `filterExpressions` replace the current sort or filter
   instead of merging into it**, as documented and as `setState` already did;
   `[]`, `null` or `undefined` clears it. Apps that assigned one expression at a
@@ -75,6 +86,8 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   a bulk edit or a paste no longer splits it, so one undo reverts all of it.
 - Undoing or redoing a large batch reads the view once instead of once per
   cell.
+- `applyEdits()` shows the invalid state of its cells when every edit in the
+  batch is rejected by a validator, without waiting for another render.
 
 ## [3.5.0] - 2026-09-12
 

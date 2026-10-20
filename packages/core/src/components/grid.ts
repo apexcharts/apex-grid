@@ -4,6 +4,7 @@ import { eventOptions, property, query, queryAll, state } from 'lit/decorators.j
 import { styleMap } from 'lit/directives/style-map.js';
 import { DataOperationsController } from '../controllers/data-operation.js';
 import { GridDOMController } from '../controllers/dom.js';
+import { viewIndexer } from '../controllers/history.js';
 import type { RowPinPosition } from '../controllers/row-pin.js';
 import type { RowDropPosition } from '../controllers/row-reorder.js';
 import { gridStateContext, StateController } from '../controllers/state.js';
@@ -2646,11 +2647,18 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * point: a thousand `editCell` round-trips would be a thousand entries in the
    * undo stack and a thousand re-renders.
    *
-   * `rowIndex` is view-relative and matches {@link ApexGrid.pageItems}, the same
-   * as {@link editCell}. Edits naming an unknown column, a row index out of
-   * range, or a column the user could not edit either (editing off, not
-   * `editable`, or hidden — the same gate interactive editing uses) are skipped
-   * rather than throwing, so a partially-stale batch still applies what it can.
+   * Name each target cell's row in one of two ways. `rowIndex` is
+   * view-relative and matches {@link ApexGrid.pageItems}, the same as
+   * {@link editCell}, so it reaches the current page only. `row` is the record
+   * itself (a live reference into {@link ApexGrid.data}), which also reaches
+   * rows on other pages, pinned rows and rows under a collapsed tree parent;
+   * their events and validators see `rowIndex` -1. A `rowIndex` must be a
+   * whole number from 0 to `pageItems.length - 1`. Edits naming an unknown
+   * column, any other row index (negative, fractional or past the end of the
+   * page), or a column the user could not edit
+   * either (editing off, not `editable`, or hidden: the same gate interactive
+   * editing uses) are skipped rather than throwing, so a partially-stale batch
+   * still applies what it can.
    *
    * @param edits Cells to write. Order is preserved, so later edits to the same
    * cell win.
@@ -2658,18 +2666,19 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * changed; `unchanged`, `invalid` and `cancelled` explain the rest, so a caller
    * can tell a rejected batch from a no-op one.
    *
-   * @example Bulk-clear a column for the rows the user selected
+   * @example Bulk-clear a column for the rows the user selected, on any page
    * ```ts
-   * grid.applyEdits(
-   *   grid.selectedRows.map((row) => ({
-   *     rowIndex: grid.pageItems.indexOf(row),
-   *     column: 'discount',
-   *     value: 0,
-   *   }))
-   * );
+   * grid.applyEdits(grid.selectedRows.map((row) => ({ row, column: 'discount', value: 0 })));
    * ```
    */
-  public applyEdits(edits: ReadonlyArray<{ rowIndex: number; column: Keys<T>; value: unknown }>): {
+  public applyEdits(
+    edits: ReadonlyArray<
+      { column: Keys<T>; value: unknown } & (
+        | { rowIndex: number; row?: never }
+        | { row: T; rowIndex?: never }
+      )
+    >
+  ): {
     applied: number;
     unchanged: number;
     invalid: number;
@@ -2681,23 +2690,28 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
     const editing = this.stateController.editing;
     const items = this.pageItems;
+    const indexOf = viewIndexer(items, edits.length);
+    const version = editing.validationVersion;
     // One history entry for the batch, so undo reverses the whole thing.
     this.stateController.history.beginBatch();
     try {
-      for (const { rowIndex, column, value } of edits) {
-        const record = items.at(rowIndex);
+      for (const { row, rowIndex, column, value } of edits) {
+        const record = row ?? items[rowIndex as number];
         const config = this.getColumn(column);
-        if (!record || rowIndex < 0 || !config || !editing.isEditable(config)) {
+        if (!record || !config || !editing.isEditable(config)) {
           tally.skipped += 1;
           continue;
         }
-        tally[editing.applyCellEdit(rowIndex, column, record as T, value)] += 1;
+        const index = row ? indexOf(row) : (rowIndex as number);
+        tally[editing.applyCellEdit(index, column, record, value)] += 1;
       }
     } finally {
       this.stateController.history.endBatch();
     }
 
     if (tally.applied > 0) this.requestUpdate(PIPELINE);
+    // Rejected or reverted values change only the cells' invalid markers.
+    else if (editing.validationVersion !== version) this.requestUpdate();
     return tally;
   }
 

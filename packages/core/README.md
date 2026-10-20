@@ -334,6 +334,14 @@ re-renders. The returned tally splits `applied` from `unchanged`, `invalid`,
 one. Edits naming a row out of range or a column the user could not edit either
 are skipped rather than throwing.
 
+`rowIndex` is view-relative, so it reaches the current page only. To edit rows
+anywhere (other pages, pinned rows, rows under a collapsed tree parent), name
+the record itself with `row`:
+
+```ts
+grid.applyEdits(grid.selectedRows.map((row) => ({ row, column: 'discount', value: 0 })));
+```
+
 ### Keyboard navigation and accessibility
 
 The grid body is a single tab stop: Tab enters the grid, and the active cell
