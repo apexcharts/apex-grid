@@ -22,7 +22,10 @@ const SSRM_META = Symbol('apex-grid-enterprise.ssrm');
 
 /** Metadata stamped on rows flattened by the server-side row model. */
 export interface ServerRowMeta {
-  /** Group value path from the root to this row. */
+  /**
+   * Group value path from the root to this row, the `groupKeys` its children
+   * are fetched with. A blank group value (`null`, `undefined` or `''`) is `''`.
+   */
   readonly path: string[];
   /** 0-based group depth. */
   readonly depth: number;
@@ -30,7 +33,10 @@ export interface ServerRowMeta {
   readonly group: boolean;
   /** Whether an expandable group is currently expanded. */
   readonly expanded: boolean;
-  /** Display label (the grouped value) shown in the auto group column. */
+  /**
+   * Display label (the grouped value) shown in the auto group column, and the
+   * value the column exports. A blank value reads "(blank)" (localized).
+   */
   readonly label: string;
   /** True for a not-yet-loaded placeholder row under intra-group pagination. */
   readonly placeholder?: boolean;
@@ -132,7 +138,10 @@ export interface ServerSideRowModelConfig<T extends object> {
    * of a group's children in one request (the default).
    */
   blockSize?: number;
-  /** Text for the auto group column header. Default: the joined group fields. */
+  /**
+   * Text for the auto group column header. Default: the grouped columns'
+   * `headerText` (or their keys, capitalized), joined with " / ".
+   */
   groupHeaderText?: string;
 }
 
@@ -145,6 +154,9 @@ export interface ServerRowsLoadedDetail {
 /** The minimal grid surface the SSRM manager drives. */
 export interface ServerSideHost<T extends object> {
   data: T[];
+  /** The rows the body renders (the page slice, pinned rows excluded). */
+  readonly pageItems: ReadonlyArray<T>;
+  readonly updateComplete: Promise<boolean>;
   columns: ColumnConfiguration<T>[];
   columnGroups?: ColumnGroupConfiguration[];
   quickFilter?: string;
@@ -160,9 +172,27 @@ function capitalize(value: string): string {
   return value ? value[0].toUpperCase() + value.slice(1) : value;
 }
 
-function stamp<T extends object>(row: T, meta: ServerRowMeta): void {
-  Object.defineProperty(row, SSRM_META, { value: meta, enumerable: false, configurable: true });
+/**
+ * Stamps the meta, plus the auto group column's value (the label for a group,
+ * the parent group labels for a leaf) under {@link SSRM_GROUP_KEY}, so export
+ * and copy read it like any other cell. Both are non-enumerable.
+ */
+function stamp<T extends object>(row: T, meta: ServerRowMeta, groupValue: string): void {
+  Object.defineProperties(row, {
+    [SSRM_META]: { value: meta, configurable: true },
+    [SSRM_GROUP_KEY]: { value: groupValue, configurable: true },
+  });
 }
+
+/**
+ * The level map key of a group path. A JSON array, so no group value can
+ * collide with another path: not a blank value with the top level (`[]` vs
+ * `[""]`) and not a value holding a `/` with a nested path.
+ */
+const keyOf = (path: readonly string[]): string => JSON.stringify(path);
+
+/** Level key of the top level. */
+const TOP = keyOf([]);
 
 /** One paginated level's loaded state (children of a single parent path). */
 interface SsrmLevel<T extends object> {
@@ -170,16 +200,19 @@ interface SsrmLevel<T extends object> {
   readonly blocks: Map<number, T[]>;
   /** Blocks currently in flight. */
   readonly loading: Set<number>;
+  /** One shared placeholder row per not-yet-loaded block, created on first use. */
+  readonly placeholders: Map<number, T>;
   /** Exact child count once known (from `rowCount` or a short block). */
   total: number | undefined;
 }
 
 function emptyLevel<T extends object>(): SsrmLevel<T> {
-  return { blocks: new Map(), loading: new Set(), total: undefined };
+  return { blocks: new Map(), loading: new Set(), placeholders: new Map(), total: undefined };
 }
 
-/** Which level + block a placeholder flat-row belongs to (for range-driven loading). */
-interface SsrmSlot {
+/** Which level + block a placeholder row stands for (for range-driven loading). */
+interface SsrmSlot<T extends object> {
+  readonly level: SsrmLevel<T>;
   readonly levelKey: string;
   readonly path: string[];
   readonly block: number;
@@ -218,8 +251,8 @@ export class ServerSideRowModelManager<T extends object> {
    */
   readonly #levels = new Map<string, SsrmLevel<T>>();
   readonly #expanded = new Set<string>();
-  /** Placeholder-slot map for the last flatten: flat row index → its level + block. */
-  #slots: Array<SsrmSlot | null> = [];
+  /** The level + block each placeholder row stands for. */
+  #slots = new WeakMap<object, SsrmSlot<T>>();
   /** Generation token; bumped on reset so stale in-flight fetches are dropped. */
   #seq = 0;
   #lastKey = '';
@@ -303,9 +336,9 @@ export class ServerSideRowModelManager<T extends object> {
     this.#levels.clear();
     this.#expanded.clear();
     this.#pivotColsInstalled = false;
-    this.#levels.set('', emptyLevel<T>());
+    this.#levels.set(TOP, emptyLevel<T>());
     this.#rebuild();
-    void this.#loadBlock('', [], 0);
+    void this.#loadBlock(TOP, [], 0);
   }
 
   /** Whether a row is a not-yet-loaded placeholder (e.g. to render a skeleton). */
@@ -315,7 +348,7 @@ export class ServerSideRowModelManager<T extends object> {
 
   /** Expand a group path (loads its first block of children if needed). */
   public expand(path: string[]): void {
-    const key = path.join('/');
+    const key = keyOf(path);
     if (this.#expanded.has(key)) return;
     this.#expanded.add(key);
     if (!this.#levels.has(key)) {
@@ -327,41 +360,49 @@ export class ServerSideRowModelManager<T extends object> {
 
   /** Collapse a group path. */
   public collapse(path: string[]): void {
-    if (this.#expanded.delete(path.join('/'))) this.#rebuild();
+    if (this.#expanded.delete(keyOf(path))) this.#rebuild();
   }
 
   /** Toggle a group path. */
   public toggle(path: string[]): void {
-    if (this.#expanded.has(path.join('/'))) this.collapse(path);
+    if (this.isExpanded(path)) this.collapse(path);
     else this.expand(path);
   }
 
   /** Whether a path is currently expanded. */
   public isExpanded(path: string[]): boolean {
-    return this.#expanded.has(path.join('/'));
+    return this.#expanded.has(keyOf(path));
   }
 
   // --- internals -----------------------------------------------------------
 
   #buildColumns(): ColumnConfiguration<T>[] {
-    const groupCol = this.#groupColumn();
     // Pivot mode: value columns come from the server's pivotResultFields (installed
     // on the top-level response), so start with just the group column.
-    if (this.#pivotMode()) return [groupCol];
+    if (this.#pivotMode()) return this.#groupColumns();
     // Grouping mode: show the value/detail columns; grouped fields fold into the group column.
     const grouped = new Set(this.config.rowGroupCols);
     const rest = (this.#savedColumns ?? []).filter((c) => !grouped.has(String(c.key)));
-    return [groupCol, ...rest];
+    return [...this.#groupColumns(), ...rest];
   }
 
-  /** Build the group column (also used when prepending to server-provided pivot columns). */
-  #groupColumn(): ColumnConfiguration<T> {
-    return {
-      key: SSRM_GROUP_KEY,
-      headerText:
-        this.config.groupHeaderText ?? this.config.rowGroupCols.map(capitalize).join(' / '),
-      cellTemplate: (ctx: ApexCellContext<T>) => this.#groupCellTemplate(ctx),
-    } as unknown as ColumnConfiguration<T>;
+  /**
+   * The auto group column, or none for a flat request (no `rowGroupCols`).
+   * Also used when prepending to server-provided pivot columns.
+   */
+  #groupColumns(): ColumnConfiguration<T>[] {
+    const { rowGroupCols, groupHeaderText } = this.config;
+    if (!rowGroupCols.length) return [];
+    const header = (key: string) =>
+      this.#savedColumns?.find((column) => String(column.key) === key)?.headerText ??
+      capitalize(key);
+    return [
+      {
+        key: SSRM_GROUP_KEY,
+        headerText: groupHeaderText ?? rowGroupCols.map(header).join(' / '),
+        cellTemplate: (ctx: ApexCellContext<T>) => this.#groupCellTemplate(ctx),
+      } as unknown as ColumnConfiguration<T>,
+    ];
   }
 
   #stateKey(): string {
@@ -453,14 +494,14 @@ export class ServerSideRowModelManager<T extends object> {
     else if (result.rows.length < bs) level.total = block * bs + result.rows.length;
     // Pivot mode: install the server-generated value columns (once, from the top level).
     if (
-      levelKey === '' &&
+      levelKey === TOP &&
       this.#pivotMode() &&
       !this.#pivotColsInstalled &&
       result.pivotResultFields
     ) {
       this.#pivotColsInstalled = true;
       this.host.columns = [
-        this.#groupColumn(),
+        ...this.#groupColumns(),
         ...result.pivotResultFields.map(
           (field) =>
             ({
@@ -479,83 +520,110 @@ export class ServerSideRowModelManager<T extends object> {
   /** Flatten the expanded tree into `grid.data`, stamping group meta + placeholders. */
   #flatten(): T[] {
     const out: T[] = [];
-    const slots: Array<SsrmSlot | null> = [];
     const levels = this.config.rowGroupCols.length;
-    const walk = (levelKey: string, parentPath: string[], depth: number): void => {
+    const blank = this.host.localize('grouping.blank');
+    const walk = (
+      levelKey: string,
+      parentPath: string[],
+      parentLabel: string,
+      depth: number
+    ): void => {
       const level = this.#levels.get(levelKey);
       if (!level) return;
       const isGroupLevel = depth < levels;
       const count = this.#levelCount(level);
+      // Expansion keys already shown at this level: a server that returns
+      // both a NULL and an '' group (or any value twice) gets one group,
+      // since both are fetched with the same groupKeys.
+      const shown = new Set<string>();
       for (let index = 0; index < count; index += 1) {
         const row = this.#rowAt(level, index);
         if (row === undefined) {
-          out.push(this.#placeholderRow(depth, parentPath));
-          slots.push({ levelKey, path: parentPath, block: this.#blockOf(index) });
+          out.push(this.#placeholderRow(level, levelKey, parentPath, depth, this.#blockOf(index)));
           continue;
         }
-        slots.push(null);
         if (isGroupLevel) {
+          // null, undefined and '' are one blank group, fetched with the key ''.
           const value = String(
             (row as Record<string, unknown>)[this.config.rowGroupCols[depth]] ?? ''
           );
+          const label = value === '' ? blank : value;
           const path = [...parentPath, value];
-          const key = path.join('/');
+          const key = keyOf(path);
+          if (shown.has(key)) continue;
+          shown.add(key);
           const expanded = this.#expanded.has(key);
-          stamp(row, { path, depth, group: true, expanded, label: value });
+          stamp(row, { path, depth, group: true, expanded, label }, label);
           out.push(row);
-          if (expanded) walk(key, path, depth + 1);
+          if (expanded) {
+            walk(key, path, parentLabel ? `${parentLabel} / ${label}` : label, depth + 1);
+          }
         } else {
-          stamp(row, { path: parentPath, depth, group: false, expanded: false, label: '' });
+          stamp(
+            row,
+            { path: parentPath, depth, group: false, expanded: false, label: '' },
+            parentLabel
+          );
           out.push(row);
         }
       }
     };
-    walk('', [], 0);
-    this.#slots = slots;
+    walk(TOP, [], '', 0);
     return out;
   }
 
-  /** A fresh placeholder row carrying just enough meta to indent + describe it. */
-  #placeholderRow(depth: number, parentPath: string[]): T {
-    const row = {} as T;
-    stamp(row, {
-      path: parentPath,
-      depth,
-      group: false,
-      expanded: false,
-      label: '',
-      placeholder: true,
-    });
+  /**
+   * The placeholder row for a not-yet-loaded block of a level: one shared row
+   * per block (every unloaded child of it has the same meta), so a rebuild
+   * allocates nothing for unloaded rows and keeps their identity.
+   */
+  #placeholderRow(
+    level: SsrmLevel<T>,
+    levelKey: string,
+    path: string[],
+    depth: number,
+    block: number
+  ): T {
+    let row = level.placeholders.get(block);
+    if (!row) {
+      row = {} as T;
+      const meta = { path, depth, group: false, expanded: false, label: '', placeholder: true };
+      stamp(row, meta, '');
+      level.placeholders.set(block, row);
+      this.#slots.set(row, { level, levelKey, path, block });
+    }
     return row;
   }
 
   #onRange = (event: Event): void => {
     const range = event as Event & { first?: number; last?: number };
     this.#range = { first: range.first ?? 0, last: range.last ?? 0 };
-    this.#loadRange(this.#range.first, this.#range.last);
+    this.#loadRange();
   };
 
-  /** Load the blocks backing any placeholder slots in the visible range. */
-  #loadRange(first: number, last: number): void {
+  /**
+   * Load the blocks behind the placeholders in the visible range. The range
+   * indexes the rendered rows (`pageItems`: a page slice without pinned rows),
+   * not `data`, so each placeholder row says which level and block it is.
+   */
+  #loadRange(): void {
     if (this.#blockSize === undefined) return;
-    const lo = Math.max(0, first);
-    const hi = Math.min(this.#slots.length - 1, last);
-    const seen = new Set<string>();
-    for (let i = lo; i <= hi; i += 1) {
-      const slot = this.#slots[i];
-      if (!slot) continue;
-      const id = `${slot.levelKey}#${slot.block}`;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      void this.#loadBlock(slot.levelKey, slot.path, slot.block);
+    const { first, last } = this.#range;
+    for (const row of this.host.pageItems.slice(Math.max(0, first), last + 1)) {
+      const slot = this.#slots.get(row);
+      // A placeholder of a level a reset replaced is not this generation's.
+      if (slot && this.#levels.get(slot.levelKey) === slot.level) {
+        void this.#loadBlock(slot.levelKey, slot.path, slot.block);
+      }
     }
   }
 
   #rebuild(): void {
     const data = this.#flatten();
     this.host.data = data;
-    // A rebuild may reveal fresh placeholders in the current window; load them.
-    this.#loadRange(this.#range.first, this.#range.last);
+    // A rebuild may reveal fresh placeholders in the current window; load them
+    // once the grid has rendered the new rows.
+    if (this.#blockSize !== undefined) void this.host.updateComplete.then(() => this.#loadRange());
     this.host.dispatchEvent(
       new CustomEvent<ServerRowsLoadedDetail>(SERVER_ROWS_LOADED_EVENT, {
         detail: { rows: data.length, loadedGroups: this.#levels.size - 1 },
