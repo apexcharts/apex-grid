@@ -612,3 +612,108 @@ describe('ApexGridChart cross-filter', () => {
     expect(grid.filterExpressions.some((f) => f.key === 'name')).to.equal(false);
   });
 });
+
+describe('ApexGridChart Format and Data controls', () => {
+  type Wide = { name: string; q1: number; q2: number };
+  const wideColumns: ColumnConfiguration<Wide>[] = [
+    { key: 'name', type: 'string', headerText: 'Name' },
+    { key: 'q1', type: 'number', headerText: 'Q1' },
+    { key: 'q2', type: 'number', headerText: 'Q2' },
+  ];
+  const wideData: Wide[] = [
+    { name: 'A', q1: 10, q2: 5 },
+    { name: 'B', q1: 20, q2: 9 },
+    { name: 'C', q1: 30, q2: 12 },
+  ];
+  type Drawn = { w: { globals: { colors: string[] }; config: Record<string, any> } };
+  const drawn = (panel: ApexGridChart) => panel.getChart() as unknown as Drawn;
+
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+    ApexGridChart.register();
+  });
+  afterEach(() => fixtureCleanup());
+
+  async function mountWide(rows: unknown[] = wideData, cols: unknown[] = wideColumns) {
+    const grid = await fixture<ApexGridEnterprise<Wide>>(
+      html`<apex-grid-enterprise .data=${rows.map((r) => ({ ...(r as object) }))} .columns=${cols}></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    await grid.updateComplete;
+    await nextFrame();
+    return grid;
+  }
+
+  async function mountChart(grid: unknown, type = 'column', extra: Partial<ApexGridChart> = {}) {
+    const panel = await fixture<ApexGridChart>(
+      html`<apex-grid-chart mode="inline" source="view" type=${type} .grid=${grid as never}></apex-grid-chart>`
+    );
+    Object.assign(panel, extra);
+    await waitUntil(() => panel.getChart() != null, 'chart never rendered');
+    await panel.refresh();
+    await panel.updateComplete;
+    return panel;
+  }
+
+  const swatches = (panel: ApexGridChart) => [
+    ...panel.querySelectorAll<HTMLInputElement>('[part="format-swatch"] input'),
+  ];
+
+  it('picking one series color keeps the colors the other series were drawn with', async () => {
+    const panel = await mountChart(await mountWide());
+    const before = [...drawn(panel).w.globals.colors];
+    expect(before[0]).to.match(/^#[0-9a-f]{6}$/i);
+    panel.querySelector<HTMLButtonElement>('[part="format-button"]')!.click();
+    await panel.updateComplete;
+    // The swatches show the drawn colors, not a gray or black placeholder.
+    expect(swatches(panel).map((s) => s.value.toLowerCase())).to.eql(
+      before.slice(0, 2).map((c) => c.toLowerCase())
+    );
+    const second = swatches(panel)[1];
+    second.value = '#ff0000';
+    second.dispatchEvent(new Event('input'));
+    await panel.updateComplete;
+    await panel.refresh();
+    // Only the pick is stored: the other slot stays blank and keeps following the theme.
+    expect(panel.format.colors).to.eql(['', '#ff0000']);
+    expect(drawn(panel).w.globals.colors.slice(0, 2)).to.eql([before[0], '#ff0000']);
+    await panel.updateComplete;
+    expect(swatches(panel)[0].value.toLowerCase()).to.equal(before[0].toLowerCase());
+  });
+
+  it('a restored config with blank color slots draws them with the theme palette', async () => {
+    const panel = await mountChart(await mountWide());
+    const before = [...drawn(panel).w.globals.colors];
+    panel.restore({ format: { colors: ['', '#ff0000'] } });
+    await panel.updateComplete;
+    await panel.refresh();
+    expect(drawn(panel).w.globals.colors[0]).to.equal(before[0]);
+  });
+
+  it('unpicked color slots follow a theme change', async () => {
+    const grid = await mountWide();
+    const panel = await mountChart(grid);
+    panel.restore({ format: { colors: ['', '#ff0000'] } });
+    await panel.refresh();
+    (grid as unknown as HTMLElement).style.setProperty('--ag-brand', '#123456');
+    panel.restore({ type: 'line', format: { colors: ['', '#ff0000'] } });
+    await panel.refresh();
+    expect(drawn(panel).w.globals.colors.slice(0, 2)).to.eql(['#123456', '#ff0000']);
+  });
+
+  it('author apexOptions.colors fill the slots a pick leaves', async () => {
+    const panel = await mountChart(await mountWide(), 'column', {
+      apexOptions: { colors: ['#112233', '#445566'] },
+    });
+    await panel.refresh();
+    panel.querySelector<HTMLButtonElement>('[part="format-button"]')!.click();
+    await panel.updateComplete;
+    const second = swatches(panel)[1];
+    second.value = '#ff0000';
+    second.dispatchEvent(new Event('input'));
+    await panel.refresh();
+    expect(drawn(panel).w.globals.colors.slice(0, 2)).to.eql(['#112233', '#ff0000']);
+    expect(swatches(panel)[0].value).to.equal('#112233');
+  });
+});

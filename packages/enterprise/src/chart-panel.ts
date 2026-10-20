@@ -103,6 +103,19 @@ function isDark(color: string): boolean {
   return 0.299 * r + 0.587 * g + 0.114 * b < 128;
 }
 
+let colorCtx: CanvasRenderingContext2D | null | undefined;
+/**
+ * A CSS color as the `#rrggbb` a color input accepts (it shows black for any other syntax). The
+ * canvas normalises an opaque color to hex; one it cannot parse reads as gray.
+ */
+function toHex(color: unknown): string {
+  colorCtx ??= document.createElement('canvas').getContext('2d');
+  if (!colorCtx) return '#888888';
+  colorCtx.fillStyle = '#888888';
+  colorCtx.fillStyle = String(color);
+  return colorCtx.fillStyle;
+}
+
 /**
  * Built-in chart panel for `<apex-grid-enterprise>`. Mount it beside (or below) a grid and set its
  * `grid` property: it renders the grid's current chart model (cell selection, or grouping/pivot
@@ -616,9 +629,29 @@ export class ApexGridChart extends LitElement {
     this.#patchFormat({ axisTitles: empty ? undefined : next });
   }
 
+  /**
+   * The color of every series: a picked color, else the author's `apexOptions.colors`, else the
+   * theme palette, both read now so a theme change is followed. Only a forced light/dark theme
+   * with no author colors has no palette here: that slot falls back to the drawn color, then gray.
+   * Never blank (ApexCharts draws an empty color as white). With `stored`, a slot the author or
+   * theme colors is left blank instead, so the saved list pins only real picks.
+   */
+  #seriesColors(stored = false): string[] {
+    const picked = this.format.colors ?? [];
+    const author = (this.apexOptions as { colors?: unknown[] } | undefined)?.colors ?? [];
+    const palette = (this.#themeOptions() as { colors?: string[] }).colors ?? [];
+    const drawn = (this.#chart as { w?: { globals?: { colors?: string[] } } } | null)?.w?.globals
+      ?.colors;
+    return Array.from({ length: Math.max(this.seriesNames.length, picked.length) }, (_, i) => {
+      const own = author[i % author.length]; // ApexCharts repeats a short list; a function is skipped
+      const base = (typeof own === 'string' && own) || palette[i % palette.length];
+      return picked[i] || (base ? (stored ? '' : base) : drawn?.[i] || '#888888');
+    });
+  }
+
   /** Update one series color (by index) within {@link format.colors}. */
   #setSeriesColor(index: number, color: string): void {
-    const colors = [...(this.format.colors ?? this.seriesNames.map(() => ''))];
+    const colors = this.#seriesColors(true);
     colors[index] = color;
     this.#patchFormat({ colors });
   }
@@ -688,6 +721,8 @@ export class ApexGridChart extends LitElement {
       this.#chart = await renderApexChart(canvas, renderModel, options);
     }
     this.#renderedType = resolvedType;
+    // Open swatches show the drawn colors, which exist only now.
+    if (this.formatOpen) this.requestUpdate();
     this.#ensureResizeObserver();
     this.dispatchEvent(
       new CustomEvent('apex-chart-created', {
@@ -885,6 +920,8 @@ export class ApexGridChart extends LitElement {
     // Format popover overlay, layered last so the user's interactive choices win over author
     // `apexOptions` — but only for the keys they actually set (see formatToApexOptions).
     const overlay = formatToApexOptions(this.format, this.type) as Record<string, unknown>;
+    // A saved config may hold blank color slots (ApexCharts draws them white): fill them.
+    if (overlay.colors) overlay.colors = this.#seriesColors();
     const userRec = user as Record<string, unknown>;
     const merged: Record<string, unknown> = { ...theme, ...events, ...user, ...overlay };
     merged.chart = {
@@ -1793,6 +1830,8 @@ export class ApexGridChart extends LitElement {
 
   protected override render() {
     const empty = !this.hasModel;
+    // Swatches are only read while the Format popover is open (opening it re-renders).
+    const colors = this.formatOpen ? this.#seriesColors() : [];
     return html`${this.#renderStyle()}
       <div
         part="panel"
@@ -1910,7 +1949,7 @@ export class ApexGridChart extends LitElement {
                         (name, i) => html`<label part="format-swatch">
                           <input
                             type="color"
-                            .value=${this.format.colors?.[i] ?? '#888888'}
+                            .value=${toHex(colors[i])}
                             @input=${(e: Event) =>
                               this.#setSeriesColor(i, (e.target as HTMLInputElement).value)}
                           />
