@@ -509,4 +509,126 @@ describe('Context menu: targets, events and entry points (ctx-menu batch)', () =
     await waitFor(() => pinned.length > 1);
     expect(pinned).to.deep.equal(['end', null]);
   });
+
+  function kebab(grid: ApexGridEnterprise<Row>, key: keyof Row) {
+    return headerElement(grid, key)!.shadowRoot!.querySelector<HTMLButtonElement>(
+      '[part~="menu-btn"]'
+    )!;
+  }
+
+  function pressKebab(button: HTMLElement) {
+    button.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+    button.click();
+  }
+
+  it('the header kebab opens the shared menu, toggles it closed and tracks aria-expanded', async () => {
+    const grid = await mount();
+    const button = kebab(grid, 'value');
+    expect(button, 'kebab rendered').to.exist;
+    pressKebab(button);
+    await grid.updateComplete;
+    expect(menu(), 'shared menu open').to.exist;
+    expect(item('Pin to start')).to.exist;
+    expect(headerElement(grid, 'value')!.shadowRoot!.querySelector('[part="col-menu"]')).to.equal(
+      null
+    );
+    expect(button.getAttribute('aria-expanded')).to.equal('true');
+
+    pressKebab(button);
+    await grid.updateComplete;
+    expect(menu(), 'second press closes').to.equal(null);
+    expect(button.getAttribute('aria-expanded')).to.equal('false');
+
+    pressKebab(button);
+    expect(menu(), 'third press reopens').to.exist;
+    menu()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(button.getAttribute('aria-expanded')).to.equal('false');
+  });
+
+  it('Shift+F10 on a focused cell opens the menu; running an item restores focus', async () => {
+    const grid = await mount();
+    const cell = cellElement(grid, 0, 'name')!;
+    cell.focus();
+    cell.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'F10',
+        shiftKey: true,
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+      })
+    );
+    expect(menu()).to.exist;
+    let ran = false;
+    grid.contextMenu = { items: [{ id: 'r', label: 'Run me', run: () => (ran = true) }] };
+    await grid.updateComplete;
+    for (const m of document.querySelectorAll('.apex-grid-context-menu')) m.remove();
+    cell.focus();
+    cell.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ContextMenu', bubbles: true, composed: true })
+    );
+    item('Run me')!.click();
+    expect(ran).to.equal(true);
+    let active: Element | null = document.activeElement;
+    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+    expect(active).to.equal(cell);
+  });
+
+  it('ArrowRight opens and ArrowLeft closes the Chart range submenu', async () => {
+    const grid = await mount();
+    grid.selectRange({ row: 0, column: 'name' }, { row: 2, column: 'value' });
+    rightClick(cellElement(grid, 0, 'value')!);
+    const parent = item('Chart range')!;
+    parent.focus();
+    menu()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(document.querySelectorAll('.apex-grid-context-menu').length).to.equal(2);
+    const submenu = document.querySelectorAll('.apex-grid-context-menu')[1];
+    submenu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    expect(document.querySelectorAll('.apex-grid-context-menu').length).to.equal(1);
+    expect(document.activeElement).to.equal(parent);
+  });
+
+  it('leaves the browser menu alone inside a cell editor', async () => {
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise
+        .data=${data.map((r) => ({ ...r }))}
+        .columns=${columns.map((c) => ({ ...c, editable: true }))}
+        .editing=${{ enabled: true }}
+      ></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    await layoutComplete(grid);
+    expect(await grid.editCell(0, 'name')).to.equal(true);
+    const cell = cellElement(grid, 0, 'name')!;
+    const editorInput = () => deepFind(cell.shadowRoot!, (el) => el.localName === 'input');
+    await waitFor(() => !!editorInput());
+    const input = editorInput();
+    expect(input, 'editor input').to.exist;
+    const event = rightClick(input!);
+    expect(event.defaultPrevented).to.equal(false);
+    expect(menu()).to.equal(null);
+  });
+
+  it('keeps the grid menu on a checkbox a cell template renders', async () => {
+    const templated: ColumnConfiguration<Row>[] = [
+      { ...columns[0], cellTemplate: () => html`<input type="checkbox" />` },
+      columns[1],
+    ];
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise
+        .data=${data.map((r) => ({ ...r }))}
+        .columns=${templated}
+      ></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    await layoutComplete(grid);
+    const root = (grid as unknown as { shadowRoot: ShadowRoot }).shadowRoot;
+    const checkbox = deepFind(
+      root,
+      (el) => el.localName === 'input' && el.getAttribute('type') === 'checkbox'
+    );
+    expect(checkbox, 'template checkbox').to.exist;
+    expect(rightClick(checkbox!).defaultPrevented).to.equal(true);
+    expect(menu()).to.exist;
+  });
 });

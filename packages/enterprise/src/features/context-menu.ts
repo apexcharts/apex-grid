@@ -128,6 +128,8 @@ export class ContextMenuController<T extends object>
   #target: ContextMenuTarget<T> | null = null;
   /** What had focus when the root menu opened, so a keyboard close can put focus back. */
   #restoreFocus: HTMLElement | null = null;
+  /** The header kebab the open menu was opened from, so a second press closes it. */
+  #anchor: HTMLElement | null = null;
 
   constructor(
     private host: GridHost<T>,
@@ -193,8 +195,16 @@ export class ContextMenuController<T extends object>
     const anchor = event.detail?.anchor;
     if (!this.enabled || !column || !anchor || !this.#owns(event.composedPath())) return;
     event.preventDefault();
+    // A second press on the kebab that opened the menu closes it.
+    if (this.#anchor === anchor) {
+      this.#close();
+      return;
+    }
     const rect = anchor.getBoundingClientRect();
-    this.#openAt({ kind: 'header', column }, rect.left, rect.bottom);
+    if (this.#openAt({ kind: 'header', column }, rect.left, rect.bottom)) {
+      this.#anchor = anchor;
+      anchor.setAttribute('aria-expanded', 'true');
+    }
   };
 
   /**
@@ -205,9 +215,21 @@ export class ContextMenuController<T extends object>
     return path.find((node) => node instanceof ApexGrid) === this.host;
   }
 
-  /** Resolve the cell/header (and its element) from an event's composed path. */
+  /**
+   * Resolve the cell/header (and its element) from an event's composed path.
+   * A text-entry control (a cell editor) keeps the browser's own menu for
+   * paste and spellcheck; checkboxes, selects and other controls do not.
+   */
   #resolve(event: Event): { target: ContextMenuTarget<T>; element: HTMLElement } | null {
     const path = event.composedPath();
+    const origin = path[0] as HTMLInputElement;
+    if (
+      origin.isContentEditable ||
+      origin.localName === 'textarea' ||
+      (origin.localName === 'input' &&
+        !/^(checkbox|radio|button|submit|reset|range|color|file|image)$/.test(origin.type))
+    )
+      return null;
     if (!this.#owns(path)) return null;
     for (const node of path) {
       const { localName, column, row } = node as HTMLElement & {
@@ -322,7 +344,8 @@ export class ContextMenuController<T extends object>
 
   // --- menu rendering ------------------------------------------------------
 
-  #openAt(target: ContextMenuTarget<T>, x: number, y: number): void {
+  /** Open the root menu for `target`; `false` when the opening event was cancelled or empty. */
+  #openAt(target: ContextMenuTarget<T>, x: number, y: number): boolean {
     ensureStyle();
     this.#close();
     this.#target = target;
@@ -337,7 +360,7 @@ export class ContextMenuController<T extends object>
     (this.host as unknown as HTMLElement).dispatchEvent(opening);
     if (opening.defaultPrevented || detail.items.length === 0) {
       this.#target = null;
-      return;
+      return false;
     }
 
     // Remember what had focus (deep, across shadow roots) before the menu takes it,
@@ -352,6 +375,7 @@ export class ContextMenuController<T extends object>
     menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - rect.height - 4))}px`;
     this.#focusFirst(menu);
     document.addEventListener('pointerdown', this.#onOutside, true);
+    return true;
   }
 
   #spawnMenu(items: ContextMenuItem<T>[]): MenuEl<T> {
@@ -470,7 +494,10 @@ export class ContextMenuController<T extends object>
   };
 
   #onOutside = (event: Event): void => {
-    if (this.#menus.length && !this.#menus.some((m) => event.composedPath().includes(m))) {
+    const path = event.composedPath();
+    // A press on the opening kebab is left to its click, which closes the menu.
+    if (this.#anchor && path.includes(this.#anchor)) return;
+    if (this.#menus.length && !this.#menus.some((m) => path.includes(m))) {
       this.#close();
     }
   };
@@ -509,6 +536,8 @@ export class ContextMenuController<T extends object>
     this.#target = null;
     // Deliberately not restored on outside-pointerdown: the user clicked elsewhere.
     this.#restoreFocus = null;
+    this.#anchor?.setAttribute('aria-expanded', 'false');
+    this.#anchor = null;
   };
 }
 
