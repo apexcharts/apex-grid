@@ -195,4 +195,43 @@ describe('Header drag: reorder', function () {
     await sendMouse({ type: 'up' });
     expect(keys(grid)).to.deep.equal(['id', 'name', 'active', 'importance']);
   });
+
+  it('a vetoed columnMoving is asked once per target, not on every pointermove', async () => {
+    const grid = await mount(reorderCols());
+    let moving = 0;
+    grid.addEventListener('columnMoving', (e) => {
+      moving++;
+      e.preventDefault();
+    });
+    const pe = (type: string, x: number, y: number) =>
+      new PointerEvent(type, {
+        bubbles: true,
+        composed: true,
+        pointerId: 1,
+        button: 0,
+        clientX: x,
+        clientY: y,
+      });
+    const hs = headers(grid);
+    const src = hs.get('name')!;
+    const s = src.getBoundingClientRect();
+    const t = hs.get('active')!.getBoundingClientRect();
+    src.dispatchEvent(pe('pointerdown', s.left + 10, s.top + 8));
+    for (let i = 0; i < 10; i++) {
+      src.dispatchEvent(pe('pointermove', t.left + t.width * 0.75 + (i % 2), t.top + 8));
+      await grid.updateComplete;
+      await nextFrame();
+    }
+    expect(moving, 'one request for the vetoed target').to.equal(1);
+
+    // Leaving the target and coming back asks again.
+    src.dispatchEvent(pe('pointermove', s.left + 10, s.top + 8));
+    await nextFrame();
+    src.dispatchEvent(pe('pointermove', t.left + t.width * 0.75, t.top + 8));
+    await grid.updateComplete;
+    await nextFrame();
+    src.dispatchEvent(pe('pointerup', t.left + t.width * 0.75, t.top + 8));
+    expect(moving, 'a fresh crossing asks again').to.equal(2);
+    expect(keys(grid)).to.deep.equal(['id', 'name', 'active', 'importance']);
+  });
 });

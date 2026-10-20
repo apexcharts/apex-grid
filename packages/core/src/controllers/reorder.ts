@@ -48,6 +48,13 @@ export class ReorderController<T extends object> implements ReactiveController {
   /** Re-entrancy guard so a slow `moveColumn` can't trigger a second swap. */
   #swapping = false;
 
+  /**
+   * The swap (`targetKey:position`) a `columnMoving` listener last vetoed. It
+   * is not asked again while the cursor stays past that target's midpoint,
+   * only once the cursor leaves and crosses it afresh.
+   */
+  #vetoed = '';
+
   constructor(protected host: GridHost<T>) {
     this.host.addController(this);
   }
@@ -130,55 +137,28 @@ export class ReorderController<T extends object> implements ReactiveController {
   public end(): void {
     if (!this.state) return;
     this.state = null;
+    this.#vetoed = '';
     this.host.requestUpdate();
   }
 
   async #checkSwap(clientX: number): Promise<void> {
     if (!this.state || this.#swapping) return;
-    const source = this.host.getColumn(this.state.sourceKey);
-    if (!source) return;
-    const headerRow = this.headerRow;
-    if (!headerRow?.headers) return;
-
-    // Find the visible header whose box currently contains the cursor X.
-    const target = headerRow.headers.find((h) => {
-      const rect = h.getBoundingClientRect();
-      return clientX >= rect.left && clientX < rect.right;
-    });
-    if (!target || target.column.key === source.key) return;
-    if (!this.canDrop(source, target.column)) return;
-
-    // Only swap once the cursor crosses the target's midpoint, so we don't
-    // bounce back and forth as soon as the ghost touches the edge.
-    const rect = target.getBoundingClientRect();
-    const midpoint = rect.left + rect.width / 2;
-    const visibleColumns = this.host.columns.filter((c) => !c.hidden);
-    const sourceIdx = visibleColumns.findIndex((c) => c.key === source.key);
-    const targetIdx = visibleColumns.findIndex((c) => c.key === target.column.key);
-    if (sourceIdx === -1 || targetIdx === -1) return;
-
-    // `position` is order-based, so it needs no direction awareness. The
-    // midpoint test does: moving toward a *later* column means moving right in
-    // LTR and left under `dir="rtl"`, so the comparison flips.
-    const rtl = isRTL(this.host as unknown as Element);
-    let position: 'before' | 'after';
-    if (sourceIdx < targetIdx) {
-      // Toward a later column — swap once the cursor crosses the target's centre.
-      if (rtl ? clientX > midpoint : clientX < midpoint) return;
-      position = 'after';
-    } else {
-      // Toward an earlier column — swap once the cursor crosses back over it.
-      if (rtl ? clientX < midpoint : clientX > midpoint) return;
-      position = 'before';
-    }
+    const swap = this.#swapAt(clientX);
+    const key = swap ? `${String(swap.target.key)}:${swap.position}` : '';
+    if (key && key === this.#vetoed) return;
+    this.#vetoed = '';
+    if (!swap) return;
 
     this.#swapping = true;
     try {
       const before = this.#captureCellRects();
-      await this.host.moveColumn(source.key, target.column.key, position);
+      if (!(await this.host.moveColumn(swap.source.key, swap.target.key, swap.position))) {
+        this.#vetoed = key;
+        return;
+      }
       await this.host.updateComplete;
       // Child rows + header row schedule their own updates one microtask
-      // after the grid — wait for them so the cells have actually moved
+      // after the grid, so wait for them until the cells have actually moved
       // before measuring the "Last" rect.
       await awaitChildUpdates([
         this.headerRow as unknown as { updateComplete: Promise<unknown> } | undefined,
@@ -188,6 +168,50 @@ export class ReorderController<T extends object> implements ReactiveController {
     } finally {
       this.#swapping = false;
     }
+  }
+
+  /**
+   * The swap the cursor at `clientX` asks for: the droppable header under it,
+   * once the cursor is past that header's midpoint, or `null`.
+   */
+  #swapAt(clientX: number) {
+    const source = this.state && this.host.getColumn(this.state.sourceKey);
+    if (!source) return null;
+    const headerRow = this.headerRow;
+    if (!headerRow?.headers) return null;
+
+    // Find the visible header whose box currently contains the cursor X.
+    const target = headerRow.headers.find((h) => {
+      const rect = h.getBoundingClientRect();
+      return clientX >= rect.left && clientX < rect.right;
+    });
+    if (!target || target.column.key === source.key) return null;
+    if (!this.canDrop(source, target.column)) return null;
+
+    // Only swap once the cursor crosses the target's midpoint, so we don't
+    // bounce back and forth as soon as the ghost touches the edge.
+    const rect = target.getBoundingClientRect();
+    const midpoint = rect.left + rect.width / 2;
+    const visibleColumns = this.host.columns.filter((c) => !c.hidden);
+    const sourceIdx = visibleColumns.findIndex((c) => c.key === source.key);
+    const targetIdx = visibleColumns.findIndex((c) => c.key === target.column.key);
+    if (sourceIdx === -1 || targetIdx === -1) return null;
+
+    // `position` is order-based, so it needs no direction awareness. The
+    // midpoint test does: moving toward a *later* column means moving right in
+    // LTR and left under `dir="rtl"`, so the comparison flips.
+    const rtl = isRTL(this.host as unknown as Element);
+    let position: 'before' | 'after';
+    if (sourceIdx < targetIdx) {
+      // Toward a later column — swap once the cursor crosses the target's centre.
+      if (rtl ? clientX > midpoint : clientX < midpoint) return null;
+      position = 'after';
+    } else {
+      // Toward an earlier column — swap once the cursor crosses back over it.
+      if (rtl ? clientX < midpoint : clientX > midpoint) return null;
+      position = 'before';
+    }
+    return { source, target: target.column, position } as const;
   }
 
   /**
