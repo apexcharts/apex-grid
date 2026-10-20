@@ -340,6 +340,63 @@ export function recommendChartType(model: ChartModel): ChartType {
 }
 
 /**
+ * ApexCharts writes the legend text and the tooltip title and series label with innerHTML, so cell
+ * text used as a category or series name would be parsed as markup there (an `<img onerror>` would
+ * run). In element content only a `<` followed by an ASCII letter, `!`, `/` or `?` opens markup; any
+ * other `<` is kept as a literal character. Escaping just that `<` keeps markup literal while a label
+ * such as "<18", "a < b" or "R&D" renders, and is announced (the legend also copies this text into
+ * its aria-label), exactly as before. The axes draw SVG text, which is never parsed, so the model's
+ * categories and series names stay raw.
+ */
+const escapeLabel = (value: unknown): string => String(value).replace(/<(?=[A-Za-z!/?])/g, '&lt;');
+
+/** One `tooltip.y` entry (ApexCharts also accepts an array of these, one per series). */
+type TooltipY = Exclude<NonNullable<NonNullable<ApexOptions['tooltip']>['y']>, unknown[]>;
+
+/**
+ * Escaping formatters for those HTML sinks, layered under the caller's own `legend` / `tooltip`
+ * options (a caller formatter still wins). The tooltip title first runs through the formatter
+ * ApexCharts itself would use (its x labels formatter, or the first y labels formatter on a
+ * horizontal bar), so a line chart still maps its point index back to the category name and a
+ * numeric x axis keeps its number formatting. That path also covers a numeric x axis over string
+ * categories, where ApexCharts hands the raw cell text to the title. Skipped only on a datetime x
+ * axis, where ApexCharts formats a parsed date (non-date text throws before any sink is reached).
+ */
+function escapedLabelOptions(user: ApexOptions, model: ChartModel): ApexOptions {
+  const tooltip = user.tooltip ?? {};
+  const { y } = tooltip;
+  // `opts.w` is ApexCharts' untyped chart context.
+  const xTitle = (value: unknown, opts?: any) => {
+    const w = opts?.w;
+    const format = w?.globals?.isBarHorizontal
+      ? w.formatters?.yLabelFormatters?.[0]
+      : w?.formatters?.xLabelFormatter;
+    return escapeLabel(format ? format(value, opts) : value);
+  };
+  const yTitle = (name: string) => (name ? `${escapeLabel(name)}: ` : '');
+  const withTitle = (entry?: TooltipY) => ({
+    ...entry,
+    title: { formatter: yTitle, ...entry?.title },
+  });
+  return {
+    legend: { formatter: escapeLabel, ...user.legend },
+    tooltip: {
+      ...tooltip,
+      x: { ...(user.xaxis?.type === 'datetime' ? {} : { formatter: xTitle }), ...tooltip.x },
+      // A per-series array (one entry per series, for per-series units; a pie indexes it by slice)
+      // gets the same title escape. ApexCharts falls back to the raw name for a series past the end
+      // of the array or on a hole (which map skips), so pad and fill it to cover every series.
+      y: Array.isArray(y)
+        ? Array.from(
+            { length: Math.max(y.length, model.series.length, model.categories.length) },
+            (_, i) => withTitle(y[i])
+          )
+        : withTitle(y),
+    },
+  };
+}
+
+/**
  * Pure transform: a {@link ChartModel} + options into an ApexCharts options object. No ApexCharts
  * import, so it is unit-tested directly. Handles the cartesian vs circular (pie/donut) data shapes
  * and combo per-series types, resolves `type: 'auto'`, and deep-merges `apexOptions` last so the
@@ -362,6 +419,7 @@ export function chartModelToApexOptions(
   // would lose `categories` and fall the category axis back to 1, 2, 3. Merging keeps our keys
   // unless the caller overrides them outright.
   const chart = { type: toApexType(type), height, ...userApex.chart };
+  const escaped = escapedLabelOptions(userApex, model);
 
   if (CIRCULAR.has(type)) {
     // Pie/donut chart the first measure across categories; extra series are ignored.
@@ -370,6 +428,7 @@ export function chartModelToApexOptions(
       labels: model.categories,
       ...title,
       ...userApex,
+      ...escaped,
       chart,
     };
     return apexOptions;
@@ -412,6 +471,7 @@ export function chartModelToApexOptions(
     ...userApex,
     ...(plotOptions ? { plotOptions } : {}),
     ...stroke,
+    ...escaped,
     chart,
     xaxis,
   };
