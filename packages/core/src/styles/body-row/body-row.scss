@@ -77,33 +77,36 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     cursor: grabbing;
 }
 
-// Leading row-number gutter cell (transient spreadsheet coordinate hint).
-// Sticky to the inline-start edge like the other chrome cells.
-[part='row-number-cell'] {
+// Leading chrome cells (row-number gutter, grip, checkbox, chevron) stay put
+// during horizontal scrolling. Each sticks at its own inline-start offset,
+// `--apex-chrome-offset-<track>`, which GridDOMController writes on the grid
+// host from the same track list as the grid template, so they sit side by
+// side instead of on top of each other.
+[part='row-number-cell'],
+[part='reorder-handle-cell'],
+[part='selection-cell'],
+[part='expansion-cell'] {
     display: flex;
     align-items: center;
     justify-content: center;
     position: sticky;
-    inset-inline-start: 0;
     z-index: calc(var(--z-index-base) + 1);
     background: inherit;
+}
+
+// Row-number gutter cell (transient spreadsheet coordinate hint).
+[part='row-number-cell'] {
+    inset-inline-start: var(--apex-chrome-offset-row-number, 0);
     border-inline-end: 1px solid $row-border-color;
     color: var(--ag-text-subtle);
     font-size: var(--ag-fs-cell-secondary);
     font-variant-numeric: tabular-nums;
 }
 
-// Leading grip-handle cell — sticky to the inline-start edge like the other
-// chrome cells, so it stays put during horizontal scrolling. Only rendered in
-// handle mode; pinned rows render an empty (non-grabbable) spacer.
+// Grip-handle cell. Only rendered in handle mode; pinned rows render an empty
+// (non-grabbable) spacer.
 [part='reorder-handle-cell'] {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: sticky;
-    inset-inline-start: 0;
-    z-index: calc(var(--z-index-base) + 1);
-    background: inherit;
+    inset-inline-start: var(--apex-chrome-offset-reorder, 0);
 }
 
 [part='reorder-handle'] {
@@ -141,16 +144,9 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     pointer-events: none;
 }
 
-// Built-in selection (checkbox) cell — always sits at the start of the row,
-// pinned so it stays put during horizontal scrolling.
+// Built-in selection (checkbox) cell.
 [part='selection-cell'] {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: sticky;
-    inset-inline-start: 0;
-    z-index: calc(var(--z-index-base) + 1);
-    background: inherit;
+    inset-inline-start: var(--apex-chrome-offset-selection, 0);
     border-inline-end: 1px solid $row-border-color;
 }
 
@@ -158,18 +154,9 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     @include apex-checkbox();
 }
 
-// Built-in expansion (chevron) cell — sits at the start of the row, pinned
-// to the inline-start edge so it stays visible during horizontal scrolling.
-// When the selection column is also present it nests just to its right; the
-// CSS grid track order is enforced by the column-width generator.
+// Built-in expansion (chevron) cell, just after any gutter, grip or checkbox.
 [part='expansion-cell'] {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: sticky;
-    inset-inline-start: 0;
-    z-index: calc(var(--z-index-base) + 1);
-    background: inherit;
+    inset-inline-start: var(--apex-chrome-offset-expansion, 0);
     border-inline-end: 1px solid $row-border-color;
 }
 

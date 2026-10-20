@@ -3,7 +3,12 @@ import { html, type ReactiveController } from 'lit';
 import { type StyleInfo, styleMap } from 'lit/directives/style-map.js';
 import { SENTINEL_NODE } from '../internal/constants.js';
 import type { ActiveNode, ColumnConfiguration, GridHost, Keys } from '../internal/types.js';
-import { applyColumnWidths, getDisplayColumns } from '../internal/utils.js';
+import {
+  applyColumnWidths,
+  type ChromeTrack,
+  getDisplayColumns,
+  leadingChromeTracks,
+} from '../internal/utils.js';
 import type { StateController } from './state.js';
 
 export class GridDOMController<T extends object> implements ReactiveController {
@@ -16,7 +21,6 @@ export class GridDOMController<T extends object> implements ReactiveController {
 
   #initialSize = () => {
     setTimeout(() => {
-      this.setScrollOffset();
       this.recomputePinOffsets();
       this.recomputeStickyRowOffsets();
     });
@@ -127,8 +131,8 @@ export class GridDOMController<T extends object> implements ReactiveController {
 
   public async hostConnected() {
     this.setGridColumnSizes();
-    // Wait for the initial paint of the virtualizer and recalculate the scrollbar offset
-    // for the next one
+    // Wait for the initial paint of the virtualizer, then measure the pinned
+    // columns and sticky rows it laid out.
     await this.host.updateComplete;
     this.#initialSize();
     if (typeof ResizeObserver !== 'undefined' && !this.#hostWidthObserver) {
@@ -141,7 +145,6 @@ export class GridDOMController<T extends object> implements ReactiveController {
   }
 
   public hostUpdate(): void {
-    this.setScrollOffset();
     this.setGridColumnSizes();
   }
 
@@ -176,20 +179,41 @@ export class GridDOMController<T extends object> implements ReactiveController {
     this.#lastHostWidth = width;
   }
 
-  public setScrollOffset() {
-    // The grid host now owns vertical scrolling, so the historic per-row
-    // padding-inline-end compensation is no longer needed. Keep the CSS var
-    // set to `0` for forward compatibility with consumer themes that read it.
-    this.host.style.setProperty('--scrollbar-offset', '0px');
+  protected setGridColumnSizes() {
+    const chrome = leadingChromeTracks(this.state);
+    this.columnSizes = applyColumnWidths(this.displayColumns, chrome);
+    this.#publishChromeOffsets(chrome);
   }
 
-  protected setGridColumnSizes() {
-    this.columnSizes = applyColumnWidths(this.displayColumns, {
-      showSelectionColumn: this.state.selection.showCheckboxColumn,
-      showExpansionColumn: this.state.expansion.showToggleColumn,
-      showReorderHandle: this.state.rowReorder.showHandleColumn,
-      showRowNumbers: Boolean(this.host.coordinateHints),
-    });
+  /** Total width (CSS px) of the leading chrome tracks; start pins stack after it. */
+  #chromeWidth = 0;
+
+  /**
+   * Writes each leading chrome cell's sticky inline-start offset into
+   * `--apex-chrome-offset-<track>` on the host (the stylesheets of the header,
+   * group header and body rows read it), so the gutter, grip, checkbox and
+   * chevron stay side by side during a horizontal scroll instead of all
+   * sticking at 0. Every track is written, absent ones as 0, so a grid nested
+   * in another grid's row never inherits its parent's offsets. Written on
+   * every update, not deduped, so they come back after something replaces
+   * the host's style attribute (a string style binding, setAttribute).
+   */
+  #publishChromeOffsets(chrome: Array<[ChromeTrack, number]>): void {
+    const offsets: Record<ChromeTrack, number> = {
+      'row-number': 0,
+      reorder: 0,
+      selection: 0,
+      expansion: 0,
+    };
+    let accum = 0;
+    for (const [track, width] of chrome) {
+      offsets[track] = accum;
+      accum += width;
+    }
+    this.#chromeWidth = accum;
+    for (const [track, offset] of Object.entries(offsets)) {
+      this.host.style.setProperty(`--apex-chrome-offset-${track}`, `${offset}px`);
+    }
   }
 
   public getActiveRowStyles(index: number): StyleInfo {
@@ -215,18 +239,26 @@ export class GridDOMController<T extends object> implements ReactiveController {
     if (!headerRow?.headers) return;
 
     const next = new Map<Keys<T>, number>();
-    const headersByKey = new Map<Keys<T>, DOMRect>();
+    const widths = new Map<Keys<T>, number>();
+    // Rects are visual px (after any ancestor transform) but the offsets are
+    // applied as CSS px, so divide out the scale. Rects rather than
+    // offsetWidth keep subpixel widths; offsetWidth is rounded to whole px, so
+    // a difference under 1px is that rounding, not a transform.
+    const host = this.host as HTMLElement;
+    const visual = host.getBoundingClientRect().width;
+    const layout = host.offsetWidth;
+    const scale = visual && layout && Math.abs(visual - layout) >= 1 ? visual / layout : 1;
     for (const header of headerRow.headers) {
-      headersByKey.set(header.column.key as Keys<T>, header.getBoundingClientRect());
+      widths.set(header.column.key as Keys<T>, header.getBoundingClientRect().width / scale);
     }
 
-    let leftAccum = 0;
+    // Start pins stack after the leading chrome cells, which stick first.
+    let leftAccum = this.#chromeWidth;
     for (const column of this.displayColumns) {
       if (column.hidden) continue;
       if (column.pinned !== 'start') break;
       next.set(column.key as Keys<T>, leftAccum);
-      const rect = headersByKey.get(column.key as Keys<T>);
-      leftAccum += rect?.width ?? 0;
+      leftAccum += widths.get(column.key as Keys<T>) ?? 0;
     }
 
     let rightAccum = 0;
@@ -235,8 +267,7 @@ export class GridDOMController<T extends object> implements ReactiveController {
       if (column.hidden) continue;
       if (column.pinned !== 'end') break;
       next.set(column.key as Keys<T>, rightAccum);
-      const rect = headersByKey.get(column.key as Keys<T>);
-      rightAccum += rect?.width ?? 0;
+      rightAccum += widths.get(column.key as Keys<T>) ?? 0;
     }
 
     if (!offsetsEqual(this.pinOffsets, next)) {

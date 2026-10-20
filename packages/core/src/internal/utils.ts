@@ -13,33 +13,42 @@ export const REORDER_HANDLE_COLUMN_WIDTH = 36;
 /** Width of the transient spreadsheet row-number gutter in CSS pixels. */
 export const ROW_NUMBER_COLUMN_WIDTH = 48;
 
+/** A leading chrome track the grid renders ahead of the data columns. */
+export type ChromeTrack = 'row-number' | 'reorder' | 'selection' | 'expansion';
+
+/** The state that decides which chrome tracks are shown (the grid's StateController). */
+interface ChromeSource {
+  selection: { showCheckboxColumn: boolean };
+  expansion: { showToggleColumn: boolean };
+  rowReorder: { showHandleColumn: boolean };
+  host: { coordinateHints?: boolean };
+}
+
+/**
+ * The leading chrome tracks in visual order, each with its width in CSS px:
+ * the spreadsheet row-number gutter first (matches A1), then the grip handle,
+ * the selection checkbox and the expansion chevron. The one list the grid
+ * template, the group header row's grid lines and the chrome cells' sticky
+ * offsets are all derived from, so they cannot drift apart.
+ */
+export function leadingChromeTracks(source?: ChromeSource): Array<[ChromeTrack, number]> {
+  const tracks: Array<[ChromeTrack, number]> = [];
+  if (!source) return tracks;
+  if (source.host.coordinateHints) tracks.push(['row-number', ROW_NUMBER_COLUMN_WIDTH]);
+  if (source.rowReorder.showHandleColumn) tracks.push(['reorder', REORDER_HANDLE_COLUMN_WIDTH]);
+  if (source.selection.showCheckboxColumn) tracks.push(['selection', SELECTION_COLUMN_WIDTH]);
+  if (source.expansion.showToggleColumn) tracks.push(['expansion', EXPANSION_COLUMN_WIDTH]);
+  return tracks;
+}
+
 export function applyColumnWidths<T extends object>(
   columns: Array<ColumnConfiguration<T>>,
-  options: {
-    showSelectionColumn?: boolean;
-    showExpansionColumn?: boolean;
-    showReorderHandle?: boolean;
-    showRowNumbers?: boolean;
-  } = {}
+  chrome: Array<[ChromeTrack, number]> = []
 ): StyleInfo {
-  const tracks = columns
-    .filter((each) => !each.hidden)
-    .map(({ width }) => width ?? 'minmax(136px, 1fr)');
-  if (options.showExpansionColumn) {
-    tracks.unshift(`${EXPANSION_COLUMN_WIDTH}px`);
-  }
-  if (options.showSelectionColumn) {
-    tracks.unshift(`${SELECTION_COLUMN_WIDTH}px`);
-  }
-  // Unshifted last so the grip handle is the leftmost leading column, ahead of
-  // any selection / expansion chrome.
-  if (options.showReorderHandle) {
-    tracks.unshift(`${REORDER_HANDLE_COLUMN_WIDTH}px`);
-  }
-  // The spreadsheet row-number gutter is the very first column (matches A1).
-  if (options.showRowNumbers) {
-    tracks.unshift(`${ROW_NUMBER_COLUMN_WIDTH}px`);
-  }
+  const tracks = [
+    ...chrome.map(([, width]) => `${width}px`),
+    ...columns.filter((each) => !each.hidden).map(({ width }) => width ?? 'minmax(136px, 1fr)'),
+  ];
   return { 'grid-template-columns': tracks.join(' ') };
 }
 

@@ -32,40 +32,37 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     background: $filtering-header-background;
 }
 
-// Corner spacer over the body's row-number gutter (formula coordinate hints).
-[part='row-number-header'] {
+// Header cells over the leading chrome columns, sticky at the same
+// `--apex-chrome-offset-<track>` as the body's chrome cells below them.
+[part='row-number-header'],
+[part='reorder-handle-header'],
+[part='selection-header'],
+[part='expansion-header'] {
     display: flex;
     align-items: center;
     justify-content: center;
     position: sticky;
-    inset-inline-start: 0;
     z-index: calc(var(--z-index-base) + 2);
     background: inherit;
+}
+
+// Corner spacer over the body's row-number gutter (formula coordinate hints).
+[part='row-number-header'] {
+    inset-inline-start: var(--apex-chrome-offset-row-number, 0);
     border-inline-end: 1px solid $header-border-color;
     color: var(--ag-text-subtle);
     font-size: var(--ag-fs-cell-secondary);
 }
 
 // Empty corner spacer aligning the header with the body's leading grip-handle
-// column (row-reorder handle mode). Pinned start so it stays put during
-// horizontal scrolling.
+// column (row-reorder handle mode).
 [part='reorder-handle-header'] {
-    position: sticky;
-    inset-inline-start: 0;
-    z-index: calc(var(--z-index-base) + 2);
-    background: inherit;
+    inset-inline-start: var(--apex-chrome-offset-reorder, 0);
 }
 
-// Built-in selection header cell — pinned start so it stays aligned with the
-// selection checkbox column in the body rows.
+// Built-in selection header cell, over the body's checkbox column.
 [part='selection-header'] {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: sticky;
-    inset-inline-start: 0;
-    z-index: calc(var(--z-index-base) + 2);
-    background: inherit;
+    inset-inline-start: var(--apex-chrome-offset-selection, 0);
     border-inline-end: 1px solid $header-border-color;
 }
 
@@ -77,13 +74,7 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
 // chevron toggle in the body rows. Renders an "expand all" / "collapse all"
 // button when at least one row is expandable.
 [part='expansion-header'] {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: sticky;
-    inset-inline-start: 0;
-    z-index: calc(var(--z-index-base) + 2);
-    background: inherit;
+    inset-inline-start: var(--apex-chrome-offset-expansion, 0);
     border-inline-end: 1px solid $header-border-color;
 }
 
