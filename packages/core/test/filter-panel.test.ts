@@ -421,3 +421,20 @@ describe('Filter panel', () => {
     });
   });
 });
+
+describe('Filter panel chips', () => {
+  beforeEach(async () => await TDD.setUp());
+  afterEach(() => TDD.tearDown());
+
+  it('lists an array term (a set filter selection) as separate values', async () => {
+    TDD.grid.filter({
+      key: 'name',
+      condition: { name: 'set', unary: false, logic: () => true },
+      searchTerm: ['A', 'B', '\u0000blank'],
+    } as never);
+    await TDD.waitForUpdate();
+    await TDD.open('name');
+    const chip = TDD.panel.shadowRoot!.querySelector('[part~="chip-body"] span');
+    expect(chip?.textContent?.trim()).to.equal('A, B, (Blanks)');
+  });
+});

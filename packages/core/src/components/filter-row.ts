@@ -401,6 +401,21 @@ export default class ApexFilterRow<T extends object> extends LitElement {
       : nothing;
   }
 
+  /**
+   * Chip text for a term. An array of values (a set filter selection) reads as a list, and a
+   * token starting with a NUL character (the set filter's blank token) as the blanks label.
+   */
+  #termLabel(term: unknown): unknown {
+    if (!Array.isArray(term)) return term;
+    return term
+      .map((value) =>
+        typeof value === 'string' && value.startsWith('\u0000')
+          ? this.state.localize('setFilter.blanks')
+          : String(value)
+      )
+      .join(', ');
+  }
+
   protected renderExpressionChip(props: ExpressionChipProps<T>) {
     const { name, unary } = props.expression.condition as FilterOperation<T>;
     const { searchTerm: term } = props.expression;
@@ -415,7 +430,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
         @click=${props.onSelect}
       >
         ${renderIcon(name)}
-        <span>${unary ? name : term}</span>
+        <span>${unary ? name : this.#termLabel(term)}</span>
       </button>
       <button
         part="chip-remove"
