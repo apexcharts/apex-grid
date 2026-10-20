@@ -1992,10 +1992,12 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   /**
    * CSV export with the enterprise `formulas` option: when set, `allowFormula`
    * cells export their formula source (`=A1*B1`) rather than the computed value.
-   * Otherwise identical to the community {@link ApexGrid.exportToCSV}.
+   * Formula sources are written as they are, while headers and every other
+   * text cell keep the `escapeFormulas` rule. Otherwise identical to the
+   * community {@link ApexGrid.exportToCSV}.
    */
   public override exportToCSV(options: CSVExportOptions<T> & FormulaExportOptions = {}): string {
-    return super.exportToCSV(this.#withFormulaFormatter(options));
+    return super.exportToCSV(this.#withFormulaFormatter(options, true));
   }
 
   /**
@@ -2003,9 +2005,15 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * `formatter` emits each formula cell's source; cells without a formula fall
    * back to the user's formatter or the default formatting (via
    * {@link resolveExportValue} over the original options). A no-op when the
-   * option is off or no formula module is registered.
+   * option is off or no formula module is registered. With `keep`, each
+   * source is returned as a boxed `String`, which the CSV formula escaping
+   * leaves alone, so sources stay raw while headers and other text are
+   * escaped.
    */
-  #withFormulaFormatter<O extends ExportOptions<T>>(options: O & FormulaExportOptions): O {
+  #withFormulaFormatter<O extends ExportOptions<T>>(
+    options: O & FormulaExportOptions,
+    keep?: boolean
+  ): O {
     const controller = this.#formulaController();
     if (!options.formulas || !controller) {
       return options;
@@ -2019,7 +2027,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       if (column.allowFormula) {
         const src = controller.getFormula(row, column.key as keyof T & string);
         if (src !== undefined) {
-          return src;
+          return keep ? (new String(src) as unknown as string) : src;
         }
       }
       return resolveExportValue(column, row, base);

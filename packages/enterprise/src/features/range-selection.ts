@@ -10,6 +10,7 @@ import {
   commitDateInSameShape,
   type ExportCellValue,
   escapeCSVCell,
+  escapeFormula,
   type GridFeatureModule,
   type GridHost,
   getDisplayColumns,
@@ -48,6 +49,16 @@ interface CellRef {
   readonly row: number;
   /** Index within the visible (display-ordered) columns. */
   readonly col: number;
+}
+
+/** What a copy remembers, read from the selection before the clipboard write. */
+interface CopyRecord<T> {
+  /** The clipboard text, escaped as `escapeFormulas` says. */
+  tsv: string;
+  /** The same selection unescaped, written back when that text is pasted here. */
+  raw: string;
+  /** Formula sources of a single-range copy, for re-offsetting on paste. */
+  source: { rows: T[]; keys: string[]; data: unknown } | null;
 }
 
 /** The rectangular bounds of a selection, in view coordinates. */
@@ -140,6 +151,15 @@ export class RangeSelectionController<T extends object>
   /** Whether range selection is active. When `false`, the feature is inert. */
   public enabled = true;
 
+  /**
+   * Whether copy prefixes an apostrophe to text a spreadsheet would run as a
+   * formula (it starts with `=`, `+`, `-`, `@`, a tab or a carriage return
+   * and is not a plain signed decimal), the rule CSV export follows. Range
+   * copy and the context menu's Copy item honour it; pasting the grid's own
+   * last copy back in still writes the original text. Defaults to `true`.
+   */
+  public escapeFormulas = true;
+
   /** The active range's corners. */
   #anchor: CellRef | null = null;
   #focus: CellRef | null = null;
@@ -152,15 +172,15 @@ export class RangeSelectionController<T extends object>
   #fillPreview: RangeBounds | null = null;
 
   /**
-   * Last copied selection, remembered so an immediate in-grid paste of the same
-   * clipboard text can re-offset source formulas (a plain-TSV clipboard cannot
-   * carry them). `tsv` gates the match; `rows` and `keys` are the source row
-   * objects and column keys (robust to a later sort/filter); `data` is the data
-   * array they came from, so replacing it releases them. `null` when nothing
-   * was copied here, no source cell held a formula, or the copy spanned
-   * multiple ranges.
+   * Last copy made here, so a paste of the same clipboard text writes the
+   * unescaped `raw` text and can re-offset source formulas (a plain-TSV
+   * clipboard carries neither). `tsv` gates the match. `source` holds the
+   * source row objects and column keys (robust to a later sort/filter) and
+   * the data array they came from, so replacing it releases them; it is
+   * `null` when no source cell held a formula or the copy spanned multiple
+   * ranges.
    */
-  #copied: { tsv: string; rows: T[]; keys: string[]; data: unknown } | null = null;
+  #copied: CopyRecord<T> | null = null;
 
   /** A Ctrl/Cmd+C or V whose native clipboard event has not arrived yet. */
   #clipboardKey: 'copy' | 'paste' | null = null;
@@ -203,7 +223,9 @@ export class RangeSelectionController<T extends object>
 
   /** Releases the last copy's source rows once the data they came from is replaced. */
   public hostUpdated(): void {
-    if (this.#copied && this.#copied.data !== this.host.data) this.#copied = null;
+    if (this.#copied?.source && this.#copied.source.data !== this.host.data) {
+      this.#copied.source = null;
+    }
   }
 
   public hostDisconnected(): void {
@@ -359,11 +381,11 @@ export class RangeSelectionController<T extends object>
       this.pasteText(data.getData('text/plain'));
       return;
     }
-    const tsv = this.getSelectionTSV();
-    if (!tsv) return;
+    const copy = this.#capture();
+    if (!copy) return;
     event.preventDefault();
-    data.setData('text/plain', tsv);
-    this.#copiedHere(tsv);
+    data.setData('text/plain', copy.tsv);
+    this.#copiedHere(copy);
   };
 
   // --- CellInteractionHandler ---------------------------------------------
@@ -699,14 +721,23 @@ export class RangeSelectionController<T extends object>
    * The selection serialized as TSV (spreadsheet-pasteable). A single range is
    * one matrix; multiple Ctrl-click ranges are emitted as blocks separated by a
    * blank line. A value holding a tab, a line break or a double quote is
-   * quoted, as spreadsheets do, so it pastes back as one cell.
+   * quoted, as spreadsheets do, so it pastes back as one cell. Formula-leading
+   * text is escaped unless `escapeFormulas` (default {@link escapeFormulas})
+   * is `false`.
    */
-  public getSelectionTSV(): string {
+  public getSelectionTSV(escapeFormulas = this.escapeFormulas): string {
     return this.getRanges()
       .map((bounds) =>
         this.#matrix(bounds)
           .map((line) =>
-            line.map((value) => escapeCSVCell(value as ExportCellValue, '\t')).join('\t')
+            line
+              .map((value) =>
+                escapeCSVCell(
+                  (escapeFormulas ? escapeFormula(value) : value) as ExportCellValue,
+                  '\t'
+                )
+              )
+              .join('\t')
           )
           .join('\n')
       )
@@ -718,11 +749,11 @@ export class RangeSelectionController<T extends object>
    * nothing selected or the clipboard API is unavailable/blocked.
    */
   public async copySelection(): Promise<boolean> {
-    const tsv = this.getSelectionTSV();
-    if (!tsv) return false;
+    const copy = this.#capture();
+    if (!copy) return false;
     try {
-      await navigator.clipboard.writeText(tsv);
-      this.#copiedHere(tsv);
+      await navigator.clipboard.writeText(copy.tsv);
+      this.#copiedHere(copy);
       return true;
     } catch {
       return false;
@@ -730,25 +761,33 @@ export class RangeSelectionController<T extends object>
   }
 
   /**
-   * After a copy: announce it, and remember the copied single range so an
-   * immediate in-grid paste of the same text can re-offset its formulas.
-   * Source row objects + column keys are captured (not view indices), so a
-   * later sort/filter does not misalign them. Nothing is kept when no source
-   * cell holds a formula; a multi-range copy disables formula-aware paste.
+   * Reads everything a copy remembers from the selection as it is now, before
+   * an async clipboard write gives it time to change: the clipboard text, its
+   * unescaped twin, and for a single range holding a formula the source row
+   * objects and column keys (not view indices, so a later sort/filter does
+   * not misalign them). `null` when nothing is selected.
    */
-  #copiedHere(tsv: string): void {
-    this.host.announce(this.host.localize('rangeSelection.copied'));
+  #capture(): CopyRecord<T> | null {
+    const tsv = this.getSelectionTSV();
+    if (!tsv) return null;
+    const copy: CopyRecord<T> = { tsv, raw: this.getSelectionTSV(false), source: null };
     const bounds = this.#additional.length === 0 ? this.#activeBounds() : null;
     const formulas = this.#formulaController();
-    this.#copied = null;
-    if (!bounds || !formulas) return;
+    if (!bounds || !formulas) return copy;
     const keys = this.#visibleColumns()
       .slice(bounds.left, bounds.right + 1)
       .map((column) => String(column.key) as keyof T & string);
     const rows = this.#dataRows(bounds.top, bounds.bottom).map(({ record }) => record);
     if (rows.some((row) => keys.some((key) => formulas.getFormula(row, key) !== undefined))) {
-      this.#copied = { tsv, rows, keys, data: this.host.data };
+      copy.source = { rows, keys, data: this.host.data };
     }
+    return copy;
+  }
+
+  /** After a copy reached the clipboard: announce it and remember what it held. */
+  #copiedHere(copy: CopyRecord<T>): void {
+    this.host.announce(this.host.localize('rangeSelection.copied'));
+    this.#copied = copy;
   }
 
   /**
@@ -765,7 +804,11 @@ export class RangeSelectionController<T extends object>
     const start = this.#activeBounds();
     if (!start) return;
 
-    const matrix = parseTSV(text.replace(/\r\n?/g, '\n'));
+    // The grid's own last copy (line breaks compared the way they are parsed)
+    // pastes its unescaped twin, so the round trip is lossless.
+    const lf = (value: string) => value.replace(/\r\n?/g, '\n');
+    const own = this.#copied && lf(this.#copied.tsv) === lf(text) ? this.#copied : null;
+    const matrix = parseTSV(lf(own ? own.raw : text));
     // Drop a trailing empty line (common with copied blocks).
     const tail = matrix[matrix.length - 1];
     if (matrix.length > 1 && tail.length === 1 && tail[0] === '') matrix.pop();
@@ -781,7 +824,7 @@ export class RangeSelectionController<T extends object>
     // them are read before anything is written, so a paste that overlaps its
     // own source reads the source as it was.
     const formulas = this.#formulaController();
-    const copied = formulas && this.#copied?.tsv === text ? this.#copied : null;
+    const copied = formulas && own?.source;
     const shifted =
       copied &&
       targets.map(({ record }, i) =>

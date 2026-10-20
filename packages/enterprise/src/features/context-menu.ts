@@ -1,7 +1,14 @@
 import type { ColumnConfiguration, SortExpression } from 'apex-grid';
-import type { ColumnMenuProvider, GridFeatureModule, GridHost } from 'apex-grid/internal';
+import {
+  type ColumnMenuProvider,
+  escapeFormula,
+  type GridFeatureModule,
+  type GridHost,
+  type StateController,
+} from 'apex-grid/internal';
 import type { ReactiveController } from 'lit';
 import { html, nothing, render } from 'lit';
+import { RANGE_SELECTION_MODULE_ID, type RangeSelectionController } from './range-selection.js';
 
 export const CONTEXT_MENU_MODULE_ID = 'context-menu';
 
@@ -121,7 +128,10 @@ export class ContextMenuController<T extends object>
   /** What had focus when the root menu opened, so a keyboard close can put focus back. */
   #restoreFocus: HTMLElement | null = null;
 
-  constructor(private host: GridHost<T>) {
+  constructor(
+    private host: GridHost<T>,
+    private state?: StateController<T>
+  ) {
     host.addController(this);
   }
 
@@ -286,7 +296,10 @@ export class ContextMenuController<T extends object>
   #copy(target: ContextMenuTarget<T>): void {
     if (target.row == null) return;
     const value = (target.row as Record<string, unknown>)[String(target.column.key)];
-    void navigator.clipboard?.writeText?.(value == null ? '' : String(value));
+    // Formula-leading text gets the range copy's escaping and its opt-out.
+    const range = this.state?.module<RangeSelectionController<T>>(RANGE_SELECTION_MODULE_ID);
+    const text = range?.escapeFormulas === false ? value : escapeFormula(value);
+    void navigator.clipboard?.writeText?.(text == null ? '' : String(text));
   }
 
   // --- menu rendering ------------------------------------------------------
@@ -484,5 +497,5 @@ export class ContextMenuController<T extends object>
 /** Feature module registered on the enterprise grid. */
 export const contextMenuModule: GridFeatureModule = {
   id: CONTEXT_MENU_MODULE_ID,
-  create: (host) => new ContextMenuController(host),
+  create: (host, state) => new ContextMenuController(host, state),
 };
