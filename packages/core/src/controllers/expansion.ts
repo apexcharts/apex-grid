@@ -5,7 +5,7 @@ import type { GridHost } from '../internal/types.js';
  * The default expansion configuration used when the grid has none set.
  *
  * @remarks
- * `detailTemplate` defaults to `null` here — the controller will refuse to
+ * `detailTemplate` defaults to `null` here; the controller will refuse to
  * toggle rows when the configuration is missing or no template is provided.
  */
 export const DEFAULT_EXPANSION_CONFIG = Object.freeze({
@@ -14,15 +14,31 @@ export const DEFAULT_EXPANSION_CONFIG = Object.freeze({
 });
 
 /**
+ * Returns `rows` without the entries that are no longer in `data`, for an
+ * expansion set that follows a data refresh. The survivors are counted first,
+ * so the usual refresh (nothing left) allocates nothing and returns `rows`
+ * itself. A row listed twice in `data` counts twice, which can keep one stale
+ * entry until a later refresh.
+ */
+export function retainPresent<T>(rows: Set<T>, data: ReadonlyArray<T>): Set<T> {
+  if (rows.size === 0) return rows;
+  let present = 0;
+  for (const row of data) if (rows.has(row)) present++;
+  if (present === rows.size) return rows;
+  const next = new Set<T>();
+  for (const row of data) if (rows.has(row)) next.add(row);
+  return next;
+}
+
+/**
  * Reactive controller backing row expansion (master-detail).
  *
  * @remarks
- * Expansion state is reference-based — the controller holds a `Set` of row
+ * Expansion state is reference-based: the controller holds a `Set` of row
  * data references so the expansion set survives sort / filter / pagination as
  * long as those operations preserve row identity (the default in-place
- * pipeline does). Replacing {@link ApexGrid.data} wholesale invalidates any
- * expanded rows that are no longer present; consumers should call
- * {@link collapseAll} or re-apply expansion afterwards.
+ * pipeline does). Replacing {@link ApexGrid.data} keeps the rows that are
+ * still present and drops the rest, without events.
  *
  * Mutations go through the cancellable `rowExpanding` event and emit a
  * follow-up `rowExpanded` event, mirroring the pattern used by selection
@@ -31,12 +47,22 @@ export const DEFAULT_EXPANSION_CONFIG = Object.freeze({
 export class ExpansionController<T extends object> implements ReactiveController {
   /** Set of currently expanded row data references. */
   public expanded: Set<T> = new Set();
+  /** The data array the expansion set was last reconciled with. */
+  #data?: ReadonlyArray<T>;
 
   constructor(protected host: GridHost<T>) {
     this.host.addController(this);
   }
 
   public hostConnected() {}
+
+  /** Drops expanded rows that left {@link ApexGrid.data} once it is replaced. */
+  public hostUpdate() {
+    const data = this.host.data;
+    if (!data || data === this.#data) return;
+    this.#data = data;
+    this.expanded = retainPresent(this.expanded, data);
+  }
 
   /** Whether expansion is enabled at the grid level. */
   public get enabled(): boolean {

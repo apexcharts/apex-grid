@@ -1,6 +1,24 @@
 import { expect, html, oneEvent } from '@open-wc/testing';
+import { retainPresent } from '../src/controllers/expansion.js';
 import type { ColumnConfiguration, GridTreeConfiguration } from '../src/internal/types.js';
 import GridTestFixture from './utils/grid-fixture.js';
+
+describe('Expansion pruning at scale', () => {
+  const data = Array.from({ length: 100_000 }, (_, i) => ({ i }));
+
+  it('returns the same set at 100k rows when every expanded row is still present', () => {
+    const rows = new Set(data.filter((row) => row.i % 100 === 0));
+    expect(retainPresent(rows, [...data])).to.equal(rows);
+  });
+
+  it('drops only the rows that left the data', () => {
+    const rows = new Set(data.filter((row) => row.i % 100 === 0));
+    const next = retainPresent(rows, data.slice(1));
+    expect(next).to.not.equal(rows);
+    expect(next.size).to.equal(rows.size - 1);
+    expect(next.has(data[0])).to.equal(false);
+  });
+});
 
 interface OrgRow {
   name: string;
@@ -400,6 +418,117 @@ describe('Tree (nested rows)', () => {
     });
   });
 
+  describe('data refresh', () => {
+    const withDefaults = async (rows: OrgRow[], rowId?: (row: OrgRow) => string) => {
+      fx.tearDown();
+      fx = new TreeFixture(rows);
+      fx.tree = { enabled: true, getDataPath: (row) => row.path, defaultExpanded: true };
+      await fx.setUp();
+      if (rowId) fx.grid.rowId = rowId;
+    };
+    const clone = () => JSON.parse(JSON.stringify(ORG_DATA)) as OrgRow[];
+
+    it('a parent the user collapsed stays collapsed after an immutable update', async () => {
+      await withDefaults(clone());
+      const adrian = fx.grid.data[0];
+      await fx.grid.collapseTreeRow(adrian);
+      await fx.waitForUpdate();
+      expect(fx.visibleNames()).to.deep.equal(['Adrian', 'Cheryl']);
+
+      fx.grid.data = [...fx.grid.data, { name: 'Zed', role: 'IC', path: ['Zed'] }];
+      await fx.waitForUpdate();
+
+      expect(fx.grid.isTreeRowExpanded(adrian)).to.equal(false);
+      expect(fx.visibleNames()).to.deep.equal(['Adrian', 'Cheryl', 'Zed']);
+    });
+
+    it('a new parent arriving with refreshed data still gets the default', async () => {
+      await withDefaults(clone());
+      fx.grid.data = [
+        ...fx.grid.data,
+        { name: 'Zed', role: 'VP', path: ['Zed'] },
+        { name: 'Yan', role: 'IC', path: ['Zed', 'Yan'] },
+      ];
+      await fx.waitForUpdate();
+      expect(fx.visibleNames().slice(-2)).to.deep.equal(['Zed', 'Yan']);
+    });
+
+    it('refreshing with fresh objects does not grow the expansion set', async () => {
+      await withDefaults(clone(), (row) => row.name);
+      for (let i = 0; i < 5; i++) {
+        fx.grid.data = clone();
+        await fx.waitForUpdate();
+      }
+      const ids = fx.grid.getState().treeExpanded.map((ref) => (ref as { id?: unknown }).id);
+      expect(ids).to.deep.equal(['Adrian', 'Bryan']);
+
+      const expanded = oneEvent(fx.grid, 'treeRowExpanded');
+      await fx.grid.collapseTreeRow(fx.grid.data[0]);
+      expect(((await expanded) as CustomEvent).detail.expanded).to.have.length(1);
+    });
+
+    it('an unchanged expansion set is kept as is across an immutable update', async () => {
+      await withDefaults(clone());
+      const tree = (fx.grid as unknown as { stateController: { tree: { expanded: Set<OrgRow> } } })
+        .stateController.tree;
+      const before = tree.expanded;
+      fx.grid.data = [...fx.grid.data];
+      await fx.waitForUpdate();
+      expect(tree.expanded).to.equal(before);
+      expect(before.size).to.equal(2);
+    });
+    it('drops the expansion of a synthesized parent that left the data', async () => {
+      fx.tearDown();
+      fx = new TreeFixture([
+        { name: 'Ann', role: 'IC', path: ['Org', 'Ann'] },
+        { name: 'Ben', role: 'IC', path: ['Org', 'Ben'] },
+      ]);
+      await fx.setUp();
+      await fx.grid.expandTreeRow(fx.grid.pageItems[0]);
+      await fx.waitForUpdate();
+      expect(fx.grid.getState().treeExpandedKeys).to.deep.equal(['Org']);
+
+      fx.grid.data = JSON.parse(JSON.stringify(ORG_DATA));
+      await fx.waitForUpdate();
+      expect(fx.grid.getState().treeExpandedKeys).to.deep.equal([]);
+    });
+  });
+
+  describe('state round trip', () => {
+    it('restores backed and synthesized expansion into a fresh grid', async () => {
+      const rows = (): OrgRow[] => [
+        ...JSON.parse(JSON.stringify(ORG_DATA)),
+        { name: 'Ann', role: 'IC', path: ['Org', 'Ann'] },
+      ];
+      fx.tearDown();
+      fx = new TreeFixture(rows());
+      await fx.setUp();
+      fx.grid.rowId = (row) => row.name;
+      await fx.grid.expandTreeRow(fx.grid.data[0]); // Adrian
+      await fx.waitForUpdate();
+      const org = (fx.grid.pageItems as readonly OrgRow[]).find((r) => r.name === undefined)!;
+      await fx.grid.expandTreeRow(org);
+      await fx.waitForUpdate();
+      const snapshot = JSON.parse(JSON.stringify(fx.grid.getState()));
+      expect(snapshot.treeExpandedKeys).to.deep.equal(['Org']);
+
+      fx.tearDown();
+      fx = new TreeFixture(rows());
+      await fx.setUp();
+      fx.grid.rowId = (row) => row.name;
+      fx.grid.setState(snapshot);
+      await fx.waitForUpdate();
+      expect(fx.visibleNames()).to.deep.equal([
+        'Adrian',
+        'Bryan',
+        'Deborah',
+        'Cheryl',
+        undefined as unknown as string,
+        'Ann',
+      ]);
+    });
+  });
+
   describe('sort interplay', () => {
     it('sort applies per-branch — children sorted within their parent', async () => {
       await fx.grid.expandAllTreeRows();
@@ -417,5 +546,71 @@ describe('Tree (nested rows)', () => {
       expect(names.indexOf('Bryan')).to.be.greaterThan(names.indexOf('Adrian'));
       expect(names.indexOf('Chris')).to.be.greaterThan(names.indexOf('Bryan'));
     });
+  });
+});
+
+describe('Master-detail expansion across data refresh', () => {
+  interface Row {
+    id: number;
+    name: string;
+  }
+  const ROWS: Row[] = [
+    { id: 1, name: 'one' },
+    { id: 2, name: 'two' },
+    { id: 3, name: 'three' },
+  ];
+
+  class DetailFixture extends GridTestFixture<Row> {
+    public override setupTemplate() {
+      return html`<apex-grid
+        .data=${this.data}
+        .columns=${this.columnConfig}
+        .expansion=${{ enabled: true, detailTemplate: ({ data }: { data: Row }) => html`<div>${data.id}</div>` }}
+      ></apex-grid>`;
+    }
+
+    public headerToggle(): HTMLButtonElement {
+      return this.headerRow.renderRoot.querySelector<HTMLButtonElement>(
+        '[part="expansion-header"] [part="expansion-toggle"]'
+      )!;
+    }
+
+    public get controller(): { expanded: Set<Row> } {
+      return (this.grid as unknown as { stateController: { expansion: { expanded: Set<Row> } } })
+        .stateController.expansion;
+    }
+  }
+
+  let fx: DetailFixture;
+  const clone = () => JSON.parse(JSON.stringify(ROWS)) as Row[];
+
+  beforeEach(async () => {
+    fx = new DetailFixture(clone());
+    await fx.setUp();
+  });
+
+  afterEach(() => fx.tearDown());
+
+  it('drops rows that left the data and resets the header toggle', async () => {
+    await fx.grid.expandRow(fx.grid.data[0]);
+    await fx.waitForUpdate();
+    expect(fx.headerToggle().getAttribute('aria-label')).to.equal('Collapse all rows');
+
+    fx.grid.data = clone();
+    await fx.waitForUpdate();
+    expect(fx.grid.expandedRows).to.deep.equal([]);
+    expect(fx.headerToggle().getAttribute('aria-label')).to.equal('Expand all rows');
+  });
+
+  it('keeps rows that survive an immutable update without reallocating', async () => {
+    const kept = fx.grid.data[1];
+    await fx.grid.expandRow(kept);
+    await fx.waitForUpdate();
+    const before = fx.controller.expanded;
+
+    fx.grid.data = [...fx.grid.data, { id: 4, name: 'four' }];
+    await fx.waitForUpdate();
+    expect(fx.grid.expandedRows).to.deep.equal([kept]);
+    expect(fx.controller.expanded).to.equal(before);
   });
 });

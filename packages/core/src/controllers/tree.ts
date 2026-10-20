@@ -2,6 +2,7 @@ import type { ReactiveController } from 'lit';
 import { PIPELINE } from '../internal/constants.js';
 import type { GridHost, Keys } from '../internal/types.js';
 import { getDisplayColumns } from '../internal/utils.js';
+import { retainPresent } from './expansion.js';
 
 /**
  * Default pixel indentation per depth level for the tree group column.
@@ -66,20 +67,26 @@ export interface TreeRowMeta {
  *  4. Records per-row metadata (depth, hasChildren) that the cell renderer
  *     reads to draw the chevron + indentation.
  *
- * Expansion state is split into two sets — `expanded` for rows that have
+ * Expansion state is split into two sets: `expanded` for rows that have
  * backing data (keyed by reference, so it survives sort/filter), and
- * `expandedKeys` for synthesized parents (keyed by their path string).
+ * `expandedKeys` for synthesized parents (keyed by their path string). Both
+ * follow a data refresh: entries whose row or path left the data are dropped,
+ * and `defaultExpanded` applies only to parents not seen before.
  */
 export class TreeController<T extends object> implements ReactiveController {
   public expanded: Set<T> = new Set();
   public expandedKeys: Set<string> = new Set();
 
   #meta = new WeakMap<T, TreeRowMeta>();
-  #syntheticMeta = new Map<string, TreeRowMeta>();
   /** Synthesized parent placeholder rows so consumers still get a `T`-shaped object. */
   #syntheticRows = new Map<string, T>();
   /** Whether `defaultExpanded` has been applied once for the current data set. */
   #defaultsApplied = false;
+  /** Parents `defaultExpanded` has already been weighed for, by row and by path. */
+  #seenParents = new WeakSet<T>();
+  #seenKeys = new Set<string>();
+  /** Set on a data change: the next build over the whole data prunes stale path keys. */
+  #reconcilePending = false;
   /** Most recently built root node. Used to walk the full tree for expand-all. */
   #lastRoot: TreeNode<T> | null = null;
   /** The first record per path key in `host.data`, built once per data array when needed. */
@@ -236,18 +243,19 @@ export class TreeController<T extends object> implements ReactiveController {
     const root = this.#buildTree(input, getDataPath);
     this.#lastRoot = root;
 
-    // Apply defaultExpanded once per data set.
-    if (!this.#defaultsApplied) {
-      this.#applyDefaults(root);
-      this.#defaultsApplied = true;
-    }
+    // Apply defaultExpanded once per data set, to parents not seen before.
+    const applyDefaults = !this.#defaultsApplied;
+    this.#defaultsApplied = true;
+    // Only a build over the whole data knows which path keys are gone.
+    const reconcile = this.#reconcilePending && input.length >= (this.host.data?.length ?? 0);
+    if (reconcile) this.#reconcilePending = false;
 
-    this.#refreshMeta(root);
+    this.#refreshMeta(root, applyDefaults, reconcile);
     return this.#flatten(root);
   }
 
   /**
-   * Replaces the expansion state wholesale — used by `ApexGrid.setState` to
+   * Replaces the expansion state wholesale. Used by `ApexGrid.setState` to
    * restore a snapshot. Sets both the backing-row set and the synthesized-parent
    * key set directly (no `treeRowExpanding`/`treeRowExpanded` events), marks
    * `defaultExpanded` as already applied so the next pipeline pass treats the
@@ -261,16 +269,16 @@ export class TreeController<T extends object> implements ReactiveController {
   }
 
   /**
-   * Resets cached metadata + defaults flag so the next pipeline pass
-   * re-applies `defaultExpanded`. Called from the data watcher when the
-   * input array is replaced wholesale.
+   * Reconciles the expansion state with replaced data. Called from the data
+   * watcher when the input array is replaced wholesale: expanded rows that
+   * left the data are dropped now, stale path keys on the next full build,
+   * and the next pass applies `defaultExpanded` to parents not seen before.
    */
   public resetForDataChange(): void {
     this.#defaultsApplied = false;
+    this.#reconcilePending = true;
     this.#records = null;
-    // Don't clear `expanded`/`expandedKeys`; consumers may want them to
-    // survive across pipeline passes. If a wholesale data swap orphans
-    // references, those entries are simply ignored on the next pass.
+    this.expanded = retainPresent(this.expanded, this.host.data ?? []);
   }
 
   // --- internals ---------------------------------------------------------
@@ -384,25 +392,18 @@ export class TreeController<T extends object> implements ReactiveController {
     return byKey;
   }
 
-  #applyDefaults(root: TreeNode<T>): void {
-    const setting = this.host.tree?.defaultExpanded;
-    if (setting === undefined || setting === false) return;
-    const expandToDepth = typeof setting === 'number' ? setting : Number.POSITIVE_INFINITY;
-    const visit = (node: TreeNode<T>) => {
-      if (node !== root && node.children.length > 0 && node.depth <= expandToDepth) {
-        if (node.data) this.expanded.add(node.data);
-        else this.expandedKeys.add(node.key);
-      }
-      for (const child of node.children) visit(child);
-    };
-    visit(root);
-  }
-
-  #refreshMeta(root: TreeNode<T>): void {
-    // Recompute meta for every node in the tree, both synthesized and
-    // backed. The metadata is fresh each pipeline pass since depth or
-    // hasChildren may have changed (rows reordered, filter dropped a
-    // descendant, etc.).
+  /**
+   * Records fresh metadata for every node, both synthesized and backed, since
+   * depth or hasChildren may change between passes (rows reordered, a filter
+   * dropped a descendant). The same walk weighs `defaultExpanded` for parents
+   * seen for the first time and, on a reconciling pass, drops the path keys
+   * and placeholders of synthesized parents that left the data.
+   */
+  #refreshMeta(root: TreeNode<T>, applyDefaults: boolean, reconcile: boolean): void {
+    const setting = applyDefaults ? this.host.tree?.defaultExpanded : undefined;
+    const expandToDepth =
+      setting === true ? Number.POSITIVE_INFINITY : typeof setting === 'number' ? setting : -1;
+    const liveKeys = reconcile ? new Set<string>() : null;
     const visit = (node: TreeNode<T>) => {
       if (node !== root) {
         const meta: TreeRowMeta = {
@@ -413,37 +414,50 @@ export class TreeController<T extends object> implements ReactiveController {
         };
         if (node.data) {
           this.#meta.set(node.data, meta);
+          if (meta.hasChildren && !this.#seenParents.has(node.data)) {
+            this.#seenParents.add(node.data);
+            if (node.depth <= expandToDepth) this.expanded.add(node.data);
+          }
         } else {
-          this.#syntheticMeta.set(node.key, meta);
+          this.#meta.set(this.#placeholder(node.key), meta);
+          liveKeys?.add(node.key);
+          if (!this.#seenKeys.has(node.key)) {
+            this.#seenKeys.add(node.key);
+            if (node.depth <= expandToDepth) this.expandedKeys.add(node.key);
+          }
         }
       }
       for (const child of node.children) visit(child);
     };
     visit(root);
+
+    if (liveKeys) {
+      for (const key of this.expandedKeys) if (!liveKeys.has(key)) this.expandedKeys.delete(key);
+      for (const key of this.#seenKeys) if (!liveKeys.has(key)) this.#seenKeys.delete(key);
+      for (const key of this.#syntheticRows.keys()) {
+        if (!liveKeys.has(key)) this.#syntheticRows.delete(key);
+      }
+    }
+  }
+
+  /**
+   * The placeholder row of a synthesized parent, stable per path so callers
+   * can hold on to it. It carries the SYNTHESIZED marker.
+   */
+  #placeholder(key: string): T {
+    let placeholder = this.#syntheticRows.get(key);
+    if (!placeholder) {
+      placeholder = Object.create(null) as T;
+      Object.defineProperty(placeholder, SYNTHESIZED, { value: true, enumerable: false });
+      this.#syntheticRows.set(key, placeholder);
+    }
+    return placeholder;
   }
 
   #flatten(root: TreeNode<T>): T[] {
     const out: T[] = [];
     const walk = (node: TreeNode<T>) => {
-      if (node !== root) {
-        if (node.data) {
-          out.push(node.data);
-        } else {
-          // Synthesize a `T`-shaped placeholder so callers don't trip on
-          // `null` rows. The placeholder carries the SYNTHESIZED marker.
-          let placeholder = this.#syntheticRows.get(node.key);
-          if (!placeholder) {
-            placeholder = Object.create(null) as T;
-            Object.defineProperty(placeholder, SYNTHESIZED, {
-              value: true,
-              enumerable: false,
-            });
-            this.#syntheticRows.set(node.key, placeholder);
-          }
-          this.#meta.set(placeholder, this.#syntheticMeta.get(node.key)!);
-          out.push(placeholder);
-        }
-      }
+      if (node !== root) out.push(node.data ?? this.#placeholder(node.key));
       const expanded =
         node === root ||
         (node.data ? this.expanded.has(node.data) : this.expandedKeys.has(node.key));
