@@ -13,7 +13,7 @@
  * and a rejected commit keeps the editor open with the stored formula intact.
  */
 
-import { registerComponent } from 'apex-grid/internal';
+import { ApexGrid, registerComponent } from 'apex-grid/internal';
 import { css, html, LitElement, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { type CoercibleColumn, coerceText } from './coerce.js';
@@ -32,6 +32,9 @@ interface EditorAddress {
 
 /** Arrow keys, detected so they can be kept as plain caret navigation while editing. */
 const ARROW_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+
+/** Keys that move the caret without typing, which dismiss the suggestions. */
+const CARET_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End']);
 
 /** The slice of `ApexEditorContext` the formula editor uses. */
 export interface FormulaEditorContext {
@@ -149,15 +152,15 @@ export class FormulaCellEditor extends LitElement {
       background: transparent;
       color: inherit;
     }
-    /* Floating dropdown for autocomplete + parse errors. Positioned 'fixed' (the
-       editor sets left/top/width in JS from the input's rect) so it escapes the
-       cell's clipping and never grows the row — a proper overlay, not in-flow.
-       Token-matched ([part~=]) because the elements carry 'popover suggestions'
-       / 'popover formula-error'. */
+    /* Floating dropdown for autocomplete + parse errors. A manual popover in the
+       top layer, placed by the editor from the input's rect, so it escapes the
+       cell's clipping and paints above the following rows (each row is its own
+       stacking context) without growing the row. Token-matched ([part~=])
+       because the elements carry 'popover suggestions' / 'popover formula-error'. */
     [part~='popover'] {
-      position: absolute;
-      inset-block-start: calc(100% + 2px);
-      inset-inline-start: 0;
+      position: fixed;
+      inset: auto;
+      margin: 0;
       z-index: 30;
       min-inline-size: 100%;
       box-sizing: border-box;
@@ -217,6 +220,10 @@ export class FormulaCellEditor extends LitElement {
   #done = false;
   /** The trimmed text the editor opened with: committing it unchanged writes nothing. */
   #opened = '';
+  /** The popover element shown in the top layer, so it is shown once. */
+  #shownPopover: HTMLElement | null = null;
+  /** Where the scroll listeners that keep the popover placed are attached. */
+  #scrollTargets: EventTarget[] = [];
   /** Caret position to restore after a programmatic text change (insert/accept). */
   #caretToRestore: number | null = null;
   /** The grid host the click-to-insert listener is attached to (for teardown). */
@@ -259,35 +266,19 @@ export class FormulaCellEditor extends LitElement {
     this.#input?.setSelectionRange(end, end);
     this.#attachClickToInsert();
     this.#updateHighlights();
-    this.#allowCellOverflow(true);
   }
 
   public override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.#detachPointDrag();
+    this.#watchScroll(false);
+    this.#shownPopover = null;
     this.#gridHost?.removeEventListener('pointerdown', this.#onGridPointerDown, true);
     this.#gridHost?.removeEventListener('click', this.#onGridClickCapture, true);
     this.#gridHost?.removeEventListener('dblclick', this.#onGridClickCapture, true);
     this.#gridHost = null;
     this.controller?.highlightReferences?.(null);
     this.controller?.setPointer?.(null);
-    this.#allowCellOverflow(false);
-  }
-
-  /**
-   * Let the host cell's clip region open while editing so the dropdown (which
-   * extends below the cell) is visible, then restore it. The cell clips by
-   * default (`:host([editing]) { overflow: hidden }`).
-   */
-  #hostCell: HTMLElement | null = null;
-  #allowCellOverflow(on: boolean): void {
-    if (on) {
-      this.#hostCell = this.#hostCellEl;
-      if (this.#hostCell) this.#hostCell.style.overflow = 'visible';
-    } else if (this.#hostCell) {
-      this.#hostCell.style.overflow = '';
-      this.#hostCell = null;
-    }
   }
 
   public override updated(): void {
@@ -296,41 +287,109 @@ export class FormulaCellEditor extends LitElement {
       this.#caretToRestore = null;
       this.#input?.setSelectionRange(caret, caret);
     }
+    this.#placePopover();
   }
 
-  /** The host cell this editor lives in (its shadow-root host), or null. */
-  get #hostCellEl(): HTMLElement | null {
-    const root = this.getRootNode();
-    return root instanceof ShadowRoot ? (root.host as HTMLElement) : null;
+  /** Show the open popover in the top layer, just below the input. */
+  #placePopover = (): void => {
+    const popover = this.renderRoot.querySelector<HTMLElement>('[popover]');
+    const input = this.#input;
+    if (!popover || !input) {
+      this.#shownPopover = null;
+      this.#watchScroll(false);
+      return;
+    }
+    if (popover !== this.#shownPopover) {
+      this.#shownPopover = popover;
+      popover.showPopover?.();
+      this.#watchScroll(true);
+    }
+    const rect = input.getBoundingClientRect();
+    const rtl = getComputedStyle(input).direction === 'rtl';
+    popover.style.minInlineSize = `${rect.width}px`;
+    popover.style.top = `${rect.bottom + 2}px`;
+    popover.style.left = `${rtl ? rect.right - popover.offsetWidth : rect.left}px`;
+    // The top layer escapes every clip, so a row scrolled under the sticky
+    // header or out of the grid would leave the popover painted over the
+    // header or the page. Show it only while the input itself is on top.
+    popover.style.visibility = this.#onTop(rect) ? '' : 'hidden';
+  };
+
+  /** Whether the input's centre hits this editor, through open shadow roots. */
+  #onTop(rect: DOMRect): boolean {
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    let hit = document.elementFromPoint(x, y);
+    while (hit && hit !== this && hit.shadowRoot) {
+      const inner = hit.shadowRoot.elementFromPoint(x, y);
+      if (!inner || inner === hit) break;
+      hit = inner;
+    }
+    return hit === this;
+  }
+
+  /**
+   * Keep the shown popover on the input while anything around it scrolls.
+   * Scroll events neither bubble nor leave a shadow root, so a capture
+   * listener goes on the window and on each shadow root above the editor
+   * (the grid body scrolls inside the grid's).
+   */
+  #watchScroll(on: boolean): void {
+    for (const target of this.#scrollTargets) {
+      target.removeEventListener('scroll', this.#placePopover, true);
+    }
+    this.#scrollTargets = [];
+    if (!on) return;
+    for (
+      let root = this.getRootNode();
+      root instanceof ShadowRoot;
+      root = root.host.getRootNode()
+    ) {
+      this.#scrollTargets.push(root);
+    }
+    this.#scrollTargets.push(window);
+    for (const target of this.#scrollTargets) {
+      target.addEventListener('scroll', this.#placePopover, { capture: true, passive: true });
+    }
   }
 
   public override render(): unknown {
+    const open = this.suggestions.length > 0;
+    const error = !open && this.error;
     return html`
       <input
         part="editor"
         type="text"
+        role="combobox"
+        aria-autocomplete="list"
         spellcheck="false"
         autocomplete="off"
         .value=${this.text}
         aria-label=${this.#label()}
         aria-invalid=${this.error ? 'true' : 'false'}
+        aria-expanded=${open ? 'true' : 'false'}
+        aria-controls=${open ? 'suggestions' : nothing}
+        aria-activedescendant=${open ? `suggestion-${this.activeSuggestion}` : nothing}
+        aria-describedby=${error ? 'formula-error' : nothing}
         @input=${this.#onInput}
         @keydown=${this.#onKeydown}
+        @click=${this.#dismissSuggestions}
         @blur=${this.#onBlur}
       />
       ${
-        this.suggestions.length
-          ? html`<ul part="popover suggestions" role="listbox">${this.suggestions.map(
+        open
+          ? html`<ul id="suggestions" part="popover suggestions" role="listbox" popover="manual">${this.suggestions.map(
               (name, index) =>
                 html`<li
+                  id=${`suggestion-${index}`}
                   part="suggestion"
                   role="option"
                   aria-selected=${index === this.activeSuggestion ? 'true' : 'false'}
                   @pointerdown=${(event: Event) => this.#onSuggestionPointerDown(event, name)}
                 >${name}</li>`
             )}</ul>`
-          : this.error
-            ? html`<div part="popover formula-error" role="alert">${this.error}</div>`
+          : error
+            ? html`<div id="formula-error" part="popover formula-error" popover="manual">${this.error}</div>`
             : nothing
       }
     `;
@@ -388,10 +447,12 @@ export class FormulaCellEditor extends LitElement {
           (this.activeSuggestion - 1 + this.suggestions.length) % this.suggestions.length;
         return;
       }
-      if (event.key === 'Enter' || event.key === 'Tab') {
+      if (
+        (event.key === 'Enter' || event.key === 'Tab') &&
+        this.#acceptSuggestion(this.suggestions[this.activeSuggestion])
+      ) {
         event.preventDefault();
         event.stopPropagation();
-        this.#acceptSuggestion(this.suggestions[this.activeSuggestion]);
         return;
       }
       if (event.key === 'Escape') {
@@ -399,6 +460,10 @@ export class FormulaCellEditor extends LitElement {
         event.stopPropagation();
         this.suggestions = [];
         return;
+      }
+      // Moving the caret leaves the word the suggestions were for.
+      if (CARET_KEYS.has(event.key)) {
+        this.suggestions = [];
       }
     }
 
@@ -443,6 +508,11 @@ export class FormulaCellEditor extends LitElement {
     void this.#commit();
   };
 
+  /** A click in the input moves the caret, which leaves the suggested word. */
+  #dismissSuggestions = (): void => {
+    this.suggestions = [];
+  };
+
   // --- autocomplete ---------------------------------------------------------
 
   /** Recompute function-name suggestions for the partial word before the caret. */
@@ -470,10 +540,18 @@ export class FormulaCellEditor extends LitElement {
     return match ? match[1] : null;
   }
 
-  /** Replace the partial name before the caret with `NAME()`, caret inside the parens. */
-  #acceptSuggestion(name: string): void {
+  /**
+   * Replace the partial name before the caret with `NAME()`, caret inside the
+   * parens. When the caret no longer follows a prefix of `name` the stale list
+   * is dismissed instead and `false` returned, so the key acts as usual.
+   */
+  #acceptSuggestion(name: string): boolean {
     const caret = this.#input?.selectionStart ?? this.text.length;
-    const partial = this.#partialNameBefore(caret) ?? '';
+    const partial = this.#partialNameBefore(caret);
+    if (!partial || !name.startsWith(partial.toUpperCase())) {
+      this.suggestions = [];
+      return false;
+    }
     const start = caret - partial.length;
     const after = this.text.slice(caret);
     this.text = `${this.text.slice(0, start)}${name}()${after}`;
@@ -481,6 +559,7 @@ export class FormulaCellEditor extends LitElement {
     this.suggestions = [];
     this.error = this.#parseError(this.text.trim()) ?? '';
     this.#updateHighlights();
+    return true;
   }
 
   #onSuggestionPointerDown(event: Event, name: string): void {
@@ -513,23 +592,31 @@ export class FormulaCellEditor extends LitElement {
   /**
    * Climb out of the nested shadow roots (editor -> cell -> row -> grid) to the
    * owning grid host, so a capture listener there sees clicks on every cell of
-   * this grid (and only this grid). Returns the outermost `apex-grid*` host.
+   * this grid. Returns the NEAREST grid, so a grid nested in another one (a
+   * master-detail panel) never captures the clicks of its parent grid.
    */
   #resolveGridHost(): HTMLElement | null {
-    let host: HTMLElement | null = null;
-    let node: Node | null = this;
-    for (let depth = 0; node && depth < 6; depth += 1) {
+    let node: Node = this;
+    for (let depth = 0; depth < 6; depth += 1) {
       const root = node.getRootNode();
       if (!(root instanceof ShadowRoot)) {
         break;
       }
-      const candidate = root.host as HTMLElement;
-      if (candidate.localName?.startsWith('apex-grid')) {
-        host = candidate;
+      node = root.host;
+      if (node instanceof ApexGrid) {
+        return node;
       }
-      node = candidate;
     }
-    return host;
+    return null;
+  }
+
+  /** Whether a clicked cell can be referenced (it belongs to this formula grid). */
+  #referable(hit: { record: object; key: string }): boolean {
+    const controller = this.controller;
+    return Boolean(
+      controller?.addressFor?.(hit.record, hit.key) ??
+        controller?.referenceFor?.(hit.record, hit.key)
+    );
   }
 
   /** Resolve a grid pointer event to the foreign cell's `{ record, key }`, or null. */
@@ -556,7 +643,8 @@ export class FormulaCellEditor extends LitElement {
    * opens its own editor while a formula is being authored.
    */
   #onGridClickCapture = (event: MouseEvent): void => {
-    if (!this.text.trim().startsWith('=') || !this.#cellFromEvent(event)) {
+    const hit = this.text.trim().startsWith('=') && this.#cellFromEvent(event);
+    if (!hit || !this.#referable(hit)) {
       return;
     }
     event.preventDefault();
@@ -568,8 +656,8 @@ export class FormulaCellEditor extends LitElement {
       return;
     }
     const hit = this.#cellFromEvent(event);
-    if (!hit) {
-      return;
+    if (!hit || !this.#referable(hit)) {
+      return; // not a cell this grid's formulas can reference: let it through
     }
     // Insert the reference instead of letting the grid select/edit that cell.
     event.preventDefault();

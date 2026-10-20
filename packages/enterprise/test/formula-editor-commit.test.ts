@@ -1,11 +1,16 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import { type ColumnConfiguration, max, min } from 'apex-grid';
-import { FormulaCellEditor } from '../src/features/formula/index.js';
+import {
+  FormulaCellEditor,
+  type FormulaEditorContext,
+  type FormulaEditorController,
+} from '../src/features/formula/index.js';
 import { ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 
 // The formula editor commits through the grid's edit path: an untouched editor
 // writes nothing, literals keep the column type, a rejected literal keeps the
-// formula, row mode stages formulas with the row, and undo restores formulas.
+// formula, row mode stages formulas with the row, undo restores formulas, the
+// popovers paint above later rows, and click-to-insert stays in its own grid.
 
 type Row = { qty: number; price: number; total: number | null };
 
@@ -99,6 +104,22 @@ async function press(grid: ApexGridEnterprise<never>, editor: FormulaCellEditor,
   await grid.updateComplete;
   await nextFrame();
 }
+
+/** Resolve the innermost element at a point, through open shadow roots. */
+function deepHit(x: number, y: number): Element | null {
+  let el: Element | null = document.elementFromPoint(x, y);
+  while (el?.shadowRoot) {
+    const inner = el.shadowRoot.elementFromPoint(x, y);
+    if (!inner || inner === el) break;
+    el = inner;
+  }
+  return el;
+}
+
+const centerHit = (el: Element) => {
+  const rect = el.getBoundingClientRect();
+  return deepHit(rect.left + rect.width / 2, rect.top + rect.height / 2);
+};
 
 describe('formula editor commits through the edit pipeline', () => {
   before(() => {
@@ -443,6 +464,219 @@ describe('formula editor commits through the edit pipeline', () => {
       expect(data[0].total).to.equal(7);
       expect(grid.getFormula(data[0], 'total')).to.equal(undefined);
       expect(grid.canUndo).to.equal(false);
+    });
+  });
+
+  describe('popovers', () => {
+    const tenRows = () => Array.from({ length: 10 }, (_, i) => ({ qty: i, price: i, total: 0 }));
+
+    it('the suggestion list of a middle row paints above the following rows', async () => {
+      const grid = await mount(tenRows(), numberColumns());
+      const editor = await open(grid as never, 1, 'total');
+      await type(editor, '=A');
+      await nextFrame();
+      const items = [...editor.renderRoot.querySelectorAll('[part~="suggestion"]')];
+      expect(items.length).to.be.greaterThan(2);
+      expect(centerHit(items[2]), 'third suggestion is on top').to.equal(items[2]);
+    });
+
+    it('the parse error paints above the following rows', async () => {
+      const grid = await mount(tenRows(), numberColumns());
+      const editor = await open(grid as never, 0, 'total');
+      await type(editor, '=1+');
+      await nextFrame();
+      const error = editor.renderRoot.querySelector('[part~="formula-error"]') as HTMLElement;
+      expect(error).to.exist;
+      expect(centerHit(error), 'error popover is on top').to.equal(error);
+      expect(error.getAttribute('role'), 'not an assertive alert per keystroke').to.not.equal(
+        'alert'
+      );
+      expect(inputOf(editor).getAttribute('aria-describedby')).to.equal(error.id);
+    });
+
+    it('the suggestion list stays on the input when the page or grid scrolls', async () => {
+      const rows = Array.from({ length: 60 }, (_, i) => ({ qty: i, price: i, total: 0 }));
+      const grid = await mount(rows, numberColumns());
+      const spacer = document.createElement('div');
+      spacer.style.height = '3000px';
+      document.body.append(spacer);
+      try {
+        const editor = await open(grid as never, 2, 'total');
+        await type(editor, '=S');
+        await nextFrame();
+        const list = editor.renderRoot.querySelector('[part~="suggestions"]') as HTMLElement;
+        const gap = () =>
+          list.getBoundingClientRect().top - inputOf(editor).getBoundingClientRect().bottom;
+        expect(gap()).to.be.closeTo(2, 1);
+        window.scrollBy(0, 40);
+        await nextFrame();
+        await nextFrame();
+        expect(gap(), 'after a page scroll').to.be.closeTo(2, 1);
+      } finally {
+        window.scrollTo(0, 0);
+        spacer.remove();
+      }
+    });
+
+    /** A 300px grid whose host is the scroller, with row 3 editing `=S`. */
+    async function scrollingGrid(marginTop = '0px') {
+      const rows = Array.from({ length: 60 }, (_, i) => ({ qty: i, price: i, total: 0 }));
+      const grid = await mount(rows, numberColumns());
+      grid.style.height = '300px';
+      grid.style.display = 'block';
+      grid.style.marginTop = marginTop;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const editor = await open(grid as never, 3, 'total');
+      await type(editor, '=S');
+      await nextFrame();
+      const list = editor.renderRoot.querySelector('[part~="suggestions"]') as HTMLElement;
+      const scrollTo = async (top: number) => {
+        (grid as unknown as HTMLElement).scrollTop = top;
+        await nextFrame();
+        await nextFrame();
+      };
+      return { grid: grid as unknown as HTMLElement, editor, list, scrollTo };
+    }
+
+    const shown = (list: HTMLElement) => {
+      const hit = centerHit(list);
+      return hit === list || list.contains(hit);
+    };
+
+    it('the suggestion list stays on the input when the grid scrolls', async () => {
+      const { grid, editor, list, scrollTo } = await scrollingGrid();
+      await scrollTo(20);
+      expect(grid.scrollTop, 'the grid host scrolled').to.equal(20);
+      const gap = list.getBoundingClientRect().top - inputOf(editor).getBoundingClientRect().bottom;
+      expect(gap, 'after a grid scroll').to.be.closeTo(2, 1);
+      expect(shown(list), 'still painted').to.equal(true);
+    });
+
+    it('the suggestion list hides while its row is scrolled out of the grid', async () => {
+      const { grid, editor, list, scrollTo } = await scrollingGrid('200px');
+      await scrollTo(300);
+      expect(editor.isConnected, 'the editing row is still rendered').to.equal(true);
+      expect(shown(list), 'not painted above the grid').to.equal(false);
+      await scrollTo(200);
+      expect(shown(list), 'not painted over the header').to.equal(false);
+      await scrollTo(0);
+      expect(grid.scrollTop).to.equal(0);
+      expect(shown(list), 'shown again once the row is back').to.equal(true);
+      const gap = list.getBoundingClientRect().top - inputOf(editor).getBoundingClientRect().bottom;
+      expect(gap).to.be.closeTo(2, 1);
+    });
+
+    it('exposes the suggestion list as a combobox', async () => {
+      const grid = await mount(tenRows(), numberColumns());
+      const editor = await open(grid as never, 0, 'total');
+      const input = await type(editor, '=A');
+      const list = editor.renderRoot.querySelector('[part~="suggestions"]') as HTMLElement;
+      expect(input.getAttribute('role')).to.equal('combobox');
+      expect(input.getAttribute('aria-expanded')).to.equal('true');
+      expect(input.getAttribute('aria-controls')).to.equal(list.id);
+      const options = [...list.querySelectorAll('[role="option"]')];
+      expect(input.getAttribute('aria-activedescendant')).to.equal(options[0].id);
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      await editor.updateComplete;
+      expect(input.getAttribute('aria-activedescendant')).to.equal(options[1].id);
+    });
+  });
+
+  describe('suggestions follow the caret', () => {
+    it('moving the caret dismisses suggestions, so Enter does not splice a stale one', async () => {
+      const controller: FormulaEditorController = {
+        getFormula: () => undefined,
+        setFormula: () => {},
+        clearFormula: () => {},
+        functionNames: () => ['ABS', 'AND', 'AVERAGE', 'AVG', 'SUM'],
+      };
+      const ctx: FormulaEditorContext = {
+        value: 0,
+        column: { key: 'total' },
+        row: { data: { total: 0 } },
+        commit: async () => true,
+        cancel: () => {},
+      };
+      const el = await fixture<FormulaCellEditor>(
+        html`<apex-grid-formula-editor .ctx=${ctx} .controller=${controller}></apex-grid-formula-editor>`
+      );
+      const input = await type(el, '=SUM(A');
+      expect(el.renderRoot.querySelectorAll('[part~="suggestion"]').length).to.be.greaterThan(0);
+      input.setSelectionRange(3, 3);
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+      await el.updateComplete;
+      expect(el.renderRoot.querySelectorAll('[part~="suggestion"]').length).to.equal(0);
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await el.updateComplete;
+      expect(input.value).to.equal('=SUM(A');
+    });
+  });
+
+  describe('click to insert', () => {
+    it('a detail grid editor leaves the parent grid clickable', async () => {
+      type P = { name: string; n: number };
+      const parentData: P[] = [
+        { name: 'a', n: 1 },
+        { name: 'b', n: 2 },
+      ];
+      const childData: Row[] = [{ qty: 2, price: 3, total: 0 }];
+      const wrap = document.createElement('div');
+      wrap.style.height = '800px';
+      const parent = await fixture<ApexGridEnterprise<P>>(
+        html`<apex-grid-enterprise
+          .data=${parentData}
+          .columns=${[{ key: 'name' }, { key: 'n', type: 'number' }]}
+          .expansion=${{
+            enabled: true,
+            detailTemplate: () =>
+              html`<div style="height:300px"><apex-grid-enterprise
+                style="height:300px"
+                .data=${childData}
+                .columns=${numberColumns()}
+                .editing=${{ enabled: true, mode: 'cell' }}
+              ></apex-grid-enterprise></div>`,
+          }}
+        ></apex-grid-enterprise>`,
+        { parentNode: wrap }
+      );
+      await parent.updateComplete;
+      await nextFrame();
+      await parent.expandRow(parentData[0]);
+      await parent.updateComplete;
+      for (let i = 0; i < 4; i += 1) await nextFrame();
+      const rows = parent.rows as unknown as Array<HTMLElement & { renderRoot: ParentNode }>;
+      const child = rows[0].renderRoot.querySelector(
+        'apex-grid-enterprise'
+      ) as ApexGridEnterprise<Row>;
+      expect(child, 'detail grid rendered').to.exist;
+      await child.updateComplete;
+      for (let i = 0; i < 4; i += 1) await nextFrame();
+      const editor = await open(child as never, 0, 'total');
+      await type(editor, '=');
+
+      const parentCell = (parent.rows as unknown as Array<{ cells: HTMLElement[] }>)[1].cells[0];
+      let reached = false;
+      parentCell.addEventListener('pointerdown', () => {
+        reached = true;
+      });
+      const down = new PointerEvent('pointerdown', {
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+      });
+      parentCell.dispatchEvent(down);
+      expect(reached, 'pointerdown reaches the parent cell').to.equal(true);
+      expect(down.defaultPrevented).to.equal(false);
+      expect(inputOf(editor).value, 'nothing inserted').to.equal('=');
+
+      // A cell of the detail grid itself still inserts a reference.
+      const qty = cellOf(child as never, 0, 'qty')!;
+      qty.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, composed: true, cancelable: true })
+      );
+      window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+      await editor.updateComplete;
+      expect(inputOf(editor).value).to.equal('=A1');
     });
   });
 });
