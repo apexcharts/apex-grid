@@ -1,15 +1,71 @@
 import { type GridLocaleKey, localize } from 'apex-grid';
 import { registerComponent } from 'apex-grid/internal';
-import { css, html, LitElement, nothing } from 'lit';
+import {
+  css,
+  html,
+  LitElement,
+  nothing,
+  type ReactiveController,
+  type ReactiveControllerHost,
+} from 'lit';
 import { property, state } from 'lit/decorators.js';
 import {
   RANGE_CHANGED_EVENT,
   type RangeChangedDetail,
   type RangeStats,
 } from './features/range-selection.js';
-import type { ApexGridEnterprise } from './grid-enterprise.js';
+import { type ApexGridEnterprise, VIEW_CHANGED_EVENT } from './grid-enterprise.js';
 
 export const STATUS_BAR_TAG = 'apex-grid-status-bar';
+
+type Grid = ReactiveControllerHost & EventTarget;
+
+/**
+ * Keeps a companion element (status bar, tool panel) in step with the grid it
+ * is bound to. While the companion is connected it hooks the grid's update
+ * cycle, so anything that re-renders the grid (columns, grouping, pivot,
+ * locale) re-renders the companion too, and `onLink` adds or drops any grid
+ * listeners. A disconnect unhooks it and a reconnect hooks it again, so moving
+ * the companion in the DOM never stops it updating or doubles its listeners.
+ */
+export class GridLink implements ReactiveController {
+  #grid: Grid | null | undefined;
+  readonly #hook: ReactiveController;
+
+  constructor(
+    private readonly host: ReactiveControllerHost & Element,
+    private readonly onLink?: (grid: Grid, on: boolean) => void
+  ) {
+    host.addController(this);
+    this.#hook = { hostUpdated: () => host.requestUpdate() };
+  }
+
+  /** Bind another grid (or none), moving the hook across. */
+  public set grid(grid: Grid | null | undefined) {
+    if (grid === this.#grid) return;
+    this.hostDisconnected();
+    this.#grid = grid;
+    if (this.host.isConnected) this.hostConnected();
+  }
+
+  // Both are idempotent: controllers are a set, and a listener is added once per function.
+  // The optional calls skip a grid element that is not upgraded yet.
+  public hostConnected(): void {
+    const grid = this.#grid;
+    if (!grid) return;
+    grid.addController?.(this.#hook);
+    this.onLink?.(grid, true);
+    // The grid may have changed while the companion was detached.
+    this.host.requestUpdate();
+  }
+
+  public hostDisconnected(): void {
+    const grid = this.#grid;
+    if (!grid) return;
+    grid.removeController?.(this.#hook);
+    this.onLink?.(grid, false);
+  }
+}
 
 function formatNumber(value: number): string {
   if (Number.isInteger(value)) return value.toLocaleString();
@@ -18,10 +74,11 @@ function formatNumber(value: number): string {
 
 /**
  * Spreadsheet-style status bar. Mount it beside (or below) an
- * `<apex-grid-enterprise>` and set its `grid` property; it listens for the
- * grid's range-selection changes and shows live aggregates of the selected
- * cells — count, plus sum / average / min / max over the numeric ones, exactly
- * like the selection summary in Excel or Google Sheets.
+ * `<apex-grid-enterprise>` and set its `grid` property; it shows live
+ * aggregates of the selected cells (count, plus sum / average / min / max over
+ * the numeric ones), the usual spreadsheet selection summary. The figures
+ * follow the selection and the values under it: edits, paste, fill, undo,
+ * formula recalculation and a new `data` array all refresh them, once per burst.
  *
  * @element apex-grid-status-bar
  *
@@ -87,39 +144,39 @@ export class ApexGridStatusBar extends LitElement {
   @state()
   private stats: RangeStats | null = null;
 
-  #boundGrid: HTMLElement | null = null;
+  /** Set when values under the selection may have changed; the next update re-reads them. */
+  #stale = false;
 
-  public override disconnectedCallback(): void {
-    this.#detach();
-    super.disconnectedCallback();
-  }
+  readonly #link = new GridLink(this, (grid, on) => {
+    const method = on ? 'addEventListener' : 'removeEventListener';
+    grid[method](RANGE_CHANGED_EVENT, this.#onRangeChanged as EventListener);
+    // The grid fires this on a cell value change (edit, paste, fill, undo, formula
+    // recalc) and on a data, sort, filter or structure change.
+    grid[method](VIEW_CHANGED_EVENT, this.#onValuesChanged);
+    // Pull the current stats so a late mount or a reconnect shows the live selection.
+    if (on) this.#onValuesChanged();
+  });
 
   protected override willUpdate(changed: Map<PropertyKey, unknown>): void {
-    if (changed.has('grid')) this.#attach();
-  }
-
-  #attach(): void {
-    this.#detach();
-    const grid = this.grid as unknown as HTMLElement | null;
-    if (!grid) return;
-    grid.addEventListener(RANGE_CHANGED_EVENT, this.#onRangeChanged as EventListener);
-    this.#boundGrid = grid;
-    // Pull the current stats so a late mount shows any existing selection.
-    const current = this.grid?.getSelectionStats?.();
-    this.stats = current && current.count > 0 ? current : null;
-  }
-
-  #detach(): void {
-    this.#boundGrid?.removeEventListener(
-      RANGE_CHANGED_EVENT,
-      this.#onRangeChanged as EventListener
-    );
-    this.#boundGrid = null;
+    if (changed.has('grid')) this.#link.grid = this.grid;
+    // Bursts (a many-cell paste or applyEdits) coalesce into this one read, and a
+    // grid with no selection makes it free.
+    if (this.#stale) {
+      this.#stale = false;
+      const current = this.grid?.getSelectionStats?.();
+      this.stats = current && current.count > 0 ? current : null;
+    }
   }
 
   #onRangeChanged = (event: CustomEvent<RangeChangedDetail>): void => {
     const { bounds, stats } = event.detail;
+    this.#stale = false;
     this.stats = bounds && stats.count > 0 ? stats : null;
+  };
+
+  #onValuesChanged = (): void => {
+    this.#stale = true;
+    this.requestUpdate();
   };
 
   #renderStat(label: string, value: string) {
