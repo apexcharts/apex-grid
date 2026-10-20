@@ -184,4 +184,70 @@ describe('enterprise export and grid API', () => {
       expect((sheet.match(/<row /g) ?? []).length).to.equal(5);
     });
   });
+
+  describe('view chart model', () => {
+    const pivot = {
+      pivotOn: 'product',
+      pivotRows: ['region'],
+      pivotValues: { amount: ['sum'] },
+    };
+
+    it('charts the top-level nodes of an expandable pivot by their labels', async () => {
+      const grid = await mount({ ...pivot, pivotOptions: { expandable: true, grandTotal: true } });
+      const model = grid.getViewChartModel();
+      expect(model.categories).to.eql(['EMEA', 'AMER']);
+      expect(model.series.map((series) => series.data)).to.eql([
+        [10, 70],
+        [20, 0],
+      ]);
+    });
+
+    it('leaves pivot subtotal and grand-total rows out', async () => {
+      const grid = await mount({
+        ...pivot,
+        pivotOptions: { grandTotal: true, subtotals: true },
+      });
+      const model = grid.getViewChartModel();
+      expect(model.categories).to.eql(['EMEA', 'AMER']);
+      expect(model.series[0].data).to.eql([10, 70]);
+    });
+
+    it('leaves a flat grid total row out', async () => {
+      const grid = await mount({ totalRow: { aggregations: { amount: ['sum'] } } });
+      const model = grid.getViewChartModel();
+      expect(model.categories).to.eql(['EMEA', 'AMER']);
+      expect(model.series[0].data).to.eql([30, 70]);
+      expect(grid.getChartFields().find((field) => field.key === 'amount')?.numeric).to.equal(true);
+    });
+  });
+
+  describe('cross-filter model', () => {
+    it('detects an untyped numeric column from its values, as the range model does', async () => {
+      const grid = await mount();
+      grid.selectRange({ row: 0, column: 'region' }, { row: 3, column: 'amount' });
+      await grid.updateComplete;
+      const range = grid.getRangeChartModel();
+      const cross = grid.getCrossFilterModel();
+      expect(cross.categoryKey).to.equal('region');
+      expect(cross.model.series[0].data).to.eql(range.series[0].data);
+      expect(cross.model.series[0].name).to.equal('amount');
+    });
+
+    it('does not take an untyped numeric first column as the category', async () => {
+      const grid = await mount();
+      grid.columns = [{ key: 'amount' }, { key: 'region' }];
+      await grid.updateComplete;
+      grid.selectRange({ row: 0, column: 'amount' }, { row: 3, column: 'region' });
+      expect(grid.getCrossFilterModel().categoryKey).to.equal('region');
+    });
+
+    it('takes the first column as the category of an all-numeric range', async () => {
+      const grid = await mount();
+      grid.selectRange({ row: 0, column: 'amount' }, { row: 3, column: 'amount' });
+      const single = grid.getCrossFilterModel();
+      expect(single.categoryKey).to.equal('amount');
+      expect(single.model.categories).to.eql(['10', '20', '30', '40']);
+      expect(single.model.series[0].data).to.eql([1, 1, 1, 1]);
+    });
+  });
 });

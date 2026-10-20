@@ -97,7 +97,13 @@ import {
   serverQueryKey,
 } from './features/infinite-row-model.js';
 import { type MasterDetailConfig, MasterDetailManager } from './features/master-detail.js';
-import { PIVOT_MODULE_ID, type PivotController, type PivotOptions } from './features/pivot.js';
+import {
+  getPivotMeta,
+  PIVOT_GROUP_KEY,
+  PIVOT_MODULE_ID,
+  type PivotController,
+  type PivotOptions,
+} from './features/pivot.js';
 import {
   RANGE_CHANGED_EVENT,
   RANGE_SELECTION_MODULE_ID,
@@ -1858,9 +1864,16 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     }
 
     if (this.#pivotActive) {
-      const rows = this.pageItems as ReadonlyArray<Record<string, unknown>>;
+      // One category per pivot row the data defines: a tree's top-level nodes by their label, or
+      // the flat rows by their row fields. Subtotal and grand-total rows would count twice.
+      const rows = (this.pageItems as ReadonlyArray<Record<string, unknown>>).filter((row) => {
+        const meta = getPivotMeta(row);
+        return meta?.key === undefined ? meta?.kind === 'data' : meta.depth === 0;
+      });
       const categories = rows.map((row) =>
-        this.pivotRows.map((field) => String(row[field])).join(' / ')
+        getPivotMeta(row)?.key === undefined
+          ? this.pivotRows.map((field) => String(row[field])).join(' / ')
+          : String(row[PIVOT_GROUP_KEY])
       );
       const valueCols = this.columns.filter((column) => String(column.key).startsWith('pivot::'));
       const series: ChartSeries[] = valueCols.map((column) => ({
@@ -1873,10 +1886,15 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     // Flat grid: chart the full current view. Visible columns in display order, values read from
     // the (sorted/filtered) pageItems, so every grid operation is reflected on the next redraw.
     const columns = getDisplayColumns(this.columns).filter((column) => !column.hidden);
-    const items = this.pageItems as ReadonlyArray<Record<string, unknown>>;
+    const items = this.#pageRecords();
     if (columns.length === 0 || items.length === 0) return { categories: [], series: [] };
     const rows = items.map((record) => columns.map((column) => record[String(column.key)]));
     return buildCategoryModel(columns, rows, definition);
+  }
+
+  /** The current page's data records, without rows a module synthesized (a total row). */
+  #pageRecords(): ReadonlyArray<Record<string, unknown>> {
+    return this.stateController.dataRows(this.pageItems) as ReadonlyArray<Record<string, unknown>>;
   }
 
   /**
@@ -1889,7 +1907,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   public getChartFields(): ChartField[] {
     if (this.groupBy.length > 0 || this.#pivotActive) return [];
     const columns = getDisplayColumns(this.columns).filter((column) => !column.hidden);
-    const items = this.pageItems as ReadonlyArray<Record<string, unknown>>;
+    const items = this.#pageRecords();
     const rows = items.map((record) => columns.map((column) => record[String(column.key)]));
     const numeric = detectNumericColumns(columns, rows);
     return columns.map((column, c) => ({
@@ -1935,8 +1953,11 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     const active = this.#rangeController()?.getActiveGrid();
     const empty = { categoryKey: null, model: { categories: [], series: [] } };
     if (!active) return empty;
-    const categoryCol = active.columns.find((column) => column.type !== 'number');
-    const valueCol = active.columns.find((column) => column.type === 'number');
+    // The same orientation rule as the range model: numeric by declared type or by the values.
+    // An all-numeric range still needs a column to filter on: its first one.
+    const numeric = detectNumericColumns(active.columns, active.rows);
+    const categoryCol = active.columns.find((_, c) => !numeric[c]) ?? active.columns[0];
+    const valueCol = active.columns.find((column, c) => numeric[c] && column !== categoryCol);
     if (!categoryCol) return empty;
 
     const categoryKey = String(categoryCol.key);
