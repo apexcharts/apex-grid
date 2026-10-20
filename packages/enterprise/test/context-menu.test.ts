@@ -510,6 +510,30 @@ describe('Context menu: targets, events and entry points (ctx-menu batch)', () =
     expect(pinned).to.deep.equal(['end', null]);
   });
 
+  it('context-menu="false" and range-selection="false" turn the features off', async () => {
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise
+        context-menu="false"
+        range-selection="false"
+        .data=${data.map((r) => ({ ...r }))}
+        .columns=${columns}
+      ></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    await layoutComplete(grid);
+    expect(grid.contextMenu).to.equal(false);
+    expect(grid.rangeSelection).to.equal(false);
+    const event = rightClick(cellElement(grid, 0, 'name')!);
+    expect(event.defaultPrevented).to.equal(false);
+    expect(menu()).to.equal(null);
+
+    grid.setAttribute('context-menu', '');
+    grid.setAttribute('range-selection', 'true');
+    await grid.updateComplete;
+    expect(grid.contextMenu).to.equal(true);
+    expect(grid.rangeSelection).to.equal(true);
+  });
+
   function kebab(grid: ApexGridEnterprise<Row>, key: keyof Row) {
     return headerElement(grid, key)!.shadowRoot!.querySelector<HTMLButtonElement>(
       '[part~="menu-btn"]'
