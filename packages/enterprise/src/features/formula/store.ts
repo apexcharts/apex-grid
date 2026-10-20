@@ -24,10 +24,11 @@ import {
   type GridFeatureModule,
   type GridHost,
   PIPELINE,
+  type StateController,
   viewIndexer,
 } from 'apex-grid/internal';
 import type { ReactiveController } from 'lit';
-import { type CellValue, cycleError, refError } from './errors.js';
+import { type CellValue, cycleError, isFormulaError, refError } from './errors.js';
 import { evaluate, type FormulaContext } from './evaluator.js';
 import { createFunctionRegistry, type FormulaFn } from './functions.js';
 import {
@@ -457,6 +458,19 @@ export interface FormulaRestoreRejection {
   reason: 'invalid' | 'column';
 }
 
+/** The state controller slice the formula controller uses (editing is optional). */
+type FormulaState<T extends object> = Pick<StateController<T>, 'bumpDecoration'> &
+  Partial<Pick<StateController<T>, 'editing'>>;
+
+/** A formula source change riding with a cell edit, for row staging and undo. */
+interface SourceEdit {
+  source: string | undefined;
+  record: object;
+  apply(): void;
+  revert(): void;
+  stagedValue?(staged: ReadonlyMap<PropertyKey, unknown>): unknown;
+}
+
 /**
  * Bound on the extra recalc passes one settle runs for edits that listeners
  * make while it dispatches, so a listener that always writes cannot spin forever.
@@ -481,8 +495,12 @@ export class FormulaController<T extends object> implements ReactiveController, 
 
   readonly #host: GridHost<T>;
   readonly #store: FormulaStore;
-  /** Owning state controller, for requesting cell-decoration refreshes. */
-  readonly #state: { bumpDecoration(): void } | undefined;
+  /** Owning state controller: cell-decoration refreshes and the edit path. */
+  readonly #state: FormulaState<T> | undefined;
+  /** The {@link SourceEdit}s this controller made, to recognise a staged one. */
+  readonly #edits = new WeakSet<object>();
+  /** While {@link #setSource} recalculates: each written cell's value before. */
+  #before: Map<string, unknown> | null = null;
   /** Stable A1 letter order: column keys in first-seen order, append-only so a
    * formula's letters survive column reorder; a removed column's slot is kept. */
   readonly #letterOrder: string[] = [];
@@ -517,7 +535,7 @@ export class FormulaController<T extends object> implements ReactiveController, 
    */
   #pointerCells: Map<T, Map<string, string>> | null = null;
 
-  constructor(host: GridHost<T>, state?: { bumpDecoration(): void }) {
+  constructor(host: GridHost<T>, state?: FormulaState<T>) {
     this.#host = host;
     this.#state = state;
     this.#store = new FormulaStore(this);
@@ -580,6 +598,8 @@ export class FormulaController<T extends object> implements ReactiveController, 
     const key = this.#keyForIndex(address.col);
     const row = this.#frame()[address.row] as Record<string, unknown> | undefined;
     if (key !== undefined && row) {
+      const id = this.#before && cellKey(address);
+      if (id && !this.#before?.has(id)) this.#before?.set(id, row[key]);
       row[key] = value;
     }
   }
@@ -614,6 +634,115 @@ export class FormulaController<T extends object> implements ReactiveController, 
       const had = this.#store.has(address);
       this.#settle(this.#store.clear(address), had);
     }
+  }
+
+  /**
+   * Commit the open edit of a cell typed in the formula editor through the
+   * grid's edit path: `src` (a formula) or the literal `value`. A formula's
+   * value is computed first, so both run the validators and the cancellable
+   * `cellValueChanging`, stage in row mode, and record undo. The formula
+   * change rides with the value: applied once the value is accepted (or the
+   * row commits), dropped when it is rejected (or the row cancels), and
+   * undone with it. `undefined` when the cell is not in edit here.
+   */
+  public commitSource(
+    row: T,
+    columnKey: keyof T & string,
+    src: string | undefined,
+    value: unknown
+  ): Promise<boolean> | undefined {
+    const editing = this.#state?.editing;
+    const address = this.#addressOf(row, columnKey, true);
+    if (!address || !editing?.isCellEditing(row, columnKey)) {
+      return undefined;
+    }
+    const previous = this.getFormula(row, columnKey);
+    let edit: SourceEdit | undefined;
+    if (previous !== src) {
+      edit = {
+        source: src,
+        record: row,
+        apply: () => this.#setSource(row, columnKey, src),
+        revert: () => this.#setSource(row, columnKey, previous),
+      };
+      if (src !== undefined) {
+        // Row mode: recompute over the row's staged values when it commits.
+        edit.stagedValue = (staged) => {
+          const at = this.#addressOf(row, columnKey, true);
+          return at ? this.computeFormula(at, src, staged) : staged.get(columnKey);
+        };
+      }
+      this.#edits.add(edit);
+    }
+    return editing.commitCell(src === undefined ? value : this.computeFormula(address, src), edit);
+  }
+
+  /**
+   * The formula an edit of the cell starts from: one staged by the open row
+   * edit (`undefined` when a literal replaced it there), else the stored one.
+   */
+  public editingSource(row: T, columnKey: keyof T & string): string | undefined {
+    const staged = this.#state?.editing?.stagedEffect(row, columnKey);
+    return staged && this.#edits.has(staged)
+      ? (staged as SourceEdit).source
+      : this.getFormula(row, columnKey);
+  }
+
+  /**
+   * Store `src` on the cell, or clear its formula when `undefined`. The edit
+   * this rides with already wrote the cell's value and dispatched its event,
+   * so only cells whose value moves dispatch another one.
+   */
+  #setSource(row: T, columnKey: keyof T & string, src: string | undefined): void {
+    const address = this.#addressOf(row, columnKey, true);
+    if (!address) return;
+    const changed = src !== undefined || this.#store.has(address);
+    const before = new Map<string, unknown>();
+    this.#before = before;
+    let changes: RecalcChange[];
+    try {
+      changes = src === undefined ? this.#store.clear(address) : this.#store.set(address, src);
+    } finally {
+      this.#before = null;
+    }
+    const moved = ({ address: at, value }: RecalcChange): boolean => {
+      const id = cellKey(at);
+      if (!before.has(id)) return true;
+      const was = before.get(id);
+      // A recomputed error is a fresh object: the same code has not moved.
+      return isFormulaError(was) && isFormulaError(value)
+        ? was.code !== value.code
+        : !Object.is(was, value);
+    };
+    this.#settle(changes.filter(moved), changed);
+  }
+
+  /**
+   * The value `src` would compute at `address`, without storing it: a store
+   * holding just this formula, whose write lands here instead of in the row
+   * (cycles included). Paste and fill run it through the edit path too.
+   */
+  public computeFormula(
+    address: CellAddress,
+    src: string,
+    staged?: ReadonlyMap<PropertyKey, unknown>
+  ): unknown {
+    let computed: unknown = null;
+    new FormulaStore({
+      readValue: (cell) => {
+        const key = cell.row === address.row && staged ? this.#keyForIndex(cell.col) : undefined;
+        return key !== undefined && staged?.has(key)
+          ? (staged.get(key) as CellValue)
+          : this.readValue(cell);
+      },
+      isValidAddress: (cell) => this.isValidAddress(cell),
+      extent: () => this.extent(),
+      writeValue: (_, result) => {
+        computed = result;
+      },
+      functions: this.functions,
+    }).set(address, src);
+    return computed;
   }
 
   /**

@@ -8,24 +8,20 @@ import {
   type CellInteraction,
   type CellInteractionHandler,
   type ColumnConfiguration,
-  clampRating,
-  commitDateInSameShape,
   type ExportCellValue,
   escapeCSVCell,
   escapeFormula,
   type GridFeatureModule,
   type GridHost,
   getDisplayColumns,
-  getRatingMax,
-  getSelectOptions,
   PIPELINE,
-  parseDate,
   type StateController,
 } from 'apex-grid/internal';
 import type { ReactiveController } from 'lit';
 import { toFiniteNumber as toNumber } from './aggregation.js';
+import { coerceText } from './formula/coerce.js';
 import { offsetReferences, parseFormula, stringifyFormula } from './formula/parser.js';
-import { FORMULA_MODULE_ID, type FormulaController, FormulaStore } from './formula/store.js';
+import { FORMULA_MODULE_ID, type FormulaController } from './formula/store.js';
 
 export const RANGE_SELECTION_MODULE_ID = 'range-selection';
 
@@ -977,7 +973,7 @@ export class RangeSelectionController<T extends object>
           lastRow = Math.max(lastRow, row);
           lastCol = Math.max(lastCol, colIndex);
           const current = (record as Record<string, unknown>)[String(column.key)];
-          const value = this.#coerce(matrix[i][j], column, current);
+          const value = coerceText(matrix[i][j], column, current);
           wrote = this.#write(row, column, record, value, shifted?.[i][j]) || wrote;
         }
       });
@@ -1135,17 +1131,7 @@ export class RangeSelectionController<T extends object>
       editing.applyCellEdit(row, column.key, record, value);
       return true;
     }
-    // A store holding just this formula, whose write lands here instead of in
-    // the row, gives the value the engine would compute (cycles included).
-    let computed: unknown = null;
-    new FormulaStore({
-      readValue: (cell) => formulas.readValue(cell),
-      isValidAddress: (cell) => formulas.isValidAddress(cell),
-      writeValue: (_, result) => {
-        computed = result;
-      },
-      functions: formulas.functions,
-    }).set(address, formula);
+    const computed = formulas.computeFormula(address, formula);
     const result = editing.applyCellEdit(row, column.key, record, computed);
     // History records values only: an 'unchanged' value makes no entry, so
     // the formula attached here is not undoable until a formula-aware
@@ -1176,43 +1162,6 @@ export class RangeSelectionController<T extends object>
     return stringifyFormula(
       offsetReferences(parseFormula(src), to.row - from.row, to.col - from.col)
     );
-  }
-
-  /**
-   * Pasted text as a value of the column's type, the way the cell editor
-   * would commit it: numeric types take a finite number (a rating clamped to
-   * its stars), booleans `TRUE` or `FALSE` in any case, a select the option
-   * whose value matches (else the one whose label does), and dates parse
-   * with the grid's date parser into the shape the cell already stores.
-   * Blank text clears a numeric, boolean or date cell to `null`; text that
-   * does not parse is kept as typed, for validators to judge.
-   */
-  #coerce(text: string, column: ColumnConfiguration<T>, current: unknown): unknown {
-    const type = column.type ?? 'string';
-    const trimmed = text.trim();
-    if (type === 'select') {
-      // Copy writes the raw value, so a value match wins over a label that
-      // happens to spell another option's value.
-      const options = getSelectOptions(column as { options?: unknown[] });
-      const option =
-        options.find((o) => String(o.value) === trimmed) ??
-        options.find((o) => o.label === trimmed);
-      return option ? option.value : text;
-    }
-    const numeric = this.state.isNumericColumn(column);
-    if (!numeric && type !== 'boolean' && type !== 'date') return text;
-    if (trimmed === '') return null;
-    if (numeric) {
-      const n = Number(trimmed);
-      if (!Number.isFinite(n)) return text;
-      return type === 'rating' ? clampRating(n, getRatingMax(column as { max?: number })) : n;
-    }
-    if (type === 'boolean') {
-      const lower = trimmed.toLowerCase();
-      return lower === 'true' ? true : lower === 'false' ? false : text;
-    }
-    const date = parseDate(trimmed);
-    return date ? commitDateInSameShape(current, date) : text;
   }
 
   /** The fill region that extending `source` toward `target` would produce. */

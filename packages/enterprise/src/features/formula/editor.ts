@@ -2,21 +2,21 @@
  * The formula cell editor (F4): a small Lit element injected as the
  * `editorTemplate` of `allowFormula` columns. It opens showing the cell's stored
  * formula (or its literal value), live-highlights cell/range references and
- * surfaces parse errors as the user types, and on commit routes through the
- * formula controller:
- *   - text starting with `=` is parsed and stored as a formula; the controller
- *     computes the value, writes it into `row[key]`, and recomputes dependents,
- *     then the editor exits via `ctx.cancel()` (the value is already written).
- *   - any other text clears a stored formula and commits the literal through the
- *     normal edit path (`ctx.commit`, so validation / history / events run).
- *
- * Routing formula writes through the controller (not `ctx.commit`) keeps a single
- * write authority for computed values and preserves cycle detection.
+ * surfaces parse errors as the user types. Leaving it with the text unchanged
+ * writes nothing; otherwise it commits through the formula controller's
+ * `commitSource`, i.e. the grid's edit path:
+ *   - text starting with `=` is parsed; its computed value is committed and the
+ *     formula is stored with it once the value is accepted.
+ *   - any other text is coerced by the column type and committed as a literal,
+ *     replacing a stored formula only once accepted.
+ * Either way validation, `cellValueChanging`, row-mode staging and undo apply,
+ * and a rejected commit keeps the editor open with the stored formula intact.
  */
 
 import { registerComponent } from 'apex-grid/internal';
 import { css, html, LitElement, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
+import { type CoercibleColumn, coerceText } from './coerce.js';
 import { ParseError } from './errors.js';
 import { type FormulaAst, parseFormula } from './parser.js';
 import { type CellRefFlags, formatCell, parseCellRef } from './refs.js';
@@ -36,7 +36,8 @@ const ARROW_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 /** The slice of `ApexEditorContext` the formula editor uses. */
 export interface FormulaEditorContext {
   value: unknown;
-  column: { key: PropertyKey };
+  /** The column; its `type` decides how a typed literal is read. */
+  column: { key: PropertyKey } & CoercibleColumn;
   row: { data: object };
   commit: (value: unknown) => boolean | Promise<boolean>;
   cancel: () => void;
@@ -47,6 +48,20 @@ export interface FormulaEditorController {
   getFormula(row: object, key: string): string | undefined;
   setFormula(row: object, key: string, src: string): void;
   clearFormula(row: object, key: string): void;
+  /**
+   * Commit the edited cell through the grid's edit path: the formula `src`, or
+   * the literal `value` when `src` is `undefined`. Resolves whether it was
+   * accepted; `undefined` when the cell is not in edit there, and the editor
+   * then writes through {@link setFormula} / `ctx.commit` itself.
+   */
+  commitSource?(
+    row: object,
+    key: string,
+    src: string | undefined,
+    value: unknown
+  ): Promise<boolean> | undefined;
+  /** The formula an edit starts from (a row edit's staged one included). */
+  editingSource?(row: object, key: string): string | undefined;
   /** Optional localizer (the real controller delegates to the grid). */
   localize?(key: string): string;
   /** Available function names (built-ins + custom), for autocomplete. */
@@ -89,13 +104,23 @@ function nextAbsFlags({ colAbsolute, rowAbsolute }: CellRefFlags): CellRefFlags 
   return { colAbsolute: false, rowAbsolute: false };
 }
 
-/** Coerce committed literal text: empty to null, numeric to number, else text. */
-function coerceLiteral(text: string): unknown {
-  if (text === '') {
-    return null;
+/**
+ * A typed literal as the value to store. A typed column reads it by its type.
+ * A `'string'` column (also what a column without a type gets) reads it by
+ * the kind of value the cell holds: a number, boolean or date cell keeps its
+ * kind, a text cell keeps the text as typed (`00123` stays text), and an
+ * empty cell takes a number only when the text is one written plainly (`7`,
+ * not `007`, `1e3` or `NaN`).
+ */
+function readLiteral(text: string, column: CoercibleColumn, current: unknown): unknown {
+  let type = column.type ?? 'string';
+  if (type === 'string') {
+    if (current instanceof Date) type = 'date';
+    else if (typeof current === 'number' || typeof current === 'boolean') type = typeof current;
+    else if (current == null && text !== 'NaN' && text !== '' && String(Number(text)) === text)
+      return Number(text);
   }
-  const numeric = Number(text);
-  return Number.isNaN(numeric) ? text : numeric;
+  return coerceText(text, column, current, type);
 }
 
 /** The injected formula cell editor element. */
@@ -190,6 +215,8 @@ export class FormulaCellEditor extends LitElement {
 
   #initialized = false;
   #done = false;
+  /** The trimmed text the editor opened with: committing it unchanged writes nothing. */
+  #opened = '';
   /** Caret position to restore after a programmatic text change (insert/accept). */
   #caretToRestore: number | null = null;
   /** The grid host the click-to-insert listener is attached to (for teardown). */
@@ -220,6 +247,7 @@ export class FormulaCellEditor extends LitElement {
     this.#initialized = true;
     const existing = this.#existingFormula();
     this.text = existing ?? (this.ctx.value == null ? '' : String(this.ctx.value));
+    this.#opened = this.text.trim();
   }
 
   public override firstUpdated(): void {
@@ -318,10 +346,14 @@ export class FormulaCellEditor extends LitElement {
 
   #existingFormula(): string | undefined {
     const record = this.ctx?.row?.data;
-    if (!record || !this.controller) {
+    const controller = this.controller;
+    if (!record || !controller) {
       return undefined;
     }
-    return this.controller.getFormula(record, String(this.ctx?.column.key));
+    const key = String(this.ctx?.column.key);
+    return controller.editingSource
+      ? controller.editingSource(record, key)
+      : controller.getFormula(record, key);
   }
 
   #onInput = (event: Event): void => {
@@ -755,28 +787,63 @@ export class FormulaCellEditor extends LitElement {
   }
 
   async #commit(): Promise<void> {
-    if (this.#done || !this.ctx) {
+    const ctx = this.ctx;
+    if (this.#done || !ctx) {
       return;
     }
     const text = this.text.trim();
-    const record = this.ctx.row?.data;
-    const key = String(this.ctx.column.key);
-
-    if (text.startsWith('=')) {
-      const parseError = this.#parseError(text);
+    if (text === this.#opened) {
+      // Nothing was changed: leave the stored value and formula as they are.
+      this.#done = true;
+      ctx.cancel();
+      return;
+    }
+    const src = text.startsWith('=') ? text : undefined;
+    if (src !== undefined) {
+      const parseError = this.#parseError(src);
       if (parseError) {
         this.error = parseError; // keep editing so the user can fix it
         return;
       }
-      this.#done = true;
-      this.controller?.setFormula(record, key, text);
-      this.ctx.cancel(); // value already written by the controller
-      return;
     }
-
+    const record = ctx.row?.data;
+    const key = String(ctx.column.key);
+    const value = src === undefined ? readLiteral(text, ctx.column, ctx.value) : undefined;
     this.#done = true;
-    this.controller?.clearFormula(record, key);
-    await this.ctx.commit(coerceLiteral(text));
+    const accepted =
+      this.controller?.commitSource?.(record, key, src, value) ??
+      this.#commitDirect(ctx, record, key, src, value);
+    // A rejected commit keeps the editor open: let the user correct it.
+    if (!(await accepted)) {
+      this.#done = false;
+    }
+  }
+
+  /**
+   * Commit without the grid's edit path (a bare controller): store a formula
+   * through the controller, or commit a literal through `ctx`, putting a
+   * replaced formula back when the literal is rejected.
+   */
+  async #commitDirect(
+    ctx: FormulaEditorContext,
+    record: object,
+    key: string,
+    src: string | undefined,
+    value: unknown
+  ): Promise<boolean> {
+    const controller = this.controller;
+    if (src !== undefined) {
+      controller?.setFormula(record, key, src);
+      ctx.cancel(); // value already written by the controller
+      return true;
+    }
+    const previous = controller?.getFormula(record, key);
+    controller?.clearFormula(record, key);
+    const accepted = await ctx.commit(value);
+    if (!accepted && previous !== undefined) {
+      controller?.setFormula(record, key, previous);
+    }
+    return accepted;
   }
 
   /** Parse `src`, returning an error message (with position) or undefined. */
