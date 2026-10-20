@@ -549,6 +549,124 @@ describe('Tree (nested rows)', () => {
   });
 });
 
+describe('Tree synthesized parents and duplicate paths', () => {
+  /** Rows whose parent levels exist only as path segments. */
+  const PATH_ONLY: OrgRow[] = [
+    { name: 'Ann', role: 'IC', path: ['Org', 'Ann'] },
+    { name: 'Ben', role: 'IC', path: ['Org', 'Ben'] },
+  ];
+  let fx: TreeFixture;
+
+  afterEach(() => fx.tearDown());
+
+  it('expand and collapse of a synthesized parent name it in the event payloads', async () => {
+    fx = new TreeFixture(JSON.parse(JSON.stringify(PATH_ONLY)));
+    await fx.setUp();
+    const org = fx.grid.pageItems[0];
+    expect(fx.grid.pageItems).to.have.length(1);
+
+    const expanding = oneEvent(fx.grid, 'treeRowExpanding');
+    const expanded = oneEvent(fx.grid, 'treeRowExpanded');
+    expect(await fx.grid.toggleTreeRow(org)).to.equal(true);
+    const before = ((await expanding) as CustomEvent).detail;
+    const after = ((await expanded) as CustomEvent).detail;
+    expect(before.added).to.deep.equal([org]);
+    expect(before.removed).to.deep.equal([]);
+    expect(before.current).to.deep.equal([]);
+    expect(before.next).to.deep.equal([org]);
+    expect(after.expanded).to.deep.equal([org]);
+
+    const collapsed = oneEvent(fx.grid, 'treeRowExpanded');
+    await fx.grid.collapseTreeRow(org);
+    const detail = ((await collapsed) as CustomEvent).detail;
+    expect(detail.removed).to.deep.equal([org]);
+    expect(detail.expanded).to.deep.equal([]);
+  });
+
+  it('a listener can cancel the expansion of a synthesized parent', async () => {
+    fx = new TreeFixture(JSON.parse(JSON.stringify(PATH_ONLY)));
+    await fx.setUp();
+    const org = fx.grid.pageItems[0];
+    fx.grid.addEventListener(
+      'treeRowExpanding',
+      (e) => {
+        if ((e as CustomEvent).detail.added.includes(org)) e.preventDefault();
+      },
+      { once: true }
+    );
+    expect(await fx.grid.expandTreeRow(org)).to.equal(false);
+    expect(fx.grid.isTreeRowExpanded(org)).to.equal(false);
+  });
+
+  it('keeps every row when two rows share a path', async () => {
+    fx = new TreeFixture([
+      { name: 'Bryan', role: 'VP', path: ['Bryan'] },
+      { name: 'Chris A', role: 'IC', path: ['Bryan', 'Chris'] },
+      { name: 'Chris B', role: 'IC', path: ['Bryan', 'Chris'] },
+    ]);
+    fx.tree = { enabled: true, getDataPath: (row) => row.path, defaultExpanded: true };
+    await fx.setUp();
+    expect(fx.visibleNames()).to.deep.equal(['Bryan', 'Chris A', 'Chris B']);
+    const items = fx.grid.pageItems as readonly OrgRow[];
+    expect(fx.grid.isTreeRowExpanded(items[0])).to.equal(true);
+  });
+
+  it('keeps the descendants of a shared path with the earliest row across a sort', async () => {
+    fx = new TreeFixture([
+      { name: 'Bryan', role: 'VP', path: ['Bryan'] },
+      { name: 'Chris A', role: 'IC', path: ['Bryan', 'Chris'] },
+      { name: 'Chris B', role: 'IC', path: ['Bryan', 'Chris'] },
+      { name: 'Kid', role: 'IC', path: ['Bryan', 'Chris', 'Kid'] },
+    ]);
+    fx.tree = { enabled: true, getDataPath: (row) => row.path, defaultExpanded: true };
+    await fx.setUp();
+    expect(fx.visibleNames()).to.deep.equal(['Bryan', 'Chris A', 'Kid', 'Chris B']);
+
+    fx.grid.sort({ key: 'name', direction: 'descending' } as never);
+    await fx.waitForUpdate();
+    await fx.waitForUpdate();
+    expect(fx.visibleNames()).to.deep.equal(['Bryan', 'Chris B', 'Chris A', 'Kid']);
+    const chrisA = fx.grid.data[1];
+    expect(fx.grid.isTreeRowExpanded(chrisA)).to.equal(true);
+  });
+
+  it('does not attach a row to a duplicate whose key matches its path', async () => {
+    fx = new TreeFixture([
+      { name: 'Chris A', role: 'IC', path: ['Bryan', 'Chris'] },
+      { name: 'Chris B', role: 'IC', path: ['Bryan', 'Chris'] },
+      { name: 'Empty', role: 'IC', path: ['Bryan', 'Chris', '', '1'] },
+    ]);
+    fx.tree = { enabled: true, getDataPath: (row) => row.path, defaultExpanded: true };
+    await fx.setUp();
+    // Empty sits under a synthesized '' level below Chris A, not beside Chris B.
+    expect(fx.visibleNames()).to.deep.equal([undefined, 'Chris A', undefined, 'Empty', 'Chris B']);
+    const rows = fx.grid.rows as unknown as HTMLElement[];
+    const levels = rows.map((row) => row.getAttribute('aria-level'));
+    expect(levels).to.deep.equal(['1', '2', '3', '4', '2']);
+  });
+
+  it('gives a shared path to the earliest remaining row after an edit', async () => {
+    const ed = new EditableTreeFixture([
+      { name: 'Bryan', role: 'VP', path: ['Bryan'] },
+      { name: 'Chris A', role: 'IC', path: ['Bryan', 'Chris'] },
+      { name: 'Chris B', role: 'IC', path: ['Bryan', 'Chris'] },
+      { name: 'Chris C', role: 'IC', path: ['Bryan', 'Chris'] },
+      { name: 'Kid', role: 'IC', path: ['Bryan', 'Chris', 'Kid'] },
+    ]);
+    fx = ed;
+    ed.tree = { enabled: true, getDataPath: (row) => row.path, defaultExpanded: true };
+    await ed.setUp();
+    expect(ed.visibleNames()).to.deep.equal(['Bryan', 'Chris A', 'Kid', 'Chris B', 'Chris C']);
+
+    await ed.editPath(ed.grid.data[1], ['Bryan', 'Zed']);
+    ed.grid.sort({ key: 'name', direction: 'descending' } as never);
+    await ed.waitForUpdate();
+    await ed.grid.expandAllTreeRows();
+    await ed.waitForUpdate();
+    expect(ed.visibleNames()).to.deep.equal(['Bryan', 'Chris C', 'Chris B', 'Kid', 'Chris A']);
+  });
+});
+
 describe('Master-detail expansion across data refresh', () => {
   interface Row {
     id: number;

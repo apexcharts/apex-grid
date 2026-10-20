@@ -294,6 +294,8 @@ export class TreeController<T extends object> implements ReactiveController {
     };
     const byKey = new Map<string, TreeNode<T>>();
     byKey.set('', root);
+    /** Twins made so far per node; twins stay out of `byKey`, so no path resolves to one. */
+    const twins = new Map<TreeNode<T>, number>();
     /** Levels first reached as an ancestor, which may still lack a record. */
     const intermediate: TreeNode<T>[] = [];
 
@@ -322,8 +324,10 @@ export class TreeController<T extends object> implements ReactiveController {
         if (i === fullPath.length - 1) {
           // The terminal segment is the actual record. If we previously
           // saw a child path that synthesized this level, attach the data
-          // now.
-          node.data = row;
+          // now. A second row with the same path gets a sibling node, so
+          // no row is dropped.
+          if (node.data && node.data !== row) this.#addTwin(node, row, twins, getDataPath);
+          else node.data = row;
         }
         parent = node;
       }
@@ -331,6 +335,38 @@ export class TreeController<T extends object> implements ReactiveController {
 
     this.#adoptFilteredAncestors(rows, intermediate, getDataPath);
     return root;
+  }
+
+  /**
+   * Adds a sibling of `node` for another row that returns the same path, so
+   * no row is dropped. The earliest of those rows in `host.data` keeps the
+   * path node and its descendants whatever the sort order, so sorting never
+   * moves children between them; the others sit next to it in sort order.
+   */
+  #addTwin(
+    node: TreeNode<T>,
+    row: T,
+    twins: Map<TreeNode<T>, number>,
+    getDataPath: (row: T) => readonly string[]
+  ): void {
+    const n = (twins.get(node) ?? 0) + 1;
+    twins.set(node, n);
+    const twin: TreeNode<T> = {
+      ...node,
+      data: row,
+      key: `${node.key}${PATH_SEPARATOR}${PATH_SEPARATOR}${n}`,
+      children: [],
+    };
+    const siblings = node.parent!.children;
+    siblings.push(twin);
+    if (this.#recordAt(node.key, getDataPath) === row) {
+      // The owner arrived after a later duplicate: it takes the path node,
+      // and the twin takes the slot the duplicate was sorted into.
+      twin.data = node.data;
+      node.data = row;
+      siblings[siblings.indexOf(node)] = twin;
+      siblings[siblings.length - 1] = node;
+    }
   }
 
   /**
@@ -469,29 +505,40 @@ export class TreeController<T extends object> implements ReactiveController {
     return out;
   }
 
+  /** Rows for an event payload: backed rows, then the placeholders of `keys`. */
+  #rowsOf(rows: Iterable<T>, keys: Iterable<string>): T[] {
+    const out = Array.from(rows);
+    for (const key of keys) {
+      const placeholder = this.#syntheticRows.get(key);
+      if (placeholder) out.push(placeholder);
+    }
+    return out;
+  }
+
   async #commit(mutate: (nextData: Set<T>, nextKeys: Set<string>) => void): Promise<boolean> {
     const nextData = new Set(this.expanded);
     const nextKeys = new Set(this.expandedKeys);
     mutate(nextData, nextKeys);
 
-    const dataChanged =
-      nextData.size !== this.expanded.size || [...nextData].some((row) => !this.expanded.has(row));
-    const keysChanged =
-      nextKeys.size !== this.expandedKeys.size ||
-      [...nextKeys].some((key) => !this.expandedKeys.has(key));
-    if (!dataChanged && !keysChanged) return true;
+    const addedRows = [...nextData].filter((row) => !this.expanded.has(row));
+    const removedRows = [...this.expanded].filter((row) => !nextData.has(row));
+    const addedKeys = [...nextKeys].filter((key) => !this.expandedKeys.has(key));
+    const removedKeys = [...this.expandedKeys].filter((key) => !nextKeys.has(key));
+    if (!addedRows.length && !removedRows.length && !addedKeys.length && !removedKeys.length) {
+      return true;
+    }
 
-    const added: T[] = [];
-    const removed: T[] = [];
-    for (const row of nextData) if (!this.expanded.has(row)) added.push(row);
-    for (const row of this.expanded) if (!nextData.has(row)) removed.push(row);
+    // Synthesized parents appear in the payload as their placeholder rows,
+    // the same objects pageItems holds, so listeners can tell them apart.
+    const added = this.#rowsOf(addedRows, addedKeys);
+    const removed = this.#rowsOf(removedRows, removedKeys);
 
     const proceed = this.host.emitEvent('treeRowExpanding', {
       detail: {
         added,
         removed,
-        current: Array.from(this.expanded),
-        next: Array.from(nextData),
+        current: this.#rowsOf(this.expanded, this.expandedKeys),
+        next: this.#rowsOf(nextData, nextKeys),
       },
       cancelable: true,
     });
@@ -503,7 +550,7 @@ export class TreeController<T extends object> implements ReactiveController {
     this.host.requestUpdate(PIPELINE);
 
     this.host.emitEvent('treeRowExpanded', {
-      detail: { added, removed, expanded: Array.from(this.expanded) },
+      detail: { added, removed, expanded: this.#rowsOf(this.expanded, this.expandedKeys) },
     });
     return true;
   }
