@@ -13,6 +13,8 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   `ServerRowsLoadFailedDetail` and `RowLoadRetryConfig` types.
 - Tool panel rows have a Values toggle, and in pivot mode a Column Labels
   toggle, so aggregations and pivot columns can be set from the keyboard.
+- `advancedFilterModel` on `InfiniteGetRowsParams` and
+  `ServerSideGetRowsParams` (the active advanced filter, or `null`).
 
 ### Changed
 - **Copy neutralises spreadsheet formulas.** Range copy (Ctrl/Cmd+C,
@@ -161,6 +163,43 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   call, including `IF`, `TRUE` and `FALSE`. Formulas accept exponent notation
   such as `2E5`. Formula error positions count from the text as typed,
   including the leading `=`.
+- **Server row models receive the advanced filter.** With `infiniteRowModel`
+  or `serverSideRowModel`, the advanced filter (filter builder Apply,
+  `applyAdvancedFilter`) is sent to `getRows` as `advancedFilterModel`, and
+  applying or clearing it reloads from the first block. The grid no longer
+  filters the partly loaded rows on the client, which hid unloaded rows and
+  never reached the server, so a datasource must now apply the model itself
+  (the exported `filterRows` evaluates it the way the grid does).
+- The grid owns `dataPipelineConfiguration` while the advanced filter or a
+  server row model runs and composes them over the app's own configuration.
+  An app assignment made while a server row model runs is kept and takes
+  effect when the row model stops, instead of disabling it.
+- Range selection acts on Escape, Ctrl/Cmd+C, Ctrl/Cmd+V and Shift+Arrow only
+  when the key comes from the grid's own body: not from a cell editor
+  (including custom editors), a control inside a cell, a master/detail child
+  grid, or a key another handler already handled.
+- Shift+ArrowLeft and Shift+ArrowRight follow the arrow on screen in
+  right-to-left grids, keyboard range extension scrolls the moving corner
+  into view, and dragging a range past the left or right edge scrolls the
+  columns.
+- **Chart series colors fill from the palette.** A `format.colors` list
+  shorter than the series count colors the remaining series from
+  `apexOptions.colors` or the theme palette instead of repeating the list
+  (three series with `colors: ['#ff0000']` used to draw all three red).
+- Trend line and forecast are ignored for horizontal bars and the other chart
+  types they do not apply to, and the Format popover hides those controls; a
+  saved bar chart with a trend line used to render as vertical columns.
+- In the chart's empty state the toolbar shows only the Data control.
+- AI rule engine: the first command word in a prompt wins, so a column label
+  such as Group Name or Order Status no longer triggers grouping or a sort.
+  Reset and undo run only as whole commands: "clear all filters" clears the
+  column filters and the quick filter (keeping sort and grouping), "reset
+  sort" clears the sort, and "go back to page 1" paginates instead of undoing.
+- AI rule engine: a condition a column cannot express is reported with a
+  note instead of applying the column's first operand, and removing rows by
+  starts with or ends with reports that it cannot be expressed.
+- `getSchema` marks rating and progress columns aggregatable, as the
+  aggregation engine already treats them.
 
 ### Fixed
 - **Integrated charts show cell text as text.** Categories and series names
@@ -210,6 +249,35 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Tool panel icon buttons are announced by their localized label, dropping
   text that is not a column key onto a zone is ignored, and the first pin
   click on a column whose `pinned` is null pins it to the start.
+- Starting and stopping the advanced filter, the infinite row model and the
+  server-side row model in any order no longer brings back a stopped row
+  model or drops an advanced filter the grid still reports.
+- An advanced filter on a numeric field works while pivoting.
+- A cancelled pointer or removing the grid from the page ends a range or fill
+  drag without applying it, `selectRange` and Shift+Arrow drop an abandoned
+  fill preview, a click in a pinned row no longer selects the body row at the
+  same position, and `setState` with malformed ranges skips them instead of
+  throwing.
+- Picking one series color in the chart Format popover no longer turns the
+  other series white, and the swatches show the drawn colors; saved configs
+  with blank color slots draw the palette instead of white.
+- Toggling a chart measure keeps calculated fields on the secondary axis, a
+  fractional, negative or very large forecast no longer freezes the chart,
+  author `apexOptions.chart.events` merge with the cross filter handler, the
+  Data and Format selects follow `restore()`, and an all-numeric grid offers
+  a None category.
+- AI rule engine: operators are no longer read inside column names ("where
+  discount > 5") or values ("Overdue", "Hanover"); range phrasing ("high to
+  low", "z to a") sets the sort direction; filler words after filter stay
+  out of the value; column names with hyphens, apostrophes, #, %, /, . or
+  accented letters resolve; negations keep their meaning; column mentions
+  match whole words and an empty header never matches; rating and progress
+  columns count as numeric.
+- AI analytics: an "in X" scope is found in every row, not only the first 50;
+  a numeric scope binds to the column named next to it; "at least" and "most
+  common" no longer change the metric; under the highest-score routing policy
+  the rule engine competes with its grounded plan confidence; "it" refers to
+  the columns of a previous analytics answer or LLM state change.
 
 ### Performance
 - Range formulas index their precedents instead of one key per cell, so a
@@ -220,6 +288,8 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   row.
 - Aggregations collect count, sum, min and max in one pass per column instead
   of one reduction per function.
+- Range selection stats and cell decoration no longer build a string key per
+  selected cell or rebuild the display columns per rendered cell.
 
 ## [0.7.1] - 2026-10-09
 

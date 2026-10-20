@@ -20,6 +20,8 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `CSVExportOptions.escapeFormulas` (default `true`), see the change below.
 - Locale keys `toolPanel.valueColumn` and `toolPanel.columnLabelColumn` for the
   enterprise tool panel, in English and Spanish.
+- Locale key `chart.mapCategoryNone` (English "None", Spanish "Ninguna") for
+  the enterprise chart panel's Category select.
 
 ### Changed
 - **CSV export neutralises spreadsheet formulas.** A text cell or header that
@@ -88,6 +90,10 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   is now dropped with a console warning; in 3.5.0 those conditions threw inside
   the pipeline and filtered nothing. Feature modules read the rule through
   `StateController.isNumericColumn(column)`.
+- Feature modules can reveal a cell, read the inline direction of an arrow key
+  under RTL and read the scroll insets through the grid's navigation
+  controller (`revealCell`, `towardsInlineEnd`, `scrollInsets`), so the
+  enterprise range selection follows core navigation instead of a copy.
 
 ### Fixed
 - **Text filter conditions no longer throw on a cell that is not a string.**
