@@ -1,6 +1,11 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
-import { ApexGridChart, ApexGridEnterprise, enterpriseModules } from '../src/index.js';
+import {
+  ApexGridChart,
+  ApexGridEnterprise,
+  type ChartModel,
+  enterpriseModules,
+} from '../src/index.js';
 
 interface Row {
   name: string;
@@ -57,6 +62,13 @@ const key = (target: Element, init: KeyboardEventInit) => {
   target.dispatchEvent(event);
   return event;
 };
+
+/** A panel that is never connected: selectCategory runs without an ApexCharts render. */
+function detachedPanel(grid: ApexGridEnterprise<Row>) {
+  const panel = document.createElement('apex-grid-chart') as ApexGridChart;
+  panel.grid = grid as never;
+  return panel;
+}
 
 describe('chart dialog', () => {
   before(() => {
@@ -230,6 +242,94 @@ describe('chart dialog', () => {
       const event = key(input, { key: 'Tab', shiftKey: true });
       expect(event.defaultPrevented, 'the focus trap handled Shift+Tab').to.equal(true);
       expect(panel.contains(document.activeElement)).to.equal(true);
+    });
+  });
+
+  describe('cross-filter', () => {
+    const nameExpressions = (grid: ApexGridEnterprise<Row>) =>
+      grid.filterExpressions.filter((f) => f.key === 'name');
+
+    it('clicking another category switches the filter', async () => {
+      const grid = await mountGrid();
+      grid.selectRange({ row: 0, column: 'name' }, { row: 2, column: 'q1' });
+      const panel = detachedPanel(grid);
+      panel.selectCategory(0);
+      await grid.updateComplete;
+      expect(grid.dataView.map((r) => r.name)).to.eql(['A']);
+      panel.selectCategory(1);
+      await grid.updateComplete;
+      expect(nameExpressions(grid).length).to.equal(1);
+      expect(grid.dataView.map((r) => r.name)).to.eql(['B']);
+      panel.selectCategory(1); // re-click clears
+      await grid.updateComplete;
+      expect(nameExpressions(grid).length).to.equal(0);
+      expect(grid.dataView.length).to.equal(3);
+    });
+
+    it('clearing the cross-filter keeps a user filter on the same column', async () => {
+      const grid = await mountGrid();
+      grid.selectRange({ row: 0, column: 'name' }, { row: 2, column: 'q1' });
+      grid.filter({ key: 'name', condition: 'contains', searchTerm: 'A' } as never);
+      const panel = detachedPanel(grid);
+      panel.selectCategory(0);
+      expect(nameExpressions(grid).length).to.equal(2);
+      panel.selectCategory(0);
+      await grid.updateComplete;
+      const left = nameExpressions(grid);
+      expect(left.length).to.equal(1);
+      expect(left[0].searchTerm).to.equal('A');
+    });
+
+    it('re-clicking a category filters again after the grid filter was cleared', async () => {
+      const grid = await mountGrid();
+      grid.selectRange({ row: 0, column: 'name' }, { row: 2, column: 'q1' });
+      const panel = detachedPanel(grid);
+      panel.selectCategory(0);
+      await grid.updateComplete;
+      grid.clearFilter();
+      await grid.updateComplete;
+      expect(grid.dataView.length).to.equal(3);
+      panel.selectCategory(0);
+      await grid.updateComplete;
+      expect(grid.dataView.map((r) => r.name)).to.eql(['A']);
+    });
+
+    it('clears the filter it installed after the range moves off the category', async () => {
+      const grid = await mountGrid();
+      grid.selectRange({ row: 0, column: 'region' }, { row: 2, column: 'q1' });
+      const panel = detachedPanel(grid);
+      panel.crossFilter = true;
+      panel.mode = 'inline';
+      panel.selectCategory(0);
+      expect(grid.filterExpressions.some((f) => f.key === 'region')).to.equal(true);
+      // The user clicks a numeric cell: the range has no category column any more.
+      grid.selectRange({ row: 0, column: 'q1' }, { row: 0, column: 'q1' });
+      document.body.appendChild(panel);
+      await settle(panel);
+      panel.remove();
+      expect(grid.filterExpressions.some((f) => f.key === 'region')).to.equal(false);
+    });
+
+    it('rebinding the grid clears the filter on the old grid only', async () => {
+      const gridA = await mountGrid();
+      const gridB = await mountGrid();
+      const empty: ChartModel = { categories: [], series: [] };
+      for (const g of [gridA, gridB]) {
+        g.selectRange({ row: 0, column: 'name' }, { row: 1, column: 'q1' });
+        g.getChartModel = () => empty;
+      }
+      const panel = await fixture<ApexGridChart>(
+        html`<apex-grid-chart mode="inline" .grid=${gridA as never}></apex-grid-chart>`
+      );
+      await nextFrame();
+      panel.selectCategory(0);
+      expect(nameExpressions(gridA).length).to.equal(1);
+      panel.grid = gridB as never;
+      await panel.updateComplete;
+      expect(nameExpressions(gridA).length, 'old grid released').to.equal(0);
+      gridB.filter({ key: 'name', condition: 'contains', searchTerm: 'B' } as never);
+      panel.remove();
+      expect(nameExpressions(gridB).length, 'user filter on the new grid kept').to.equal(1);
     });
   });
 });

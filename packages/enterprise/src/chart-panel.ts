@@ -292,9 +292,16 @@ export class ApexGridChart extends LitElement {
   #lastWidth = 0;
   #lastHeight = 0;
   #boundGrid: HTMLElement | null = null;
-  /** Cross-filter: the column key being filtered, and the active category value (or null). */
-  #crossFilterKey: string | null = null;
-  #activeCategory: string | null = null;
+  /**
+   * The cross-filter this panel installed: the grid and column it went on, the category, and the
+   * condition object, so only that expression is removed (a user filter on the column stays).
+   */
+  #crossFilter: {
+    grid: ApexGridEnterprise<Record<string, unknown>>;
+    key: string;
+    value: string;
+    condition: object;
+  } | null = null;
   /** The text the rename input opened with, so committing it unchanged keeps the auto-title. */
   #renameSeed = '';
   #rafHandle = 0;
@@ -314,7 +321,11 @@ export class ApexGridChart extends LitElement {
   }
 
   protected override willUpdate(changed: Map<PropertyKey, unknown>): void {
-    if (changed.has('grid')) this.#attach();
+    if (changed.has('grid')) {
+      // A filter this panel put on the previous grid goes with the old binding.
+      if (this.#crossFilter?.grid !== this.grid) this.#clearCrossFilter();
+      this.#attach();
+    }
   }
 
   protected override updated(changed: Map<PropertyKey, unknown>): void {
@@ -839,11 +850,8 @@ export class ApexGridChart extends LitElement {
     if (this.staticModel) return this.staticModel;
     const grid = this.grid;
     if (!grid) return { categories: [], series: [] };
-    if (this.crossFilter) {
-      const { categoryKey, model } = grid.getCrossFilterModel();
-      this.#crossFilterKey = categoryKey;
-      return model;
-    }
+    // The filtered column is kept with the filter (selectCategory), not this range's category.
+    if (this.crossFilter) return grid.getCrossFilterModel().model;
     if (this.source === 'selection') return grid.getRangeChartModel(this.definition);
     if (this.source === 'view') return grid.getViewChartModel(this.definition);
     return grid.getChartModel(this.definition);
@@ -1048,31 +1056,48 @@ export class ApexGridChart extends LitElement {
     const { categoryKey, model } = grid.getCrossFilterModel();
     const value = model.categories[index];
     if (categoryKey == null || value === undefined) return;
-    this.#crossFilterKey = categoryKey;
-    if (this.#activeCategory === value) {
-      this.#clearCrossFilter();
-    } else {
-      this.#activeCategory = value;
-      // A self-contained equality operation (not an operand-name string) so it works regardless of
-      // the category column's declared type.
-      grid.filter({
-        key: categoryKey,
-        searchTerm: value,
-        condition: {
-          name: 'crossFilterEquals',
-          unary: false,
-          logic: (target: unknown) => String(target ?? '') === value,
-        },
-      } as never);
-    }
+    const active = this.#crossFilter;
+    // A re-click toggles off, unless the filter was cleared from the grid meanwhile.
+    const again =
+      active?.grid === grid &&
+      active.key === categoryKey &&
+      active.value === value &&
+      this.#crossFilterApplied();
+    // Another category replaces the filter rather than adding an AND of both (which matches none).
+    this.#clearCrossFilter();
+    if (again) return;
+    // A self-contained equality operation (not an operand-name string) so it works regardless of
+    // the category column's declared type.
+    const condition = {
+      name: 'crossFilterEquals',
+      unary: false,
+      logic: (target: unknown) => String(target ?? '') === value,
+    };
+    grid.filter({ key: categoryKey, searchTerm: value, condition } as never);
+    this.#crossFilter = { grid, key: categoryKey, value, condition };
   }
 
-  /** Drop any filter this panel applied via cross-filter. */
+  /**
+   * Drop the filter this panel applied via cross-filter, on the grid it went on. Any other filter
+   * on that column (the user's own) is put back.
+   */
   #clearCrossFilter(): void {
-    if (this.grid && this.#crossFilterKey != null && this.#activeCategory != null) {
-      this.grid.clearFilter(this.#crossFilterKey as never);
-    }
-    this.#activeCategory = null;
+    const active = this.#crossFilter;
+    const applied = this.#crossFilterApplied();
+    this.#crossFilter = null;
+    if (!active || !applied) return;
+    const { grid, key, condition } = active;
+    const rest = grid.filterExpressions.filter(
+      (each) => each.key === key && each.condition !== condition
+    );
+    grid.clearFilter(key);
+    if (rest.length > 0) grid.filter(rest);
+  }
+
+  /** Whether the recorded cross-filter is still among its grid's filter expressions. */
+  #crossFilterApplied(): boolean {
+    const active = this.#crossFilter;
+    return !!active && active.grid.filterExpressions.some((e) => e.condition === active.condition);
   }
 
   /** Derive ApexCharts theme options from the grid's tokens (or a forced light/dark mode). */
