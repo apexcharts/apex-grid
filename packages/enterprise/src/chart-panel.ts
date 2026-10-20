@@ -116,6 +116,13 @@ function toHex(color: unknown): string {
   return colorCtx.fillStyle;
 }
 
+/** Forecast periods beyond this are capped: the axis would be unreadable long before it. */
+const MAX_FORECAST = 1000;
+
+/** A forecast as whole periods from 0 to {@link MAX_FORECAST} (NaN reads as 0). */
+const forecastPeriods = (value: unknown): number =>
+  Math.min(MAX_FORECAST, Math.max(0, Math.floor(Number(value))) || 0);
+
 /**
  * Built-in chart panel for `<apex-grid-enterprise>`. Mount it beside (or below) a grid and set its
  * `grid` property: it renders the grid's current chart model (cell selection, or grouping/pivot
@@ -817,15 +824,21 @@ export class ApexGridChart extends LitElement {
     return grid.getChartModel(this.definition);
   }
 
-  /** Chart types the trend/forecast overlays make sense for (a straight line over the series). */
-  static #TRENDABLE: ReadonlySet<ChartType | 'auto'> = new Set(['column', 'bar', 'line', 'area']);
+  /**
+   * Chart types the trend/forecast overlays make sense for (a straight line over the series). Not a
+   * horizontal bar: overlays render as a combo, and a combo cannot be horizontal.
+   */
+  static #TRENDABLE: ReadonlySet<ChartType | 'auto'> = new Set(['column', 'line', 'area']);
+
+  /** The type `'auto'` last resolved to, so the Format popover can hide no-op overlay rows. */
+  #autoType: ChartType | null = null;
 
   /**
    * Fold the analytical overlays into the render. A **trend line** (`format.trendline`) appends a
    * least-squares series over the first series' history; a **forecast** (`format.forecast > 0`)
    * extends the category axis with future periods and adds a projected continuation. Either overlay
    * switches to a combo render so the base series keep their type while overlays draw as lines. A
-   * no-op for empty models or types the overlays don't suit (pie/donut/scatter/radar/combo).
+   * no-op for empty models or types the overlays don't suit (bar/pie/donut/scatter/radar/combo).
    */
   #withOverlays(
     model: ChartModel,
@@ -833,7 +846,10 @@ export class ApexGridChart extends LitElement {
   ): { model: ChartModel; options: RenderChartOptions } {
     const base =
       options.type === 'auto' || options.type == null ? recommendChartType(model) : options.type;
-    const periods = this.format.forecast ?? 0;
+    if (options.type === 'auto' || options.type == null) this.#autoType = base;
+    // The one place a forecast is normalised (popover input, `format`, restore()): whole periods,
+    // never negative, capped, so a fractional or huge value cannot break the padded arrays below.
+    const periods = forecastPeriods(this.format.forecast);
     const wants = this.format.trendline || periods > 0;
     if (!wants || model.series.length === 0 || !ApexGridChart.#TRENDABLE.has(base)) {
       return { model, options };
@@ -1550,10 +1566,11 @@ export class ApexGridChart extends LitElement {
         color: #6b7280;
         text-align: center;
       }
-      /* An author display: rule outranks the [hidden] attribute's UA display:none, so restore it. */
+      /* Author display rules outrank the UA [hidden] rule: restore it. */
       apex-grid-chart [part='placeholder'][hidden],
       apex-grid-chart [part='toolbar'][hidden],
-      apex-grid-chart [part='toolbar'][data-empty] > :not([part='data']) {
+      apex-grid-chart [part='toolbar'][data-empty] > :not([part='data']),
+      apex-grid-chart [part='format-row'][hidden] {
         display: none;
       }
       apex-grid-chart [part='empty-icon'] {
@@ -1846,6 +1863,9 @@ export class ApexGridChart extends LitElement {
     const empty = !this.hasModel;
     // Swatches are only read while the Format popover is open (opening it re-renders).
     const colors = this.formatOpen ? this.#seriesColors() : [];
+    const trendable = ApexGridChart.#TRENDABLE.has(
+      this.type === 'auto' ? (this.#autoType ?? 'auto') : this.type
+    );
     // Empty: only the Data popover stays, as the mapping itself may be what emptied the chart.
     const dataMenu = this.#renderDataMenu();
     return html`${this.#renderStyle()}
@@ -2021,7 +2041,7 @@ export class ApexGridChart extends LitElement {
                   )}
                 </select>
               </label>
-              <label part="format-row">
+              <label part="format-row" ?hidden=${!trendable}>
                 <input
                   type="checkbox"
                   .checked=${this.format.trendline ?? false}
@@ -2063,22 +2083,24 @@ export class ApexGridChart extends LitElement {
                   />
                 </span>
               </div>
-              <label part="format-row">
+              <label part="format-row" ?hidden=${!trendable}>
                 <span>${this.#t('chart.forecast')}</span>
                 <input
                   part="format-number"
                   type="number"
                   min="0"
+                  step="1"
                   .value=${this.format.forecast ? String(this.format.forecast) : ''}
                   @change=${(e: Event) => {
                     const raw = (e.target as HTMLInputElement).value;
-                    this.#patchFormat({
-                      forecast: raw === '' ? undefined : Math.max(0, Number(raw)),
-                    });
+                    const periods = forecastPeriods(raw);
+                    // Show the whole periods that are stored and drawn, not the raw entry.
+                    (e.target as HTMLInputElement).value = periods ? String(periods) : '';
+                    this.#patchFormat({ forecast: raw === '' ? undefined : periods });
                   }}
                 />
               </label>
-              <label part="format-row">
+              <label part="format-row" ?hidden=${!trendable}>
                 <input
                   type="checkbox"
                   .checked=${this.format.forecastBand ?? false}

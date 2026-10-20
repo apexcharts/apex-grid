@@ -84,9 +84,15 @@ export interface ChartFormat {
   readonly referenceLine?: number;
   /** Shade a target/tolerance region between two values on the measure axis. */
   readonly referenceBand?: { readonly from: number; readonly to: number };
-  /** Overlay a linear (least-squares) trend line for the first series. */
+  /**
+   * Overlay a linear (least-squares) trend line for the first series. Column, line and area charts
+   * only: a no-op for a horizontal bar, which cannot render as a combo.
+   */
   readonly trendline?: boolean;
-  /** Project this many future periods for the first series, drawn as a forecast continuation. */
+  /**
+   * Project this many future periods for the first series, drawn as a forecast continuation. Read as
+   * whole periods (floored, at least 0, at most 1000); the same chart types as {@link trendline}.
+   */
   readonly forecast?: number;
   /** With a forecast, also draw upper/lower prediction bounds (see {@link linearForecastBand}). */
   readonly forecastBand?: boolean;

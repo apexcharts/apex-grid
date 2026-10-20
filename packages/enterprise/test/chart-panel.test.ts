@@ -625,7 +625,9 @@ describe('ApexGridChart Format and Data controls', () => {
     { name: 'B', q1: 20, q2: 9 },
     { name: 'C', q1: 30, q2: 12 },
   ];
-  type Drawn = { w: { globals: { colors: string[] }; config: Record<string, any> } };
+  type Drawn = {
+    w: { globals: { colors: string[]; labels: string[] }; config: Record<string, any> };
+  };
   const drawn = (panel: ApexGridChart) => panel.getChart() as unknown as Drawn;
 
   before(() => {
@@ -732,6 +734,67 @@ describe('ApexGridChart Format and Data controls', () => {
     await panel.updateComplete;
     expect(panel.definition.measures).to.eql(['q1']);
     expect(panel.definition.secondaryMeasures).to.eql(['Rate']);
+  });
+
+  it('trend line and forecast leave a horizontal bar chart horizontal (and hide)', async () => {
+    const panel = await mountChart(await mountWide(), 'bar');
+    expect(drawn(panel).w.config.plotOptions.bar.horizontal).to.equal(true);
+    panel.format = { trendline: true, forecast: 2 };
+    await panel.updateComplete;
+    await panel.refresh();
+    expect(drawn(panel).w.config.plotOptions.bar.horizontal).to.equal(true);
+    expect(drawn(panel).w.config.chart.type).to.equal('bar');
+    panel.querySelector<HTMLButtonElement>('[part="format-button"]')!.click();
+    await panel.updateComplete;
+    const labels = [...panel.querySelectorAll('[part="format-menu"] [part="format-row"]')]
+      .filter((row) => !(row as HTMLElement).hidden)
+      .map((row) => row.textContent?.trim() ?? '');
+    expect(labels.some((t) => t.startsWith('Trend line'))).to.equal(false);
+    expect(labels.some((t) => t.startsWith('Forecast'))).to.equal(false);
+  });
+
+  it('a fractional or huge forecast is floored and capped, and refresh resolves', async () => {
+    const panel = await mountChart(await mountWide(), 'line');
+    panel.format = { forecast: 2.5 };
+    await panel.updateComplete;
+    await panel.refresh();
+    expect(drawn(panel).w.globals.labels.length).to.equal(5);
+    panel.format = { forecast: 1e9 };
+    await panel.updateComplete;
+    await panel.refresh();
+    expect(drawn(panel).w.globals.labels.length).to.be.at.most(3 + 1000);
+    panel.format = { forecast: -4 };
+    await panel.updateComplete;
+    await panel.refresh();
+    expect(drawn(panel).w.globals.labels.length).to.equal(3);
+  });
+
+  it('a forecast typed as a fraction is stored and shown as whole periods', async () => {
+    const panel = await mountChart(await mountWide(), 'line');
+    panel.querySelector<HTMLButtonElement>('[part="format-button"]')!.click();
+    await panel.updateComplete;
+    const input = [...panel.querySelectorAll<HTMLInputElement>('[part="format-number"]')].at(-1)!;
+    input.value = '2.5';
+    input.dispatchEvent(new Event('change'));
+    await panel.updateComplete;
+    expect(panel.format.forecast).to.equal(2);
+    expect(input.value).to.equal('2');
+    await panel.refresh();
+    expect(drawn(panel).w.globals.labels.length).to.equal(5);
+  });
+
+  it('hides the overlay rows for every type the overlays do not apply to', async () => {
+    const panel = await mountChart(await mountWide(), 'pie');
+    panel.querySelector<HTMLButtonElement>('[part="format-button"]')!.click();
+    await panel.updateComplete;
+    const visible = () =>
+      [...panel.querySelectorAll<HTMLElement>('[part="format-menu"] [part="format-row"]')]
+        .filter((row) => !row.hidden)
+        .map((row) => row.textContent?.trim() ?? '');
+    expect(visible().some((t) => t.startsWith('Trend line'))).to.equal(false);
+    panel.type = 'line';
+    await panel.updateComplete;
+    expect(visible().some((t) => t.startsWith('Trend line'))).to.equal(true);
   });
 
   it('author chart.events merge with the cross-filter dataPointSelection', async () => {
