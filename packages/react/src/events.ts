@@ -1,5 +1,5 @@
 // GENERATED FROM custom-elements.json - do not edit by hand.
-// Manifest hash: 4cd94260680e
+// Manifest hash: 117e0dd5b3cc
 // Regenerate with `npm run generate`.
 
 import type { EventName } from '@lit/react';
