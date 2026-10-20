@@ -2915,6 +2915,23 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
+   * Whether `event` belongs to this grid, rather than to a grid nested inside
+   * it (the grid in a master-detail panel renders inside one of this grid's
+   * rows, so its events cross this grid's body on their way out). The first
+   * grid, or grid body, on the composed path from the event origin outward is
+   * the one that owns it.
+   *
+   * @param event - an event that reached this grid.
+   */
+  public ownsEvent(event: Event): boolean {
+    for (const node of event.composedPath()) {
+      if (node === this || node === this.scrollContainer) return true;
+      if (node instanceof ApexGrid || node instanceof ApexVirtualizer) return false;
+    }
+    return false;
+  }
+
+  /**
    * Roving tabindex: once a rendered cell is active it is the body's single
    * tab stop, so the scroll container leaves the tab order. Keeping both
    * focusable would make Shift+Tab bounce off the container back into the
@@ -2947,9 +2964,19 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     }
   }
 
+  /** The body cell an event started on, when that cell is one of this grid's. */
+  #ownCell(event: Event): ApexGridCell<T> | undefined {
+    if (!this.ownsEvent(event)) return undefined;
+    return event.composedPath().find((el) => el instanceof ApexGridCell) as
+      | ApexGridCell<T>
+      | undefined;
+  }
+
   @eventOptions({ capture: true })
   protected bodyClickHandler(event: MouseEvent) {
-    const target = event.composedPath().find((el) => el instanceof ApexGridCell) as ApexGridCell<T>;
+    if (!this.ownsEvent(event)) return;
+    const path = event.composedPath();
+    const target = path.find((el) => el instanceof ApexGridCell) as ApexGridCell<T> | undefined;
     if (target) {
       this.stateController.active = {
         column: target.column.key,
@@ -2959,6 +2986,16 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       // keyboard navigation continues from the clicked cell. Skip while an
       // editor is open (the editor owns focus).
       if (!target.editing) target.focus({ preventScroll: true });
+    } else {
+      // A row a feature module renders full width (a group header, a total
+      // row) has no cells; a click on its focus target makes it the active
+      // row, keeping the column (the clamp settles it when nothing was active).
+      const row = path.find((el) => el instanceof ApexGridRow) as ApexGridRow<T> | undefined;
+      const cell = row?.presentedCell;
+      if (row && cell && path.includes(cell)) {
+        const { column } = this.stateController.active;
+        this.stateController.active = { column, row: row.index };
+      }
     }
   }
 
@@ -2966,9 +3003,12 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     // Navigation drives from the scroll container (the tab entry point) or
     // from a focused cell (the roving tab stop). Keys originating inside an
     // open editor or an embedded control (button, input) are left alone.
+    if (!this.ownsEvent(event)) return;
     const origin = event.composedPath()[0];
     const fromBody = this.scrollContainer.isSameNode(event.target as HTMLElement);
-    const fromCell = origin instanceof ApexGridCell && !origin.editing;
+    const fromCell =
+      (origin instanceof ApexGridCell && !origin.editing) ||
+      (event.target instanceof ApexGridRow && event.target.presentedCell === origin);
     if (fromBody || fromCell) {
       this.stateController.navigation.navigate(event);
     }
@@ -2999,9 +3039,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     // pointer. Plain hover moves carry no held button, so skip them — a drag
     // always opens with a `pointerdown` that keeps the button down.
     if (event.type === 'pointermove' && event.buttons === 0) return;
-    const target = event.composedPath().find((el) => el instanceof ApexGridCell) as
-      | ApexGridCell<T>
-      | undefined;
+    const target = this.#ownCell(event);
     if (!target?.row) return;
     const kind: CellInteractionKind =
       event.type === 'pointerdown' ? 'down' : event.type === 'pointerup' ? 'up' : 'over';

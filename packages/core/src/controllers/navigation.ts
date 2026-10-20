@@ -90,11 +90,18 @@ export class NavigationController<T extends object> implements ReactiveControlle
     ) as unknown as ApexGridRow<T> | undefined;
   }
 
-  /** The rendered cell that stands for `node`, when it is in the DOM. */
+  /**
+   * The element that stands for `node` in the DOM: the cell, or for a row a
+   * feature module renders full width (a group header, a total row) the
+   * row's single focus target, whatever the column.
+   */
   protected findCell(node: ActiveNode<T>): HTMLElement | undefined {
-    return this.findRow(node.row)?.cells.find((cell) => cell.column.key === node.column) as
-      | HTMLElement
-      | undefined;
+    const row = this.findRow(node.row);
+    if (!row) return undefined;
+    return (
+      row.presentedCell ??
+      (row.cells.find((cell) => cell.column.key === node.column) as HTMLElement | undefined)
+    );
   }
 
   protected scrollToCell(node: ActiveNode<T>) {
@@ -247,6 +254,17 @@ export class NavigationController<T extends object> implements ReactiveControlle
     return this.firstColumn;
   }
 
+  /** The active row is one a feature module renders full width (no cells). */
+  protected isPresentedRow(index: number): boolean {
+    const data = this.host.pageItems[index];
+    if (!data) return false;
+    // @ts-expect-error - protected member access
+    const state = this.host.stateController as {
+      presentRow(row: T, ctx: { columns: ColumnConfiguration<T>[]; rowIndex: number }): unknown;
+    };
+    return state.presentRow(data, { columns: this.host.columns, rowIndex: index }) !== null;
+  }
+
   /** Home moves to the first cell in the row (ARIA grid pattern). */
   protected home() {
     this.active = Object.assign(this.nextNode, { column: this.firstColumn });
@@ -349,9 +367,10 @@ export class NavigationController<T extends object> implements ReactiveControlle
 
   protected toggleSelection() {
     // Space on the focused grid toggles selection of the active row.
-    // No-op when selection is disabled or there's no active row.
+    // No-op when selection is disabled, there's no active row, or the row is
+    // module-rendered (a group header or total row is not a data row).
     const data = this.host.pageItems[this._active.row] as T | undefined;
-    if (!data) return;
+    if (!data || this.isPresentedRow(this._active.row)) return;
     void this.host.toggleRowSelection(data);
   }
 
@@ -379,7 +398,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
   protected handleEditKey(event: KeyboardEvent): boolean {
     if (event.key !== 'Enter' && event.key !== 'F2') return false;
     if (event.ctrlKey || event.metaKey || event.altKey) return false;
-    if (this._active === SENTINEL_NODE) return false;
+    if (this._active === SENTINEL_NODE || this.isPresentedRow(this._active.row)) return false;
     const editing = this.editing;
     if (!editing?.enabled) return false;
     const column = this.host.getColumn(this.active.column);
@@ -439,7 +458,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
       }
     }
 
-    if (event.key === ' ' && this.active.row >= 0) {
+    if (event.key === ' ' && this.active.row >= 0 && !this.isPresentedRow(this.active.row)) {
       event.preventDefault();
       return reorder.grab(this.active.row);
     }

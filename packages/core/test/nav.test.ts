@@ -8,18 +8,25 @@ import {
   nextFrame,
 } from '@open-wc/testing';
 import { sendKeys } from '@web/test-runner-commands';
+import type { ReactiveController } from 'lit';
 import type ApexGridCell from '../src/components/cell.js';
 import { ApexGrid } from '../src/components/grid.js';
 import type ApexGridRow from '../src/components/row.js';
 import type ApexVirtualizer from '../src/components/virtualizer.js';
-import type { StateController } from '../src/controllers/state.js';
+import { StateController } from '../src/controllers/state.js';
 import { SENTINEL_NODE } from '../src/internal/constants.js';
-import type { ColumnConfiguration } from '../src/internal/types.js';
+import type {
+  GridFeatureModule,
+  PresentedRow,
+  RowPresenter,
+  RowTransformer,
+} from '../src/internal/feature-module.js';
+import type { ActiveNode, ColumnConfiguration, GridHost } from '../src/internal/types.js';
 
 /**
  * Keyboard navigation: per-grid state, revalidation of the active cell after
- * view changes, long jumps through the virtualized body, sticky chrome and
- * keyboard entry.
+ * view changes, long jumps through the virtualized body, sticky chrome,
+ * keyboard entry, nested detail grids and module-rendered rows.
  */
 
 type Row = { id: number; name: string; age: number };
@@ -80,6 +87,7 @@ function bodyTabStops<T extends object>(grid: ApexGrid<T>): number {
   let stops = body(grid).tabIndex === 0 ? 1 : 0;
   for (const row of renderedRows(grid)) {
     for (const cell of row.cells) if ((cell as HTMLElement).tabIndex === 0) stops++;
+    if (row.presentedCell?.tabIndex === 0) stops++;
   }
   return stops;
 }
@@ -468,5 +476,194 @@ describe('Keyboard scroll insets do not outlive the keyboard scroll', () => {
     await settle(grid);
     expect(deepActive()).to.not.equal(cellAt(grid, 30, 'id'));
     expect(host.scrollTop).to.equal(before);
+  });
+});
+
+describe('Nested detail grids', () => {
+  type Order = { id: number; customer: string; items: Array<{ sku: string; qty: number }> };
+  const orders: Order[] = [
+    {
+      id: 0,
+      customer: 'A',
+      items: [
+        { sku: 'X1', qty: 1 },
+        { sku: 'X2', qty: 2 },
+      ],
+    },
+    { id: 1, customer: 'B', items: [{ sku: 'Y1', qty: 3 }] },
+  ];
+
+  async function nested() {
+    const detail = new WeakMap<Order, ApexGrid<Order['items'][number]>>();
+    const outer = await mount<Order>(
+      html`<apex-grid
+        .data=${orders}
+        .columns=${[{ key: 'id' }, { key: 'customer' }]}
+        .selection=${{ enabled: true, mode: 'multiple' }}
+        .expansion=${{
+          enabled: true,
+          detailTemplate: ({ data }: { data: Order }) => {
+            let inner = detail.get(data);
+            if (!inner) {
+              inner = document.createElement('apex-grid') as ApexGrid<Order['items'][number]>;
+              inner.style.height = '200px';
+              inner.columns = [{ key: 'sku' }, { key: 'qty' }];
+              inner.data = data.items;
+              detail.set(data, inner);
+            }
+            return html`<div>${inner}</div>`;
+          },
+        }}
+      ></apex-grid>`,
+      { height: '800px', width: '600px' }
+    );
+    await outer.expandRow(orders[0]);
+    await settle(outer);
+    const inner = (outer.rows[0] as unknown as { renderRoot: ShadowRoot }).renderRoot.querySelector(
+      'apex-grid'
+    ) as ApexGrid<Order['items'][number]>;
+    await settle(inner);
+    await waitFor(() => renderedRows(inner).length > 0);
+    return { outer, inner };
+  }
+
+  it('clicks and keys on an inner cell drive only the inner grid', async () => {
+    const { outer, inner } = await nested();
+    const cell = cellAt(inner, 0, 'sku')!;
+    cell.click();
+    await settle(outer);
+    expect(internals(outer).stateController.active, 'outer active untouched').to.equal(
+      SENTINEL_NODE
+    );
+    expect(activeOf(inner)).to.deep.equal({ column: 'sku', row: 0 });
+
+    press(cell, ' ');
+    await settle(outer);
+    expect(outer.selectedRows, 'outer selection after Space in the inner grid').to.deep.equal([]);
+  });
+
+  it('ownsEvent tells this grid apart from a grid nested in it', async () => {
+    const { outer, inner } = await nested();
+    const cell = cellAt(inner, 0, 'sku')!;
+    const seen: Array<[boolean, boolean]> = [];
+    const probe = (event: Event) => seen.push([outer.ownsEvent(event), inner.ownsEvent(event)]);
+    outer.addEventListener('click', probe);
+    cell.click();
+    cellAt(outer, 1, 'customer')!.click();
+    outer.removeEventListener('click', probe);
+    expect(seen).to.deep.equal([
+      [false, true],
+      [true, false],
+    ]);
+  });
+});
+
+describe('Rows a feature module renders full width', () => {
+  type Item = Row;
+  const HEADER: Item = { id: -1, name: 'HEADER', age: 0 };
+
+  class GroupStub implements ReactiveController, RowTransformer<Item>, RowPresenter<Item> {
+    constructor(host: GridHost<Item>) {
+      host.addController(this);
+    }
+    hostConnected() {}
+    processRows(rows: ReadonlyArray<Item>): Item[] {
+      return [HEADER, ...rows];
+    }
+    presentRow(row: Item): PresentedRow | null {
+      return row === HEADER
+        ? { content: html`<span>Group</span>`, level: 1, expanded: true }
+        : null;
+    }
+  }
+
+  class PresenterGrid<T extends object> extends ApexGrid<T> {
+    public static override get tagName() {
+      return 'apex-grid-nav-presenter-test';
+    }
+    public static override register() {
+      ApexGrid.register();
+      if (!customElements.get(PresenterGrid.tagName)) {
+        customElements.define(PresenterGrid.tagName, PresenterGrid);
+      }
+    }
+    protected override createStateController(): StateController<T> {
+      const module: GridFeatureModule<Item> = { id: 'group-stub', create: (h) => new GroupStub(h) };
+      return new StateController<T>(this, [module as unknown as GridFeatureModule<T>]);
+    }
+  }
+
+  async function presented() {
+    PresenterGrid.register();
+    const parentNode = document.createElement('div');
+    parentNode.style.height = '400px';
+    const grid = await fixture<PresenterGrid<Item>>(
+      html`<apex-grid-nav-presenter-test
+        .data=${makeRows(5)}
+        .columns=${COLUMNS.map((c) => ({ ...c, editable: true }))}
+        .editing=${{ enabled: true, mode: 'row' }}
+        .selection=${{ enabled: true, mode: 'multiple' }}
+      ></apex-grid-nav-presenter-test>`,
+      { parentNode }
+    );
+    await settle(grid);
+    await waitFor(() => renderedRows(grid).length > 0);
+    return grid;
+  }
+
+  it('ArrowUp onto a presented row focuses its focus target and keeps one tab stop', async () => {
+    const grid = await presented();
+    const cell = cellAt(grid, 1, 'name')!;
+    cell.click();
+    await settle(grid);
+    press(cell, 'ArrowUp');
+    await settle(grid);
+
+    const header = renderedRows(grid).find((r) => r.index === 0)!;
+    expect(activeOf(grid).row).to.equal(0);
+    expect(header.presentedCell, 'presented row has a focus target').to.exist;
+    expect(header.presentedCell!.getAttribute('role')).to.equal('gridcell');
+    await waitFor(() => deepActive() === header.presentedCell);
+    expect(deepActive()).to.equal(header.presentedCell);
+    expect(bodyTabStops(grid)).to.equal(1);
+
+    // Keys from the focus target keep navigating.
+    press(header.presentedCell!, 'ArrowDown');
+    await settle(grid);
+    expect(activeOf(grid)).to.deep.equal({ column: 'name', row: 1 } as ActiveNode<Item>);
+  });
+
+  it('Enter and Space on a presented row neither edit nor select it', async () => {
+    const grid = await presented();
+    const started: number[] = [];
+    grid.addEventListener('rowEditStarted', (e) =>
+      started.push((e as CustomEvent<{ rowIndex: number }>).detail.rowIndex)
+    );
+    const cell = cellAt(grid, 1, 'name')!;
+    cell.click();
+    await settle(grid);
+    press(cell, 'ArrowUp');
+    await settle(grid);
+    const target = renderedRows(grid).find((r) => r.index === 0)!.presentedCell!;
+    press(target, 'Enter');
+    press(target, ' ');
+    await settle(grid);
+    expect(started).to.deep.equal([]);
+    expect(grid.selectedRows).to.deep.equal([]);
+  });
+
+  it('a click on a presented row makes it the active row', async () => {
+    const grid = await presented();
+    const cell = cellAt(grid, 2, 'age')!;
+    cell.click();
+    await settle(grid);
+    renderedRows(grid)
+      .find((r) => r.index === 0)!
+      .presentedCell!.click();
+    await settle(grid);
+    expect(activeOf(grid)).to.deep.equal({ column: 'age', row: 0 } as ActiveNode<Item>);
+    press(renderedRows(grid).find((r) => r.index === 0)!.presentedCell!, 'ArrowDown');
+    await settle(grid);
+    expect(activeOf(grid)).to.deep.equal({ column: 'age', row: 1 } as ActiveNode<Item>);
   });
 });

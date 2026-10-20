@@ -58,6 +58,18 @@ export default class ApexGridRow<T extends object> extends LitElement {
     return Array.from(this._cells);
   }
 
+  /**
+   * The single focus target of a row a feature module renders full width (a
+   * group header, a total row), or `null` for a normal cell-rendered row.
+   * Keyboard navigation lands here, whatever the active column, so the body
+   * keeps a tab stop on rows that render no cells.
+   */
+  public get presentedCell(): HTMLElement | null {
+    return this.#presented
+      ? this.renderRoot.querySelector<HTMLElement>('[data-presented-cell]')
+      : null;
+  }
+
   @consume({ context: gridStateContext, subscribe: true })
   @property({ attribute: false })
   public state!: StateController<T>;
@@ -438,7 +450,19 @@ export default class ApexGridRow<T extends object> extends LitElement {
     // content spanning all columns, like the master-detail panel, and skip the
     // normal selection/expansion/cell grid.
     if (this.#presented) {
-      return html`<div part=${this.#presented.part ?? 'group-row'} style="grid-column: 1 / -1">
+      const colspan =
+        this.columns.filter((column) => !column.hidden).length +
+        (this.state?.selection.showCheckboxColumn ? 1 : 0) +
+        (this.state?.expansion.showToggleColumn ? 1 : 0);
+      return html`<div
+        part=${this.#presented.part ?? 'group-row'}
+        role="gridcell"
+        aria-colindex="1"
+        aria-colspan=${Math.max(1, colspan)}
+        tabindex=${this.activeNode?.row === this.index ? 0 : -1}
+        data-presented-cell
+        style="grid-column: 1 / -1"
+      >
         ${this.#presented.content}
       </div>`;
     }
