@@ -108,12 +108,14 @@
       ];
 
       const grid = document.getElementById('grid');
+      // Paste and fill write only into cells the user could edit by hand.
+      grid.editing = { enabled: true };
       grid.columns = [
-        { key: 'name', headerText: 'Name' },
-        { key: 'department', headerText: 'Department' },
-        { key: 'salary', headerText: 'Salary', type: 'number' },
-        { key: 'age', headerText: 'Age', type: 'number' },
-        { key: 'bonus', headerText: 'Bonus', type: 'number' },
+        { key: 'name', headerText: 'Name', editable: true },
+        { key: 'department', headerText: 'Department', editable: true },
+        { key: 'salary', headerText: 'Salary', type: 'number', editable: true },
+        { key: 'age', headerText: 'Age', type: 'number', editable: true },
+        { key: 'bonus', headerText: 'Bonus', type: 'number', editable: true },
       ];
       grid.data = data;
       document.getElementById('status').grid = grid;

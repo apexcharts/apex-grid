@@ -21,10 +21,10 @@ const data: Row[] = [
   { id: 4, name: 'D', amount: 40, score: 400 },
 ];
 const columns: ColumnConfiguration<Row>[] = [
-  { key: 'id', type: 'number', headerText: 'ID' },
-  { key: 'name', type: 'string', headerText: 'Name' },
-  { key: 'amount', type: 'number', headerText: 'Amount' },
-  { key: 'score', type: 'number', headerText: 'Score' },
+  { key: 'id', type: 'number', headerText: 'ID', editable: true },
+  { key: 'name', type: 'string', headerText: 'Name', editable: true },
+  { key: 'amount', type: 'number', headerText: 'Amount', editable: true },
+  { key: 'score', type: 'number', headerText: 'Score', editable: true },
 ];
 
 /** A sized parent so the virtualizer actually renders body rows in tests. */
@@ -47,7 +47,7 @@ async function layoutComplete(grid: ApexGridEnterprise<Row>) {
 async function mount() {
   // Clone the data so mutating features (paste / fill) can't leak across tests.
   const grid = await fixture<ApexGridEnterprise<Row>>(
-    html`<apex-grid-enterprise .data=${data.map((row) => ({ ...row }))} .columns=${columns}></apex-grid-enterprise>`,
+    html`<apex-grid-enterprise .data=${data.map((row) => ({ ...row }))} .columns=${columns} .editing=${{ enabled: true }}></apex-grid-enterprise>`,
     { parentNode: sizedParent() }
   );
   await layoutComplete(grid);
@@ -364,15 +364,22 @@ describe('Range selection', () => {
 
   it('paste validates each cell — rejects invalid, applies valid (bulk validation)', async () => {
     const validatedColumns: ColumnConfiguration<Row>[] = [
-      { key: 'id', type: 'number', headerText: 'ID' },
-      { key: 'name', type: 'string', headerText: 'Name' },
-      { key: 'amount', type: 'number', headerText: 'Amount', validators: [max(20)] },
-      { key: 'score', type: 'number', headerText: 'Score' },
+      { key: 'id', type: 'number', headerText: 'ID', editable: true },
+      { key: 'name', type: 'string', headerText: 'Name', editable: true },
+      {
+        key: 'amount',
+        type: 'number',
+        headerText: 'Amount',
+        editable: true,
+        validators: [max(20)],
+      },
+      { key: 'score', type: 'number', headerText: 'Score', editable: true },
     ];
     const grid = await fixture<ApexGridEnterprise<Row>>(
       html`<apex-grid-enterprise
         .data=${data.map((row) => ({ ...row }))}
         .columns=${validatedColumns}
+        .editing=${{ enabled: true }}
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
@@ -398,7 +405,7 @@ describe('Range selection', () => {
       html`<apex-grid-enterprise
         .data=${data.map((row) => ({ ...row }))}
         .columns=${columns}
-        .editing=${{ history: { enabled: true } }}
+        .editing=${{ enabled: true, history: { enabled: true } }}
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );

@@ -1623,9 +1623,12 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   /**
-   * Fill from the active range toward the given cell (row + column key) — the
-   * programmatic form of dragging the fill handle. Numeric source lines
-   * extrapolate a series; everything else tiles the source.
+   * Fill from the active range toward the given cell (row + column key), the
+   * programmatic form of dragging the fill handle. Numeric source lines extend
+   * a series in numeric columns (and in untyped or `string` columns whose
+   * values are numbers); everything else tiles the source. Writes only cells
+   * the user could edit, so it needs `editing.enabled` and an `editable`
+   * target column.
    */
   public fillTo(to: { row: number; column: string }): void {
     this.#rangeController()?.fillTo(to);
@@ -1634,6 +1637,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   /**
    * Paste a TSV block into the grid starting at the active range's top-left,
    * expanding the selection to cover it (values coerced to column type).
+   * Writes only cells the user could edit, so it needs `editing.enabled` and
+   * an `editable` target column.
    */
   public pasteText(text: string): void {
     this.#rangeController()?.pasteText(text);

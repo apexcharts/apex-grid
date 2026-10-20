@@ -14,9 +14,9 @@ interface Row {
 }
 
 const columns: ColumnConfiguration<Row>[] = [
-  { key: 'qty', type: 'number' }, // A
-  { key: 'price', type: 'number' }, // B
-  { key: 'total', type: 'number', allowFormula: true }, // C
+  { key: 'qty', type: 'number', editable: true }, // A
+  { key: 'price', type: 'number', editable: true }, // B
+  { key: 'total', type: 'number', editable: true, allowFormula: true }, // C
 ];
 
 /** A sized parent so the virtualizer lays out body rows. */
@@ -64,7 +64,11 @@ describe('formula fill + paste (Tier 2, P2)', () => {
 
   async function mount(rows: Row[]) {
     const grid = await fixture<ApexGridEnterprise<Row>>(
-      html`<apex-grid-enterprise .data=${rows} .columns=${columns}></apex-grid-enterprise>`,
+      html`<apex-grid-enterprise
+        .data=${rows}
+        .columns=${columns}
+        .editing=${{ enabled: true }}
+      ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
     await grid.updateComplete;

@@ -295,6 +295,22 @@ grid.selectRange(/* start, end */); // programmatic selection
 // the grid emits 'apex-range-changed' with the current selection stats
 ```
 
+Ctrl/Cmd+C copies the selection as tab-separated text (cells holding a tab, a
+line break or a quote are quoted, as spreadsheets do). Ctrl/Cmd+V, `pasteText`,
+the fill handle and `fillTo` write only into cells the user could edit by hand,
+so they need `editing.enabled` and `editable: true` on the target columns.
+Pasted text is converted to the column type the way the cell editor commits it,
+and fill extends a numeric series in numeric columns (and in untyped or `string`
+columns whose values are numbers), tiling everything else.
+
+```ts
+grid.editing = { enabled: true };
+grid.columns = [{ key: 'qty', type: 'number', editable: true } /* ... */];
+grid.selectRange({ row: 0, column: 'qty' }, { row: 1, column: 'qty' });
+grid.fillTo({ row: 5, column: 'qty' }); // qty 1, 2 continues as 3, 4, 5, 6
+grid.pasteText('10\n20');               // paste at the active cell
+```
+
 ## Excel (XLSX) export
 
 Export to a real `.xlsx` file where numbers, booleans, and `Date` values keep
@@ -822,10 +838,11 @@ Set a `rowId` to keep formulas through any reload.
 in effect, with the data index it was saved at as `origin`). `setState` skips an
 entry whose row does not resolve, whose source does not parse, or whose column
 lacks `allowFormula`, and reports each in `SetStateResult.warnings` (with
-`strict`, the first one throws before any formula changes). Fill and paste only
-write formulas into `allowFormula` columns; `setFormula` from app code may target
-any column, but such formulas are not saved, and `setState` (and so an AI undo)
-replaces only the formulas of `allowFormula` columns, leaving them in place.
+`strict`, the first one throws before any formula changes). Fill and paste write
+formulas only into editable `allowFormula` columns (with `editing.enabled`);
+`setFormula` from app code may target any column, but such formulas are not
+saved, and `setState` (and so an AI undo) replaces only the formulas of
+`allowFormula` columns, leaving them in place.
 
 ### Authoring
 
@@ -851,6 +868,7 @@ row/column delta to the new cell (absolute `$` axes are preserved):
 
 ```ts
 // Drag the fill handle, or do it in code: copy total[0]'s formula down.
+// Needs editing.enabled and an editable allowFormula column.
 grid.selectRange({ row: 0, column: 'total' });
 grid.fillTo({ row: 4, column: 'total' }); // =B1*C1 becomes =B2*C2, =B3*C3, ...
 ```
