@@ -1,5 +1,6 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration, GridState } from 'apex-grid';
+import { computeAggregations } from '../src/features/aggregation.js';
 import { getGroupMeta } from '../src/features/grouping.js';
 import { type AggregationConfig, ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 
@@ -44,7 +45,7 @@ function regions(): Row[] {
 const enterpriseOf = (state: Partial<GridState>) =>
   (state.modules as Record<string, Record<string, unknown>>).enterprise;
 
-describe('grouping keys, Date buckets and collapse-all state', () => {
+describe('grouping keys, Date buckets, NaN aggregates and collapse-all state', () => {
   before(() => {
     ApexGridEnterprise.use(...enterpriseModules);
     ApexGridEnterprise.register();
@@ -352,6 +353,44 @@ describe('grouping keys, Date buckets and collapse-all state', () => {
       await settle(grid);
       expect(result.warnings.some((w) => w.includes('groupExpand'))).to.equal(true);
       expect(enterpriseOf(grid.getState()).groupExpand).to.deep.equal({ '/AMER': false });
+    });
+  });
+
+  describe('ent-grouping-aggregation-statusbar-9: non-finite cells', () => {
+    it('ignores NaN and Infinity in sum, avg, min, max and count', () => {
+      const rows = [{ v: 10 }, { v: Number.NaN }, { v: 20 }, { v: Number.POSITIVE_INFINITY }];
+      expect(computeAggregations(rows, { v: ['sum', 'avg', 'min', 'max', 'count'] })).to.deep.equal(
+        { v: { sum: 30, avg: 15, min: 10, max: 20, count: 2 } }
+      );
+    });
+
+    it('counts numeric strings like the status bar does', () => {
+      const rows = [{ v: '10' }, { v: ' 5 ' }, { v: '' }, { v: 'abc' }, { v: 1 }, { v: null }];
+      expect(computeAggregations(rows, { v: ['sum', 'count', 'min', 'max'] })).to.deep.equal({
+        v: { sum: 16, count: 3, min: 1, max: 10 },
+      });
+    });
+
+    it('keeps the empty results and -0 handling unchanged', () => {
+      expect(
+        computeAggregations([{ v: 'x' }], { v: ['sum', 'avg', 'min', 'max', 'count'] })
+      ).to.deep.equal({ v: { sum: 0, avg: 0, min: 0, max: 0, count: 0 } });
+      const signed = computeAggregations([{ v: 0 }, { v: -0 }], { v: ['min', 'max'] });
+      expect(Object.is(signed.v.min, -0)).to.equal(true);
+      expect(Object.is(signed.v.max, 0)).to.equal(true);
+    });
+
+    it('a NaN cell no longer shows NaN in the group header', async () => {
+      const grid = await mount(
+        [
+          { g: 'x', amount: 10 },
+          { g: 'x', amount: Number.NaN },
+          { g: 'x', amount: 20 },
+        ],
+        ['g'],
+        { amount: ['sum', 'min'] }
+      );
+      expect(grid.getGroups()[0].aggregates).to.deep.equal({ amount: { sum: 30, min: 10 } });
     });
   });
 });

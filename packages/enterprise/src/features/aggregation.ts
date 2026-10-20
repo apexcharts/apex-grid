@@ -31,29 +31,52 @@ export function maxOf(values: readonly number[]): number {
   return max;
 }
 
-/** Apply a single aggregation function over a list of numeric values. */
-function applyAggregation(fn: AggregationFn, values: number[]): number {
-  const sum = values.reduce((total, value) => total + value, 0);
+/**
+ * A cell value as a finite number, or `null` when the cell does not count:
+ * NaN and Infinity do not, numeric strings do. The same rule as the status
+ * bar's `toNumber` (range-selection.ts), so a group header, the total row, a
+ * pivot cell and the status bar agree on which cells count; change both
+ * together.
+ */
+export function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/** One aggregation function's result from a column's running totals. */
+function pickAggregate(
+  fn: AggregationFn,
+  count: number,
+  sum: number,
+  min: number,
+  max: number
+): number {
   switch (fn) {
     case 'count':
-      return values.length;
+      return count;
     case 'sum':
       return sum;
     case 'avg':
-      return values.length ? sum / values.length : 0;
+      return count ? sum / count : 0;
     case 'min':
-      return values.length ? minOf(values) : 0;
+      return count ? min : 0;
     case 'max':
-      return values.length ? maxOf(values) : 0;
+      return count ? max : 0;
     default:
       return 0;
   }
 }
 
 /**
- * Compute the requested aggregations for a set of rows. Pure and reusable —
+ * Compute the requested aggregations for a set of rows. Pure and reusable:
  * shared by the {@link AggregationController} and the row-grouping feature,
- * which calls it per group over the (filtered) leaf rows.
+ * which calls it per group over the (filtered) leaf rows. One pass per column
+ * yields every function; cells that are not finite numbers are skipped (see
+ * {@link toFiniteNumber}), and an empty column gives 0 throughout.
  */
 export function computeAggregations<T extends object>(
   data: readonly T[],
@@ -62,14 +85,22 @@ export function computeAggregations<T extends object>(
   const results: AggregationResults = {};
 
   for (const [key, fns] of Object.entries(config)) {
-    const values = data
-      .map((row) => (row as Record<string, unknown>)[key])
-      .filter((value): value is number => typeof value === 'number');
+    let count = 0;
+    let sum = 0;
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < data.length; i += 1) {
+      const value = toFiniteNumber((data[i] as Record<string, unknown>)[key]);
+      if (value === null) continue;
+      count += 1;
+      sum += value;
+      // Math.min / Math.max, not < / >, so -0 still sorts below 0.
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    }
 
     const column: Partial<Record<AggregationFn, number>> = {};
-    for (const fn of fns) {
-      column[fn] = applyAggregation(fn, values);
-    }
+    for (const fn of fns) column[fn] = pickAggregate(fn, count, sum, min, max);
     results[key] = column;
   }
 

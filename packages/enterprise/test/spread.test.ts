@@ -58,15 +58,16 @@ describe('No argument spread over large arrays', () => {
       });
     });
 
-    it('keeps the empty, NaN and signed zero results', () => {
+    it('keeps the empty and signed zero results and skips NaN', () => {
       const fns = ['min', 'max', 'sum', 'avg', 'count'] as const;
       const config = { v: [...fns] };
       expect(computeAggregations([], config)).to.deep.equal({
         v: { min: 0, max: 0, sum: 0, avg: 0, count: 0 },
       });
+      // A NaN cell is skipped, like the status bar (see grouping-keys.test.ts).
       const withNaN = computeAggregations([{ v: 3 }, { v: Number.NaN }, { v: 1 }], config).v;
-      expect(withNaN.min).to.be.NaN;
-      expect(withNaN.max).to.be.NaN;
+      expect(withNaN.min).to.equal(1);
+      expect(withNaN.max).to.equal(3);
       const zeros = computeAggregations([{ v: 0 }, { v: -0 }], config).v;
       expect(Object.is(zeros.min, -0)).to.be.true;
       expect(Object.is(zeros.max, 0)).to.be.true;
