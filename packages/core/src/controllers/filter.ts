@@ -232,6 +232,8 @@ function sameFilter(a: unknown[], b: unknown[]): boolean {
     const y = b[i];
     if (Object.is(x, y)) continue;
     if (x instanceof Date && y instanceof Date && x.getTime() === y.getTime()) continue;
+    // Array terms (a set filter's values) are copied by getState and setState.
+    if (Array.isArray(x) && Array.isArray(y) && sameFilter(x, y)) continue;
     return false;
   }
   return true;

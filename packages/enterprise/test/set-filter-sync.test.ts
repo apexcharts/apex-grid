@@ -146,6 +146,24 @@ describe('ApexGridSetFilter: sync with the applied filter', () => {
     expect(filter.selectedTokens).to.eql(['Engineering']);
   });
 
+  it('setState(getState()) with a set filter keeps the scroll position', async () => {
+    const names = ['Engineering', 'Sales', 'Marketing', 'Support'];
+    const rows = Array.from({ length: 2000 }, (_, i) => ({ id: i + 1, department: names[i % 4] }));
+    const { grid, filter } = await mount(rows, columns, 'department');
+    grid.style.display = 'block';
+    grid.style.height = '300px';
+    filter.setSelectedTokens(['Engineering', 'Sales', 'Marketing']);
+    await settle(grid, filter);
+    grid.scrollTop = 4000;
+    await settle(grid);
+    const before = grid.scrollTop;
+    expect(before).to.be.greaterThan(0);
+    grid.setState(grid.getState());
+    await settle(grid);
+    await nextFrame();
+    expect(grid.scrollTop).to.equal(before);
+  });
+
   it('a saved set filter without a selection is dropped with a warning', async () => {
     const { grid } = await mount(
       data.map((r) => ({ ...r })),
