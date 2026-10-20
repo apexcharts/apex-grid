@@ -353,6 +353,31 @@ describe('panels follow the grid', () => {
       expect(pivotToggle(panel).checked).to.be.true;
     });
 
+    it('applies a pivotMode set while the bound grid is re-assigned in one task', async () => {
+      const grid = await mountGrid({ groupBy: ['name'] });
+      const other = await mountGrid({ groupBy: ['name'] });
+      const panel = await mountPanel(grid);
+      // A ref callback called with null, then the element.
+      panel.grid = undefined;
+      panel.pivotMode = true;
+      panel.grid = grid as never;
+      await settle(grid, panel);
+      expect(grid.groupBy).to.eql([]);
+      expect(grid.pivotRows).to.eql(['name']);
+      expect(panel.pivotMode).to.be.true;
+      expect(pivotToggle(panel).checked).to.be.true;
+
+      panel.pivotMode = false;
+      await settle(grid, panel);
+      panel.grid = other as never;
+      panel.pivotMode = true;
+      panel.grid = grid as never;
+      await settle(grid, other, panel);
+      expect(grid.pivotRows).to.eql(['name']);
+      expect(panel.pivotMode).to.be.true;
+      expect(other.groupBy, 'the grid passed through is left alone').to.eql(['name']);
+    });
+
     it('keeps the grouping of a grid swapped in with pivotMode false', async () => {
       const pivoting = await mountGrid({
         pivotRows: ['name'],

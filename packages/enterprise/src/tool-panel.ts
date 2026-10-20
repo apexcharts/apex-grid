@@ -176,6 +176,8 @@ export class ApexGridToolPanel extends LitElement {
   #pivotMode = false;
   /** pivotMode was set to true and no grid has taken it yet: apply it on the next bind. */
   #pendingPivot = false;
+  /** pivotMode was set while `grid` was not the bound grid: willUpdate applies it. */
+  #deferred = false;
   /** The grid willUpdate last bound; `grid` differs from it until the next update. */
   #bound: ApexGridEnterprise<Record<string, unknown>> | null | undefined;
   /** The grid's columns from its last unpivoted render (a pivot swaps in generated ones). */
@@ -197,11 +199,12 @@ export class ApexGridToolPanel extends LitElement {
   public set pivotMode(on: boolean) {
     this.#pendingPivot = on;
     // A grid assigned in this task is not bound yet; willUpdate applies the request to it.
-    if (this.grid && this.grid === this.#bound) {
-      this.#setPivotMode(on);
-    } else {
+    this.#deferred = !(this.grid && this.grid === this.#bound);
+    if (this.#deferred) {
       this.#pivotMode = on;
       this.requestUpdate();
+    } else {
+      this.#setPivotMode(on);
     }
   }
 
@@ -216,10 +219,16 @@ export class ApexGridToolPanel extends LitElement {
         this.#pivotMode = false;
         if (this.#pendingPivot) this.#setPivotMode(true);
       }
+    } else if (grid && this.#deferred && this.#pendingPivot) {
+      // The bound grid came back in the same task (a ref called with null,
+      // then the element): apply the request it would have taken on rebind.
+      this.#pivotMode = false;
+      this.#setPivotMode(true);
     }
     if (!grid) return;
     // A bound grid has taken the request, so it never reaches a later bind.
     this.#pendingPivot = false;
+    this.#deferred = false;
     if (!grid.isPivoting) this.#source = grid.columns as AnyColumn[];
     if (this.#columnLabels().length) this.#pivotMode = true;
     else if (grid.groupBy?.length) this.#pivotMode = false;
