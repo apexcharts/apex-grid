@@ -14,11 +14,14 @@ export class ResizeController<T extends object> implements ReactiveController {
   public indicatorOffset = 0;
 
   #maxSize(key: Keys<T>, headerWidth: number) {
-    const max = this.host.rows
-      .map((row) => row.cells.find((cell) => cell.column.key === key)!)
-      .reduce((prev, current) => (current.offsetWidth > prev ? current.offsetWidth : prev), 0);
-
-    return Math.max(...[MIN_COL_RESIZE_WIDTH, max, headerWidth]);
+    let max = Math.max(MIN_COL_RESIZE_WIDTH, headerWidth);
+    // Rows rendered as one full-width block (group headers, total rows, rows
+    // still loading) have no cell for the column, so they do not count.
+    for (const row of this.host.rows) {
+      const cell = row.cells.find((cell) => cell.column.key === key);
+      if (cell) max = Math.max(max, cell.offsetWidth);
+    }
+    return max;
   }
 
   /**

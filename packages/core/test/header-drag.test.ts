@@ -1,10 +1,17 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame, waitUntil } from '@open-wc/testing';
 import { resetMouse, sendMouse } from '@web/test-runner-commands';
+import type { ReactiveController } from 'lit';
 import { ApexGrid } from '../src/components/grid.js';
 import type ApexGridHeader from '../src/components/header.js';
 import ApexGridHeaderRow from '../src/components/header-row.js';
-import type { StateController } from '../src/controllers/state.js';
-import type { ColumnConfiguration } from '../src/internal/types.js';
+import { StateController } from '../src/controllers/state.js';
+import type {
+  GridFeatureModule,
+  PresentedRow,
+  RowPresenter,
+  RowTransformer,
+} from '../src/internal/feature-module.js';
+import type { ColumnConfiguration, GridHost } from '../src/internal/types.js';
 import data, { type TestData } from './utils/test-data.js';
 
 /**
@@ -35,15 +42,27 @@ function headers(grid: Grid) {
 
 const keys = (grid: Grid) => grid.columns.map((c) => String(c.key));
 
-async function mount(columns: ColumnConfiguration<TestData>[], dir: 'ltr' | 'rtl' = 'ltr') {
+async function mount(
+  columns: ColumnConfiguration<TestData>[],
+  { dir = 'ltr', tag = 'apex-grid' }: { dir?: 'ltr' | 'rtl'; tag?: string } = {}
+) {
   ApexGrid.register();
   const parentNode = document.createElement('div');
   Object.assign(parentNode.style, { width: '800px', height: '500px' });
   parentNode.dir = dir;
-  const grid = await fixture<Grid>(
-    html`<apex-grid column-reordering .data=${data} .columns=${columns}></apex-grid>`,
-    { parentNode }
-  );
+  const grid =
+    tag === 'apex-grid'
+      ? await fixture<Grid>(
+          html`<apex-grid column-reordering .data=${data} .columns=${columns}></apex-grid>`,
+          { parentNode }
+        )
+      : await fixture<Grid>(
+          html`<apex-grid-header-drag-test
+            .data=${data}
+            .columns=${columns}
+          ></apex-grid-header-drag-test>`,
+          { parentNode }
+        );
   await grid.updateComplete;
   await nextFrame();
   await waitUntil(() => grid.rows.length > 0, 'body rows never rendered');
@@ -80,7 +99,7 @@ describe('Header drag: reorder', function () {
 
   for (const dir of ['ltr', 'rtl'] as const) {
     it(`${dir}: a drag toward later columns keeps tracking after a swap and ends`, async () => {
-      const grid = await mount(reorderCols(), dir);
+      const grid = await mount(reorderCols(), { dir });
       const source = headers(grid).get('id')!;
       const r = source.getBoundingClientRect();
       // Later columns sit to the right in LTR and to the left under RTL.
@@ -247,7 +266,7 @@ describe('Header drag: resize indicator', function () {
     it(`${dir}: the indicator sits on the dragged edge from pointerdown through the drag`, async () => {
       const grid = await mount(
         [fixed('id', { resizable: true, width: '150px' }), fixed('name', { resizable: true })],
-        dir
+        { dir }
       );
       const header = headers(grid).get('id')!;
       const rect = header.getBoundingClientRect();
@@ -294,7 +313,7 @@ describe('Header drag: resize indicator', function () {
                 pinned: pinned ? 'end' : undefined,
               }),
             ],
-            dir
+            { dir }
           );
           grid.parentElement!.style.width = '600px';
           await nextFrame();
@@ -328,4 +347,69 @@ describe('Header drag: resize indicator', function () {
       }
     }
   }
+});
+
+describe('Header drag: autosize', () => {
+  afterEach(() => fixtureCleanup());
+
+  /** A synthesized full-width row, like an enterprise group header. */
+  const GROUP: TestData = { id: -1, name: 'GROUP', active: false, importance: 'low' };
+
+  class PresenterStub
+    implements ReactiveController, RowTransformer<TestData>, RowPresenter<TestData>
+  {
+    constructor(host: GridHost<TestData>) {
+      host.addController(this);
+    }
+    hostConnected() {}
+    processRows(rows: ReadonlyArray<TestData>): TestData[] {
+      return [GROUP, ...rows];
+    }
+    presentRow(row: TestData): PresentedRow | null {
+      return row === GROUP ? { content: html`<span>Group</span>` } : null;
+    }
+  }
+
+  const presenterModule: GridFeatureModule<TestData> = {
+    id: 'header-drag-presenter',
+    create: (host) => new PresenterStub(host),
+  };
+
+  class PresenterGrid<T extends object> extends ApexGrid<T> {
+    public static override get tagName() {
+      return 'apex-grid-header-drag-test';
+    }
+    public static override register() {
+      if (!customElements.get(PresenterGrid.tagName)) {
+        customElements.define(PresenterGrid.tagName, PresenterGrid);
+      }
+    }
+    protected override createStateController(): StateController<T> {
+      return new StateController<T>(this, [presenterModule as unknown as GridFeatureModule<T>]);
+    }
+  }
+
+  it('skips rows that render no cell for the column', async () => {
+    PresenterGrid.register();
+    const grid = await mount(
+      [fixed('id', { resizable: true }), fixed('name', { resizable: true, width: '40px' })],
+      { tag: PresenterGrid.tagName }
+    );
+    expect(
+      grid.rows.some((row) => row.cells.length === 0),
+      'a row without cells is rendered'
+    ).to.equal(true);
+
+    const header = headers(grid).get('name')!;
+    let error: unknown = null;
+    try {
+      await stateOf(grid).resizing.autosize(header.column, header);
+    } catch (e) {
+      error = e;
+    }
+    expect(error, 'autosize must not throw').to.equal(null);
+    const width = grid.columns.find((c) => c.key === 'name')!.width as string;
+    expect(width).to.match(/px$/);
+    expect(Number.parseFloat(width)).to.be.greaterThan(40);
+  });
 });
