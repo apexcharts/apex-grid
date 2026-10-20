@@ -286,6 +286,12 @@ export class ServerSideRowModelManager<T extends object> {
 
   // --- public API ----------------------------------------------------------
 
+  /** Every row the model holds in its block cache, including rows of collapsed groups. */
+  public *cachedRecords(): Iterable<T> {
+    for (const level of this.#levels.values())
+      for (const block of level.blocks.values()) yield* block;
+  }
+
   /** Discard the tree and reload from the top (e.g. after a server-side mutation). */
   public refresh(): void {
     this.reset();

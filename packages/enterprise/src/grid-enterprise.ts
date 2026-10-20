@@ -1205,6 +1205,12 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.#infiniteManager?.refresh();
   }
 
+  /** Rows of collapsed server-side groups stay cached and come back on expand, so undo keeps them. */
+  protected override *historyRecords(): Iterable<T> {
+    yield* this.data;
+    if (this.#ssrmManager) yield* this.#ssrmManager.cachedRecords();
+  }
+
   /** Whether the server-side (grouping) row model is active. */
   public get isServerSideRowModel(): boolean {
     return this.#ssrmManager !== null;
