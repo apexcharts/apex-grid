@@ -177,7 +177,8 @@ function evaluateCall(node: CallNode, ctx: FormulaContext): CellValue {
   const args: CellValue[] = [];
   for (const arg of node.args) {
     if (arg.type === 'range') {
-      args.push(...ctx.getRange(arg.range));
+      // A loop, not push(...cells): spreading throws past ~120k cells.
+      for (const cell of ctx.getRange(arg.range)) args.push(cell);
     } else {
       args.push(evaluate(arg, ctx));
     }

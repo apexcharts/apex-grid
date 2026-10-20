@@ -149,9 +149,10 @@ export class GroupingController<T extends object>
       out.push(makeGroupRow(meta));
 
       if (this.isExpanded(key, depth)) {
-        out.push(
-          ...(depth + 1 < this.groupBy.length ? this.#build(leaves, depth + 1, key) : leaves)
-        );
+        const children =
+          depth + 1 < this.groupBy.length ? this.#build(leaves, depth + 1, key) : leaves;
+        // A loop, not push(...children): spreading throws past ~120k rows.
+        for (let i = 0; i < children.length; i += 1) out.push(children[i]);
       } else {
         this.#builtCollapsed.add(meta);
       }
