@@ -1833,13 +1833,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       this.removeAttribute('aria-multiselectable');
     }
 
-    // Roving tabindex: once a cell is active it is the body's single tab stop,
-    // so the scroll container leaves the tab order. Keeping both focusable
-    // would make Shift+Tab bounce off the container back into the grid (a
-    // keyboard trap). With no active cell the container stays the entry point.
-    if (this.scrollContainer) {
-      this.scrollContainer.tabIndex = this.stateController.active === SENTINEL_NODE ? 0 : -1;
-    }
+    this.#syncBodyTabStop();
 
     // Default accessible name for the host. An author-provided `aria-label`
     // or `aria-labelledby` always wins; only the value this grid set itself
@@ -2920,6 +2914,39 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     return true;
   }
 
+  /**
+   * Roving tabindex: once a rendered cell is active it is the body's single
+   * tab stop, so the scroll container leaves the tab order. Keeping both
+   * focusable would make Shift+Tab bounce off the container back into the
+   * grid (a keyboard trap). With no active cell, or with the active row
+   * scrolled out of the rendered window, the container is the tab stop.
+   */
+  #syncBodyTabStop(): void {
+    const body = this.scrollContainer;
+    if (!body) return;
+    const active = this.stateController.active;
+    body.tabIndex = active !== SENTINEL_NODE && body.isRendered(active.row) ? -1 : 0;
+  }
+
+  /**
+   * The virtualizer is about to re-render a new range of rows. When the row
+   * holding focus leaves it, its cell is removed and focus would fall to the
+   * document, so the scroll container takes focus first and the keyboard
+   * keeps working from the active cell.
+   */
+  protected bodyRangeChanged(event: Event) {
+    const { first, last } = event as Event & { first: number; last: number };
+    this.#syncBodyTabStop();
+    const focused = this.renderRoot instanceof ShadowRoot ? this.renderRoot.activeElement : null;
+    if (
+      focused instanceof ApexGridRow &&
+      focused.parentElement === this.scrollContainer &&
+      (focused.index < first || focused.index > last)
+    ) {
+      this.scrollContainer.focus({ preventScroll: true });
+    }
+  }
+
   @eventOptions({ capture: true })
   protected bodyClickHandler(event: MouseEvent) {
     const target = event.composedPath().find((el) => el instanceof ApexGridCell) as ApexGridCell<T>;
@@ -3021,6 +3048,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
         @click=${this.bodyClickHandler}
         @keydown=${this.bodyKeydownHandler}
         @focusin=${this.bodyFocusHandler}
+        @rangeChanged=${this.bodyRangeChanged}
         @pointerdown=${this.bodyPointerHandler}
         @pointermove=${this.bodyPointerHandler}
         @pointerup=${this.bodyPointerHandler}

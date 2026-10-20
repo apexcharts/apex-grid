@@ -1,9 +1,22 @@
 import type { ReactiveController } from 'lit';
 import type ApexGridRow from '../components/row.js';
+import { revealWithin, type ScrollInsets } from '../components/virtualizer.js';
 import { SENTINEL_NODE } from '../internal/constants.js';
 import { GRID_ROW_TAG } from '../internal/tags.js';
 import type { ActiveNode, ColumnConfiguration, GridHost, Keys } from '../internal/types.js';
 import { getDisplayColumns, isRTL } from '../internal/utils.js';
+
+/** Keys that move the active cell relative to where it is. */
+const RELATIVE_KEYS = new Set([
+  'ArrowDown',
+  'ArrowUp',
+  'ArrowLeft',
+  'ArrowRight',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+]);
 
 export class NavigationController<T extends object> implements ReactiveController {
   protected handlers = new Map(
@@ -53,54 +66,134 @@ export class NavigationController<T extends object> implements ReactiveControlle
     return (first?.key ?? (this.host.columns[0]?.key as Keys<T>)) as Keys<T>;
   }
 
+  /** Whether there is any cell to move to: a body row and a visible column. */
+  protected get navigable(): boolean {
+    return this.host.pageItems.length > 0 && this.visibleColumns.length > 0;
+  }
+
   protected getPreviousColumn(key: Keys<T>): Keys<T> {
     const columns = this.visibleColumns;
     const idx = columns.findIndex((column) => column.key === key);
-    return columns[Math.max(idx - 1, 0)].key;
+    return columns[Math.max(idx - 1, 0)]?.key ?? key;
   }
 
   protected getNextColumn(key: Keys<T>): Keys<T> {
     const columns = this.visibleColumns;
     const idx = columns.findIndex((column) => column.key === key);
-    return columns[Math.min(idx + 1, columns.length - 1)].key;
+    return columns[Math.min(idx + 1, columns.length - 1)]?.key ?? key;
+  }
+
+  /** The rendered body row at `index`, when the virtualizer has it in the DOM. */
+  protected findRow(index: number) {
+    return Array.from(this.virtualizer.querySelectorAll(GRID_ROW_TAG)).find(
+      (row) => (row as unknown as ApexGridRow<T>).index === index
+    ) as unknown as ApexGridRow<T> | undefined;
+  }
+
+  /** The rendered cell that stands for `node`, when it is in the DOM. */
+  protected findCell(node: ActiveNode<T>): HTMLElement | undefined {
+    return this.findRow(node.row)?.cells.find((cell) => cell.column.key === node.column) as
+      | HTMLElement
+      | undefined;
   }
 
   protected scrollToCell(node: ActiveNode<T>) {
-    const row = Array.from(this.virtualizer.querySelectorAll(GRID_ROW_TAG)).find(
-      (row) => (row as unknown as ApexGridRow<T>).index === node.row
-    ) as unknown as ApexGridRow<T>;
-
-    if (row) {
-      row.cells
-        .find((cell) => cell.column.key === node.column)
-        ?.scrollIntoView({ block: 'nearest' });
+    const cell = this.findCell(node);
+    if (cell) {
+      revealWithin(this.host as unknown as HTMLElement, cell, {
+        block: 'nearest',
+        inline: 'nearest',
+        insets: this.#insets(),
+      });
     }
   }
 
-  protected findActiveCell() {
-    const row = Array.from(this.virtualizer.querySelectorAll(GRID_ROW_TAG)).find(
-      (el) => (el as unknown as ApexGridRow<T>).index === this.active.row
-    ) as unknown as ApexGridRow<T> | undefined;
-    return row?.cells.find((cell) => cell.column.key === this.active.column);
+  /** Scrolls body row `index` into view, rendered or not. */
+  protected scrollToRow(index: number) {
+    this.virtualizer.element(index)?.scrollIntoView({ block: 'nearest', insets: this.#insets() });
+  }
+
+  /**
+   * How much of the scroll container's scrollport the sticky chrome covers
+   * (toolbar, headers and the pinned-top band above, the pinned-bottom band
+   * and the paginator below, pinned columns on either side). Keyboard scrolls
+   * use it as scroll-padding, so a row or cell the keyboard moves to is never
+   * parked underneath that chrome. Measured right before each keyboard scroll
+   * because any of those bands can change size between key presses.
+   */
+  #insets(): ScrollInsets {
+    const host = this.host as unknown as HTMLElement;
+    const root = host.shadowRoot;
+    if (!root) return { top: 0, right: 0, bottom: 0, left: 0 };
+    const box = host.getBoundingClientRect();
+    const top = box.top + host.clientTop;
+    const left = box.left + host.clientLeft;
+    const bottom = top + host.clientHeight;
+    const right = left + host.clientWidth;
+
+    let insetTop = 0;
+    for (const el of root.querySelectorAll('apex-grid-header-row, [part~="pinned-top"]')) {
+      insetTop = Math.max(insetTop, el.getBoundingClientRect().bottom - top);
+    }
+    let insetBottom = 0;
+    for (const el of root.querySelectorAll('apex-grid-paginator, [part~="pinned-bottom"]')) {
+      insetBottom = Math.max(insetBottom, bottom - el.getBoundingClientRect().top);
+    }
+
+    let insetLeft = 0;
+    let insetRight = 0;
+    const headerRow = root.querySelector('apex-grid-header-row');
+    const pinned = headerRow?.shadowRoot?.querySelectorAll(
+      '[data-pinned="start"], [data-pinned="end"]'
+    );
+    if (pinned?.length) {
+      const rtl = isRTL(host);
+      for (const el of pinned) {
+        const rect = el.getBoundingClientRect();
+        const atLeft = (el.getAttribute('data-pinned') === 'start') !== rtl;
+        if (atLeft) insetLeft = Math.max(insetLeft, rect.right - left);
+        else insetRight = Math.max(insetRight, right - rect.left);
+      }
+    }
+
+    const clamp = (inset: number) => Math.max(0, Math.round(inset));
+    return {
+      top: clamp(insetTop),
+      right: clamp(insetRight),
+      bottom: clamp(insetBottom),
+      left: clamp(insetLeft),
+    };
   }
 
   /**
    * Moves real DOM focus to the active cell (the grid body's roving tab stop),
    * so screen readers track keyboard navigation. Waits for the host render to
-   * commit the cell's `active` state, then retries once on the next frame to
-   * cover virtualizer re-materialization after a long jump. No-op while no
-   * cell is active (the scroll container keeps focus as the entry point).
+   * commit the cell's `active` state and, when the cell is not in the DOM yet
+   * (a long jump), for the virtualizer to finish laying out the new range.
+   * No-op while no cell is active (the scroll container keeps focus as the
+   * entry point).
+   *
+   * @param reveal - also scroll the cell into view once it exists, for jumps
+   * whose target row was not rendered when the scroll started.
    */
-  public focusActiveCell(): void {
-    if (this._active === SENTINEL_NODE) return;
+  public focusActiveCell(reveal = false): void {
+    const node = this._active;
+    if (node === SENTINEL_NODE) return;
     void (async () => {
       await this.host.updateComplete;
-      let cell = this.findActiveCell();
+      let cell = this.findCell(node);
+      if (!cell) {
+        await this.virtualizer.settled();
+        cell = this.findCell(node);
+      }
       if (!cell) {
         await new Promise(requestAnimationFrame);
-        cell = this.findActiveCell();
+        cell = this.findCell(node);
       }
-      cell?.focus({ preventScroll: true });
+      // The user moved on while this was waiting: leave focus to the newer move.
+      if (!cell || this._active !== node) return;
+      if (reveal) this.scrollToCell(node);
+      cell.focus({ preventScroll: true });
     })();
   }
 
@@ -115,6 +208,43 @@ export class NavigationController<T extends object> implements ReactiveControlle
 
   constructor(protected host: GridHost<T>) {
     this.host.addController(this);
+  }
+
+  /**
+   * Keeps the active cell pointing at something that exists. Runs before
+   * every grid render, so after a data swap, sort, filter, page change or a
+   * column hide or reorder the active node is clamped to the last row and the
+   * nearest visible column, or cleared when there is nothing left to point
+   * at (no rows, no visible columns). Without it a stale node names a cell
+   * that is never rendered, which leaves the body with no tab stop.
+   */
+  public hostUpdate() {
+    const node = this._active;
+    if (node === SENTINEL_NODE) return;
+    const count = this.host.pageItems.length;
+    if (!count || !this.visibleColumns.length) {
+      this._active = SENTINEL_NODE as ActiveNode<T>;
+      return;
+    }
+    const row = Math.min(node.row, count - 1);
+    const column = this.#nearestVisibleColumn(node.column);
+    if (row !== node.row || column !== node.column) {
+      this._active = { column, row } as ActiveNode<T>;
+    }
+  }
+
+  /** `key` when it is visible, else the closest visible column in display order. */
+  #nearestVisibleColumn(key: Keys<T>): Keys<T> {
+    const columns = this.columns;
+    const index = columns.findIndex((column) => column.key === key);
+    if (index < 0) return this.firstColumn;
+    for (let distance = 0; distance < columns.length; distance++) {
+      for (const at of [index + distance, index - distance]) {
+        const column = columns[at];
+        if (column && !column.hidden) return column.key;
+      }
+    }
+    return this.firstColumn;
   }
 
   /** Home moves to the first cell in the row (ARIA grid pattern). */
@@ -133,36 +263,40 @@ export class NavigationController<T extends object> implements ReactiveControlle
   /** Ctrl/Cmd+Home moves to the first cell of the grid. */
   protected ctrlHome() {
     this.active = { column: this.firstColumn, row: 0 } as ActiveNode<T>;
-    this.virtualizer.element(0)?.scrollIntoView({ block: 'nearest' });
-    this.scrollToCell(this.active);
+    this.scrollToRow(0);
   }
 
   /** Ctrl/Cmd+End moves to the last cell of the grid. */
   protected ctrlEnd() {
-    const row = Math.max(0, this.host.pageItems.length - 1);
+    const row = this.host.pageItems.length - 1;
     const last = this.visibleColumns.at(-1)?.key ?? this.firstColumn;
     this.active = { column: last, row } as ActiveNode<T>;
-    this.virtualizer.element(row)?.scrollIntoView({ block: 'nearest' });
-    this.scrollToCell(this.active);
+    this.scrollToRow(row);
   }
 
   /**
-   * Rows per Page Up/Down step, derived from the host viewport and the height
-   * of a rendered row (fallback: 10 rows when nothing is measurable yet).
+   * Rows per Page Up/Down step: the rows that fit in the part of the
+   * scrollport the sticky chrome leaves visible, minus one so the row the
+   * user was on stays in view. Falls back to 10 when nothing is measurable.
    */
   protected pageStep(): number {
-    const rowEl = this.virtualizer.element(this.nextNode.row) as HTMLElement | undefined;
-    const rowHeight = rowEl?.offsetHeight || 0;
-    const viewport = (this.host as unknown as HTMLElement).clientHeight || 0;
-    if (!rowHeight || !viewport) return 10;
-    const rows = Math.floor(viewport / rowHeight) - 1;
-    return rows > 0 ? rows : 10;
+    const host = this.host as unknown as HTMLElement;
+    let rowHeight = 0;
+    for (const row of this.virtualizer.querySelectorAll(GRID_ROW_TAG)) {
+      const height = (row as HTMLElement).offsetHeight;
+      // The shortest rendered row: an expanded detail panel is not a row height.
+      if (height > 0 && (!rowHeight || height < rowHeight)) rowHeight = height;
+    }
+    const { top, bottom } = this.#insets();
+    const viewport = host.clientHeight - top - bottom;
+    if (!rowHeight || viewport <= 0) return 10;
+    return Math.max(1, Math.floor(viewport / rowHeight) - 1);
   }
 
   protected pageUp() {
     const next = this.nextNode;
     this.active = Object.assign(next, { row: Math.max(0, next.row - this.pageStep()) });
-    this.virtualizer.element(this.active.row)?.scrollIntoView({ block: 'nearest' });
+    this.scrollToRow(this.active.row);
   }
 
   protected pageDown() {
@@ -170,22 +304,21 @@ export class NavigationController<T extends object> implements ReactiveControlle
     this.active = Object.assign(next, {
       row: Math.min(this.host.pageItems.length - 1, next.row + this.pageStep()),
     });
-    this.virtualizer.element(this.active.row)?.scrollIntoView({ block: 'nearest' });
+    this.scrollToRow(this.active.row);
   }
 
   protected arrowDown() {
     const next = this.nextNode;
-
     this.active = Object.assign(next, {
       row: Math.min(next.row + 1, this.host.pageItems.length - 1),
     });
-    this.virtualizer.element(next.row)?.scrollIntoView({ block: 'nearest' });
+    this.scrollToRow(next.row);
   }
 
   protected arrowUp() {
     const next = this.nextNode;
     this.active = Object.assign(next, { row: Math.max(0, next.row - 1) });
-    this.virtualizer.element(next.row)?.scrollIntoView({ block: 'nearest' });
+    this.scrollToRow(next.row);
   }
 
   protected arrowLeft() {
@@ -217,7 +350,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
   protected toggleSelection() {
     // Space on the focused grid toggles selection of the active row.
     // No-op when selection is disabled or there's no active row.
-    const data = this.host.pageItems[this.active.row] as T | undefined;
+    const data = this.host.pageItems[this._active.row] as T | undefined;
     if (!data) return;
     void this.host.toggleRowSelection(data);
   }
@@ -288,7 +421,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
           const next = reorder.moveGrabbed(event.key === 'ArrowDown' ? 1 : -1);
           if (next >= 0) {
             this.active = Object.assign(this.nextNode, { row: next });
-            this.virtualizer.element(next)?.scrollIntoView({ block: 'nearest' });
+            this.scrollToRow(next);
           }
           return true;
         }
@@ -333,16 +466,37 @@ export class NavigationController<T extends object> implements ReactiveControlle
       // Ctrl/Cmd+Home / Ctrl/Cmd+End jump to the grid corners (ARIA grid pattern).
       if (event.key === 'Home' || event.key === 'End') {
         event.preventDefault();
+        if (!this.navigable) return;
         if (event.key === 'Home') {
           this.ctrlHome();
         } else {
           this.ctrlEnd();
         }
-        this.focusActiveCell();
+        // The target row is often outside the rendered window, so the cell is
+        // revealed (horizontally too) once the virtualizer has rendered it.
+        this.focusActiveCell(true);
         return;
       }
     }
     if (this.handleEditKey(event)) return;
+    if (RELATIVE_KEYS.has(event.key)) {
+      event.preventDefault();
+      if (!this.navigable) return;
+      // Entering the body with the keyboard (Tab lands on the scroll
+      // container, no cell active yet): an arrow, Home or Page Up activates
+      // the first cell instead of moving past it. End and Page Down still
+      // move, starting from that first cell.
+      if (this._active === SENTINEL_NODE) {
+        // Through the setter: the render it requests moves the tab stop
+        // from the body to the cell.
+        this.active = { column: this.firstColumn, row: 0 } as ActiveNode<T>;
+        if (event.key !== 'End' && event.key !== 'PageDown') {
+          this.scrollToRow(0);
+          this.focusActiveCell(true);
+          return;
+        }
+      }
+    }
     if (this.handlers.has(event.key)) {
       event.preventDefault();
       this.handlers.get(event.key)!.call(this);

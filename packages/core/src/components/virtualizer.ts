@@ -17,6 +17,42 @@ const SIZER_ATTRIBUTE = 'virtualizer-sizer';
  */
 const MAX_RECOVERY_ATTEMPTS = 3;
 
+/** Space, in px, that sticky chrome covers on each side of the scrollport. */
+export interface ScrollInsets {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/** `scrollIntoView` options plus the sticky chrome to keep the target clear of. */
+export type RevealOptions = ScrollIntoViewOptions & { insets?: ScrollInsets };
+
+/** Longest wait for the layout to settle after a scroll to an unrendered row. */
+const SETTLE_TIMEOUT_MS = 250;
+
+/**
+ * Scrolls `el` into view as if `scroller` had `insets` as its scroll-padding.
+ * The padding is set only for the duration of the call. Left in place, the
+ * browser would apply it to every later scroll into view, including focus
+ * moving onto the sticky chrome itself (a header button, the paginator),
+ * which sits inside the padding and would drag the body along.
+ */
+export function revealWithin(
+  scroller: HTMLElement | null,
+  el: Element,
+  { insets, ...options }: RevealOptions
+): void {
+  const style = insets && scroller?.style;
+  const previous = style ? style.scrollPadding : '';
+  if (style) {
+    const { top, right, bottom, left } = insets;
+    style.scrollPadding = `${top}px ${right}px ${bottom}px ${left}px`;
+  }
+  el.scrollIntoView(options);
+  if (style) style.scrollPadding = previous;
+}
+
 export default class ApexVirtualizer extends LitVirtualizer {
   /**
    * Watches the host's intersection with the window, which is the one input to
@@ -35,6 +71,130 @@ export default class ApexVirtualizer extends LitVirtualizer {
   #pendingCheck = 0;
 
   #recoveryAttempts = 0;
+
+  /** Item indexes currently rendered, as last reported by `rangeChanged`. */
+  #first = -1;
+  #last = -1;
+
+  constructor() {
+    super();
+    // Registered before the upstream directive's own listener (added on first
+    // render), so the range is current before the rows are re-rendered.
+    this.addEventListener('rangeChanged', (event) => {
+      const { first, last } = event as Event & { first: number; last: number };
+      this.#first = first;
+      this.#last = last;
+    });
+  }
+
+  /**
+   * Resolves once the layout has settled, or after a bounded wait when no
+   * layout is pending (upstream `layoutComplete` only settles on a layout).
+   */
+  public settled(): Promise<void> {
+    const layout = this.layoutComplete;
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, SETTLE_TIMEOUT_MS));
+    return layout ? Promise.race([layout.catch(() => undefined), timeout]) : timeout;
+  }
+
+  /** Whether the item at `index` is in the rendered range. */
+  public isRendered(index: number): boolean {
+    return index >= 0 && index >= this.#first && index <= this.#last;
+  }
+
+  /**
+   * Scroll handle for item `index`, rendered or not.
+   *
+   * Upstream scrolls an unrendered item into view by pinning the layout to it,
+   * and that pin path assumes the window is the scroller: with the grid host
+   * scrolling (`scroller = false`) it overshoots every item once the host has
+   * scrolled, leaving the body empty at the maximum scroll offset. An
+   * unrendered item is instead reached with a real scroll of the host, to its
+   * estimated offset, which the layout then follows like any user scroll.
+   */
+  public override element(
+    index: number
+  ): { scrollIntoView: (options?: RevealOptions) => void } | undefined {
+    const target = index === Number.POSITIVE_INFINITY ? this.items.length - 1 : index;
+    if (!super.element(target)) return undefined;
+    return {
+      scrollIntoView: (options: RevealOptions = {}) => {
+        const row = this.#renderedChild(target);
+        if (row) revealWithin(this.#scroller(), row, options);
+        else this.#scrollToUnrendered(target, options);
+      },
+    };
+  }
+
+  #renderedChild(index: number): HTMLElement | null {
+    if (!this.isRendered(index)) return null;
+    for (let child = this.firstElementChild; child; child = child.nextElementSibling) {
+      if ((child as Element & { index?: number }).index === index) return child as HTMLElement;
+    }
+    return null;
+  }
+
+  /** The nearest ancestor that scrolls this element (the grid host). */
+  #scroller(): HTMLElement | null {
+    let node: Node | null = this.parentNode;
+    while (node) {
+      if (node instanceof ShadowRoot) {
+        node = node.host;
+      } else {
+        if (node instanceof HTMLElement && getComputedStyle(node).overflowY !== 'visible') {
+          return node;
+        }
+        node = node.parentNode;
+      }
+    }
+    return null;
+  }
+
+  #scrollToUnrendered(index: number, options: RevealOptions): void {
+    const scroller = this.#scroller();
+    const count = this.items.length;
+    if (!scroller || !count) return;
+    // The upstream layout sizes this element to its estimate of the total
+    // extent, so the average item size here matches its own estimates for
+    // items it has not measured.
+    const size = this.offsetHeight / count;
+    if (!size) return;
+
+    const padStart = options.insets?.top ?? 0;
+    const padEnd = options.insets?.bottom ?? 0;
+    const viewport = scroller.clientHeight - padStart - padEnd;
+    const origin =
+      this.getBoundingClientRect().top -
+      scroller.getBoundingClientRect().top -
+      scroller.clientTop +
+      scroller.scrollTop;
+    const start = origin + index * size;
+    const end = start + size;
+    const current = scroller.scrollTop;
+
+    let top: number;
+    switch (options.block ?? 'start') {
+      case 'start':
+        top = start - padStart;
+        break;
+      case 'end':
+        top = end - padStart - viewport;
+        break;
+      case 'center':
+        top = (start + end) / 2 - padStart - viewport / 2;
+        break;
+      default:
+        if (start < current + padStart) top = start - padStart;
+        else if (end > current + padStart + viewport) top = end - padStart - viewport;
+        else return;
+    }
+    scroller.scrollTo({ top, behavior: options.behavior });
+    // The offset was an estimate; once the target is rendered, align the real row.
+    void this.settled().then(() => {
+      const row = this.#renderedChild(index);
+      if (row) revealWithin(scroller, row, options);
+    });
+  }
 
   public static get tagName() {
     return GRID_BODY;
