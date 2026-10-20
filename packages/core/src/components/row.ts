@@ -295,15 +295,21 @@ export default class ApexGridRow<T extends object> extends LitElement {
 
   /**
    * Leading row-number gutter cell (transient spreadsheet coordinate hint). Shown
-   * only while `coordinateHints` is on; pinned rows render an empty spacer (their
-   * band-local index is not a meaningful A1 row number) so the track stays
-   * aligned. Presentational: the accessible row index is `aria-rowindex`.
+   * only while `coordinateHints` is on. A feature module that addresses the data
+   * (the enterprise formula engine) supplies the label, so it matches what a
+   * reference reads; otherwise it is the view position, and pinned rows render
+   * an empty spacer (their band-local index is not a meaningful row number) so
+   * the track stays aligned. Presentational: the accessible row index is
+   * `aria-rowindex`.
    */
   protected renderRowNumber() {
     if (!this.coordinateHints) return nothing;
-    const pinned = Boolean(this.state?.rowPin?.isPinned(this.data));
+    let label: string | number | null | undefined = this.state?.rowCoordinate(this.data);
+    if (label === undefined) {
+      label = this.state?.rowPin?.isPinned(this.data) ? null : this.index + 1;
+    }
     return html`<div part="row-number-cell" data-pinned="start" aria-hidden="true">
-      ${pinned ? nothing : html`<span part="row-number">${this.index + 1}</span>`}
+      ${label === null ? nothing : html`<span part="row-number">${label}</span>`}
     </div>`;
   }
 

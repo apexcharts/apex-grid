@@ -9,6 +9,7 @@ import {
   isCellDecorator,
   isCellInteractionHandler,
   isColumnMenuProvider,
+  isCoordinateLabeler,
   isRowAriaProvider,
   isRowPresenter,
   isRowTransformer,
@@ -287,6 +288,32 @@ export class StateController<T extends object> implements ReactiveController {
       }
     }
     return null;
+  }
+
+  /**
+   * The coordinate-hint label a module gives a row ({@link CoordinateLabeler}),
+   * `null` for none, or `undefined` when no module labels rows (the gutter then
+   * shows the view position). Only asked while `coordinateHints` is on.
+   */
+  public rowCoordinate(row: T): string | null | undefined {
+    for (const controller of this.modules.values()) {
+      if (isCoordinateLabeler<T>(controller)) {
+        const label = controller.rowCoordinate(row);
+        if (label !== undefined) return label;
+      }
+    }
+    return undefined;
+  }
+
+  /** The coordinate-hint letter a module gives a column; see {@link rowCoordinate}. */
+  public columnCoordinate(key: string): string | null | undefined {
+    for (const controller of this.modules.values()) {
+      if (isCoordinateLabeler<T>(controller)) {
+        const label = controller.columnCoordinate(key);
+        if (label !== undefined) return label;
+      }
+    }
+    return undefined;
   }
 
   /**

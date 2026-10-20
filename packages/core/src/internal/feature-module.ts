@@ -172,6 +172,36 @@ export function isRowAriaProvider<T extends object>(
   );
 }
 
+/**
+ * Optional capability a module's controller may implement to label the
+ * spreadsheet coordinate hints (`coordinateHints`): the row-number gutter and
+ * the column letters. A module whose references address the data rather than
+ * the view (the enterprise formula engine) answers with the coordinates a
+ * reference reads, so the hints stay true through sort, filter, paging, hidden
+ * columns and column moves. Return `null` for no label, or `undefined` to leave
+ * the default (view position) in place.
+ *
+ * @remarks Unstable; part of `apex-grid/internal`.
+ */
+export interface CoordinateLabeler<T extends object = any> {
+  /** The gutter label for a row. */
+  rowCoordinate(row: T): string | null | undefined;
+  /** The letter label for a column key. */
+  columnCoordinate(key: string): string | null | undefined;
+}
+
+/** Runtime type-guard for {@link CoordinateLabeler}. */
+export function isCoordinateLabeler<T extends object>(
+  controller: unknown
+): controller is CoordinateLabeler<T> {
+  return (
+    typeof controller === 'object' &&
+    controller !== null &&
+    typeof (controller as CoordinateLabeler<T>).rowCoordinate === 'function' &&
+    typeof (controller as CoordinateLabeler<T>).columnCoordinate === 'function'
+  );
+}
+
 /** Per-cell context handed to a {@link CellDecorator}. */
 export interface CellDecoratorContext<T extends object = any> {
   /** The row's backing data (or a synthesized row object). */

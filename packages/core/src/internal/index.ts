@@ -11,6 +11,7 @@
  * minor releases. Do not depend on them from third-party code.
  */
 export { ApexGrid } from '../components/grid.js';
+export { viewIndexer } from '../controllers/history.js';
 export { gridStateContext, StateController } from '../controllers/state.js';
 export { PIPELINE } from './constants.js';
 export type { ExportCellValue, ExportFormat, ExportOptions } from './export.js';
@@ -29,6 +30,7 @@ export type {
   CellInteractionHandler,
   CellInteractionKind,
   ColumnMenuProvider,
+  CoordinateLabeler,
   GridFeatureModule,
   PresentedRow,
   RowAria,
@@ -42,6 +44,7 @@ export {
   isCellDecorator,
   isCellInteractionHandler,
   isColumnMenuProvider,
+  isCoordinateLabeler,
   isRowAriaProvider,
   isRowPresenter,
   isRowTransformer,

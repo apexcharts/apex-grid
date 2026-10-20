@@ -227,8 +227,13 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
     if (this.state?.selection.showCheckboxColumn) colCursor++;
     if (this.state?.expansion.showToggleColumn) colCursor++;
     // Spreadsheet column letter index: counts only visible data columns (A = the
-    // first one), independent of the aria/chrome numbering above.
+    // first one), independent of the aria/chrome numbering above. A feature
+    // module that addresses columns its own way (formulas) labels them instead.
     let coordCol = 0;
+    const letterFor = (key: string, position: number): string => {
+      const label = this.state?.columnCoordinate(key);
+      return label === undefined ? columnLetter(position) : (label ?? '');
+    };
 
     // Keyed by column.key so the same `<apex-grid-header>` DOM element
     // follows its column across a live reorder swap — critical for pointer
@@ -244,7 +249,9 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
         const edge = getPinEdge(this.columns, index);
         const isDragSource = reorderState?.sourceKey === column.key;
         const ariaColindex = ++colCursor;
-        const coordinateLetter = this.coordinateHints ? columnLetter(coordCol) : '';
+        const coordinateLetter = this.coordinateHints
+          ? letterFor(String(column.key), coordCol)
+          : '';
         coordCol += 1;
         return html`<apex-grid-header
           part=${partNameMap({
