@@ -532,6 +532,16 @@ describe('range selection keys and pointer', () => {
         { top: 3, bottom: 3, left: 2, right: 3 },
       ]);
     });
+
+    it('bounds far past the view cost nothing extra', async () => {
+      const grid = await mount();
+      const start = performance.now();
+      restore(grid, [{ top: 0, bottom: 3e8, left: 0, right: 2e7 }]);
+      const elapsed = performance.now() - start;
+      expect(elapsed, 'restore time (ms)').to.be.below(100);
+      // Stats read the rows and columns that exist: 4 rows x 4 columns.
+      expect(grid.getSelectionStats().count).to.equal(16);
+    });
   });
 
   // --- sweep-regression-3.5-4: Shift+ArrowLeft/Right under RTL ------------
@@ -621,5 +631,128 @@ describe('range selection keys and pointer', () => {
     expect(bounds.top, 'row axis untouched').to.equal(2);
     expect(bounds.bottom).to.equal(2);
     interact(grid, 'up', 2, 'c0');
+  });
+
+  // --- ent-range-a-3 / ent-range-b-5: stats cost on a large view ----------
+
+  it('selection stats on a 100k row view take no per-cell keys', async () => {
+    interface Big {
+      [key: string]: number;
+    }
+    const bigColumns: ColumnConfiguration<Big>[] = Array.from({ length: 20 }, (_, i) => ({
+      key: `c${i}`,
+      type: 'number',
+    }));
+    const big: Big[] = Array.from({ length: 100_000 }, (_, r) => {
+      const row: Big = {};
+      for (let i = 0; i < 20; i += 1) row[`c${i}`] = r + i;
+      return row;
+    });
+    const grid = await mount<Big>({ data: big, columns: bigColumns, height: 300 });
+    grid.selectRange({ row: 0, column: 'c0' }, { row: 99_999, column: 'c19' });
+
+    const add = Set.prototype.add;
+    let adds = 0;
+    Set.prototype.add = function (this: Set<unknown>, value: unknown) {
+      adds += 1;
+      return add.call(this, value);
+    };
+    let elapsed: number;
+    try {
+      const start = performance.now();
+      grid.selectRange({ row: 0, column: 'c0' }, { row: 99_998, column: 'c19' });
+      elapsed = performance.now() - start;
+    } finally {
+      Set.prototype.add = add;
+    }
+    expect(adds, 'Set.add calls in one commit').to.be.below(1000);
+    // Generous: the scan itself takes a few tens of ms; the keyed one took 500+.
+    expect(elapsed, 'one commit over 2M cells (ms)').to.be.below(300);
+    const stats = grid.getSelectionStats();
+    expect(stats.count).to.equal(99_999 * 20);
+  });
+
+  it('multiple ranges count an overlapping cell once', async () => {
+    const grid = await mount();
+    grid.setState({
+      modules: {
+        enterprise: {
+          ranges: [
+            { top: 0, bottom: 1, left: 2, right: 3 },
+            { top: 1, bottom: 2, left: 3, right: 3 },
+          ],
+        },
+      },
+    } as never);
+    // amount 10, 20, score 100, 200, then score 300 (score 200 counted once).
+    const stats = grid.getSelectionStats();
+    expect(stats.count).to.equal(5);
+    expect(stats.sum).to.equal(10 + 20 + 100 + 200 + 300);
+  });
+
+  // --- ent-range-a-8: decoration does no per-cell column rebuild ----------
+
+  it('decorating cells skips the column lookup off the range rows and never searches for it', async () => {
+    const grid = await mount();
+    grid.selectRange({ row: 1, column: 'name' }, { row: 2, column: 'amount' });
+    await settle(grid);
+    const controller = controllerOf(grid);
+    const proto = Object.getPrototypeOf(grid);
+    let reads = 0;
+    let owner = proto;
+    while (owner && !Object.getOwnPropertyDescriptor(owner, 'columns')) {
+      owner = Object.getPrototypeOf(owner);
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(owner, 'columns')!;
+    Object.defineProperty(grid, 'columns', {
+      configurable: true,
+      get() {
+        reads += 1;
+        return descriptor.get!.call(this);
+      },
+      set(value) {
+        descriptor.set!.call(this, value);
+      },
+    });
+    try {
+      const decorate = (rowIndex: number, key: keyof Row) =>
+        controller.decorateCell({
+          row: grid.pageItems[rowIndex],
+          rowIndex,
+          column: columns.find((c) => c.key === key),
+          value: undefined,
+        });
+      // Seed whatever cache there is.
+      decorate(1, 'name');
+      reads = 0;
+      for (let i = 0; i < 50; i += 1) {
+        for (const column of columns) {
+          decorate(0, column.key);
+          decorate(3, column.key);
+        }
+      }
+      expect(reads, 'rows outside every range').to.equal(0);
+      // A cell on a range row looks its column up instead of searching a
+      // freshly built display-column list.
+      const findIndex = Array.prototype.findIndex;
+      let searches = 0;
+      Array.prototype.findIndex = function (
+        this: unknown[],
+        ...args: Parameters<typeof findIndex>
+      ) {
+        searches += 1;
+        return findIndex.apply(this, args);
+      };
+      try {
+        for (let i = 0; i < 50; i += 1) for (const column of columns) decorate(1, column.key);
+      } finally {
+        Array.prototype.findIndex = findIndex;
+      }
+      expect(searches, 'column searches on range rows').to.equal(0);
+      expect(decorate(1, 'name')?.attributes['data-range']).to.match(/selected/);
+      expect(decorate(1, 'score')).to.equal(null);
+    } finally {
+      delete (grid as unknown as Record<string, unknown>).columns;
+    }
   });
 });

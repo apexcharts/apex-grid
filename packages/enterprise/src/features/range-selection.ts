@@ -259,6 +259,11 @@ export class RangeSelectionController<T extends object>
     globalThis.document?.addEventListener('paste', this.#onClipboard);
   }
 
+  /** Drops the column index each render may have outdated (see #colIndex). */
+  public hostUpdate(): void {
+    this.#columnIndex = null;
+  }
+
   /** Releases the last copy's source rows once the data they came from is replaced. */
   public hostUpdated(): void {
     if (this.#copied?.source && this.#copied.source.data !== this.host.data) {
@@ -547,16 +552,15 @@ export class RangeSelectionController<T extends object>
   // --- CellDecorator -------------------------------------------------------
 
   public decorateCell(ctx: CellDecoratorContext<T>): CellDecoration | null {
-    if (!this.enabled) return null;
-    const ranges = this.getRanges();
+    // A pinned-band cell (rowIndex -1) is outside the view ranges index into.
+    const row = ctx.rowIndex;
+    if (!this.enabled || row < 0) return null;
+    // Runs for every rendered cell: settle the row, which is cheap, before
+    // looking the column up.
+    const ranges = this.getRanges().filter((b) => row >= b.top && row <= b.bottom);
     if (!ranges.length) return null;
     const col = this.#colIndex(ctx.column);
-    if (col < 0) return null;
-    const row = ctx.rowIndex;
-
-    const container = ranges.find(
-      (b) => row >= b.top && row <= b.bottom && col >= b.left && col <= b.right
-    );
+    const container = ranges.find((b) => col >= b.left && col <= b.right);
     if (!container) return null;
 
     const edges: string[] = [];
@@ -792,7 +796,14 @@ export class RangeSelectionController<T extends object>
     this.#commit();
   }
 
-  /** Aggregate statistics over every selected cell (deduped across ranges). */
+  /**
+   * Aggregate statistics over every selected cell (deduped across ranges).
+   *
+   * Runs on every selection change, over selections as large as the whole
+   * view, so it scans each range in place: a cell is skipped only when an
+   * earlier range already covers it, a bounds test against the few ranges
+   * before it rather than a per-cell key.
+   */
   public getSelectionStats(): RangeStats {
     let count = 0;
     let numericCount = 0;
@@ -800,17 +811,32 @@ export class RangeSelectionController<T extends object>
     let min = Number.POSITIVE_INFINITY;
     let max = Number.NEGATIVE_INFINITY;
 
-    for (const value of this.#unionValues()) {
-      if (isBlank(value)) continue;
-      count += 1;
-      const n = toNumber(value);
-      if (n !== null) {
-        numericCount += 1;
-        sum += n;
-        if (n < min) min = n;
-        if (n > max) max = n;
+    const keys = this.#visibleColumns().map((column) => String(column.key));
+    const items = this.host.pageItems as ReadonlyArray<Record<string, unknown>>;
+    const ranges = this.getRanges();
+    ranges.forEach((bounds, i) => {
+      const earlier = ranges.slice(0, i);
+      const bottom = Math.min(bounds.bottom, items.length - 1);
+      const right = Math.min(bounds.right, keys.length - 1);
+      for (let row = Math.max(0, bounds.top); row <= bottom; row += 1) {
+        const record = items[row];
+        if (!record) continue;
+        const covering = earlier.filter((b) => row >= b.top && row <= b.bottom);
+        for (let col = Math.max(0, bounds.left); col <= right; col += 1) {
+          if (covering.length && covering.some((b) => col >= b.left && col <= b.right)) continue;
+          const value = record[keys[col]];
+          if (isBlank(value)) continue;
+          count += 1;
+          const n = toNumber(value);
+          if (n !== null) {
+            numericCount += 1;
+            sum += n;
+            if (n < min) min = n;
+            if (n > max) max = n;
+          }
+        }
       }
-    }
+    });
 
     if (numericCount === 0) {
       return { count, numericCount: 0, sum: 0, average: 0, min: 0, max: 0 };
@@ -1025,8 +1051,25 @@ export class RangeSelectionController<T extends object>
     return getDisplayColumns(this.host.columns).filter((column) => !column.hidden);
   }
 
+  /**
+   * Visible column index by key, built at most once per host render: the
+   * decorator asks for it from every rendered cell. Rebuilt when the columns
+   * array is replaced and dropped before each host update (`hostUpdate`), so
+   * a column changed in place is picked up by the render that shows it.
+   */
+  #columnIndex: { source: ColumnConfiguration<T>[]; index: Map<unknown, number> } | null = null;
+
   #colIndex(column: ColumnConfiguration<T>): number {
-    return this.#visibleColumns().findIndex((candidate) => candidate.key === column.key);
+    const source = this.host.columns;
+    if (this.#columnIndex?.source !== source) {
+      const index = new Map<unknown, number>();
+      // The first column with a key wins, as a search would find it.
+      this.#visibleColumns().forEach((c, i) => {
+        if (!index.has(c.key)) index.set(c.key, i);
+      });
+      this.#columnIndex = { source, index };
+    }
+    return this.#columnIndex.index.get(column.key) ?? -1;
   }
 
   /** The formula controller, when the formula module is registered on this grid. */
@@ -1133,28 +1176,6 @@ export class RangeSelectionController<T extends object>
     return stringifyFormula(
       offsetReferences(parseFormula(src), to.row - from.row, to.col - from.col)
     );
-  }
-
-  /** Flat list of values over every distinct selected cell. */
-  #unionValues(): unknown[] {
-    const columns = this.#visibleColumns();
-    const items = this.host.pageItems as ReadonlyArray<Record<string, unknown>>;
-    const seen = new Set<string>();
-    const out: unknown[] = [];
-    for (const bounds of this.getRanges()) {
-      for (let row = bounds.top; row <= bounds.bottom; row += 1) {
-        const record = items[row];
-        if (!record) continue;
-        for (let col = bounds.left; col <= bounds.right; col += 1) {
-          const key = `${row}:${col}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const column = columns[col];
-          if (column) out.push(record[String(column.key)]);
-        }
-      }
-    }
-    return out;
   }
 
   /**
