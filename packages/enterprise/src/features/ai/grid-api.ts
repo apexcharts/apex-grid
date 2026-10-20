@@ -41,7 +41,7 @@ export interface ActionResult {
  * ContextBuilder. `applyState` is the single declarative view-state mutation and
  * covers sort / filter / quick-filter / columns / selection / pagination / grouping /
  * pivot / aggregation. The action methods are optional: their presence mirrors grid
- * capabilities, so a tool that needs a missing action is simply never registered.
+ * capabilities, and a tool whose action is missing reports a warning instead.
  */
 export interface GridApi<T = unknown> {
   /** Columns, capabilities, and the live state: the machine-readable descriptor. */
@@ -74,9 +74,26 @@ export function gridApiFor<T extends object>(grid: ApexGridEnterprise<T>): GridA
   return {
     getSchema: () => grid.getSchema(),
     getState: () => grid.getState(),
-    getData: () => grid.data,
+    // A remote row model pads `data` with placeholder rows that are not loaded
+    // yet; answers cover the loaded rows only. Client data is returned as is.
+    getData: () =>
+      grid.infiniteRowModel || grid.serverSideRowModel
+        ? grid.data.filter((row) => !grid.isRowLoading(row))
+        : grid.data,
     getLocaleText: () => grid.localeText,
     applyState: (patch) => grid.setState(patch),
+    export: (format) => {
+      const id = format === 'excel' ? 'xlsx' : format;
+      const ids = grid.exportFormats.map((entry) => entry.id);
+      if (!ids.includes(id)) {
+        return {
+          applied: [],
+          warnings: [`export: "${format}" is not available (try ${ids.join(', ')})`],
+        };
+      }
+      grid.exportAs(id);
+      return { applied: [`export: ${id}`], warnings: [] };
+    },
   };
 }
 
