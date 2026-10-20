@@ -255,6 +255,15 @@ describe('row models: server-side block paging', () => {
     ).to.be.true;
     expect(grid.pageItems[0].name).to.equal('P500');
   });
+
+  it('keeps placeholders out of export (ent-ssrm-2, sweep-editing-state-2)', async () => {
+    const { grid } = await mountPaged();
+    const loaded = flat(grid).filter((row) => !grid.isRowLoading(row));
+    expect(loaded.length).to.be.below(TOTAL);
+    const csv = grid.exportToCSV({ filename: '' }) as string;
+    // The header plus the loaded rows: no blank lines for placeholders.
+    expect(csv.split('\r\n')).to.have.length(loaded.length + 1);
+  });
 });
 
 /** A promise with its settle functions, so a test decides when a request answers. */
@@ -439,7 +448,7 @@ describe('row models: counts and query keys', () => {
     const server = new PendingServer();
     const grid = await mountInfinite(server);
     const events: RowsLoadedDetail[] = [];
-    grid.addEventListener(ROWS_LOADED_EVENT, (event) =>
+    (grid as EventTarget).addEventListener(ROWS_LOADED_EVENT, (event) =>
       events.push((event as CustomEvent<RowsLoadedDetail>).detail)
     );
     expect(server.calls.map((c) => c.params.startRow)).to.eql([0, 100]);
@@ -578,7 +587,7 @@ describe('row models: rejected getRows', () => {
       .columns=${columns}
       .infiniteRowModel=${{ datasource: server, blockSize: 100, maxRetries: 0 }}
     ></apex-grid-enterprise>`);
-    grid.addEventListener(ROWS_LOAD_FAILED_EVENT, (event) =>
+    (grid as EventTarget).addEventListener(ROWS_LOAD_FAILED_EVENT, (event) =>
       failures.push((event as CustomEvent<RowsLoadFailedDetail>).detail)
     );
     await settle(grid);
@@ -659,7 +668,7 @@ describe('row models: rejected getRows', () => {
       .columns=${columns}
       .serverSideRowModel=${{ datasource, rowGroupCols: ['region'], maxRetries: 0 }}
     ></apex-grid-enterprise>`);
-    grid.addEventListener(SERVER_ROWS_LOAD_FAILED_EVENT, (event) =>
+    (grid as EventTarget).addEventListener(SERVER_ROWS_LOAD_FAILED_EVENT, (event) =>
       failures.push((event as CustomEvent<ServerRowsLoadFailedDetail>).detail)
     );
     await settle(grid);
@@ -675,4 +684,199 @@ describe('row models: rejected getRows', () => {
     expect(calls.filter((keys) => keys[0] === 'EMEA')).to.have.length(2);
     expect(flat(grid).map((row) => row.name)).to.include('Ava');
   });
+});
+
+describe('row models: unloaded rows', () => {
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+  });
+  afterEach(() => fixtureCleanup());
+
+  it('pastes and exports past unloaded infinite rows instead of throwing (sweep-editing-state-2)', async () => {
+    const server = new PendingServer();
+    const editable: ColumnConfiguration<Row>[] = [
+      { key: 'region' },
+      { key: 'name', editable: true },
+      { key: 'salary', type: 'number' },
+    ];
+    const grid = await fixture<ApexGridEnterprise<Row>>(html`<apex-grid-enterprise
+      .columns=${editable}
+      .editing=${{ enabled: true }}
+      .infiniteRowModel=${{ datasource: server, blockSize: 100 }}
+    ></apex-grid-enterprise>`);
+    await settle(grid);
+    server.answer(0, 100, 500);
+    await settle(grid);
+    expect(grid.isRowLoading(grid.data[150])).to.be.true;
+    // A three-line paste from row 99 reaches the unloaded rows 100 and 101.
+    grid.selectRange({ row: 99, column: 'name' });
+    expect(() => grid.pasteText('a\nb\nc')).to.not.throw();
+    expect(grid.data[99].name).to.equal('a');
+    const csv = grid.exportToCSV({ filename: '' }) as string;
+    expect(csv.replace(/^\uFEFF/, '').split('\r\n')).to.have.length(101);
+  });
+
+  const editable: ColumnConfiguration<Row>[] = [
+    { key: 'region' },
+    { key: 'name', editable: true },
+    { key: 'salary', type: 'number' },
+  ];
+
+  /** An infinite grid of 500 rows with blocks 0 and 2 loaded and block 1 still pending. */
+  async function mountGap() {
+    const server = new PendingServer();
+    const changed: number[] = [];
+    const grid = await fixture<ApexGridEnterprise<Row>>(html`<apex-grid-enterprise
+      .columns=${editable}
+      .editing=${{ enabled: true }}
+      .infiniteRowModel=${{ datasource: server, blockSize: 100 }}
+      @cellValueChanged=${(event: CustomEvent<{ rowIndex: number }>) =>
+        changed.push(event.detail.rowIndex)}
+    ></apex-grid-enterprise>`);
+    await settle(grid);
+    server.answer(0, 100, 500);
+    await settle(grid);
+    const vz = grid.renderRoot.querySelector('apex-virtualizer') as HTMLElement;
+    vz.dispatchEvent(Object.assign(new Event('rangeChanged'), { first: 200, last: 210 }));
+    server.answer(200, 100, 500);
+    await settle(grid);
+    expect(grid.isRowLoading(grid.data[100]), 'block 1 pending').to.be.true;
+    expect(grid.isRowLoading(grid.data[200]), 'block 2 loaded').to.be.false;
+    return { grid, changed };
+  }
+
+  it('drops pasted lines that land on unloaded rows instead of moving them past the gap', async () => {
+    const { grid, changed } = await mountGap();
+    grid.selectRange({ row: 99, column: 'name' });
+    grid.pasteText('a\nb\nc');
+    await settle(grid);
+    const rows = grid.data as Row[];
+    expect(rows[99].name).to.equal('a');
+    expect(rows[200].name, 'row after the gap untouched').to.equal('R200');
+    expect(rows[201].name).to.equal('R201');
+    expect(changed).to.eql([99]);
+  });
+
+  it('drops pasted lines on unloaded server-side rows, past a gap', async () => {
+    const datasource: ServerSideDataSource<Row> = {
+      getRows(params) {
+        const start = params.startRow ?? 0;
+        if (start === 10) return new Promise(() => {});
+        const rows = Array.from({ length: 10 }, (_, i) => ({
+          region: 'EMEA',
+          name: `R${start + i}`,
+          salary: start + i,
+        }));
+        return { rows, rowCount: 100 };
+      },
+    };
+    const grid = await fixture<ApexGridEnterprise<Row>>(html`<apex-grid-enterprise
+      .columns=${editable}
+      .editing=${{ enabled: true }}
+      .serverSideRowModel=${{ datasource, rowGroupCols: [], blockSize: 10 }}
+    ></apex-grid-enterprise>`);
+    await settle(grid);
+    const vz = grid.renderRoot.querySelector('apex-virtualizer') as HTMLElement;
+    vz.dispatchEvent(Object.assign(new Event('rangeChanged'), { first: 20, last: 25 }));
+    await settle(grid);
+    const rows = () => grid.data as Row[];
+    expect(grid.isRowLoading(rows()[10]), 'block 1 pending').to.be.true;
+    expect(grid.isRowLoading(rows()[20]), 'block 2 loaded').to.be.false;
+    grid.selectRange({ row: 9, column: 'name' });
+    grid.pasteText('a\nb\nc');
+    await settle(grid);
+    expect(rows()[9].name).to.equal('a');
+    expect(rows()[20].name, 'row after the gap untouched').to.equal('R20');
+    expect(rows()[21].name).to.equal('R21');
+  });
+
+  it('does not edit an unloaded row (sweep-editing-state-2)', async () => {
+    const { grid, changed } = await mountGap();
+    expect(await grid.editCell(150, 'name'), 'no editor on an unloaded row').to.be.false;
+    const tally = grid.applyEdits([
+      { rowIndex: 0, column: 'name', value: 'loaded' },
+      { rowIndex: 150, column: 'name', value: 'ghost' },
+    ]);
+    expect(tally).to.include({ applied: 1, skipped: 1 });
+    expect((grid.data as Row[])[0].name).to.equal('loaded');
+    expect(changed).to.eql([0]);
+  });
+
+  type Flagged = Row & { active?: boolean };
+
+  /** Every element matching `selector` under `root`, through shadow roots. */
+  function deepAll(root: ParentNode, selector: string, out: Element[] = []): Element[] {
+    for (const el of Array.from(root.querySelectorAll('*'))) {
+      if (el.matches(selector)) out.push(el);
+      if (el.shadowRoot) deepAll(el.shadowRoot, selector, out);
+    }
+    return out;
+  }
+
+  /** A grid of 50 rows in blocks of 5 with block 0 loaded and every later block pending. */
+  async function mountCheckboxes(model: 'infinite' | 'server-side', mode: 'cell' | 'row') {
+    const block = (start: number) =>
+      Array.from({ length: 5 }, (_, i) => ({
+        region: 'EMEA',
+        name: `R${start + i}`,
+        salary: start + i,
+        active: false,
+      }));
+    const getRows = (params: { startRow?: number }) =>
+      (params.startRow ?? 0) === 0
+        ? { rows: block(0), rowCount: 50 }
+        : new Promise<never>(() => {});
+    const events: string[] = [];
+    const grid = await fixture<ApexGridEnterprise<Flagged>>(html`<apex-grid-enterprise
+      style="height:400px"
+      .columns=${[{ key: 'name' }, { key: 'active', type: 'boolean', editable: true }]}
+      .editing=${{ enabled: true, mode }}
+      .infiniteRowModel=${model === 'infinite' ? { datasource: { getRows }, blockSize: 5 } : undefined}
+      .serverSideRowModel=${
+        model === 'server-side'
+          ? { datasource: { getRows }, rowGroupCols: [], blockSize: 5 }
+          : undefined
+      }
+      @cellValueChanged=${() => events.push('cellValueChanged')}
+      @rowEditStarted=${() => events.push('rowEditStarted')}
+    ></apex-grid-enterprise>`);
+    for (let i = 0; i < 3; i++) await settle(grid as unknown as ApexGridEnterprise<Row>);
+    return { grid, events };
+  }
+
+  for (const model of ['infinite', 'server-side'] as const) {
+    for (const mode of ['cell', 'row'] as const) {
+      it(`does not commit a checkbox click on an unloaded ${model} row (${mode} mode)`, async () => {
+        const rejections: unknown[] = [];
+        const onRejection = (event: PromiseRejectionEvent) => {
+          rejections.push(event.reason);
+          event.preventDefault();
+        };
+        window.addEventListener('unhandledrejection', onRejection);
+        try {
+          const { grid, events } = await mountCheckboxes(model, mode);
+          const rowEl = (
+            deepAll(grid.renderRoot, 'apex-grid-row') as Array<HTMLElement & { data: Flagged }>
+          ).find((el) => grid.isRowLoading(el.data));
+          expect(rowEl, 'an unloaded row is rendered').to.exist;
+          const box = deepAll(
+            rowEl!.shadowRoot ?? rowEl!,
+            'input[type=checkbox]'
+          )[0] as HTMLInputElement;
+          expect(box, 'its checkbox').to.exist;
+          box.click();
+          for (let i = 0; i < 2; i++) await settle(grid as unknown as ApexGridEnterprise<Row>);
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          const placeholder = rowEl!.data;
+          expect(rejections, 'no unhandled rejection').to.eql([]);
+          expect(placeholder.active, 'placeholder left alone').to.not.equal(true);
+          expect(box.checked, 'checkbox put back').to.be.false;
+          expect(events).to.eql([]);
+        } finally {
+          window.removeEventListener('unhandledrejection', onRejection);
+        }
+      });
+    }
+  }
 });

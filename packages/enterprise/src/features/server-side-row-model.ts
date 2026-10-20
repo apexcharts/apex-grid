@@ -6,7 +6,13 @@ import type {
   FilterExpression,
   SortExpression,
 } from 'apex-grid';
-import type { GridFeatureModule, GridHost, RowAria, RowAriaProvider } from 'apex-grid/internal';
+import type {
+  GridFeatureModule,
+  GridHost,
+  RowAria,
+  RowAriaProvider,
+  RowTransformer,
+} from 'apex-grid/internal';
 import { html, type ReactiveController, type TemplateResult } from 'lit';
 import type { AggregationConfig } from './aggregation.js';
 import {
@@ -739,11 +745,25 @@ export class ServerSideRowModelManager<T extends object> {
  * unless the server-side row model is active. Registered as a feature module so
  * `state.describeRow` consults it (the SSRM manager itself is not a module).
  */
-class ServerSideAriaController<T extends object> implements ReactiveController, RowAriaProvider<T> {
-  constructor(host: GridHost<T>) {
+class ServerSideAriaController<T extends object>
+  implements ReactiveController, RowAriaProvider<T>, RowTransformer<T>
+{
+  constructor(private host: GridHost<T>) {
     host.addController(this);
   }
   public hostConnected(): void {}
+  /** Rows pass through untouched; the controller is a transformer only to claim placeholders. */
+  public processRows(rows: ReadonlyArray<T>): T[] {
+    return rows as T[];
+  }
+  /**
+   * A not-yet-loaded placeholder row (of this model, or of the infinite row
+   * model through the grid's `isRowLoading`) is no record: selection, export,
+   * fill and editing skip it, and paste drops the line that lands on it.
+   */
+  public isSyntheticRow(row: T): boolean {
+    return (this.host as { isRowLoading?(row: T): boolean }).isRowLoading?.(row) === true;
+  }
   public describeRow(row: T): RowAria | null {
     const meta = getServerRowMeta(row);
     if (!meta) return null;
@@ -751,7 +771,15 @@ class ServerSideAriaController<T extends object> implements ReactiveController, 
   }
 }
 
-/** Feature module that gives server-side group rows their tree ARIA. */
+/**
+ * Feature module that gives server-side group rows their tree ARIA, and
+ * marks the not-yet-loaded rows of both the server-side and the infinite row
+ * model as no record, so selection, export, fill and editing leave them alone
+ * and paste drops the line that lands on one. An app that opts into modules
+ * one by one needs it for the infinite row model too: without it an unloaded
+ * infinite row counts as a record. `apex-grid-enterprise/define` and
+ * `enterpriseModules` include it.
+ */
 export const serverSideRowModelModule: GridFeatureModule = {
   id: SERVER_SIDE_ROW_MODEL_MODULE_ID,
   create: (host) => new ServerSideAriaController(host),

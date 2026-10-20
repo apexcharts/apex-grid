@@ -794,7 +794,8 @@ export class RangeSelectionController<T extends object>
    * Writes a block of TSV (rows split on `\n`, columns on `\t`, quoted fields
    * kept whole) into the grid starting at the active range's top-left cell,
    * then expands the selection to cover the written block. Lines land on data
-   * rows only, skipping group headers and totals; values are coerced to the
+   * rows only, skipping group headers and totals; a line that lands on a row
+   * the server has not sent yet is dropped. Values are coerced to the
    * target column's type. Columns the editing rules do not let the user edit
    * are skipped, and cells beyond the data/columns are clipped. No-op without
    * an active range.
@@ -814,7 +815,7 @@ export class RangeSelectionController<T extends object>
     if (matrix.length > 1 && tail.length === 1 && tail[0] === '') matrix.pop();
 
     const columns = this.#visibleColumns();
-    const targets = this.#dataRows(start.top, Number.POSITIVE_INFINITY, matrix.length);
+    const targets = this.#dataRows(start.top, Number.POSITIVE_INFINITY, matrix.length, true);
     let wrote = false;
     let lastRow = start.top;
     let lastCol = start.left;
@@ -838,6 +839,8 @@ export class RangeSelectionController<T extends object>
     this.state.history.beginBatch();
     try {
       targets.forEach(({ row, record }, i) => {
+        // An unloaded row's line is dropped (see #dataRows).
+        if (!this.state.isDataRow(record)) return;
         for (let j = 0; j < matrix[i].length; j += 1) {
           const colIndex = start.left + j;
           const column = columns[colIndex];
@@ -944,15 +947,23 @@ export class RangeSelectionController<T extends object>
   /**
    * The data rows among view rows `top..bottom`, at most `limit` of them:
    * rows a feature synthesized (group headers, totals) are skipped, so paste
-   * and fill never write to them nor count them as a step.
+   * and fill never write to them nor count them as a step. With `unloaded`,
+   * a row the infinite or server-side row model has not loaded yet is kept
+   * and counts against `limit`: it stands for a record that is not here yet,
+   * so a paste drops its line instead of moving it down to the next loaded
+   * row.
    */
-  #dataRows(top: number, bottom: number, limit = Number.POSITIVE_INFINITY) {
+  #dataRows(top: number, bottom: number, limit = Number.POSITIVE_INFINITY, unloaded = false) {
     const items = this.host.pageItems as T[];
     const out: { row: number; record: T }[] = [];
     const last = Math.min(bottom, items.length - 1);
+    const host = this.host as unknown as { isRowLoading?(row: T): boolean };
     for (let row = Math.max(0, top); row <= last && out.length < limit; row += 1) {
       const record = items[row];
-      if (record && this.state.isDataRow(record)) out.push({ row, record });
+      if (!record) continue;
+      if (this.state.isDataRow(record) || (unloaded && host.isRowLoading?.(record))) {
+        out.push({ row, record });
+      }
     }
     return out;
   }

@@ -235,13 +235,14 @@ export class EditingController<T extends object> implements ReactiveController {
    * move.
    *
    * @returns `true` if edit started, `false` if rejected (column not editable,
-   * the in-flight cell's commit was rejected, or the previous row could not be
-   * committed). A rejected commit keeps the in-flight editor open, unless its
-   * record is on another page: an edit the user cannot see or correct is
-   * cancelled instead, so it cannot block every other edit.
+   * `data` a row a feature synthesized, the in-flight cell's commit was
+   * rejected, or the previous row could not be committed). A rejected commit
+   * keeps the in-flight editor open, unless its record is on another page:
+   * an edit the user cannot see or correct is cancelled instead, so it cannot
+   * block every other edit.
    */
   public async editRecord(data: T, columnKey: Keys<T>): Promise<boolean> {
-    if (!this.enabled) return false;
+    if (!this.enabled || !this.#isRecord(data)) return false;
     const column = this.host.getColumn(columnKey);
     if (!column || !this.isEditable(column)) return false;
     // Row mode: switching rows commits the pending edits of the previous row
@@ -272,7 +273,18 @@ export class EditingController<T extends object> implements ReactiveController {
   public async editRow(rowIndex: number): Promise<boolean> {
     if (!this.enabled || this.mode !== 'row') return false;
     const data = this.host.pageItems[rowIndex] as T | undefined;
-    return data ? this.#openRow(data) : false;
+    return data && this.#isRecord(data) ? this.#openRow(data) : false;
+  }
+
+  /**
+   * Whether `data` is a record, not a row a feature synthesized (a group
+   * header, a total, a row a server has not sent yet; see
+   * `StateController.isDataRow`). Always `true` for the community grid.
+   */
+  #isRecord(data: T): boolean {
+    const state = (this.host as unknown as { stateController?: { isDataRow(row: T): boolean } })
+      .stateController;
+    return state?.isDataRow(data) ?? true;
   }
 
   /** Opens `data` for a row edit, committing a different open row first. */
@@ -546,10 +558,11 @@ export class EditingController<T extends object> implements ReactiveController {
    *
    * @returns `true` if the value was applied (or staged), `false` if rejected
    * by `cellValueChanging.preventDefault()`, a validator, a previous row that
-   * could not be committed, or the column is not editable.
+   * could not be committed, the column is not editable, or `data` is a row a
+   * feature synthesized (as in {@link editRecord}).
    */
   public async commitImmediate(data: T, columnKey: Keys<T>, value: unknown): Promise<boolean> {
-    if (!this.enabled) return false;
+    if (!this.enabled || !this.#isRecord(data)) return false;
     const column = this.host.getColumn(columnKey);
     if (!column || !this.isEditable(column)) return false;
 

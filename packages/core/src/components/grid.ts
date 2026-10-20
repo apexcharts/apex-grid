@@ -2672,7 +2672,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * their events and validators see `rowIndex` -1. A `rowIndex` must be a
    * whole number from 0 to `pageItems.length - 1`. Edits naming an unknown
    * column, any other row index (negative, fractional or past the end of the
-   * page), or a column the user could not edit
+   * page), a row a feature synthesized (a group header, a total, a row a
+   * server has not sent yet), or a column the user could not edit
    * either (editing off, not `editable`, or hidden: the same gate interactive
    * editing uses) are skipped rather than throwing, so a partially-stale batch
    * still applies what it can.
@@ -2715,7 +2716,12 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       for (const { row, rowIndex, column, value } of edits) {
         const record = row ?? items[rowIndex as number];
         const config = this.getColumn(column);
-        if (!record || !config || !editing.isEditable(config)) {
+        if (
+          !record ||
+          !config ||
+          !editing.isEditable(config) ||
+          !this.stateController.isDataRow(record)
+        ) {
           tally.skipped += 1;
           continue;
         }
