@@ -116,6 +116,9 @@ function toHex(color: unknown): string {
   return colorCtx.fillStyle;
 }
 
+/** The toolbar popovers, each a `[part=<name>]` wrapper holding `<name>-button` and `<name>-menu`. */
+const POPOVERS = ['export', 'format', 'data'] as const;
+
 /** Forecast periods beyond this are capped: the axis would be unreadable long before it. */
 const MAX_FORECAST = 1000;
 
@@ -360,8 +363,15 @@ export class ApexGridChart extends LitElement {
     }
   }
 
-  /** Escape dismisses an open dialog panel; Tab cycles focus within it. */
+  /**
+   * Escape closes an open toolbar popover first (focus back on its toggle), else dismisses an open
+   * dialog panel; Tab cycles focus within the dialog.
+   */
   #onKeydown = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape' && this.#closePopover(event.target as Element)) {
+      event.stopPropagation();
+      return;
+    }
     if (this.mode !== 'dialog' || !this.open) return;
     if (event.key === 'Escape') {
       event.stopPropagation();
@@ -370,6 +380,19 @@ export class ApexGridChart extends LitElement {
       this.#trapFocus(event);
     }
   };
+
+  /**
+   * Close the open popover `target` sits in (else every open one) and focus its toggle. False when
+   * no popover is open, so Escape falls through to the dialog.
+   */
+  #closePopover(target: Element): boolean {
+    const open = POPOVERS.filter((name) => this[`${name}Open`]);
+    if (open.length === 0) return false;
+    const own = open.find((name) => target.closest?.(`[part="${name}"]`));
+    for (const name of own ? [own] : open) this[`${name}Open`] = false;
+    this.renderRoot.querySelector<HTMLElement>(`[part="${own ?? open[0]}-button"]`)?.focus();
+    return true;
+  }
 
   /** Keep Tab / Shift+Tab cycling inside the dialog (wrap last to first, first to last). */
   #trapFocus(event: KeyboardEvent): void {
@@ -1707,13 +1730,17 @@ export class ApexGridChart extends LitElement {
       <button
         part="data-button"
         type="button"
-        aria-haspopup="menu"
         aria-expanded=${this.dataOpen ? 'true' : 'false'}
         @click=${this.#toggleDataMenu}
       >
         ${this.#t('chart.data')} ▾
       </button>
-      <div part="data-menu" role="menu" ?hidden=${!this.dataOpen}>
+      <div
+        part="data-menu"
+        role="group"
+        aria-label=${this.#t('chart.data')}
+        ?hidden=${!this.dataOpen}
+      >
         <label part="format-row">
           <span>${this.#t('chart.mapCategory')}</span>
           <select @change=${(e: Event) => this.#setCategory((e.target as HTMLSelectElement).value)}>
@@ -1970,13 +1997,17 @@ export class ApexGridChart extends LitElement {
             <button
               part="format-button"
               type="button"
-              aria-haspopup="menu"
               aria-expanded=${this.formatOpen ? 'true' : 'false'}
               @click=${this.#toggleFormatMenu}
             >
               ${this.#t('chart.format')} ▾
             </button>
-            <div part="format-menu" role="menu" ?hidden=${!this.formatOpen}>
+            <div
+              part="format-menu"
+              role="group"
+              aria-label=${this.#t('chart.format')}
+              ?hidden=${!this.formatOpen}
+            >
               ${
                 this.seriesNames.length > 0
                   ? html`<div part="format-group">
