@@ -68,6 +68,9 @@ export function pattern<T extends object, K extends Keys<T> = Keys<T>>(
 ): Validator<T, K> {
   return (value) => {
     if (isBlank(value)) return null;
+    // A global or sticky RegExp resumes from `lastIndex`, so start every
+    // validation from the beginning of the value.
+    regex.lastIndex = 0;
     return regex.test(String(value)) ? null : message;
   };
 }

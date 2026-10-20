@@ -88,6 +88,9 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   cell.
 - `applyEdits()` shows the invalid state of its cells when every edit in the
   batch is rejected by a validator, without waiting for another render.
+- `pattern()` validators with a global (`g`) or sticky (`y`) RegExp give the
+  same result every time; repeated valid values no longer alternate between
+  passing and failing.
 
 ## [3.5.0] - 2026-09-12
 

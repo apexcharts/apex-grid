@@ -4,6 +4,7 @@ import type { ApexCellValueChangedEvent } from '../src/components/grid.js';
 import { ApexGrid } from '../src/components/grid.js';
 import type ApexGridRow from '../src/components/row.js';
 import type { ColumnConfiguration, PaginationConfiguration } from '../src/internal/types.js';
+import { pattern } from '../src/internal/validators.js';
 
 // Undo history and bulk edits: history follows data replacement, nested
 // batches flatten into one undo step, replay reports where the record is now,
@@ -259,6 +260,19 @@ describe('undo history and bulk edits', () => {
 
       expect(tally.invalid).to.equal(1);
       expect(cellOf(grid, record, 'amount').getAttribute('aria-invalid')).to.equal('true');
+    });
+  });
+
+  describe('pattern()', () => {
+    it('validates the same way every time with a global or sticky RegExp', () => {
+      for (const regex of [/^[A-Z]+$/g, /^[A-Z]+$/y, /^[A-Z]+$/gy]) {
+        const validate = pattern<Row>(regex);
+        const ctx = {} as never;
+        const results = ['ABC', 'DEF', 'GHI', 'JKL'].map((v) => validate(v, ctx));
+        expect(results, String(regex)).to.eql([null, null, null, null]);
+        expect(validate('abc', ctx)).to.equal('Invalid format');
+        expect(validate('MNO', ctx)).to.equal(null);
+      }
     });
   });
 });
