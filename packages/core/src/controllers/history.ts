@@ -178,6 +178,23 @@ export class HistoryController<T extends object> implements ReactiveController {
     this.#emitChanged();
   }
 
+  /**
+   * Clears both stacks when the grid's data was replaced and a recorded change
+   * names a record that `records` no longer yields (a reload with new objects).
+   * Replaying onto such a detached record would change nothing on screen while
+   * still reporting the edit. New data that keeps the edited records (an
+   * append, a re-sorted copy) keeps its history. `records` is read only while
+   * a stack has entries, so the caller may pass an expensive source.
+   */
+  public reconcile(records: () => Iterable<T>): void {
+    if (this.#undo.length === 0 && this.#redo.length === 0) return;
+    const live = new Set(records());
+    const stale = (command: EditCommand) =>
+      command instanceof CellEditCommand &&
+      command.changes.some((change: CellChange<T>) => !live.has(change.record));
+    if (this.#undo.some(stale) || this.#redo.some(stale)) this.clear();
+  }
+
   #push(command: EditCommand): void {
     this.#undo.push(command);
     // A fresh edit invalidates the redo branch.

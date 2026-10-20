@@ -1699,12 +1699,26 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     this.columns = newConfig.map((config) => ({ ...DEFAULT_COLUMN_CONFIG, ...config }));
   }
 
+  /**
+   * The records undo history may still replay onto after {@link ApexGrid.data}
+   * changes; history naming any other record is cleared. Defaults to `data`.
+   * A row model that writes only part of a larger record set into `data` (rows
+   * under a collapsed group leave `data` but stay cached and come back as the
+   * same objects) overrides this to also yield the records it keeps, so a
+   * collapse does not wipe the history. Read only while history has entries.
+   */
+  protected historyRecords(): Iterable<T> {
+    return this.data;
+  }
+
   @watch('data')
   protected dataChanged() {
     // Shallow copy of the array — items keep reference equality with
     // `this.data` so cell edits can write through to the source record.
     let next: T[] = [...this.data];
     autoGenerateColumns(this);
+    // Undo must not replay onto records the grid no longer holds.
+    this.stateController?.history?.reconcile(() => this.historyRecords());
     // Tree controller needs to re-apply `defaultExpanded` against the new
     // record set when data is swapped wholesale.
     this.stateController?.tree?.resetForDataChange();

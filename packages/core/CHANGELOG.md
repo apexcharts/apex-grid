@@ -7,6 +7,14 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Changed
+- **Replacing `grid.data` with new records clears the undo history** (and
+  fires `historyChanged`). Undo used to replay onto the old, detached records:
+  nothing changed on screen, yet `cellValueChanged` fired for a row the grid no
+  longer held. New data that keeps the edited records, such as an appended
+  row, keeps its history, and so do in-place edits. A subclass that keeps
+  records outside `data` (a row model that drops collapsed rows and restores
+  the same objects) overrides the protected `historyRecords()` to keep their
+  history too.
 - **`sortExpressions` and `filterExpressions` replace the current sort or filter
   instead of merging into it**, as documented and as `setState` already did;
   `[]`, `null` or `undefined` clears it. Apps that assigned one expression at a
