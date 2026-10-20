@@ -52,6 +52,12 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Removing a filter that is not applied, such as typing `-` or `.` first into a
   number filter, or clearing a column that has no filter, no longer fires
   `filtering` and `filtered` or announces that the filter was cleared.
+- When the filter changes (a condition or term is added, edited or removed, or
+  the filter is cleared), the grid scrolls back to its first row. The reset
+  targeted an element that does not scroll, so a deep scroll offset was clamped
+  to the end of the shorter result and the first matches sat above the fold.
+  Reapplying the same filter, such as `setState(getState())` or assigning an
+  equal `filterExpressions` list on every render, keeps the scroll position.
 
 ## [3.5.0] - 2026-09-12
 

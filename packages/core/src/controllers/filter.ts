@@ -18,11 +18,6 @@ export class FilterController<T extends object> implements ReactiveController {
     return this.host.filterRow;
   }
 
-  get #virtualizer() {
-    // @ts-expect-error - protected access
-    return this.host.scrollContainer;
-  }
-
   #emitFilteringEvent(expression: FilterExpression<T>, type: 'add' | 'modify' | 'remove') {
     return this.host.emitEvent('filtering', {
       detail: {
@@ -43,15 +38,30 @@ export class FilterController<T extends object> implements ReactiveController {
       this.state.set(expr);
     }
 
-    // HACK: In the case where the scrollTop is a large and amount and a big chunk of data is filtered out
-    // HACK: the virtualizer can't recalculate its scroll position correctly. Thus, we reset the scrollTop state.
-    this.#virtualizer?.scrollTo({ top: 0 });
+    this.#touched = true;
     this.host.requestUpdate(PIPELINE);
   }
+
+  /** The filter as of the last host update, to tell a change from a reapply. */
+  #applied: unknown[] = [];
+  /** Set by every write to the filter state; checked at the next update. */
+  #touched = false;
 
   public hostConnected() {}
 
   public hostUpdate(): void {
+    if (this.#touched) {
+      this.#touched = false;
+      const next = snapshot(this.state);
+      // A changed match set starts at its first row. The grid host owns
+      // vertical scrolling (the virtualizer is not a scroller), so reset it
+      // there; left alone, a deep offset is clamped to the end of a shorter
+      // result. Reapplying the same filter (setState(getState()), or a
+      // wrapper that assigns filterExpressions on every render) keeps the
+      // position.
+      if (!sameFilter(this.#applied, next)) this.host.scrollTop = 0;
+      this.#applied = next;
+    }
     this.filterRow?.requestUpdate();
   }
 
@@ -61,6 +71,7 @@ export class FilterController<T extends object> implements ReactiveController {
 
   public reset(key?: Keys<T>) {
     key ? this.state.delete(key) : this.state.clear();
+    this.#touched = true;
   }
 
   public setActiveColumn(column?: ColumnConfiguration<T>, triggerRect?: DOMRect) {
@@ -185,4 +196,29 @@ export class FilterController<T extends object> implements ReactiveController {
       })
     );
   }
+}
+
+/**
+ * The parts of every applied expression that decide the match set, flattened
+ * in state order. Values are captured, so a later in-place edit of an
+ * expression (the filter panel's draft) still reads as a change.
+ */
+function snapshot<T>(state: FilterState<T>): unknown[] {
+  const out: unknown[] = [];
+  for (const tree of state.values) {
+    for (const e of tree) out.push(e.key, e.condition, e.searchTerm, e.criteria, e.caseSensitive);
+  }
+  return out;
+}
+
+function sameFilter(a: unknown[], b: unknown[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (Object.is(x, y)) continue;
+    if (x instanceof Date && y instanceof Date && x.getTime() === y.getTime()) continue;
+    return false;
+  }
+  return true;
 }

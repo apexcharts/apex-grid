@@ -415,6 +415,74 @@ describe('filter evaluation (B10)', () => {
     });
   });
 
+  describe('scroll position after filtering', () => {
+    type Big = { id: number; group: string };
+    const rows: Big[] = Array.from({ length: 2000 }, (_, i) => ({
+      id: i,
+      group: i % 20 === 0 ? 'a' : 'b',
+    }));
+    const columns: ColumnConfiguration<Big>[] = [
+      { key: 'id', type: 'number' },
+      { key: 'group', filter: true },
+    ];
+    const groupB = { key: 'group', condition: 'equals', searchTerm: 'b' } as any;
+
+    async function scrolledDeep(grid: ApexGrid<Big>) {
+      grid.scrollTop = 5000;
+      await settle(grid);
+      const top = grid.scrollTop;
+      expect(top).to.be.greaterThan(0);
+      return top;
+    }
+
+    it('a filter brings the first match into view', async () => {
+      const grid = await mount(rows, columns, '400px');
+      grid.scrollTop = 50_000;
+      await settle(grid);
+      expect(grid.scrollTop).to.be.greaterThan(0);
+
+      grid.filter({ key: 'group', condition: 'equals', searchTerm: 'a' } as any);
+      await settle(grid);
+      expect(grid.scrollTop).to.equal(0);
+    });
+
+    it('changing or clearing the filter resets the scroll', async () => {
+      const grid = await mount(rows, columns, '400px');
+      grid.filterExpressions = [groupB];
+      await settle(grid);
+      await scrolledDeep(grid);
+
+      grid.filterExpressions = [{ ...groupB, condition: 'contains' }];
+      await settle(grid);
+      expect(grid.scrollTop).to.equal(0);
+
+      await scrolledDeep(grid);
+      grid.filterExpressions = [];
+      await settle(grid);
+      expect(grid.scrollTop).to.equal(0);
+    });
+
+    it('reapplying the same filter keeps the scroll position', async () => {
+      const grid = await mount(rows, columns, '400px');
+      const assigned = [groupB];
+      grid.filterExpressions = assigned;
+      await settle(grid);
+      const top = await scrolledDeep(grid);
+
+      const reapply: Array<[string, () => void]> = [
+        ['same array', () => (grid.filterExpressions = assigned)],
+        ['same content', () => (grid.filterExpressions = [{ ...groupB }])],
+        ['setState(getState())', () => grid.setState(grid.getState())],
+        ['setState filter slice', () => grid.setState({ filter: grid.getState().filter })],
+      ];
+      for (const [label, run] of reapply) {
+        run();
+        await settle(grid);
+        expect(grid.scrollTop, label).to.equal(top);
+      }
+    });
+  });
+
   describe('operand typings', () => {
     it('a Date field accepts the string operand names, not a Date', () => {
       type Dated = { created: Date };
