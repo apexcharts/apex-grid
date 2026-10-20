@@ -80,6 +80,45 @@ function keySegment(value: unknown): string {
     : `/${text.replace(/[%/]/g, (c) => (c === '/' ? '%2F' : '%25'))}`;
 }
 
+/** Group expansion as stored in a state snapshot, validated. */
+export interface GroupExpansionState {
+  defaultExpanded?: boolean | number;
+  overrides?: Record<string, boolean>;
+}
+
+/**
+ * Validates the group expansion slices of a snapshot (`groupDefaultExpanded`,
+ * `groupExpand`) before anything is applied. A wrong-typed slice, including a
+ * `groupExpand` with a non-boolean value, is reported through `warn` (which
+ * throws in strict mode) and left out.
+ */
+export function readGroupExpansion(
+  defaultExpanded: unknown,
+  overrides: unknown,
+  warn: (message: string) => void
+): GroupExpansionState {
+  const out: GroupExpansionState = {};
+  if (
+    typeof defaultExpanded === 'boolean' ||
+    (typeof defaultExpanded === 'number' && defaultExpanded >= 0)
+  ) {
+    out.defaultExpanded = defaultExpanded;
+  } else if (defaultExpanded !== undefined) {
+    warn('groupDefaultExpanded: expected a boolean or a depth; skipped');
+  }
+  if (
+    overrides &&
+    typeof overrides === 'object' &&
+    !Array.isArray(overrides) &&
+    Object.values(overrides).every((expanded) => typeof expanded === 'boolean')
+  ) {
+    out.overrides = overrides as Record<string, boolean>;
+  } else if (overrides !== undefined) {
+    warn('groupExpand: expected an object of booleans; skipped');
+  }
+  return out;
+}
+
 function formatNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
@@ -106,7 +145,7 @@ export class GroupingController<T extends object>
   public aggregations: AggregationConfig = {};
 
   /** Explicit per-group expansion overrides (key → expanded). */
-  readonly #overrides = new Map<string, boolean>();
+  #overrides = new Map<string, boolean>();
   /** Metadata for the groups built in the most recent {@link processRows}. */
   readonly #metaByKey = new Map<string, GroupRowMeta<T>>();
   /**
@@ -357,15 +396,15 @@ export class GroupingController<T extends object>
   }
 
   /**
-   * Restores per-group collapse overrides from a snapshot, replacing any current
-   * ones. Silent: emits no `groupExpanding` / `groupExpanded`; re-runs the
-   * pipeline so the next pass honors them.
+   * Restores group expansion from a snapshot read by {@link readGroupExpansion}:
+   * the default when present, and the per-group overrides when present
+   * (replacing any current ones). Silent: emits no `groupExpanding` /
+   * `groupExpanded`; re-runs the pipeline so the next pass honors them.
    */
-  public restoreExpandOverrides(overrides: Record<string, boolean>): void {
-    this.#overrides.clear();
-    for (const [key, expanded] of Object.entries(overrides)) {
-      this.#overrides.set(key, expanded);
-    }
+  public restoreExpansion({ defaultExpanded, overrides }: GroupExpansionState): void {
+    if (defaultExpanded === undefined && !overrides) return;
+    if (defaultExpanded !== undefined) this.defaultExpanded = defaultExpanded;
+    if (overrides) this.#overrides = new Map(Object.entries(overrides));
     this.host.requestUpdate(PIPELINE);
   }
 

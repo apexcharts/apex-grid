@@ -89,6 +89,7 @@ import {
   GROUPING_MODULE_ID,
   type GroupingController,
   type GroupRowMeta,
+  readGroupExpansion,
 } from './features/grouping.js';
 import {
   type InfiniteHost,
@@ -297,6 +298,12 @@ interface EnterpriseStateBlob {
   pivotValues?: AggregationConfig;
   /** Per-group collapse overrides (group key → expanded). */
   groupExpand?: Record<string, boolean>;
+  /**
+   * Expansion for groups without an override: `true` (all), `false` (none, as
+   * after collapse all), or a depth threshold. Absent in older snapshots, which
+   * leave the current default in place.
+   */
+  groupDefaultExpanded?: boolean | number;
   /** Range-selection rectangles (view coordinates; round-trip within a session). */
   ranges?: RangeBounds[];
   /** Stored cell formulas (durable across reload when `rowId` is set, else positional). */
@@ -458,7 +465,37 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   /** Tuning for row grouping (e.g. default group expansion). */
   @property({ attribute: false })
-  public groupingOptions: { defaultExpanded?: boolean | number } = {};
+  public get groupingOptions(): { defaultExpanded?: boolean | number } {
+    return this.#groupingOptions;
+  }
+
+  public set groupingOptions(value: { defaultExpanded?: boolean | number }) {
+    // Applied on assignment, so the later of this and setState wins. An equal
+    // value in a new object (an inline literal passed on every render) leaves
+    // expand all and collapse all alone. Lit skips the update when the same
+    // object is re-assigned, so a pushed change requests one itself.
+    this.#groupingOptions = value;
+    if (this.#applyDefaultExpanded()) this.requestUpdate(PIPELINE);
+  }
+
+  #groupingOptions: { defaultExpanded?: boolean | number } = {};
+
+  /**
+   * The groupingOptions.defaultExpanded last pushed to the controller. Kept as
+   * a primitive, not read back from the stored object, so a value changed in
+   * place on that object still counts as a change.
+   */
+  #appliedDefaultExpanded?: boolean | number;
+
+  /** Pushes a changed defaultExpanded to the controller; true when it did. */
+  #applyDefaultExpanded(): boolean {
+    const next = this.#groupingOptions?.defaultExpanded;
+    const grouping = this.#groupingController();
+    if (!grouping || next === undefined || next === this.#appliedDefaultExpanded) return false;
+    grouping.defaultExpanded = next;
+    this.#appliedDefaultExpanded = next;
+    return true;
+  }
 
   /**
    * Column-dimension field(s) for pivoting: their distinct value combinations
@@ -796,6 +833,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       pivotRows: [...this.pivotRows],
       pivotValues: { ...this.pivotValues },
       groupExpand: this.#groupingController()?.getExpandOverrides() ?? {},
+      groupDefaultExpanded: this.#groupingController()?.defaultExpanded,
       ranges: this.#rangeController()?.getRanges() ?? [],
       formulas: this.#serializeFormulas(options?.rowId ?? this.rowId),
     };
@@ -857,20 +895,31 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     options?: SetStateOptions<T>
   ): SetStateResult {
     const enterprise = state.modules?.enterprise as EnterpriseStateBlob | undefined;
+    const strict = options?.strict === true;
+    // Validate group expansion before applying anything, so a wrong-typed slice
+    // is skipped (or throws, in strict mode) without leaving the rest half set.
+    const warnings: string[] = [];
+    const expansion = readGroupExpansion(
+      enterprise?.groupDefaultExpanded,
+      enterprise?.groupExpand,
+      (message) => {
+        if (strict) throw new Error(`[apex-grid] setState: ${message}`);
+        warnings.push(message);
+      }
+    );
     if (enterprise) {
       if (enterprise.groupBy !== undefined) this.groupBy = [...enterprise.groupBy];
       if (enterprise.aggregations !== undefined) this.aggregations = { ...enterprise.aggregations };
       if (enterprise.pivotOn !== undefined) this.pivotOn = enterprise.pivotOn;
       if (enterprise.pivotRows !== undefined) this.pivotRows = [...enterprise.pivotRows];
       if (enterprise.pivotValues !== undefined) this.pivotValues = { ...enterprise.pivotValues };
-      // Group-collapse overrides before the core pass: they must be in place when
-      // the pipeline rebuilds the (restored) group structure.
-      if (enterprise.groupExpand !== undefined) {
-        this.#groupingController()?.restoreExpandOverrides(enterprise.groupExpand);
-      }
+      // Group expansion before the core pass: it must be in place when the
+      // pipeline rebuilds the (restored) group structure.
+      this.#groupingController()?.restoreExpansion(expansion);
     }
 
     const result = super.setState(state, options);
+    result.warnings.push(...warnings);
 
     // Ranges last: their bounds are view coordinates into the freshly-restored
     // columns / rows, so resolve them against the post-restore view.
@@ -881,7 +930,6 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     // Formulas resolve their durable row references against the current data and
     // recompute on restore.
     if (enterprise?.formulas !== undefined) {
-      const strict = options?.strict === true;
       this.#restoreFormulas(
         enterprise.formulas,
         options?.rowId ?? this.rowId,
@@ -1379,9 +1427,9 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     if (!grouping) return;
     grouping.groupBy = this.groupBy;
     grouping.aggregations = this.aggregations;
-    if (this.groupingOptions?.defaultExpanded !== undefined) {
-      grouping.defaultExpanded = this.groupingOptions.defaultExpanded;
-    }
+    // Picks up a defaultExpanded changed in place followed by
+    // requestUpdate('groupingOptions'), which never runs the setter.
+    if (changed.has('groupingOptions')) this.#applyDefaultExpanded();
     this.requestUpdate(PIPELINE);
   }
 

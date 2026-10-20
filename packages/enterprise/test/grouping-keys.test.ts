@@ -41,7 +41,10 @@ function regions(): Row[] {
   ];
 }
 
-describe('grouping keys and Date buckets', () => {
+const enterpriseOf = (state: Partial<GridState>) =>
+  (state.modules as Record<string, Record<string, unknown>>).enterprise;
+
+describe('grouping keys, Date buckets and collapse-all state', () => {
   before(() => {
     ApexGridEnterprise.use(...enterpriseModules);
     ApexGridEnterprise.register();
@@ -178,6 +181,177 @@ describe('grouping keys and Date buckets', () => {
         '//',
         '/A%',
       ]);
+    });
+  });
+
+  describe('ent-grouping-aggregation-statusbar-4: collapse all in state', () => {
+    it('restoring a collapse-all snapshot into a fresh grid keeps groups collapsed', async () => {
+      const source = await mount(regions(), ['region']);
+      source.collapseAllGroups();
+      await settle(source);
+      expect(source.pageItems.length).to.equal(2);
+      const snapshot = JSON.parse(JSON.stringify(source.getState()));
+      expect(enterpriseOf(snapshot).groupDefaultExpanded).to.equal(false);
+
+      const target = await mount(regions(), ['region']);
+      expect(target.pageItems.length).to.equal(6);
+      target.setState(snapshot);
+      await settle(target);
+      expect(target.pageItems.length, 'restored grid row count').to.equal(2);
+
+      // And expand all in a snapshot restores into a collapsed grid.
+      source.expandAllGroups();
+      await settle(source);
+      target.setState(JSON.parse(JSON.stringify(source.getState())));
+      await settle(target);
+      expect(target.pageItems.length).to.equal(6);
+    });
+
+    it('a snapshot without groupDefaultExpanded leaves the default untouched', async () => {
+      const grid = await mount(regions(), ['region']);
+      grid.collapseAllGroups();
+      await settle(grid);
+      grid.setState({
+        modules: { enterprise: { groupBy: ['region'], groupExpand: { '/EMEA': true } } },
+      } as unknown as Partial<GridState>);
+      await settle(grid);
+      // EMEA header + 2 leaves, AMER header (still collapsed by default).
+      expect(grid.pageItems.length).to.equal(4);
+    });
+
+    it('collapse all is not undone by a later aggregations change', async () => {
+      const grid = await mount(regions(), ['region']);
+      grid.groupingOptions = { defaultExpanded: true };
+      await settle(grid);
+      grid.collapseAllGroups();
+      await settle(grid);
+      expect(grid.pageItems.length).to.equal(2);
+      grid.aggregations = { amount: ['sum'] };
+      await settle(grid);
+      expect(grid.pageItems.length, 'rows after aggregations change').to.equal(2);
+    });
+
+    it('setState in the same tick as groupingOptions wins over it', async () => {
+      const grid = document.createElement('apex-grid-enterprise') as ApexGridEnterprise<Row>;
+      grid.data = regions();
+      grid.columns = [{ key: 'region' }, { key: 'product' }, { key: 'amount' }];
+      grid.groupingOptions = { defaultExpanded: true };
+      document.body.append(grid);
+      try {
+        grid.setState({
+          modules: {
+            enterprise: { groupBy: ['region'], groupExpand: {}, groupDefaultExpanded: false },
+          },
+        } as unknown as Partial<GridState>);
+        await settle(grid);
+        expect(grid.pageItems.length).to.equal(2);
+
+        // And a later groupingOptions assignment wins over the restore.
+        grid.groupingOptions = { defaultExpanded: 1 };
+        await settle(grid);
+        expect(grid.pageItems.length).to.equal(6);
+      } finally {
+        grid.remove();
+      }
+    });
+
+    it('an equal groupingOptions in a new object keeps collapse all', async () => {
+      const grid = await mount(regions(), ['region']);
+      grid.groupingOptions = { defaultExpanded: true };
+      await settle(grid);
+      grid.collapseAllGroups();
+      await settle(grid);
+      grid.groupingOptions = { defaultExpanded: true };
+      await settle(grid);
+      expect(grid.pageItems.length).to.equal(2);
+    });
+
+    it('a value changed in place, then a copy assigned, is applied', async () => {
+      const grid = await mount(regions(), ['region']);
+      grid.groupingOptions = { defaultExpanded: true };
+      await settle(grid);
+      expect(grid.pageItems.length).to.equal(6);
+      grid.groupingOptions.defaultExpanded = false;
+      grid.groupingOptions = { ...grid.groupingOptions };
+      await settle(grid);
+      expect(grid.pageItems.length, 'rows after mutate and copy').to.equal(2);
+    });
+
+    it('a value changed in place, then requestUpdate, is applied', async () => {
+      const grid = await mount(regions(), ['region']);
+      grid.groupingOptions = { defaultExpanded: true };
+      await settle(grid);
+      grid.groupingOptions.defaultExpanded = false;
+      grid.requestUpdate('groupingOptions');
+      await settle(grid);
+      expect(grid.pageItems.length, 'rows after mutate and requestUpdate').to.equal(2);
+    });
+
+    it('a value changed in place, then the same object assigned, renders', async () => {
+      const grid = await mount(regions(), ['region']);
+      grid.groupingOptions = { defaultExpanded: true };
+      await settle(grid);
+      expect(grid.pageItems.length).to.equal(6);
+      grid.groupingOptions.defaultExpanded = false;
+      // biome-ignore lint/correctness/noSelfAssign: the same object is re-assigned on purpose
+      grid.groupingOptions = grid.groupingOptions;
+      await settle(grid);
+      expect(grid.pageItems.length, 'rows after same-object assign').to.equal(2);
+      expect(enterpriseOf(grid.getState()).groupDefaultExpanded).to.equal(false);
+
+      // An unrelated refresh afterwards changes nothing.
+      grid.data = regions();
+      await settle(grid);
+      expect(grid.pageItems.length, 'rows after data refresh').to.equal(2);
+    });
+  });
+
+  describe('ent-grouping-aggregation-statusbar-8: malformed groupExpand', () => {
+    for (const [label, bad] of [
+      ['null', null],
+      ['a number', 5],
+      ['an array', [['/EMEA', false]]],
+      ['a string', '/EMEA'],
+    ] as const) {
+      it(`skips ${label} with a warning and applies nothing half way`, async () => {
+        const grid = await mount(regions(), []);
+        const state = {
+          modules: {
+            enterprise: {
+              groupBy: ['region'],
+              aggregations: { amount: ['sum'] },
+              groupExpand: bad,
+            },
+          },
+        } as unknown as Partial<GridState>;
+        const result = grid.setState(state);
+        await settle(grid);
+        expect(result.warnings.some((w) => w.includes('groupExpand'))).to.equal(true);
+        expect(grid.groupBy).to.deep.equal(['region']);
+        expect(grid.aggregations).to.deep.equal({ amount: ['sum'] });
+        expect(grid.pageItems.length, 'all groups expanded').to.equal(6);
+      });
+    }
+
+    it('throws in strict mode before applying anything', async () => {
+      const grid = await mount(regions(), []);
+      const state = {
+        modules: { enterprise: { groupBy: ['region'], groupExpand: null } },
+      } as unknown as Partial<GridState>;
+      expect(() => grid.setState(state, { strict: true })).to.throw(/groupExpand/);
+      expect(grid.groupBy).to.deep.equal([]);
+    });
+
+    it('skips a groupExpand holding a non-boolean value', async () => {
+      const grid = await mount(regions(), ['region']);
+      grid.collapseGroup('/AMER');
+      await settle(grid);
+      const result = grid.setState({
+        modules: { enterprise: { groupExpand: { '/EMEA': 'no', '/AMER': true } } },
+      } as unknown as Partial<GridState>);
+      await settle(grid);
+      expect(result.warnings.some((w) => w.includes('groupExpand'))).to.equal(true);
+      expect(enterpriseOf(grid.getState()).groupExpand).to.deep.equal({ '/AMER': false });
     });
   });
 });
