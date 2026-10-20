@@ -110,14 +110,47 @@ export class NavigationController<T extends object> implements ReactiveControlle
       revealWithin(this.host as unknown as HTMLElement, cell, {
         block: 'nearest',
         inline: 'nearest',
-        insets: this.#insets(),
+        insets: this.scrollInsets(),
       });
     }
   }
 
   /** Scrolls body row `index` into view, rendered or not. */
   protected scrollToRow(index: number) {
-    this.virtualizer.element(index)?.scrollIntoView({ block: 'nearest', insets: this.#insets() });
+    this.virtualizer
+      .element(index)
+      ?.scrollIntoView({ block: 'nearest', insets: this.scrollInsets() });
+  }
+
+  /** The cell {@link revealCell} last asked for, so a late reveal yields to a newer one. */
+  #revealing: ActiveNode<T> | null = null;
+
+  /**
+   * Scrolls the cell at `node` into view clear of the sticky chrome without
+   * moving the active cell: the cell itself when it is rendered, else its row
+   * first and the cell once the virtualizer has rendered it. For a feature
+   * that moves something other than the active cell with the keyboard (range
+   * extension), so it scrolls the way arrow navigation does.
+   */
+  public revealCell(node: ActiveNode<T>): void {
+    this.#revealing = node;
+    if (this.findCell(node)) {
+      this.scrollToCell(node);
+      return;
+    }
+    this.scrollToRow(node.row);
+    void this.virtualizer.settled().then(() => {
+      if (this.#revealing === node) this.scrollToCell(node);
+    });
+  }
+
+  /**
+   * Whether ArrowLeft or ArrowRight steps towards the end of the column
+   * order: ArrowRight in a left-to-right grid, ArrowLeft in a right-to-left
+   * one. The rule every inline arrow key on this grid follows.
+   */
+  public towardsInlineEnd(key: string): boolean {
+    return isRTL(this.host as unknown as Element) === (key === 'ArrowLeft');
   }
 
   /**
@@ -126,9 +159,11 @@ export class NavigationController<T extends object> implements ReactiveControlle
    * and the paginator below, pinned columns on either side). Keyboard scrolls
    * use it as scroll-padding, so a row or cell the keyboard moves to is never
    * parked underneath that chrome. Measured right before each keyboard scroll
-   * because any of those bands can change size between key presses.
+   * because any of those bands can change size between key presses. Public
+   * so a feature scrolling the body itself (drag auto-scroll) measures the
+   * same chrome.
    */
-  #insets(): ScrollInsets {
+  public scrollInsets(): ScrollInsets {
     const host = this.host as unknown as HTMLElement;
     const root = host.shadowRoot;
     if (!root) return { top: 0, right: 0, bottom: 0, left: 0 };
@@ -305,7 +340,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
       // The shortest rendered row: an expanded detail panel is not a row height.
       if (height > 0 && (!rowHeight || height < rowHeight)) rowHeight = height;
     }
-    const { top, bottom } = this.#insets();
+    const { top, bottom } = this.scrollInsets();
     const viewport = host.clientHeight - top - bottom;
     if (!rowHeight || viewport <= 0) return 10;
     return Math.max(1, Math.floor(viewport / rowHeight) - 1);
@@ -340,11 +375,11 @@ export class NavigationController<T extends object> implements ReactiveControlle
   }
 
   protected arrowLeft() {
-    this.#moveInline('left');
+    this.#moveInline('ArrowLeft');
   }
 
   protected arrowRight() {
-    this.#moveInline('right');
+    this.#moveInline('ArrowRight');
   }
 
   /**
@@ -352,13 +387,12 @@ export class NavigationController<T extends object> implements ReactiveControlle
    *
    * ArrowLeft and ArrowRight name screen directions, not column order, so under
    * `dir="rtl"` the column to the left is the *next* one and the mapping onto
-   * previous/next inverts. Everything else about navigation is order-based and
-   * needs no direction awareness.
+   * previous/next inverts ({@link towardsInlineEnd}). Everything else about
+   * navigation is order-based and needs no direction awareness.
    */
-  #moveInline(direction: 'left' | 'right') {
-    const towardsEnd = isRTL(this.host as unknown as Element) === (direction === 'left');
+  #moveInline(key: 'ArrowLeft' | 'ArrowRight') {
     const next = this.nextNode;
-    const column = towardsEnd
+    const column = this.towardsInlineEnd(key)
       ? this.getNextColumn(next.column)
       : this.getPreviousColumn(next.column);
     this.active = Object.assign(next, { column });
