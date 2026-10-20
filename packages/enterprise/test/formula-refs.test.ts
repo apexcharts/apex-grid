@@ -173,8 +173,8 @@ describe('formula reference model (F2)', () => {
       });
     });
 
-    it('offsetAddress clamps at 0 instead of producing a negative index', () => {
-      expect(offsetAddress({ row: 1, col: 1 }, -5, -5)).to.deep.equal({ row: 0, col: 0 });
+    it('offsetAddress leaves an axis moved before row 1 or column A negative', () => {
+      expect(offsetAddress({ row: 1, col: 1 }, -5, -5)).to.deep.equal({ row: -4, col: -4 });
     });
 
     it('parseA1 / formatA1 stay relative (no markers) for back-compat', () => {

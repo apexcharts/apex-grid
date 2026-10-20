@@ -294,8 +294,8 @@ describe('offsetReferences (Tier 2)', () => {
     expect(shift('=SUM($A$1:B2)', 1, 1)).to.equal('=SUM($A$1:C3)');
   });
 
-  it('clamps at the grid edge rather than going negative', () => {
-    expect(shift('=B2', -5, -5)).to.equal('=A1');
+  it('writes #REF! for a reference moved before row 1 or column A', () => {
+    expect(shift('=B2', -5, -5)).to.equal('=#REF!');
   });
 
   it('does not touch literals or function names', () => {

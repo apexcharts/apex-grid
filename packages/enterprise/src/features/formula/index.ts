@@ -50,6 +50,7 @@ export {
   offsetReferences,
   parseFormula,
   type RangeNode,
+  type RefErrorNode,
   type ReferenceNode,
   type RefList,
   type StringLiteralNode,

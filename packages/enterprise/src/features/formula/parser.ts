@@ -12,7 +12,11 @@
  *   multiplicative  * / %
  *   unary       - + (prefix)
  *   power       ^ (right-associative; binds tighter than unary, so -2^2 = -4)
- *   primary     number | string | boolean | reference | range | call | ( expr )
+ *   primary     number | string | boolean | reference | range | call | #REF! | ( expr )
+ *
+ * A function name is a letter or `_` followed by letters, digits, `_` or `.`
+ * ({@link isFunctionName}); a word followed by `(` is always a call, so
+ * `LOG10(A1)` calls LOG10 while `AB10` stays a cell reference.
  */
 import { ParseError } from './errors.js';
 import {
@@ -83,6 +87,13 @@ export interface CallNode {
   name: string;
   args: FormulaAst[];
 }
+/**
+ * A reference that no longer points into the sheet (a fill or paste moved it
+ * before row 1 or column A). Written `#REF!`; evaluates to the `#REF!` error.
+ */
+export interface RefErrorNode {
+  type: 'error';
+}
 
 /** A node in the formula AST. */
 export type FormulaAst =
@@ -93,7 +104,8 @@ export type FormulaAst =
   | RangeNode
   | UnaryNode
   | BinaryNode
-  | CallNode;
+  | CallNode
+  | RefErrorNode;
 
 /** The cells and ranges a formula reads, for dependency tracking + highlighting. */
 export interface RefList {
@@ -109,6 +121,7 @@ type TokenType =
   | 'boolean'
   | 'cell'
   | 'name'
+  | 'error'
   | 'op'
   | 'lparen'
   | 'rparen'
@@ -123,12 +136,25 @@ interface Token {
 }
 
 const CELL_REF = /\$?[A-Za-z]+\$?[0-9]+/y;
-const WORD = /[A-Za-z]+[0-9]*/y;
-const NUMBER = /[0-9]+(?:\.[0-9]+)?|\.[0-9]+/y;
+const WORD = /[A-Za-z_][A-Za-z0-9_.]*/y;
+const OPEN_PAREN = /\s*\(/y;
+const REF_ERROR = /#REF!/iy;
+// The exponent part reads back what String(number) writes for 1e-7 or 1e21.
+const NUMBER = /(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?/y;
 
-function tokenize(input: string): Token[] {
+/**
+ * Whether `name` can be called from a formula as `NAME(args)`: the word the
+ * tokenizer reads as a function name, and not `IF`, `TRUE` or `FALSE`. The
+ * rule `registerFormulaFunction` enforces, so every registered name parses.
+ */
+export function isFunctionName(name: string): boolean {
+  WORD.lastIndex = 0;
+  return WORD.exec(name)?.[0] === name && !/^(?:IF|TRUE|FALSE)$/i.test(name);
+}
+
+function tokenize(input: string, from: number): Token[] {
   const tokens: Token[] = [];
-  let i = 0;
+  let i = from;
   const len = input.length;
 
   while (i < len) {
@@ -169,28 +195,37 @@ function tokenize(input: string): Token[] {
     // Number literal.
     NUMBER.lastIndex = i;
     const numberMatch = NUMBER.exec(input);
-    if (numberMatch && numberMatch.index === i) {
+    if (numberMatch) {
       tokens.push({ type: 'number', value: numberMatch[0], position: i });
       i += numberMatch[0].length;
       continue;
     }
 
-    // Cell reference, optionally with `$` absolute markers (A1, $A1, A$1, $A$1).
-    // Tried before a bare word so a leading or embedded `$` is consumed as one
-    // token (a word stops at `$`, which would otherwise split `A$1`).
-    CELL_REF.lastIndex = i;
-    const cellMatch = CELL_REF.exec(input);
-    if (cellMatch && cellMatch.index === i) {
-      tokens.push({ type: 'cell', value: cellMatch[0], position: i });
-      i += cellMatch[0].length;
+    // `#REF!`, which a fill writes for a reference moved off the sheet.
+    REF_ERROR.lastIndex = i;
+    if (REF_ERROR.test(input)) {
+      tokens.push({ type: 'error', value: '#REF!', position: i });
+      i += 5;
       continue;
     }
 
-    // Word: a boolean literal or a function name (cell tokens were handled above).
+    // A word followed by `(` is a function name, even one shaped like a cell
+    // reference (LOG10, X2). Otherwise a cell reference, optionally with `$`
+    // markers (A1, $A1, A$1, $A$1), wins over a bare word, so a leading or
+    // embedded `$` is consumed as one token.
     WORD.lastIndex = i;
-    const wordMatch = WORD.exec(input);
-    if (wordMatch && wordMatch.index === i) {
-      const word = wordMatch[0];
+    const word = WORD.exec(input)?.[0];
+    OPEN_PAREN.lastIndex = i + (word?.length ?? 0);
+    CELL_REF.lastIndex = i;
+    const cell = !(word && OPEN_PAREN.test(input)) && CELL_REF.exec(input)?.[0];
+    if (cell) {
+      tokens.push({ type: 'cell', value: cell, position: i });
+      i += cell.length;
+      continue;
+    }
+
+    // Word: a boolean literal or a function name.
+    if (word) {
       const upper = word.toUpperCase();
       const type: TokenType = upper === 'TRUE' || upper === 'FALSE' ? 'boolean' : 'name';
       tokens.push({ type, value: word, position: i });
@@ -342,9 +377,17 @@ class Parser {
     const token = this.peek();
 
     switch (token.type) {
-      case 'number':
+      case 'number': {
         this.next();
-        return { type: 'number', value: Number(token.value) };
+        const value = Number(token.value);
+        if (!Number.isFinite(value)) {
+          throw new ParseError('number out of range', token.position);
+        }
+        return { type: 'number', value };
+      }
+      case 'error':
+        this.next();
+        return { type: 'error' };
       case 'string':
         this.next();
         return { type: 'string', value: token.value };
@@ -409,16 +452,20 @@ class Parser {
 
 /**
  * Parse formula text into an AST. A leading `=` (the spreadsheet convention) is
- * tolerated and stripped. Throws {@link ParseError} (with a character position)
- * on malformed input.
+ * tolerated and stripped. Throws {@link ParseError} on malformed input, with
+ * the character position in `input` itself (the `=` and any leading
+ * whitespace count), so it points at what the user typed.
  */
 export function parseFormula(input: string): FormulaAst {
-  const trimmed = input.trim();
-  const body = trimmed.startsWith('=') ? trimmed.slice(1) : trimmed;
-  if (body.trim() === '') {
+  let start = input.length - input.trimStart().length;
+  if (input[start] === '=') {
+    start++;
+  }
+  if (input.slice(start).trim() === '') {
     throw new ParseError('empty formula', 0);
   }
-  return new Parser(tokenize(body)).parse();
+  // Stop at the trimmed end: the tokenizer skips only ASCII whitespace.
+  return new Parser(tokenize(input.slice(0, input.trimEnd().length), start)).parse();
 }
 
 /**
@@ -528,6 +575,8 @@ function stringifyNode(node: FormulaAst): string {
     }
     case 'call':
       return `${node.name}(${node.args.map(stringifyNode).join(',')})`;
+    case 'error':
+      return '#REF!';
   }
 }
 
@@ -540,32 +589,36 @@ export function stringifyFormula(ast: FormulaAst): string {
   return `=${stringifyNode(ast)}`;
 }
 
+/** Whether a shifted address fell before row 1 or column A. */
+const offSheet = ({ row, col }: CellAddress): boolean => row < 0 || col < 0;
+
 /**
  * Return a copy of the AST with every **relative** reference shifted by
  * (`dRow`, `dCol`); axes marked absolute with `$` are left untouched. Fill and
- * intra-grid paste use this to relocate a formula. Because each reference still
- * resolves to a concrete absolute address (decision DT1), the evaluator and the
- * dependency graph need no knowledge of relative-ness. Pure.
+ * intra-grid paste use this to relocate a formula. A reference (or either
+ * corner of a range) shifted before row 1 or column A becomes `#REF!`, as in a
+ * spreadsheet. Because each reference still resolves to a concrete absolute
+ * address (decision DT1), the evaluator and the dependency graph need no
+ * knowledge of relative-ness. Pure.
  */
 export function offsetReferences(ast: FormulaAst, dRow: number, dCol: number): FormulaAst {
   switch (ast.type) {
-    case 'ref':
-      return {
-        type: 'ref',
-        address: offsetAddress(ast.address, dRow, dCol, ast),
-        colAbsolute: ast.colAbsolute,
-        rowAbsolute: ast.rowAbsolute,
-      };
-    case 'range':
-      return {
-        type: 'range',
-        range: {
-          start: offsetAddress(ast.range.start, dRow, dCol, ast.startFlags),
-          end: offsetAddress(ast.range.end, dRow, dCol, ast.endFlags),
-        },
-        startFlags: { ...ast.startFlags },
-        endFlags: { ...ast.endFlags },
-      };
+    case 'ref': {
+      const address = offsetAddress(ast.address, dRow, dCol, ast);
+      return offSheet(address) ? { type: 'error' } : { ...ast, address };
+    }
+    case 'range': {
+      const start = offsetAddress(ast.range.start, dRow, dCol, ast.startFlags);
+      const end = offsetAddress(ast.range.end, dRow, dCol, ast.endFlags);
+      return offSheet(start) || offSheet(end)
+        ? { type: 'error' }
+        : {
+            ...ast,
+            range: { start, end },
+            startFlags: { ...ast.startFlags },
+            endFlags: { ...ast.endFlags },
+          };
+    }
     case 'unary':
       return {
         type: 'unary',

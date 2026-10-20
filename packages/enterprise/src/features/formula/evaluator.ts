@@ -15,6 +15,7 @@ import {
   type FormulaError,
   isFormulaError,
   nameError,
+  refError,
   toBoolean,
   toCellValue,
   toNumber,
@@ -227,6 +228,8 @@ export function evaluate(ast: FormulaAst, ctx: FormulaContext): CellValue {
       return finite(evaluateBinary(ast, ctx));
     case 'call':
       return finite(evaluateCall(ast, ctx));
+    case 'error':
+      return refError();
     default:
       return valueError('unknown expression');
   }

@@ -144,8 +144,9 @@ export function formatCell(addr: CellAddress, flags?: Partial<CellRefFlags>): st
 
 /**
  * Shift an address by (`dRow`, `dCol`), moving only the axes that `flags` leave
- * relative; absolute axes keep their value. Results are clamped at 0 so the
- * address stays well-formed; a target beyond the data surfaces as `#REF!` at
+ * relative; absolute axes keep their value. An axis moved before row 1 or
+ * column A comes back negative (it is not clamped), which `offsetReferences`
+ * writes as `#REF!`; a target beyond the data surfaces as `#REF!` at
  * evaluation, exactly as an out-of-range literal reference would. Used by fill
  * and intra-grid paste to relocate a formula's references.
  */
@@ -156,8 +157,8 @@ export function offsetAddress(
   flags?: Partial<CellRefFlags>
 ): CellAddress {
   return {
-    row: flags?.rowAbsolute ? addr.row : Math.max(0, addr.row + dRow),
-    col: flags?.colAbsolute ? addr.col : Math.max(0, addr.col + dCol),
+    row: flags?.rowAbsolute ? addr.row : addr.row + dRow,
+    col: flags?.colAbsolute ? addr.col : addr.col + dCol,
   };
 }
 

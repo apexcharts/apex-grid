@@ -33,6 +33,7 @@ import { createFunctionRegistry, type FormulaFn } from './functions.js';
 import {
   type FormulaAst,
   formulaReferences,
+  isFunctionName,
   offsetReferences,
   parseFormula,
   stringifyFormula,
@@ -634,8 +635,16 @@ export class FormulaController<T extends object> implements ReactiveController, 
     this.#settle(this.#store.recalcAll());
   }
 
-  /** Register a custom function (upper-cased) for this grid. */
+  /**
+   * Register a custom function (upper-cased) for this grid. Throws a
+   * `TypeError` for a name no formula could call: one that is not a letter or
+   * `_` followed by letters, digits, `_` or `.`, or that is `IF`, `TRUE` or
+   * `FALSE`.
+   */
   public registerFormulaFunction(name: string, fn: FormulaFn): void {
+    if (!isFunctionName(name)) {
+      throw new TypeError(`invalid formula function name "${name}"`);
+    }
     this.functions.set(name.toUpperCase(), fn);
   }
 
