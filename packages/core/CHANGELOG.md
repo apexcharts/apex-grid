@@ -13,8 +13,38 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   parent, so `grid.selectedRows.map((row) => ({ row, column, value }))` now
   edits the whole selection; with `rowIndex` such rows were skipped. Events
   and validators for those rows see `rowIndex` -1.
+- **`ApexGrid.ownsEvent(event)`** tells whether an event came from this grid
+  or from a grid nested in one of its master-detail panels. The grid uses it
+  so cells of a nested grid no longer drive the outer one (clicks, Space
+  selection, Ctrl+Z, pointer drags).
 
 ### Changed
+- **An open editor stays on the record it was opened for** when the data,
+  sort, filter or page changes while editing; before, it could jump to another
+  row and Enter wrote into the wrong record. The edit is cancelled when its
+  record leaves the view (removed, filtered out or replaced by a copy).
+  `editingCell`, `editingRow` and the `rowIndex` of the edit events are -1 when
+  the edited record is in a pinned row or on another page.
+- **Row mode edits the staged row.** Cells of the row in edit show their staged
+  values, validators receive the staged row as `ctx.data` (a copy of the
+  record with the staged values applied), and a row commit re-validates the
+  row's other editable cells. A checkbox click, or any `cellTemplate` calling
+  `ctx.commit`, joins the row edit instead of writing straight to the record,
+  so `cancelEdit()` rolls it back.
+- **After tabbing into the grid body, the first arrow, Home or Page Up key
+  activates the first cell** instead of moving past it (ArrowDown lands on
+  row 0). Page Up and Page Down move by the rows that fit in the body instead
+  of a fixed 10.
+- **Tree data under a filter shows the ancestors of a match as their own
+  rows** (selectable and exportable, not matching the filter themselves)
+  instead of blank placeholders, and matches under a non-matching parent are
+  no longer hidden.
+- **Replacing `grid.data` prunes tree and detail expansion** of rows that left
+  the data, so `getState()` no longer lists rows that are gone.
+- **Exports write booleans as the checkbox shows them**: true only for
+  `true`, so strings such as `'false'` or `'yes'` and the number 1 export as
+  false. **Currency and progress columns export as numbers**, like number and
+  rating columns; text that is not a number exports as an empty cell.
 - **Replacing `grid.data` with new records clears the undo history** (and
   fires `historyChanged`). Undo used to replay onto the old, detached records:
   nothing changed on screen, yet `cellValueChanged` fired for a row the grid no
@@ -91,6 +121,32 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `pattern()` validators with a global (`g`) or sticky (`y`) RegExp give the
   same result every time; repeated valid values no longer alternate between
   passing and failing.
+- Editing a pinned row edits the pinned record; a checkbox or double-click in
+  a pinned row used to act on a body row. In row mode a cancelled
+  `cellValueChanging` aborts the whole row before anything is written.
+- Keyboard navigation keeps its position per grid: an arrow key in one grid no
+  longer continues from a cell clicked in another, and removing a grid no
+  longer resets the others. The active cell follows filters, sorting, paging,
+  data changes and hidden columns, so the body always keeps one tab stop.
+- Ctrl+End and Ctrl+Home on large grids render the target rows and keep focus
+  on the target cell, and keyboard moves no longer leave the active cell
+  hidden behind the sticky header, pinned rows or pinned columns. Full-width
+  rows from feature modules (group headers, total rows) take keyboard focus.
+- Tree data with `defaultExpanded` keeps a parent the user collapsed when
+  `grid.data` is reassigned. Two rows with the same path are both shown, and
+  `treeRowExpanding` and `treeRowExpanded` list parents that exist only as a
+  path segment.
+- Exported dates stored as `'YYYY-MM-DD'` strings carry the calendar day the
+  grid shows; west of UTC they were written one day early. An invalid `Date`
+  exports as an empty cell instead of throwing (CSV) or writing a value the
+  spreadsheet app reports as corrupt (XLSX).
+- Exporting with source `'selected'` writes rows in the order the grid shows
+  them, followed by selected rows the view hides.
+- Date and currency cells reuse their `Intl` formatters, so re-renders and
+  large exports no longer build one per cell; a malformed locale, currency or
+  date format falls back to a default instead of failing every cell.
+- Sparkline cells no longer show a misleading 0% delta when the series starts
+  at zero, and never print -0%.
 
 ## [3.5.0] - 2026-09-12
 
