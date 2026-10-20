@@ -1466,7 +1466,10 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   /**
    * Register a custom formula function (upper-cased) for this grid, callable from
-   * formulas as `NAME(args)`.
+   * formulas as `NAME(args)`. A name starts with a letter or `_` and goes on
+   * with letters, digits, `_` or `.` (`LOG10`, `STDEV.S`); any other name, and
+   * `IF`, `TRUE` or `FALSE`, throws a `TypeError` because no formula could call
+   * it. A function that throws shows `#VALUE!` in its cell.
    *
    * @example
    * ```ts
