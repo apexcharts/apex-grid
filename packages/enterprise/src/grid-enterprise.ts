@@ -22,6 +22,7 @@ import {
   type ExportOptions,
   type GridFeatureModule,
   getColumnLabel,
+  getColumnTypeRenderer,
   getDisplayColumns,
   PIPELINE,
   type RowRef,
@@ -334,9 +335,10 @@ function isFormulaDisplay(template: unknown): boolean {
 
 /**
  * A display `cellTemplate` showing a cell's formula source, or its value when it
- * has none. The source is left-aligned (formulas read left-to-right) even in
- * right-aligned numeric/currency columns; cells without a formula render their
- * value unchanged.
+ * has none. The source reads left to right (left-aligned, with an `ltr` base
+ * direction so an RTL grid does not move the leading `=`) even in right-aligned
+ * numeric/currency columns; cells without a formula render as the column type
+ * would render them.
  */
 function formulaDisplayTemplate<T extends object>(
   controller: FormulaController<T>
@@ -344,8 +346,8 @@ function formulaDisplayTemplate<T extends object>(
   const template = (ctx: ApexCellContext<T>): unknown => {
     const src = controller.getFormula(ctx.row.data, ctx.column.key as keyof T & string);
     return src === undefined
-      ? ctx.value
-      : html`<span part="formula-source" style="display:block;width:100%;text-align:left">${src}</span>`;
+      ? (getColumnTypeRenderer<T>(ctx.column.type)?.display?.(ctx as never) ?? ctx.value)
+      : html`<span part="formula-source" dir="ltr" style="display:block;width:100%;text-align:left">${src}</span>`;
   };
   (template as { [FORMULA_DISPLAY]?: boolean })[FORMULA_DISPLAY] = true;
   return template;

@@ -583,6 +583,43 @@ describe('formula store (audit batch B15)', () => {
     });
   });
 
+  // --- show formulas display (ent-grid-helpers-5, ent-grid-helpers-6) ---------
+
+  describe('show formulas display', () => {
+    it('keeps the column type renderer for cells without a formula', async () => {
+      const data = makeData();
+      const grid = await mount(data, {
+        cols: [
+          { key: 'id', type: 'number' },
+          { key: 'qty', type: 'number' },
+          { key: 'price', type: 'currency', allowFormula: true },
+          { key: 'total', type: 'number', allowFormula: true },
+        ],
+      });
+      grid.setFormula(data[0], 'price', '=1+1');
+      grid.showFormulas = true;
+      await settle(grid);
+      const row = (grid.rows as unknown as RowEl[]).find((r) => r.data === data[1])!;
+      const cell = [...row.renderRoot.querySelectorAll('apex-grid-cell')].find(
+        (c) => (c as unknown as { column: { key: string } }).column.key === 'price'
+      )!;
+      expect(cell.shadowRoot!.textContent?.trim()).to.equal('$10.00');
+    });
+
+    it('lays the formula source out left to right', async () => {
+      const data = makeData();
+      const grid = await mount(data);
+      grid.setFormula(data[0], 'total', '=B1*C1');
+      grid.showFormulas = true;
+      await settle(grid);
+      const row = (grid.rows as unknown as RowEl[]).find((r) => r.data === data[0])!;
+      const span = [...row.renderRoot.querySelectorAll('apex-grid-cell')]
+        .map((c) => c.shadowRoot!.querySelector('[part="formula-source"]'))
+        .find(Boolean);
+      expect(span?.getAttribute('dir')).to.equal('ltr');
+    });
+  });
+
   // --- range precedents are indexed, not expanded (ent-formula-store-5) -------
 
   describe('range precedents', () => {
