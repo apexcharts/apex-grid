@@ -406,6 +406,26 @@ describe('chart dialog', () => {
       expect(renders).to.equal(0);
     });
 
+    it('reassigning a snapshot model (the range handle) reads no fields', async () => {
+      const grid = await mountGrid();
+      grid.selectRange({ row: 0, column: 'name' }, { row: 1, column: 'q1' });
+      key(grid, { key: 'F1', altKey: true });
+      const panel = document.querySelector('apex-grid-chart') as ApexGridChart;
+      expect(await until(() => panel.getChart() != null)).to.equal(true);
+      await settle(panel);
+      let fields = 0;
+      const original = grid.getChartFields.bind(grid);
+      grid.getChartFields = () => {
+        fields += 1;
+        return original();
+      };
+      for (let r = 0; r < 3; r += 1) {
+        panel.staticModel = { ...(panel.staticModel as ChartModel) };
+        await settle(panel, 2);
+      }
+      expect(fields).to.equal(0);
+    });
+
     it('a live view chart skips range changes and reads fields once per frame', async () => {
       const grid = await mountGrid();
       const panel = await fixture<ApexGridChart>(

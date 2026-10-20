@@ -346,8 +346,11 @@ export class ApexGridChart extends LitElement {
     // are rare and interactive, so the rebuild is imperceptible; live data / sort / filter (which
     // arrive via the grid signal, not a property change) keep the smooth updateOptions path.
     if (changed.has('format') || changed.has('definition')) this.#formatDirty = true;
-    // A snapshot ignores view signals, so a panel turned live again re-reads the fields.
-    if (changed.has('staticModel')) this.#fieldsDirty = true;
+    // A snapshot ignores view signals, so a panel turned live again re-reads the fields. A
+    // snapshot replaced by another (the range handle on each drag step) does not.
+    if (changed.has('staticModel') && changed.get('staticModel') && !this.staticModel) {
+      this.#fieldsDirty = true;
+    }
     // Type / source / theme / cross-filter changes (and a fresh grid) all force a redraw.
     if (
       changed.has('type') ||
