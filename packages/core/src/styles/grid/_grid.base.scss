@@ -108,12 +108,15 @@ apex-virtualizer {
     }
 }
 
+// Anchored with a physical `left`, not a logical inset: the resize controller
+// moves it with a physical translateX measured from the left edge in either
+// direction.
 [part~='resize-indicator'] {
     position: absolute;
     height: 100%;
     background-color: $grid-resize-line-color;
     width: rem(2px);
-    inset-inline-start: 0;
+    left: 0;
     top: 0;
     z-index: calc(var(--z-index-base) + 1);
 }

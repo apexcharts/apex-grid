@@ -110,11 +110,8 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     // fixed right edge instead.
     const rtl = isRTL(this);
     const width = Math.max(rtl ? rect.right - clientX : clientX - rect.left, MIN_COL_RESIZE_WIDTH);
-    // The indicator is drawn with `translateX`, which is physical either way, so
-    // it needs the physical x of the edge being dragged.
-    const x = rtl ? this.offsetLeft + this.offsetWidth - width : this.offsetLeft + width;
 
-    this.resizeController.resize(this.column, width, x);
+    this.resizeController.resize(this.column, width, this.resizeController.edge(this, width, rtl));
   };
 
   #handleResizeStart(ev: PointerEvent) {

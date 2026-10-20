@@ -235,3 +235,97 @@ describe('Header drag: reorder', function () {
     expect(keys(grid)).to.deep.equal(['id', 'name', 'active', 'importance']);
   });
 });
+
+describe('Header drag: resize indicator', function () {
+  this.timeout(20000);
+  afterEach(async () => {
+    await resetMouse();
+    fixtureCleanup();
+  });
+
+  for (const dir of ['ltr', 'rtl'] as const) {
+    it(`${dir}: the indicator sits on the dragged edge from pointerdown through the drag`, async () => {
+      const grid = await mount(
+        [fixed('id', { resizable: true, width: '150px' }), fixed('name', { resizable: true })],
+        dir
+      );
+      const header = headers(grid).get('id')!;
+      const rect = header.getBoundingClientRect();
+      const grip = header.renderRoot.querySelector<HTMLElement>('[part~="resizable"]')!;
+      const g = grip.getBoundingClientRect();
+      const y = Math.round(g.top + g.height / 2);
+      await sendMouse({ type: 'move', position: [Math.round(g.left + g.width / 2), y] });
+      await sendMouse({ type: 'down' });
+      await grid.updateComplete;
+      const indicator = () =>
+        grid.renderRoot.querySelector<HTMLElement>('[part~="resize-indicator"]')!;
+      const edge = dir === 'rtl' ? rect.left : rect.right;
+      expect(indicator().getBoundingClientRect().left, 'on pointerdown').to.be.closeTo(edge, 3);
+
+      const clientX = Math.round(dir === 'rtl' ? rect.right - 140 : rect.left + 140);
+      await sendMouse({ type: 'move', position: [clientX, y] });
+      await grid.updateComplete;
+      expect(indicator().getBoundingClientRect().left, 'follows the pointer').to.be.closeTo(
+        clientX,
+        3
+      );
+      await sendMouse({ type: 'up' });
+    });
+  }
+
+  // Columns wider than the grid: under RTL the header row then overflows to
+  // the left of the grid, so a header offset would land the line outside it.
+  for (const dir of ['ltr', 'rtl'] as const) {
+    for (const scroll of [0, 150]) {
+      for (const [key, pinned] of [
+        ['id', false],
+        ['name', false],
+        ['importance', true],
+      ] as const) {
+        it(`${dir}, overflowing, scrolled ${scroll}px, ${key}${pinned ? ' pinned' : ''}: the indicator stays on the dragged edge`, async () => {
+          const grid = await mount(
+            [
+              fixed('id', { resizable: true, width: '200px' }),
+              fixed('name', { resizable: true, width: '300px' }),
+              fixed('active', { resizable: true, width: '300px' }),
+              fixed('importance', {
+                resizable: true,
+                width: '300px',
+                pinned: pinned ? 'end' : undefined,
+              }),
+            ],
+            dir
+          );
+          grid.parentElement!.style.width = '600px';
+          await nextFrame();
+          expect(grid.scrollWidth, 'columns overflow').to.be.greaterThan(grid.clientWidth);
+          grid.scrollLeft = dir === 'rtl' ? -scroll : scroll;
+          await nextFrame();
+          await nextFrame();
+
+          const header = headers(grid).get(key)!;
+          const rect = header.getBoundingClientRect();
+          const grip = header.renderRoot.querySelector<HTMLElement>('[part~="resizable"]')!;
+          const g = grip.getBoundingClientRect();
+          const y = Math.round(g.top + g.height / 2);
+          await sendMouse({ type: 'move', position: [Math.round(g.left + g.width / 2), y] });
+          await sendMouse({ type: 'down' });
+          await grid.updateComplete;
+          const indicator = () =>
+            grid.renderRoot.querySelector<HTMLElement>('[part~="resize-indicator"]')!;
+          const edge = dir === 'rtl' ? rect.left : rect.right;
+          expect(indicator().getBoundingClientRect().left, 'on pointerdown').to.be.closeTo(edge, 3);
+
+          const clientX = Math.round(dir === 'rtl' ? rect.right - 160 : rect.left + 160);
+          await sendMouse({ type: 'move', position: [clientX, y] });
+          await grid.updateComplete;
+          expect(indicator().getBoundingClientRect().left, 'follows the pointer').to.be.closeTo(
+            clientX,
+            3
+          );
+          await sendMouse({ type: 'up' });
+        });
+      }
+    }
+  }
+});
