@@ -1,6 +1,6 @@
 import type { ReactiveController } from 'lit';
 import type ApexGridRow from '../components/row.js';
-import { NAVIGATION_STATE, SENTINEL_NODE } from '../internal/constants.js';
+import { SENTINEL_NODE } from '../internal/constants.js';
 import { GRID_ROW_TAG } from '../internal/tags.js';
 import type { ActiveNode, ColumnConfiguration, GridHost, Keys } from '../internal/types.js';
 import { getDisplayColumns, isRTL } from '../internal/utils.js';
@@ -25,14 +25,16 @@ export class NavigationController<T extends object> implements ReactiveControlle
     return this.host.scrollContainer;
   }
 
-  protected state = NAVIGATION_STATE;
-  protected _active = SENTINEL_NODE;
+  /**
+   * The active cell of this grid. Instance state on purpose: every grid on a
+   * page, including one nested in another grid's detail panel, keeps its own.
+   */
+  protected _active = SENTINEL_NODE as ActiveNode<T>;
 
   protected get nextNode() {
-    const node = this.state.get('current')!;
-    return node === SENTINEL_NODE
-      ? { column: this.firstColumn, row: 0 }
-      : ({ ...node } as ActiveNode<T>);
+    return this._active === SENTINEL_NODE
+      ? ({ column: this.firstColumn, row: 0 } as ActiveNode<T>)
+      : ({ ...this._active } as ActiveNode<T>);
   }
 
   protected get columns(): Array<{ key: Keys<T>; hidden?: boolean }> {
@@ -90,8 +92,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
    * cell is active (the scroll container keeps focus as the entry point).
    */
   public focusActiveCell(): void {
-    const node = this.state.get('current');
-    if (!node || node === SENTINEL_NODE) return;
+    if (this._active === SENTINEL_NODE) return;
     void (async () => {
       await this.host.updateComplete;
       let cell = this.findActiveCell();
@@ -104,13 +105,11 @@ export class NavigationController<T extends object> implements ReactiveControlle
   }
 
   public get active() {
-    return this._active as ActiveNode<T>;
+    return this._active;
   }
 
   public set active(node: ActiveNode<T>) {
     this._active = node;
-    this.state.set('previous', this._active);
-    this.state.set('current', node);
     this.host.requestUpdate();
   }
 
@@ -227,7 +226,6 @@ export class NavigationController<T extends object> implements ReactiveControlle
 
   public hostDisconnected() {
     this.active = SENTINEL_NODE as ActiveNode<T>;
-    this.state = NAVIGATION_STATE;
   }
 
   protected get editing() {
@@ -248,8 +246,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
   protected handleEditKey(event: KeyboardEvent): boolean {
     if (event.key !== 'Enter' && event.key !== 'F2') return false;
     if (event.ctrlKey || event.metaKey || event.altKey) return false;
-    const node = this.state.get('current');
-    if (!node || node === SENTINEL_NODE) return false;
+    if (this._active === SENTINEL_NODE) return false;
     const editing = this.editing;
     if (!editing?.enabled) return false;
     const column = this.host.getColumn(this.active.column);
