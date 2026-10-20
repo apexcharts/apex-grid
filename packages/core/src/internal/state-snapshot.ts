@@ -255,6 +255,10 @@ export function serializeSort<T extends object>(
 
 // --- filter ----------------------------------------------------------------
 
+function copyTerm(term: unknown): unknown {
+  return Array.isArray(term) ? [...term] : term;
+}
+
 export function serializeFilter<T extends object>(
   expressions: ReadonlyArray<FilterExpression<T>>
 ): FilterStateSnapshot[] {
@@ -263,27 +267,43 @@ export function serializeFilter<T extends object>(
     return {
       key: String(expression.key),
       operand: typeof condition === 'string' ? condition : condition.name,
-      searchTerm: expression.searchTerm,
+      // A copied array term, so editing a snapshot never edits the live filter.
+      searchTerm: copyTerm(expression.searchTerm),
       criteria: expression.criteria,
       caseSensitive: expression.caseSensitive,
     };
   });
 }
 
+/** Operands a first-party filter UI registered, resolvable on any column. */
+const registeredOperands = new Map<string, FilterOperation<unknown>>();
+
+/**
+ * Make `operation` resolvable by its `name` on every column, after the
+ * column type's own operands. For first-party filter UIs (the enterprise set
+ * filter) whose expressions must survive `setState(getState())`. The
+ * operation must be stateless: everything it needs travels in `searchTerm`.
+ */
+export function registerFilterOperand(operation: FilterOperation<unknown>): void {
+  registeredOperands.set(operation.name, operation);
+}
+
 /**
  * Resolve a filter operand name (e.g. `'contains'`) to the live
- * {@link FilterOperation} of `column`'s type. Only the operand table's own
- * names resolve, so `'toString'` or `'constructor'` never pass as operands.
+ * {@link FilterOperation} of `column`'s type, else to one registered with
+ * {@link registerFilterOperand}. Only the tables' own names resolve, so
+ * `'toString'` or `'constructor'` never pass as operands.
  */
 export function resolveFilterOperand<T extends object>(
   column: ColumnConfiguration<T>,
   name: unknown
 ): FilterOperation<unknown> | undefined {
+  if (typeof name !== 'string') return undefined;
   const operands = getFilterOperandsFor(column) as unknown as Record<
     string,
     FilterOperation<unknown>
   >;
-  return typeof name === 'string' && Object.hasOwn(operands, name) ? operands[name] : undefined;
+  return Object.hasOwn(operands, name) ? operands[name] : registeredOperands.get(name);
 }
 
 /**
@@ -321,7 +341,7 @@ export function deserializeFilter<T extends object>(
     // Omitted fields stay absent so the column defaults (case sensitivity,
     // 'and' criteria) apply rather than an explicit undefined.
     const expression: Record<string, unknown> = { key: snapshot.key as Keys<T>, condition };
-    if (snapshot.searchTerm !== undefined) expression.searchTerm = snapshot.searchTerm;
+    if (snapshot.searchTerm !== undefined) expression.searchTerm = copyTerm(snapshot.searchTerm);
     if (snapshot.criteria !== undefined) expression.criteria = snapshot.criteria;
     if (snapshot.caseSensitive !== undefined) expression.caseSensitive = snapshot.caseSensitive;
     expressions.push(expression as unknown as FilterExpression<T>);

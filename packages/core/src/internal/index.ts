@@ -74,6 +74,7 @@ export {
   applyColumnLayout,
   deserializeFilter,
   mergeColumnLayout,
+  registerFilterOperand,
   resolveFilterOperand,
   resolveRowRefs,
   serializeColumnLayout,
