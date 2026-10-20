@@ -7,12 +7,14 @@ import type { BadgeVariant, ColumnConfiguration, StatusVariant } from './types.j
 
 const RATING_DEFAULT_MAX = 5;
 
-function getRatingMax(column: { max?: number }): number {
+/** The star count of a `'rating'` column: its `max`, or 5. */
+export function getRatingMax(column: { max?: number }): number {
   const max = typeof column.max === 'number' ? Math.floor(column.max) : RATING_DEFAULT_MAX;
   return max > 0 ? max : RATING_DEFAULT_MAX;
 }
 
-function clampRating(value: unknown, max: number): number {
+/** A rating value as a whole number from 0 to `max` (0 when not a number). */
+export function clampRating(value: unknown, max: number): number {
   const n = typeof value === 'number' ? value : Number(value ?? 0);
   if (!Number.isFinite(n)) return 0;
   if (n < 0) return 0;
@@ -299,7 +301,7 @@ function currencyFormatter(locale?: string, currency = 'USD'): Intl.NumberFormat
  * timestamp / ISO string). Empty inputs commit `null` regardless of the
  * source shape, which is the simplest "clear" semantics.
  */
-function commitDateInSameShape(original: unknown, next: Date | null): unknown {
+export function commitDateInSameShape(original: unknown, next: Date | null): unknown {
   if (next === null) return null;
   if (original instanceof Date) return next;
   if (typeof original === 'number') return next.getTime();

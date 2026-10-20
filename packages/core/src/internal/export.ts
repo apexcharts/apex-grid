@@ -208,7 +208,12 @@ export function formatDateForCSV<T extends object>(
   return Number.isNaN(value.getTime()) ? '' : dateFormatter(column.format).format(value);
 }
 
-function escapeCSVCell(value: ExportCellValue, delimiter: string): string {
+/**
+ * Quotes one delimited-text field when it holds the delimiter, a double quote
+ * or a line break (doubling inner quotes), the convention CSV files and
+ * spreadsheet clipboards share. Blank values become an empty field.
+ */
+export function escapeCSVCell(value: ExportCellValue, delimiter: string): string {
   if (value === null || value === undefined || value === '') return '';
   const text = value instanceof Date ? value.toISOString() : String(value);
   const needsQuoting =

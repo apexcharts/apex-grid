@@ -13,11 +13,19 @@
 export { ApexGrid } from '../components/grid.js';
 export { viewIndexer } from '../controllers/history.js';
 export { gridStateContext, StateController } from '../controllers/state.js';
-export { getColumnTypeRenderer } from './column-types.js';
+export {
+  clampRating,
+  commitDateInSameShape,
+  getColumnTypeRenderer,
+  getRatingMax,
+  getSelectOptions,
+  parseDate,
+} from './column-types.js';
 export { PIPELINE } from './constants.js';
 export type { ExportCellValue, ExportFormat, ExportOptions } from './export.js';
 export {
   downloadBlob,
+  escapeCSVCell,
   getColumnLabel,
   resolveExportColumns,
   resolveExportRows,
