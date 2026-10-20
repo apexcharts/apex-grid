@@ -62,6 +62,12 @@ export interface ApplyCellEditOptions {
    * previously valid value during undo/redo).
    */
   validate?: boolean;
+  /**
+   * Emit the cancellable `cellValueChanging` before writing. Defaults to
+   * `true`. Set to `false` when the caller already ran the gate for this
+   * write (a row commit gates every cell before writing any).
+   */
+  gate?: boolean;
 }
 
 /**
@@ -87,7 +93,7 @@ export class EditingController<T extends object> implements ReactiveController {
   /**
    * Pending values keyed by column for the currently editing row. Populated in
    * row mode as the user edits individual cells; flushed on
-   * {@link commitRow}.
+   * {@link commitRow}. Holds only values that differ from the record.
    */
   public pending: Map<Keys<T>, unknown> = new Map();
 
@@ -113,10 +119,11 @@ export class EditingController<T extends object> implements ReactiveController {
   #draftRejected = false;
 
   /**
-   * Monotonic token bumped whenever the validation-error set changes. Forwarded
-   * down to each cell as a reactive property so a validation-only change
-   * re-renders the affected cells (toggling `aria-invalid` and the error node)
-   * without re-running the data pipeline. Stays `0` until the first failure.
+   * Monotonic token bumped whenever the validation-error set or the staged
+   * row-mode values change. Forwarded down to each cell as a reactive property
+   * so such a change re-renders the affected cells (toggling `aria-invalid`
+   * and the error node, showing a staged value) without re-running the data
+   * pipeline. Stays `0` until the first failure or staged value.
    */
   public get validationVersion(): number {
     return this.#validationVersion;
@@ -325,11 +332,9 @@ export class EditingController<T extends object> implements ReactiveController {
       }
     }
 
-    const proceed = this.host.emitEvent('cellValueChanging', {
-      detail: { key: columnKey, rowIndex, data, oldValue, newValue: value },
-      cancelable: true,
-    });
-    if (!proceed) return 'cancelled';
+    if (options?.gate !== false && !this.#gate(rowIndex, columnKey, data, value)) {
+      return 'cancelled';
+    }
 
     record[columnKey as string] = value;
     this.clearCellErrors(data, columnKey);
@@ -340,12 +345,35 @@ export class EditingController<T extends object> implements ReactiveController {
     return 'applied';
   }
 
+  /** Emits the cancellable `cellValueChanging`; `false` when a listener vetoed it. */
+  #gate(rowIndex: number, columnKey: Keys<T>, data: T, value: unknown): boolean {
+    return this.host.emitEvent('cellValueChanging', {
+      detail: {
+        key: columnKey,
+        rowIndex,
+        data,
+        oldValue: (data as Record<string, unknown>)[columnKey as string],
+        newValue: value,
+      },
+      cancelable: true,
+    });
+  }
+
   /**
    * Runs the column's declarative validators against a candidate value and
    * returns the collected error messages (empty when the value passes or the
    * column has no validators).
+   *
+   * @param row - What validators see as `ctx.data`: the record itself, or in
+   * a row commit the staged row (the record with the staged values applied).
    */
-  public validateCell(rowIndex: number, columnKey: Keys<T>, data: T, value: unknown): string[] {
+  public validateCell(
+    rowIndex: number,
+    columnKey: Keys<T>,
+    data: T,
+    value: unknown,
+    row: T = data
+  ): string[] {
     const column = this.host.getColumn(columnKey);
     if (!column?.validators?.length) return [];
     // `ColumnConfiguration<T>` is a distributive conditional, so `validators`
@@ -353,9 +381,32 @@ export class EditingController<T extends object> implements ReactiveController {
     // the runner (the runtime shapes are identical).
     return runValidators(column.validators as Validator<T>[], value, {
       column,
-      data,
+      data: row,
       rowIndex,
     } as ValidatorContext<T>);
+  }
+
+  /**
+   * The staged row-mode values of `data` keyed by column, or `null` when
+   * `data` is not the row in edit. Cells read it to show staged values.
+   */
+  public stagedValues(data: T): ReadonlyMap<Keys<T>, unknown> | null {
+    return this.activeRow?.data === data ? this.pending : null;
+  }
+
+  /**
+   * Stages `value` for the active row's `columnKey`. A value equal to the
+   * record's is unstaged (and its stale error cleared), so re-entering the
+   * original undoes a staged edit.
+   */
+  #stage(data: T, columnKey: Keys<T>, value: unknown): void {
+    if (Object.is(value, (data as Record<string, unknown>)[columnKey as string])) {
+      if (this.pending.delete(columnKey)) this.#validationVersion += 1;
+      this.clearCellErrors(data, columnKey);
+    } else if (!this.pending.has(columnKey) || !Object.is(this.pending.get(columnKey), value)) {
+      this.pending.set(columnKey, value);
+      this.#validationVersion += 1;
+    }
   }
 
   /**
@@ -446,9 +497,14 @@ export class EditingController<T extends object> implements ReactiveController {
     const active = this.activeCell;
     if (!active) return false;
     const { rowIndex, columnKey, data } = active;
-    const oldValue = (data as Record<string, unknown>)[columnKey as string];
+    // The value the editor opened on: in row mode a staged value, so an
+    // untouched editor keeps it staged.
+    const staged = this.stagedValues(data);
+    const current = staged?.has(columnKey)
+      ? staged.get(columnKey)
+      : (data as Record<string, unknown>)[columnKey as string];
     const draft = this.#draft;
-    const candidate = args.length > 0 ? args[0] : draft === NO_DRAFT ? oldValue : draft;
+    const candidate = args.length > 0 ? args[0] : draft === NO_DRAFT ? current : draft;
 
     if (this.mode === 'cell') {
       const result = this.applyCellEdit(rowIndex, columnKey, data, candidate);
@@ -472,10 +528,8 @@ export class EditingController<T extends object> implements ReactiveController {
       return true;
     }
 
-    // Row mode — stage and exit cell edit (row stays open).
-    if (!Object.is(candidate, oldValue)) {
-      this.pending.set(columnKey, candidate);
-    }
+    // Row mode: stage and exit cell edit (row stays open).
+    this.#stage(data, columnKey, candidate);
     this.#endCellEdit();
     this.host.requestUpdate();
     return true;
@@ -486,15 +540,25 @@ export class EditingController<T extends object> implements ReactiveController {
    * body or a pinned row) without entering edit mode. Used by interactive
    * display widgets (e.g. the boolean checkbox) that handle their own input.
    * Goes through the same `cellValueChanging` / `cellValueChanged` event path
-   * as a normal commit.
+   * as a normal commit. In row mode the value joins the row's staged values
+   * instead (opening the row edit first), so it commits or cancels with the
+   * rest of the row.
    *
-   * @returns `true` if the value was applied, `false` if rejected by
-   * `cellValueChanging.preventDefault()` or the column is not editable.
+   * @returns `true` if the value was applied (or staged), `false` if rejected
+   * by `cellValueChanging.preventDefault()`, a validator, a previous row that
+   * could not be committed, or the column is not editable.
    */
   public async commitImmediate(data: T, columnKey: Keys<T>, value: unknown): Promise<boolean> {
     if (!this.enabled) return false;
     const column = this.host.getColumn(columnKey);
     if (!column || !this.isEditable(column)) return false;
+
+    if (this.mode === 'row') {
+      if (!(await this.#openRow(data))) return false;
+      this.#stage(data, columnKey, value);
+      this.host.requestUpdate();
+      return true;
+    }
 
     const result = this.applyCellEdit(this.#indexOf(data), columnKey, data, value);
     if (result === 'cancelled') return false;
@@ -526,61 +590,112 @@ export class EditingController<T extends object> implements ReactiveController {
    * Commits all pending edits for the currently editing row. Emits
    * `cellValueChanging` for every changed cell and `rowEditEnded` at the end.
    *
-   * @returns `true` if the row was applied, `false` if any cell change was
-   * cancelled (the row remains in edit mode in that case).
+   * @remarks
+   * Validators see the staged row as `ctx.data`, and once any value is staged
+   * the other editable cells of the row are validated too, so a cross-field
+   * rule judges the row being saved. Every cell passes its `cellValueChanging`
+   * gate before any is written: an invalid or cancelled cell aborts the whole
+   * row.
+   *
+   * @returns `true` if the row was applied, `false` if any cell failed
+   * validation or its change was cancelled (the row remains in edit mode).
    */
   public async commitRow(): Promise<boolean> {
     const active = this.activeRow;
     if (!active) return false;
-    const { rowIndex, data } = active;
+    const { data } = active;
 
     // Make sure any open cell editor flushes its pending value first.
     if (this.activeCell?.data === data) {
       await this.commitCell();
     }
+    const rowIndex = active.rowIndex;
+    const record = data as Record<string, unknown>;
+    const changes = [...this.pending].filter(
+      ([columnKey, candidate]) => !Object.is(candidate, record[columnKey as string])
+    );
 
-    // Pre-validate every pending cell so a single failure aborts the whole row
-    // commit without a partial write. Each failing cell is marked invalid and
-    // the row stays in edit mode.
-    let hasInvalid = false;
-    for (const [columnKey, candidate] of this.pending) {
-      const errors = this.validateCell(rowIndex, columnKey, data, candidate);
-      if (errors.length > 0) {
-        this.#setCellErrors(data, columnKey, errors);
-        this.host.emitEvent('cellValidationFailed', {
-          detail: { key: columnKey, rowIndex, data, value: candidate, errors },
-        });
-        hasInvalid = true;
-      }
-    }
-    if (hasInvalid) {
+    if (this.pending.size > 0 && !this.#validateRow(rowIndex, data)) {
       this.host.requestUpdate();
       return false;
     }
+    for (const [columnKey, candidate] of changes) {
+      if (!this.#gate(rowIndex, columnKey, data, candidate)) return false;
+    }
 
-    // Coalesce the row's writes into one undo step.
+    // Coalesce the row's writes into one undo step. Validation and the gate
+    // already ran above for every cell.
     this.history?.beginBatch();
     try {
-      for (const [columnKey, candidate] of this.pending) {
-        // Validation already ran above; a cancelled cell aborts the whole row
-        // commit, leaving it in edit mode.
-        if (
-          this.applyCellEdit(rowIndex, columnKey, data, candidate, { validate: false }) ===
-          'cancelled'
-        ) {
-          return false;
-        }
+      for (const [columnKey, candidate] of changes) {
+        this.applyCellEdit(rowIndex, columnKey, data, candidate, { validate: false, gate: false });
       }
     } finally {
       this.history?.endBatch();
     }
 
+    // Staged values were showing in the row's cells, and a cell whose record
+    // value ended where it started gets no new value binding: re-render them.
+    if (this.pending.size > 0) this.#validationVersion += 1;
     this.pending.clear();
     this.activeRow = null;
     this.host.requestUpdate(PIPELINE);
     await this.host.updateComplete;
     this.host.emitEvent('rowEditEnded', { detail: { rowIndex, committed: true } });
     return true;
+  }
+
+  /**
+   * Validates the staged row, marking each failing cell (and clearing the
+   * marker of each passing one). `false` when any cell failed. A staged cell
+   * is judged on its staged value; another editable cell fails only when the
+   * staged values made it invalid (a cross-field rule), so an untouched value
+   * that was already invalid does not block the row.
+   */
+  #validateRow(rowIndex: number, data: T): boolean {
+    // The record with the staged values applied, keeping its prototype so
+    // validators reading accessors or methods still work.
+    const row = Object.assign(Object.create(Object.getPrototypeOf(data)), data) as T;
+    for (const [columnKey, value] of this.pending) {
+      (row as Record<string, unknown>)[columnKey as string] = value;
+    }
+    let valid = true;
+    for (const column of this.host.columns) {
+      if (!this.isEditable(column) || !column.validators?.length) continue;
+      const columnKey = column.key;
+      const value = (row as Record<string, unknown>)[columnKey as string];
+      const errors = this.#validateStaged(rowIndex, columnKey, data, value, row);
+      if (errors.length === 0) {
+        this.clearCellErrors(data, columnKey);
+        continue;
+      }
+      if (
+        !this.pending.has(columnKey) &&
+        this.validateCell(rowIndex, columnKey, data, value).length > 0
+      ) {
+        continue;
+      }
+      valid = false;
+      this.#setCellErrors(data, columnKey, errors);
+      this.host.emitEvent('cellValidationFailed', {
+        detail: { key: columnKey, rowIndex, data, value, errors },
+      });
+    }
+    return valid;
+  }
+
+  /**
+   * Validates a cell against the staged row. A validator that throws on the
+   * copy (one reading private class fields of the record, say) is run again
+   * against the live record, as before staged rows existed; a throw there
+   * propagates.
+   */
+  #validateStaged(rowIndex: number, columnKey: Keys<T>, data: T, value: unknown, row: T): string[] {
+    try {
+      return this.validateCell(rowIndex, columnKey, data, value, row);
+    } catch {
+      return this.validateCell(rowIndex, columnKey, data, value);
+    }
   }
 
   /**
@@ -592,27 +707,12 @@ export class EditingController<T extends object> implements ReactiveController {
     const { rowIndex, data } = this.activeRow;
     this.#endCellEdit();
     this.activeRow = null;
+    // Staged values were showing in the row's cells: re-render them.
+    if (this.pending.size > 0) this.#validationVersion += 1;
     this.pending.clear();
     // Abandoning the row discards every validation error raised for it.
     this.clearRecordErrors(data);
     this.host.requestUpdate();
     this.host.emitEvent('rowEditEnded', { detail: { rowIndex, committed: false } });
-  }
-
-  /**
-   * Returns the current pending or committed value for `(rowIndex, columnKey)`.
-   * Cells in row mode read this so unstaged-but-pending values are reflected
-   * during the edit.
-   */
-  public getValue(rowIndex: number, columnKey: Keys<T>): unknown {
-    if (
-      this.mode === 'row' &&
-      this.activeRow?.rowIndex === rowIndex &&
-      this.pending.has(columnKey)
-    ) {
-      return this.pending.get(columnKey);
-    }
-    const data = this.host.pageItems[rowIndex] as T | undefined;
-    return data ? (data as Record<string, unknown>)[columnKey as string] : undefined;
   }
 }

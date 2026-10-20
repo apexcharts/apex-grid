@@ -239,6 +239,9 @@ export default class ApexGridCell<T extends object> extends LitElement {
   /** Validation errors resolved in {@link willUpdate}, consumed in render. */
   #errors: readonly string[] | null = null;
 
+  /** Whether {@link value} currently shows a staged row-mode value. */
+  #staged = false;
+
   /**
    * The held draft the editor resumed from when it opened on an edit already
    * in progress (see {@link #editorValue}), or `null`.
@@ -263,6 +266,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
   }
 
   protected override willUpdate(changed: PropertyValues<this>) {
+    this.#applyStaged();
     if (changed.has('editing')) {
       this.#resumed = this.editing
         ? this.editingController.heldDraft(this.row.data, this.column.key)
@@ -295,6 +299,26 @@ export default class ApexGridCell<T extends object> extends LitElement {
 
     this.#applyValidation();
     this.#applyDecoration();
+  }
+
+  /**
+   * Row mode: while the row is in edit, shows the cell's staged value in
+   * place of the record's (display and a re-opened editor alike), and the
+   * record's again once the row commits or cancels. One property read for
+   * cells of rows not in edit.
+   */
+  #applyStaged(): void {
+    const staged = this.state?.editing?.activeRow
+      ? this.editingController.stagedValues(this.row.data)
+      : null;
+    const key = this.column.key;
+    if (staged?.has(key)) {
+      this.value = staged.get(key) as PropertyType<T>;
+      this.#staged = true;
+    } else if (this.#staged) {
+      this.#staged = false;
+      this.value = this.row.data[key] as PropertyType<T>;
+    }
   }
 
   /**

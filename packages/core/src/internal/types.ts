@@ -437,9 +437,18 @@ export interface ColumnGroupConfiguration {
 export interface ValidatorContext<T extends object, K extends Keys<T> = Keys<T>> {
   /** The column configuration the value is being validated against. */
   column: ColumnConfiguration<T, K>;
-  /** The full data record being edited (a live reference). */
+  /**
+   * The full data record being edited (a live reference). In a row-mode
+   * commit it is the staged row instead: a copy of the record (same
+   * prototype) with the row's staged values applied, so cross-field rules
+   * see the row being saved. A validator that throws on the copy (one that
+   * reads private class fields, say) is run again with the live record.
+   */
   data: T;
-  /** The view-relative row index of the edited cell (`-1` for a pinned row). */
+  /**
+   * The view-relative row index of the edited cell (`-1` for a pinned row or
+   * a record on another page).
+   */
   rowIndex: number;
 }
 

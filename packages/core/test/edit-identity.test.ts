@@ -404,6 +404,229 @@ describe('Edit identity', () => {
       expect(body0.name).to.equal('A');
     });
   });
+
+  describe('row mode shows and validates the staged row', () => {
+    beforeEach(async () => {
+      F.editing = { enabled: true, mode: 'row' };
+      F.rowPinning = { enabled: false };
+      await F.setUp();
+    });
+
+    it('a staged cell shows its staged value, also when re-opened (core-editing-history-4)', async () => {
+      const record = F.grid.data[0];
+      await F.grid.editCell(0, 'name');
+      await F.waitForUpdate();
+      const [editor] = F.openEditors();
+      F.type(editor.input, 'Staged');
+      await F.press(editor.input, 'Enter');
+
+      expect(F.grid.editingRow).to.equal(0);
+      expect(record.name, 'not yet committed').to.equal('A');
+      expect(F.cellOf(record, 'name').value, 'cell shows the staged value').to.equal('Staged');
+
+      await F.grid.editCell(0, 'name');
+      await F.waitForUpdate();
+      const [reopened] = F.openEditors();
+      expect(reopened.input.value, 're-opened editor shows staged').to.equal('Staged');
+      await F.press(reopened.input, 'Enter');
+      expect(F.cellOf(record, 'name').value, 'untouched re-open keeps it staged').to.equal(
+        'Staged'
+      );
+
+      F.grid.cancelEdit();
+      await F.waitForUpdate();
+      expect(F.cellOf(record, 'name').value, 'cancel shows the record again').to.equal('A');
+    });
+
+    it('re-entering the original value unstages it (core-editing-history-5)', async () => {
+      const record = F.grid.data[0];
+      await F.grid.editCell(0, 'id');
+      await F.waitForUpdate();
+      F.type(F.openEditors()[0].input, '-5');
+      await F.press(F.openEditors()[0].input, 'Enter');
+      expect(await F.grid.commitEdit(), 'invalid row rejected').to.equal(false);
+
+      await F.grid.editCell(0, 'id');
+      await F.waitForUpdate();
+      F.type(F.openEditors()[0].input, '1');
+      await F.press(F.openEditors()[0].input, 'Enter');
+      expect(await F.grid.commitEdit(), 'restored row commits').to.equal(true);
+      await F.waitForUpdate();
+      expect(record.id).to.equal(1);
+      expect(F.cellOf(record, 'id').hasAttribute('aria-invalid')).to.equal(false);
+    });
+
+    it('a cancelled cell aborts the whole row before any write (core-editing-history-6)', async () => {
+      const record = F.grid.data[0];
+      const changed: string[] = [];
+      F.grid.addEventListener('cellValueChanging', (e) => {
+        if (e.detail.key === 'start') e.preventDefault();
+      });
+      F.grid.addEventListener('cellValueChanged', (e) => changed.push(String(e.detail.key)));
+      await F.grid.editCell(0, 'name');
+      await F.waitForUpdate();
+      F.type(F.openEditors()[0].input, 'N');
+      await F.press(F.openEditors()[0].input, 'Enter');
+      await F.grid.editCell(0, 'start');
+      await F.waitForUpdate();
+      F.type(F.openEditors()[0].input, '0');
+      await F.press(F.openEditors()[0].input, 'Enter');
+
+      expect(await F.grid.commitEdit()).to.equal(false);
+      expect(record.name, 'no partial write').to.equal('A');
+      expect(changed).to.deep.equal([]);
+      expect(F.grid.editingRow, 'row stays open').to.equal(0);
+    });
+
+    it('validates against the staged row (sweep-editing-state-5)', async () => {
+      const record = F.grid.data[1]; // start 10, end 12
+      await F.grid.editRow(1);
+      await F.grid.editCell(1, 'start');
+      await F.waitForUpdate();
+      F.type(F.openEditors()[0].input, '1');
+      await F.press(F.openEditors()[0].input, 'Enter');
+      await F.grid.editCell(1, 'end');
+      await F.waitForUpdate();
+      F.type(F.openEditors()[0].input, '5');
+      await F.press(F.openEditors()[0].input, 'Enter');
+      expect(await F.grid.commitEdit(), 'start 1, end 5 is a valid row').to.equal(true);
+      expect([record.start, record.end]).to.deep.equal([1, 5]);
+
+      await F.grid.editCell(1, 'start');
+      await F.waitForUpdate();
+      F.type(F.openEditors()[0].input, '20');
+      await F.press(F.openEditors()[0].input, 'Enter');
+      expect(await F.grid.commitEdit(), 'start 20 makes end 5 invalid').to.equal(false);
+      await F.waitForUpdate();
+      expect(record.start).to.equal(1);
+      expect(F.cellOf(record, 'end').getAttribute('aria-invalid')).to.equal('true');
+    });
+
+    it('clears the error of a cell that now passes (core-editing-history-11)', async () => {
+      const record = F.grid.data[0];
+      await F.grid.editCell(0, 'name');
+      await F.waitForUpdate();
+      F.type(F.openEditors()[0].input, '');
+      await F.press(F.openEditors()[0].input, 'Enter');
+      await F.grid.editCell(0, 'id');
+      await F.waitForUpdate();
+      F.type(F.openEditors()[0].input, '-1');
+      await F.press(F.openEditors()[0].input, 'Enter');
+      expect(await F.grid.commitEdit()).to.equal(false);
+      await F.waitForUpdate();
+      expect(F.cellOf(record, 'name').getAttribute('aria-invalid')).to.equal('true');
+
+      await F.grid.editCell(0, 'name');
+      await F.waitForUpdate();
+      F.type(F.openEditors()[0].input, 'Fixed');
+      await F.press(F.openEditors()[0].input, 'Enter');
+      expect(await F.grid.commitEdit()).to.equal(false);
+      await F.waitForUpdate();
+      expect(F.cellOf(record, 'name').hasAttribute('aria-invalid'), 'name now passes').to.equal(
+        false
+      );
+      expect(F.cellOf(record, 'id').getAttribute('aria-invalid')).to.equal('true');
+    });
+
+    it('a committed cell shows the record value, also when a listener restores it', async () => {
+      const record = F.grid.data[0];
+      F.grid.addEventListener('cellValueChanged', (e) => {
+        (e.detail.data as Row).name = 'A';
+      });
+      await F.grid.editCell(0, 'name');
+      await F.waitForUpdate();
+      F.type(F.openEditors()[0].input, 'X');
+      await F.press(F.openEditors()[0].input, 'Enter');
+      expect(F.cellOf(record, 'name').value, 'staged').to.equal('X');
+
+      expect(await F.grid.commitEdit()).to.equal(true);
+      await F.waitForUpdate();
+      expect(record.name).to.equal('A');
+      expect(F.cellOf(record, 'name').value, 'cell shows the record').to.equal('A');
+    });
+
+    it('runs a validator that cannot read the staged copy against the record', async () => {
+      class Account {
+        #limit = 10;
+        constructor(
+          public id: number,
+          public name: string,
+          public start: number,
+          public end: number,
+          public active: boolean
+        ) {}
+        get limit() {
+          return this.#limit;
+        }
+      }
+      const record = new Account(1, 'A', 1, 50, false) as unknown as Row;
+      F.grid.columns = F.grid.columns.map((column) =>
+        column.key === 'start'
+          ? {
+              ...column,
+              validators: [
+                custom<Row>((value, ctx) =>
+                  (value as number) > (ctx.data as unknown as Account).limit ? 'Over limit' : null
+                ),
+              ],
+            }
+          : column
+      ) as ColumnConfiguration<Row>[];
+      F.grid.data = [record];
+      await F.waitForUpdate();
+
+      await F.grid.editCell(0, 'start');
+      await F.waitForUpdate();
+      F.type(F.openEditors()[0].input, '3');
+      await F.press(F.openEditors()[0].input, 'Enter');
+      expect(await F.grid.commitEdit()).to.equal(true);
+      expect(record.start).to.equal(3);
+
+      await F.grid.editCell(0, 'start');
+      await F.waitForUpdate();
+      F.type(F.openEditors()[0].input, '30');
+      await F.press(F.openEditors()[0].input, 'Enter');
+      expect(await F.grid.commitEdit(), 'over the limit').to.equal(false);
+      expect(record.start).to.equal(3);
+    });
+
+    it('a date editor re-opened on a staged clear still writes a Date', async () => {
+      await addDateColumn();
+      const record = F.grid.data[0];
+      await F.grid.editCell(0, 'when');
+      await F.waitForUpdate();
+      clearDate(F.openEditors()[0].input);
+      await F.press(F.openEditors()[0].input, 'Tab');
+      expect(F.cellOf(record, 'when').value, 'clear staged').to.equal(null);
+
+      await F.grid.editCell(0, 'when');
+      await F.waitForUpdate();
+      pickDate(F.openEditors()[0].input, '2024-05-06');
+      await F.waitForUpdate();
+      expect(await F.grid.commitEdit()).to.equal(true);
+      expect(record.when).to.be.instanceOf(Date);
+      expect(record.when!.getDate()).to.equal(6);
+    });
+
+    it('a checkbox toggle joins the row buffer (sweep-editing-state-6)', async () => {
+      const record = F.grid.data[0];
+      await F.grid.editRow(0);
+      await F.waitForUpdate();
+      const box = () =>
+        F.cellOf(record, 'active').shadowRoot!.querySelector<HTMLInputElement>(
+          'input[type="checkbox"]'
+        )!;
+      box().click();
+      await F.waitForUpdate();
+      expect(record.active, 'staged, not written').to.equal(false);
+      expect(box().checked, 'shows the staged value').to.equal(true);
+
+      F.grid.cancelEdit();
+      await F.waitForUpdate();
+      expect(record.active).to.equal(false);
+      expect(box().checked, 'cancel restores the record value').to.equal(false);
+    });
+  });
 });
 
 describe('Cell decoration on pinned rows (core-state-seam-1)', () => {
