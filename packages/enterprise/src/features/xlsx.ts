@@ -27,11 +27,14 @@ function getCrcTable(): Uint32Array {
   return table;
 }
 
-function crc32(data: Uint8Array): number {
+/** CRC-32 of the chunks taken as one byte stream. */
+function crc32(chunks: ReadonlyArray<Uint8Array>): number {
   const table = getCrcTable();
   let c = 0xffffffff;
-  for (let i = 0; i < data.length; i++) {
-    c = (c >>> 8) ^ table[(c ^ data[i]) & 0xff];
+  for (const data of chunks) {
+    for (let i = 0; i < data.length; i++) {
+      c = (c >>> 8) ^ table[(c ^ data[i]) & 0xff];
+    }
   }
   return (c ^ 0xffffffff) >>> 0;
 }
@@ -40,11 +43,13 @@ function crc32(data: Uint8Array): number {
 
 interface ZipFile {
   name: string;
-  data: Uint8Array;
+  /** The entry's bytes, in order; a large part arrives in several chunks. */
+  data: Uint8Array[];
 }
 
 interface ZipEntry extends ZipFile {
   crc: number;
+  size: number;
   offset: number;
   nameBytes: Uint8Array;
 }
@@ -62,6 +67,8 @@ function buildZip(files: ReadonlyArray<ZipFile>): Uint8Array {
   for (const file of files) {
     const nameBytes = encoder.encode(file.name);
     const crc = crc32(file.data);
+    let size = 0;
+    for (const chunk of file.data) size += chunk.length;
     const header = new Uint8Array(30 + nameBytes.length);
     const view = new DataView(header.buffer);
     view.setUint32(0, 0x04034b50, true);
@@ -71,14 +78,15 @@ function buildZip(files: ReadonlyArray<ZipFile>): Uint8Array {
     view.setUint16(10, 0, true); // mod time
     view.setUint16(12, 0x0021, true); // mod date: 1980-01-01
     view.setUint32(14, crc, true);
-    view.setUint32(18, file.data.length, true);
-    view.setUint32(22, file.data.length, true);
+    view.setUint32(18, size, true);
+    view.setUint32(22, size, true);
     view.setUint16(26, nameBytes.length, true);
     view.setUint16(28, 0, true);
     header.set(nameBytes, 30);
-    parts.push(header, file.data);
-    entries.push({ ...file, crc, offset, nameBytes });
-    offset += header.length + file.data.length;
+    parts.push(header);
+    for (const chunk of file.data) parts.push(chunk);
+    entries.push({ ...file, crc, size, offset, nameBytes });
+    offset += header.length + size;
   }
 
   const centralStart = offset;
@@ -93,8 +101,8 @@ function buildZip(files: ReadonlyArray<ZipFile>): Uint8Array {
     view.setUint16(12, 0, true);
     view.setUint16(14, 0x0021, true);
     view.setUint32(16, entry.crc, true);
-    view.setUint32(20, entry.data.length, true);
-    view.setUint32(24, entry.data.length, true);
+    view.setUint32(20, entry.size, true);
+    view.setUint32(24, entry.size, true);
     view.setUint16(28, entry.nameBytes.length, true);
     view.setUint16(30, 0, true);
     view.setUint16(32, 0, true);
@@ -245,8 +253,15 @@ function sanitizeSheetName(raw: string): string {
   return raw.replace(SHEET_NAME_DISALLOWED, '_').slice(0, 31) || 'Sheet1';
 }
 
+/** Sheet XML is encoded in pieces of about this many characters. */
+const SHEET_CHUNK = 1 << 16;
+
 /**
  * Builds the complete `.xlsx` bytes for a single-sheet workbook.
+ *
+ * The sheet XML is encoded a piece at a time, so no single string grows with
+ * the sheet: a large export stays under the engine's string length limit and
+ * never holds the whole sheet as text.
  */
 export function buildXLSX(sheet: XLSXSheetData): Uint8Array {
   const sheetName = sanitizeSheetName(sheet.name ?? 'Sheet1');
@@ -255,35 +270,30 @@ export function buildXLSX(sheet: XLSXSheetData): Uint8Array {
   const totalCols = Math.max(headerCount, maxRowWidth);
   const totalRows = sheet.rows.length + (headerCount ? 1 : 0);
 
-  const sheetRows: string[] = [];
-  let rowNum = 1;
-  if (headerCount) {
-    const cells: string[] = [];
-    for (let c = 0; c < headerCount; c++) {
-      cells.push(renderCell(`${columnLetter(c)}${rowNum}`, sheet.headers[c], STYLE_HEADER));
-    }
-    sheetRows.push(`<row r="${rowNum}">${cells.join('')}</row>`);
-    rowNum++;
-  }
-  for (const row of sheet.rows) {
-    const cells: string[] = [];
-    for (let c = 0; c < row.length; c++) {
-      const cell = renderCell(`${columnLetter(c)}${rowNum}`, row[c]);
-      if (cell) cells.push(cell);
-    }
-    sheetRows.push(`<row r="${rowNum}">${cells.join('')}</row>`);
-    rowNum++;
-  }
-
   const dimension =
     totalRows > 0 && totalCols > 0 ? `A1:${columnLetter(totalCols - 1)}${totalRows}` : 'A1';
 
-  const sheetXml =
+  const sheetChunks: Uint8Array[] = [];
+  let pending =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
-    `<dimension ref="${dimension}"/>` +
-    `<sheetData>${sheetRows.join('')}</sheetData>` +
-    '</worksheet>';
+    `<dimension ref="${dimension}"/><sheetData>`;
+  const letters = Array.from({ length: totalCols }, (_, c) => columnLetter(c));
+  const writeRow = (rowNum: number, row: ReadonlyArray<XLSXCell>, style?: number) => {
+    pending += `<row r="${rowNum}">`;
+    for (let c = 0; c < row.length; c++) {
+      pending += renderCell(`${letters[c]}${rowNum}`, row[c], style);
+    }
+    pending += '</row>';
+    if (pending.length >= SHEET_CHUNK) {
+      sheetChunks.push(encoder.encode(pending));
+      pending = '';
+    }
+  };
+  let rowNum = 1;
+  if (headerCount) writeRow(rowNum++, sheet.headers, STYLE_HEADER);
+  for (const row of sheet.rows) writeRow(rowNum++, row);
+  sheetChunks.push(encoder.encode(`${pending}</sheetData></worksheet>`));
 
   const styles =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
@@ -334,11 +344,11 @@ export function buildXLSX(sheet: XLSXSheetData): Uint8Array {
     '</Relationships>';
 
   return buildZip([
-    { name: '[Content_Types].xml', data: encoder.encode(contentTypes) },
-    { name: '_rels/.rels', data: encoder.encode(rootRels) },
-    { name: 'xl/workbook.xml', data: encoder.encode(workbook) },
-    { name: 'xl/_rels/workbook.xml.rels', data: encoder.encode(workbookRels) },
-    { name: 'xl/styles.xml', data: encoder.encode(styles) },
-    { name: 'xl/worksheets/sheet1.xml', data: encoder.encode(sheetXml) },
+    { name: '[Content_Types].xml', data: [encoder.encode(contentTypes)] },
+    { name: '_rels/.rels', data: [encoder.encode(rootRels)] },
+    { name: 'xl/workbook.xml', data: [encoder.encode(workbook)] },
+    { name: 'xl/_rels/workbook.xml.rels', data: [encoder.encode(workbookRels)] },
+    { name: 'xl/styles.xml', data: [encoder.encode(styles)] },
+    { name: 'xl/worksheets/sheet1.xml', data: sheetChunks },
   ]);
 }

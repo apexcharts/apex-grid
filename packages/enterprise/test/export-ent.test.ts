@@ -10,6 +10,7 @@ import {
   type FormulaController,
   formulaModule,
 } from '../src/features/formula/index.js';
+import { buildXLSX } from '../src/features/xlsx.js';
 import { ApexGridAI, ApexGridChart, ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 
 // Enterprise export and grid API: synthesized rows stay out of exports and
@@ -92,6 +93,15 @@ function storedEntry(bytes: Uint8Array, filename: string): { text: string; crc: 
 }
 
 const sheetOf = (bytes: Uint8Array) => storedEntry(bytes, 'xl/worksheets/sheet1.xml')!.text;
+
+function crc32(data: Uint8Array): number {
+  let c = 0xffffffff;
+  for (const byte of data) {
+    c ^= byte;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
 
 function formulaOf<R extends object>(grid: ApexGridEnterprise<R>): FormulaController<R> {
   return (
@@ -463,6 +473,37 @@ describe('enterprise export and grid API', () => {
       expect(sheetOf(grid.exportToXLSX({ filename: '', formulas: true }))).to.include(
         '<c r="C2" t="e"><f>A2/B2</f><v>#DIV/0!</v></c>'
       );
+    });
+  });
+
+  describe('XLSX writer', () => {
+    it('encodes a large sheet in chunks, never as one string', () => {
+      const rows = Array.from({ length: 20_000 }, (_, i) => [
+        i,
+        `name ${i}`,
+        i % 2 === 0,
+        `some longer text value for row ${i}`,
+      ]);
+      const proto = TextEncoder.prototype;
+      const original = proto.encode;
+      let longest = 0;
+      proto.encode = function (this: TextEncoder, input?: string) {
+        longest = Math.max(longest, input?.length ?? 0);
+        return original.call(this, input);
+      };
+      let bytes: Uint8Array;
+      try {
+        bytes = buildXLSX({ headers: ['id', 'name', 'flag', 'text'], rows });
+      } finally {
+        proto.encode = original;
+      }
+      const entry = storedEntry(bytes, 'xl/worksheets/sheet1.xml')!;
+      expect(entry.text.length).to.be.greaterThan(2_000_000);
+      expect(longest).to.be.below(200_000);
+      // The CRC computed across chunks matches the stored bytes.
+      expect(entry.crc).to.equal(crc32(new TextEncoder().encode(entry.text)));
+      expect(entry.text).to.include('<c r="A20001"><v>19999</v></c>');
+      expect(entry.text.endsWith('</sheetData></worksheet>')).to.equal(true);
     });
   });
 });
