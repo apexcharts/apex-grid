@@ -240,12 +240,58 @@ function toDateInputValue(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-function formatDateValue(value: unknown, style: string): string {
-  const date = parseDate(value);
-  if (!date) return '';
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: style as Intl.DateTimeFormatOptions['dateStyle'],
-  }).format(date);
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+const currencyFormatters = new Map<string, Intl.NumberFormat>();
+
+/**
+ * The cached `Intl.DateTimeFormat` for a date column's `format` style, shared
+ * by the date cell and CSV export. Building a formatter costs about fifty
+ * times as much as using one, so cells and export rows reuse it. An unknown
+ * style falls back to `'medium'` instead of throwing on every cell.
+ */
+export function dateFormatter(style = 'medium'): Intl.DateTimeFormat {
+  let formatter = dateFormatters.get(style);
+  if (!formatter) {
+    try {
+      formatter = new Intl.DateTimeFormat(undefined, {
+        dateStyle: style as Intl.DateTimeFormatOptions['dateStyle'],
+      });
+    } catch {
+      formatter = dateFormatter();
+    }
+    dateFormatters.set(style, formatter);
+  }
+  return formatter;
+}
+
+/**
+ * The cached currency formatter for a column. A malformed `locale` falls back
+ * to the runtime locale and a malformed `currency` to USD, keeping whichever
+ * option is valid, so a bad option shows a default format instead of
+ * throwing on every cell.
+ */
+function currencyFormatter(locale?: string, currency = 'USD'): Intl.NumberFormat {
+  const key = `${locale}|${currency}`;
+  let formatter = currencyFormatters.get(key);
+  if (!formatter) {
+    try {
+      formatter = new Intl.NumberFormat(locale, { style: 'currency', currency });
+    } catch {
+      let localeOk = true;
+      try {
+        Intl.getCanonicalLocales(locale);
+      } catch {
+        localeOk = false;
+      }
+      // Only the currency is bad: keep the column's locale with USD.
+      formatter =
+        localeOk && currency !== 'USD'
+          ? currencyFormatter(locale)
+          : currencyFormatter(undefined, currency);
+    }
+    currencyFormatters.set(key, formatter);
+  }
+  return formatter;
 }
 
 /**
@@ -271,8 +317,8 @@ const typedDateInputs = new WeakSet<EventTarget>();
 
 const dateType: ColumnTypeRenderer<object> = {
   display(ctx) {
-    const style = (ctx.column as { format?: string }).format ?? 'medium';
-    return html`${formatDateValue(ctx.value, style)}`;
+    const date = parseDate(ctx.value);
+    return date ? dateFormatter((ctx.column as { format?: string }).format).format(date) : '';
   },
 
   editor(ctx) {
@@ -467,10 +513,7 @@ const currencyType: ColumnTypeRenderer<object> = {
     const col = ctx.column as { currency?: string; locale?: string };
     const n = toFiniteNumber(ctx.value);
     if (n === null) return html``;
-    return html`${new Intl.NumberFormat(col.locale, {
-      style: 'currency',
-      currency: col.currency ?? 'USD',
-    }).format(n)}`;
+    return html`${currencyFormatter(col.locale, col.currency).format(n)}`;
   },
   // No `editor`: currency cells edit with the cell's built-in number editor.
 };

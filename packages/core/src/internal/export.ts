@@ -1,6 +1,7 @@
 import type { ApexGrid } from '../components/grid.js';
 import type { StateController } from '../controllers/state.js';
-import type { ColumnConfiguration, ColumnDateFormat, Keys } from './types.js';
+import { dateFormatter } from './column-types.js';
+import type { ColumnConfiguration, Keys } from './types.js';
 import { getDisplayColumns } from './utils.js';
 
 /**
@@ -127,13 +128,6 @@ export function getColumnLabel<T extends object>(column: ColumnConfiguration<T>)
   return column.headerText ?? String(column.key);
 }
 
-const DATE_STYLE_MAP: Record<ColumnDateFormat, Intl.DateTimeFormatOptions['dateStyle']> = {
-  short: 'short',
-  medium: 'medium',
-  long: 'long',
-  full: 'full',
-};
-
 /**
  * Default cell-value formatter. Mirrors the on-screen rendering for each
  * column type while keeping primitive types primitive (so number/boolean/date
@@ -193,12 +187,7 @@ export function formatDateForCSV<T extends object>(
   column: ColumnConfiguration<T>,
   value: Date
 ): string {
-  const style = DATE_STYLE_MAP[column.format ?? 'medium'];
-  try {
-    return new Intl.DateTimeFormat(undefined, { dateStyle: style }).format(value);
-  } catch {
-    return value.toISOString();
-  }
+  return dateFormatter(column.format).format(value);
 }
 
 function escapeCSVCell(value: ExportCellValue, delimiter: string): string {

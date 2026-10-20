@@ -1,4 +1,6 @@
 import { expect, html } from '@open-wc/testing';
+import type { ApexGrid } from '../src/components/grid.js';
+import { buildCSV } from '../src/internal/export.js';
 import type { ColumnConfiguration, GridEditingConfiguration } from '../src/internal/types.js';
 import GridTestFixture from './utils/grid-fixture.js';
 import data, { type TestData } from './utils/test-data.js';
@@ -756,5 +758,145 @@ describe('Column type: image', () => {
 
   it('uses the configured `alt` text', () => {
     expect(ITDD.img(0)!.alt).to.equal('User avatar');
+  });
+});
+
+// ── Export and formatting (audit batch B12) ────────────────────────────────
+
+type ExportRow = {
+  id: number;
+  when: unknown;
+  ok: unknown;
+  price: unknown;
+  pct: unknown;
+  spark: unknown;
+  status: string;
+  tier: string;
+};
+
+class ExportFixture extends GridTestFixture<ExportRow> {
+  public override updateConfig() {
+    this.columnConfig = [
+      { key: 'id', type: 'number' },
+      { key: 'when', type: 'date' },
+      { key: 'ok', type: 'boolean' },
+      { key: 'price', type: 'currency', currency: 'EUR', locale: 'de-DE' },
+      { key: 'pct', type: 'progress' },
+      { key: 'spark', type: 'sparkline' },
+      { key: 'status', type: 'status' },
+      {
+        key: 'tier',
+        type: 'badge',
+        badgeVariant: (value: unknown) => (value === 'gold' ? 'warning' : 'neutral'),
+      },
+    ] as ColumnConfiguration<ExportRow>[];
+  }
+
+  public cellRoot(rowIndex: number, key: keyof ExportRow): ShadowRoot {
+    return this.rows.get(rowIndex).cells.get(key as never).element.shadowRoot!;
+  }
+
+  public cellText(rowIndex: number, key: keyof ExportRow): string {
+    return (this.cellRoot(rowIndex, key).textContent ?? '').replace(/\s+/g, ' ').trim();
+  }
+
+  public csvRows(options: Parameters<ApexGrid<ExportRow>['exportToCSV']>[0] = {}): string[][] {
+    return this.grid
+      .exportToCSV({ filename: '', bom: false, delimiter: '\t', ...options })
+      .split('\r\n')
+      .slice(1)
+      .map((line) => line.split('\t'));
+  }
+}
+
+const exportRows = (): ExportRow[] =>
+  [0, 1, 2, 3, 4].map((id) => ({
+    id,
+    when: '2024-01-15',
+    ok: id === 0 ? 'false' : id === 1 ? 1 : id === 2,
+    price: id === 0 ? '12.5' : 1234.5,
+    pct: id === 0 ? 150 : 70,
+    spark: id === 0 ? [0, 5, 10] : id === 1 ? [1000, 999.6] : [10, 20],
+    status: id === 0 ? 'Cancelled' : 'Trialing',
+    tier: id === 0 ? 'gold' : 'silver',
+  }));
+
+/** Counts constructions of an Intl formatter class while `run` executes. */
+async function countConstructions(
+  name: 'DateTimeFormat' | 'NumberFormat',
+  run: () => unknown
+): Promise<number> {
+  const original = Intl[name];
+  let count = 0;
+  (Intl as unknown as Record<string, unknown>)[name] = new Proxy(original, {
+    construct(target, args) {
+      count++;
+      return Reflect.construct(target, args);
+    },
+    apply(target, self, args) {
+      count++;
+      return Reflect.apply(target, self, args);
+    },
+  });
+  try {
+    await run();
+  } finally {
+    (Intl as unknown as Record<string, unknown>)[name] = original;
+  }
+  return count;
+}
+
+describe('Column types: export and formatting', () => {
+  let fx: ExportFixture;
+  beforeEach(async () => {
+    fx = new ExportFixture(exportRows());
+    await fx.setUp();
+  });
+  afterEach(() => fx.tearDown());
+
+  describe('Intl formatter caching', () => {
+    it('builds no date formatter per row when exporting 100k rows', async function () {
+      this.timeout(30000);
+      const rows = Array.from({ length: 100_000 }, (_, id) => ({
+        id,
+        when: new Date(2024, 0, (id % 28) + 1),
+      }));
+      const grid = {
+        columns: [{ key: 'when', type: 'date' }],
+        dataView: rows,
+      } as unknown as ApexGrid<ExportRow>;
+      let csv = '';
+      const count = await countConstructions('DateTimeFormat', () => {
+        csv = buildCSV(grid, { bom: false });
+      });
+      expect(csv.split('\r\n')).to.have.length(100_001);
+      expect(count).to.be.lessThan(3);
+    });
+
+    it('builds no date or currency formatter when cells re-render', async () => {
+      const rerender = async () => {
+        await fx.updateProperty('data', exportRows());
+      };
+      expect(await countConstructions('DateTimeFormat', rerender)).to.equal(0);
+      expect(await countConstructions('NumberFormat', rerender)).to.equal(0);
+    });
+
+    it('falls back to a default format for a malformed locale or style', async () => {
+      await fx.updateColumns({ key: 'when', type: 'date', format: 'long' });
+      await fx.updateColumns([
+        { key: 'price', type: 'currency', locale: 'en_US', currency: 'JPY' },
+        { key: 'when', type: 'date', format: 'bogus' as never },
+      ]);
+      const yen = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'JPY' });
+      const medium = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
+      expect(fx.cellText(1, 'price')).to.equal(yen.format(1234.5).replace(/\s+/g, ' '));
+      expect(fx.cellText(0, 'when')).to.equal(medium.format(new Date(2024, 0, 15)));
+    });
+
+    it('keeps a valid locale when only the currency code is malformed', async () => {
+      await fx.updateColumns({ key: 'price', type: 'currency', locale: 'de-DE', currency: 'EURO' });
+      const usd = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'USD' });
+      expect(fx.cellText(1, 'price')).to.equal(usd.format(1234.5).replace(/\s+/g, ' '));
+    });
   });
 });
