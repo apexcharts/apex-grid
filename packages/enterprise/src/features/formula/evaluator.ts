@@ -16,11 +16,12 @@ import {
   isFormulaError,
   nameError,
   toBoolean,
+  toCellValue,
   toNumber,
   toText,
   valueError,
 } from './errors.js';
-import type { FormulaFn } from './functions.js';
+import { type FormulaFn, modulo, takesRange } from './functions.js';
 import type { BinaryNode, CallNode, FormulaAst, UnaryNode } from './parser.js';
 import type { CellAddress, RangeAddress } from './refs.js';
 
@@ -40,25 +41,19 @@ export interface FormulaContext {
 
 const COMPARISON = new Set(['=', '<>', '<', '>', '<=', '>=']);
 
-/** Render any value as text for string comparison/concatenation fallbacks. */
-function asText(value: CellValue): string {
-  if (isFormulaError(value)) {
-    return value.code;
+/**
+ * A blank operand compares as the blank value of the other side's type (`0`,
+ * `FALSE` or `""`), so a blank cell equals both `""` and `0`.
+ */
+function blankAs(value: CellValue, other: CellValue): CellValue {
+  if (value !== null) {
+    return value;
   }
-  if (value === null) {
-    return '';
-  }
-  if (typeof value === 'boolean') {
-    return value ? 'TRUE' : 'FALSE';
-  }
-  return String(value);
+  return typeof other === 'number' ? 0 : typeof other === 'boolean' ? false : '';
 }
 
 /** Spreadsheet `=`: same-type comparison, text case-insensitive. */
 function looseEquals(a: CellValue, b: CellValue): boolean {
-  if (a === null || b === null) {
-    return a === b;
-  }
   if (typeof a !== typeof b) {
     return false;
   }
@@ -73,9 +68,17 @@ function compareOrder(a: CellValue, b: CellValue): number {
   if (typeof a === 'number' && typeof b === 'number') {
     return a < b ? -1 : a > b ? 1 : 0;
   }
-  const left = asText(a).toLowerCase();
-  const right = asText(b).toLowerCase();
+  // Neither side is an error here: the caller returned those already.
+  const left = (toText(a) as string).toLowerCase();
+  const right = (toText(b) as string).toLowerCase();
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/** A non-finite number result (overflow, `0^-1`, `POWER(-8,1/3)`) is `#VALUE!`. */
+function finite(value: CellValue): CellValue {
+  return typeof value === 'number' && !Number.isFinite(value)
+    ? valueError('non-finite number')
+    : value;
 }
 
 function evaluateUnary(node: UnaryNode, ctx: FormulaContext): CellValue {
@@ -99,14 +102,16 @@ function evaluateBinary(node: BinaryNode, ctx: FormulaContext): CellValue {
   }
 
   if (COMPARISON.has(op)) {
-    const left = evaluate(node.left, ctx);
-    if (isFormulaError(left)) {
-      return left;
+    const rawLeft = evaluate(node.left, ctx);
+    if (isFormulaError(rawLeft)) {
+      return rawLeft;
     }
-    const right = evaluate(node.right, ctx);
-    if (isFormulaError(right)) {
-      return right;
+    const rawRight = evaluate(node.right, ctx);
+    if (isFormulaError(rawRight)) {
+      return rawRight;
     }
+    const left = blankAs(rawLeft, rawRight);
+    const right = blankAs(rawRight, rawLeft);
     switch (op) {
       case '=':
         return looseEquals(left, right);
@@ -141,11 +146,9 @@ function evaluateBinary(node: BinaryNode, ctx: FormulaContext): CellValue {
     case '/':
       return right === 0 ? divZeroError() : left / right;
     case '%':
-      return right === 0 ? divZeroError() : left % right;
-    case '^': {
-      const power = left ** right;
-      return Number.isFinite(power) ? power : valueError('invalid exponentiation');
-    }
+      return modulo(left, right);
+    case '^':
+      return left ** right;
     default:
       return valueError(`unknown operator "${op}"`);
   }
@@ -176,21 +179,35 @@ function evaluateCall(node: CallNode, ctx: FormulaContext): CellValue {
   }
   const args: CellValue[] = [];
   for (const arg of node.args) {
-    if (arg.type === 'range') {
-      // A loop, not push(...cells): spreading throws past ~120k cells.
-      for (const cell of ctx.getRange(arg.range)) args.push(cell);
-    } else {
+    if (arg.type !== 'range') {
       args.push(evaluate(arg, ctx));
+    } else if (takesRange(fn)) {
+      // A loop, not push(...cells): spreading throws past ~120k cells.
+      for (const cell of ctx.getRange(arg.range)) args.push(toCellValue(cell));
+    } else {
+      // A one-cell range (A2:A2, or what fill makes of B$1:B1) is that cell.
+      const { start, end } = arg.range;
+      if (start.row !== end.row || start.col !== end.col) {
+        return valueError(`${node.name} takes no range`);
+      }
+      args.push(toCellValue(ctx.getRef(start)));
     }
   }
-  return fn(args);
+  // A custom function may throw or return anything: keep it a cell value.
+  try {
+    return toCellValue(fn(args));
+  } catch (error) {
+    return valueError(`${node.name}: ${String(error)}`);
+  }
 }
 
 /**
  * Evaluate a parsed formula against a {@link FormulaContext}. Returns the
  * computed {@link CellValue} (which may be a {@link FormulaError}). Never
- * throws for well-formed ASTs; malformed input is rejected earlier by
- * `parseFormula`.
+ * throws for well-formed ASTs, even when a custom function does (that cell is
+ * `#VALUE!`); malformed input is rejected earlier by `parseFormula`. Values
+ * read from the context pass through {@link toCellValue}, so a `Date` cell
+ * reads as its epoch milliseconds.
  */
 export function evaluate(ast: FormulaAst, ctx: FormulaContext): CellValue {
   switch (ast.type) {
@@ -201,15 +218,15 @@ export function evaluate(ast: FormulaAst, ctx: FormulaContext): CellValue {
     case 'boolean':
       return ast.value;
     case 'ref':
-      return ctx.getRef(ast.address);
+      return toCellValue(ctx.getRef(ast.address));
     case 'range':
       return valueError('a range cannot be used as a single value');
     case 'unary':
       return evaluateUnary(ast, ctx);
     case 'binary':
-      return evaluateBinary(ast, ctx);
+      return finite(evaluateBinary(ast, ctx));
     case 'call':
-      return evaluateCall(ast, ctx);
+      return finite(evaluateCall(ast, ctx));
     default:
       return valueError('unknown expression');
   }

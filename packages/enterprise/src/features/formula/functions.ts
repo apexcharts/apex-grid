@@ -75,27 +75,6 @@ const COUNT: FormulaFn = (args) => numbersOf(args).length;
 // COUNTA counts every non-empty value (text, booleans, numbers, even errors).
 const COUNTA: FormulaFn = (args) => args.filter((arg) => arg !== null && arg !== '').length;
 
-const ROUND: FormulaFn = (args) => {
-  const error = firstError(args);
-  if (error) {
-    return error;
-  }
-  if (args.length === 0) {
-    return valueError('ROUND requires a number');
-  }
-  const value = toNumber(args[0]);
-  if (isFormulaError(value)) {
-    return value;
-  }
-  const digitsArg = args.length > 1 ? toNumber(args[1]) : 0;
-  if (isFormulaError(digitsArg)) {
-    return digitsArg;
-  }
-  const factor = 10 ** Math.trunc(digitsArg);
-  // Round half away from zero, matching the spreadsheet ROUND.
-  return (Math.sign(value) * Math.round(Math.abs(value) * factor)) / factor;
-};
-
 const ABS: FormulaFn = (args) => {
   const error = firstError(args);
   if (error) {
@@ -207,6 +186,14 @@ function unaryText(name: string, compute: (text: string) => CellValue): FormulaF
   };
 }
 
+/**
+ * Spreadsheet MOD, shared by `MOD` and the `%` operator: the result takes the
+ * sign of the divisor (`-7 % 3` is `2`), unlike the JavaScript remainder.
+ */
+export function modulo(a: number, b: number): number | FormulaError {
+  return b === 0 ? divZeroError('MOD by zero') : a - b * Math.floor(a / b);
+}
+
 const MOD: FormulaFn = (args) => {
   const error = firstError(args);
   if (error) {
@@ -223,8 +210,7 @@ const MOD: FormulaFn = (args) => {
   if (isFormulaError(b)) {
     return b;
   }
-  // Excel MOD takes the sign of the divisor (unlike JS `%`).
-  return b === 0 ? divZeroError('MOD by zero') : a - b * Math.floor(a / b);
+  return modulo(a, b);
 };
 
 const POWER: FormulaFn = (args) => {
@@ -240,11 +226,30 @@ const POWER: FormulaFn = (args) => {
     return base;
   }
   const exponent = toNumber(args[1]);
+  // A non-finite result (0^-1, (-8)^(1/3)) becomes #VALUE! in the evaluator, as for `^`.
   return isFormulaError(exponent) ? exponent : base ** exponent;
 };
 
-/** ROUND variant: `mode` rounds the magnitude up (ceil) or down (trunc). */
-function roundWith(name: string, mode: 'up' | 'down'): FormulaFn {
+/**
+ * Round `value` to `digits` decimals (negative digits round left of the point)
+ * by applying `round` to the scaled magnitude: `Math.round` is half away from
+ * zero, `Math.ceil` / `Math.floor` round the magnitude up or down.
+ */
+function roundDigits(value: number, digits: number, round: (n: number) => number): number {
+  const places = Math.max(-308, Math.min(308, Math.trunc(digits)));
+  const factor = 10 ** Math.abs(places);
+  const scaled = places < 0 ? Math.abs(value) / factor : Math.abs(value) * factor;
+  if (!Number.isFinite(scaled)) {
+    return value; // more digits than a double holds: nothing to round
+  }
+  // Snap to 15 significant digits first, so 0.07 * 100 rounds as 7 and not as
+  // 7.000000000000001 (the decimal result a spreadsheet gives).
+  const rounded = Math.sign(value) * round(Number(scaled.toPrecision(15)));
+  return places < 0 ? rounded * factor : rounded / factor;
+}
+
+/** ROUND, ROUNDUP and ROUNDDOWN: `(number, digits = 0)` through {@link roundDigits}. */
+function roundWith(name: string, round: (n: number) => number): FormulaFn {
   return (args) => {
     const error = firstError(args);
     if (error) {
@@ -257,14 +262,8 @@ function roundWith(name: string, mode: 'up' | 'down'): FormulaFn {
     if (isFormulaError(value)) {
       return value;
     }
-    const digitsArg = args.length > 1 ? toNumber(args[1]) : 0;
-    if (isFormulaError(digitsArg)) {
-      return digitsArg;
-    }
-    const factor = 10 ** Math.trunc(digitsArg);
-    const scaled = Math.abs(value) * factor;
-    const rounded = mode === 'up' ? Math.ceil(scaled) : Math.floor(scaled);
-    return (Math.sign(value) * rounded) / factor;
+    const digits = args.length > 1 ? toNumber(args[1]) : 0;
+    return isFormulaError(digits) ? digits : roundDigits(value, digits, round);
   };
 }
 
@@ -342,9 +341,9 @@ const BUILTINS: ReadonlyArray<readonly [string, FormulaFn]> = [
   ['MAX', MAX],
   ['COUNT', COUNT],
   ['COUNTA', COUNTA],
-  ['ROUND', ROUND],
-  ['ROUNDUP', roundWith('ROUNDUP', 'up')],
-  ['ROUNDDOWN', roundWith('ROUNDDOWN', 'down')],
+  ['ROUND', roundWith('ROUND', Math.round)],
+  ['ROUNDUP', roundWith('ROUNDUP', Math.ceil)],
+  ['ROUNDDOWN', roundWith('ROUNDDOWN', Math.floor)],
   ['ABS', ABS],
   ['MOD', MOD],
   ['POWER', POWER],
@@ -367,6 +366,20 @@ const BUILTINS: ReadonlyArray<readonly [string, FormulaFn]> = [
   ['UPPER', unaryText('UPPER', (text) => text.toUpperCase())],
   ['LOWER', unaryText('LOWER', (text) => text.toLowerCase())],
 ];
+
+/** Built-ins that take any number of values, so a range argument spreads into them. */
+const VARIADIC = new Set<FormulaFn>([SUM, AVERAGE, MIN, MAX, COUNT, COUNTA, AND, OR, CONCAT]);
+/** Built-ins with fixed parameters, where a range would silently fill later ones. */
+const SCALAR = new Set(BUILTINS.map(([, fn]) => fn).filter((fn) => !VARIADIC.has(fn)));
+
+/**
+ * Whether `fn` accepts a range argument (flattened into its values). False only
+ * for the fixed-arity built-ins (`ROUND`, `LEFT`, ...), where a range is a
+ * `#VALUE!` error; custom functions always take ranges.
+ */
+export function takesRange(fn: FormulaFn): boolean {
+  return !SCALAR.has(fn);
+}
 
 /**
  * Create a fresh function registry seeded with the v1 built-ins, keyed by

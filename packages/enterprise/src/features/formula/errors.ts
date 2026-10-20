@@ -66,8 +66,9 @@ export function firstError(values: readonly CellValue[]): FormulaError | undefin
 
 /**
  * Thrown by `parseFormula` when the input is not a well-formed formula. Carries
- * the 0-based character {@link position} of the offending token so the editor
- * can point at it.
+ * the 0-based character {@link position} of the offending token in the text
+ * passed in (counting any leading `=` and whitespace) so the editor can point
+ * at it.
  */
 export class ParseError extends Error {
   constructor(
@@ -80,8 +81,30 @@ export class ParseError extends Error {
 }
 
 /**
- * Coerce a value to a number for arithmetic. Booleans map to `1`/`0`, numeric
- * strings parse, empty/`null` is `0`; anything else is a `#VALUE!` error. Errors
+ * Normalize a raw cell value to a {@link CellValue}. A `Date` becomes its epoch
+ * milliseconds (the numeric shape date columns accept), `undefined` is blank,
+ * and any other object is a `#VALUE!` error, so a formula never sees a value
+ * outside the union.
+ */
+export function toCellValue(raw: unknown): CellValue {
+  const value = raw instanceof Date ? raw.getTime() : (raw ?? null);
+  const type = typeof value;
+  return type === 'string' ||
+    type === 'number' ||
+    type === 'boolean' ||
+    value === null ||
+    isFormulaError(value)
+    ? (value as CellValue)
+    : valueError('not a cell value');
+}
+
+/** A decimal literal, the only text {@link toNumber} reads as a number. */
+const DECIMAL = /^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:e[+-]?[0-9]+)?$/i;
+
+/**
+ * Coerce a value to a number for arithmetic. Booleans map to `1`/`0`, decimal
+ * strings parse, empty/`null` is `0`, a `Date` is its epoch milliseconds;
+ * anything else (including a non-finite result) is a `#VALUE!` error. Errors
  * pass through unchanged so they propagate.
  */
 export function toNumber(value: CellValue): number | FormulaError {
@@ -97,18 +120,23 @@ export function toNumber(value: CellValue): number | FormulaError {
   if (value === null) {
     return 0;
   }
+  if (typeof value !== 'string') {
+    return toNumber(toCellValue(value));
+  }
   const trimmed = value.trim();
   if (trimmed === '') {
     return 0;
   }
-  const parsed = Number(trimmed);
-  return Number.isNaN(parsed) ? valueError(`cannot convert "${value}" to a number`) : parsed;
+  return DECIMAL.test(trimmed)
+    ? toNumber(Number(trimmed))
+    : valueError(`cannot convert "${value}" to a number`);
 }
 
 /**
  * Coerce a value to a boolean for logical functions. Numbers are truthy when
  * non-zero, the strings `TRUE`/`FALSE` (any case) map accordingly; `null` is
- * `false`. Other strings are a `#VALUE!` error. Errors pass through.
+ * `false`, a `Date` is truthy. Other strings are a `#VALUE!` error. Errors pass
+ * through.
  */
 export function toBoolean(value: CellValue): boolean | FormulaError {
   if (isFormulaError(value)) {
@@ -123,6 +151,9 @@ export function toBoolean(value: CellValue): boolean | FormulaError {
   if (value === null) {
     return false;
   }
+  if (typeof value !== 'string') {
+    return toBoolean(toCellValue(value));
+  }
   const upper = value.trim().toUpperCase();
   if (upper === 'TRUE') {
     return true;
@@ -134,8 +165,10 @@ export function toBoolean(value: CellValue): boolean | FormulaError {
 }
 
 /**
- * Coerce a value to its string form for text concatenation. `null` is the empty
- * string, booleans become `TRUE`/`FALSE`. Errors pass through.
+ * Coerce a value to its string form for text concatenation and comparison.
+ * `null` is the empty string, booleans become `TRUE`/`FALSE`, numbers keep 15
+ * significant digits (so `0.1+0.2` reads `0.3`) and a `Date` is its epoch
+ * milliseconds. Errors pass through.
  */
 export function toText(value: CellValue): string | FormulaError {
   if (isFormulaError(value)) {
@@ -147,5 +180,8 @@ export function toText(value: CellValue): string | FormulaError {
   if (typeof value === 'boolean') {
     return value ? 'TRUE' : 'FALSE';
   }
-  return String(value);
+  if (typeof value === 'number') {
+    return String(Number(value.toPrecision(15)));
+  }
+  return typeof value === 'string' ? value : toText(toCellValue(value));
 }
