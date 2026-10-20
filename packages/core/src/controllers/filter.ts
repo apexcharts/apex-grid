@@ -136,13 +136,14 @@ export class FilterController<T extends object> implements ReactiveController {
     this.#emitFilteredEvent({ key, state: this.get(key)?.all ?? [] });
   }
 
+  /** Resolves to false when nothing was removed (not applied, or cancelled). */
   public async removeExpression(expression: FilterExpression<T>) {
     const state = this.get(expression.key);
     // An expression that was never applied (the panel's draft) is a no-op.
-    if (!state?.has(expression)) return;
+    if (!state?.has(expression)) return false;
 
     if (!this.#emitFilteringEvent(expression, 'remove')) {
-      return;
+      return false;
     }
 
     state.remove(expression);
@@ -156,20 +157,33 @@ export class FilterController<T extends object> implements ReactiveController {
     await this.host.updateComplete;
     this.#announce(expression.key, 'cleared');
     this.#emitFilteredEvent({ key: expression.key, state: state.all });
+    return true;
   }
 
-  public async filterWithEvent(expression: FilterExpression<T>, type: 'add' | 'modify' | 'remove') {
+  /**
+   * Emits the cancelable `filtering` event for `expression` and applies it
+   * when the event passes. With a `target` (the panel's draft or an applied
+   * expression), `expression` is the proposed copy: it is written into
+   * `target` only after the event passes, so a cancelled change leaves the
+   * applied filter untouched. Resolves to false when cancelled.
+   */
+  public async filterWithEvent(
+    expression: FilterExpression<T>,
+    type: 'add' | 'modify' | 'remove',
+    target = expression
+  ) {
     if (!this.#emitFilteringEvent(expression, type)) {
-      return;
+      return false;
     }
 
-    this.#filter(expression);
+    this.#filter(Object.assign(target, expression));
 
     await this.host.updateComplete;
     // Announce only on `add`: `modify` fires per keystroke while typing a
     // filter value and would flood the live region.
-    if (type === 'add') this.#announce(expression.key, 'applied');
-    this.#emitFilteredEvent({ key: expression.key, state: this.get(expression.key)?.all ?? [] });
+    if (type === 'add') this.#announce(target.key, 'applied');
+    this.#emitFilteredEvent({ key: target.key, state: this.get(target.key)?.all ?? [] });
+    return true;
   }
 
   #announce(key: Keys<T>, kind: 'applied' | 'cleared') {

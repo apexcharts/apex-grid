@@ -77,17 +77,40 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   }
 
   #removeExpression(expression: FilterExpression<T>) {
-    this.filterController.removeExpression(expression);
+    return this.filterController.removeExpression(expression);
   }
 
-  #applyCondition(key: OperandKeys<T[typeof this.column.key]>) {
+  #isApplied(expression: FilterExpression<T>) {
+    return Boolean(this.filterController.get(expression.key)?.has(expression));
+  }
+
+  /**
+   * Proposes `change` to `expression` through the cancelable `filtering`
+   * event: `add` while the expression is the draft, `modify` once it is
+   * applied. The expression itself changes only when the event passes.
+   */
+  #commit(expression: FilterExpression<T>, change: Record<string, unknown>) {
+    return this.filterController.filterWithEvent(
+      { ...expression, ...change } as FilterExpression<T>,
+      this.#isApplied(expression) ? 'modify' : 'add',
+      expression
+    );
+  }
+
+  async #applyCondition(key: OperandKeys<T[typeof this.column.key]>) {
+    const expression = this.expression;
     // XXX: Types
-    this.expression.condition = (getFilterOperandsFor(this.column) as any)[key] as FilterOperation<
+    const condition = (getFilterOperandsFor(this.column) as any)[key] as FilterOperation<
       T[keyof T]
     >;
+    const term = expression.searchTerm;
 
-    if (this.input?.value || this.expression.condition.unary) {
-      this.filterController.filterWithEvent(this.expression, 'modify');
+    if (condition.unary || (term != null && term !== '')) {
+      await this.#commit(expression, { condition });
+    } else if (!this.#isApplied(expression) || (await this.#removeExpression(expression))) {
+      // A binary condition without a term filters nothing yet: it stays the
+      // draft until a term is typed, and an applied unary filter is dropped.
+      expression.condition = condition;
     }
 
     this.requestUpdate();
@@ -198,21 +221,28 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     }
   };
 
-  #handleInput(event: Event) {
+  async #handleInput(event: Event) {
     event.stopPropagation();
 
     const raw = (event.target as HTMLInputElement).value ?? '';
     const value = this.isNumeric ? Number.parseFloat(raw) : raw;
     const shouldUpdate = this.isNumeric ? !Number.isNaN(value as number) : !!value;
-    const type = this.filterController.get(this.expression.key)?.has(this.expression)
-      ? 'modify'
-      : 'add';
+    const expression = this.expression;
 
+    // A cancelled change leaves the typed text alone: the chip shows the
+    // term still in effect, and resetting the input would fight the user.
     if (shouldUpdate) {
-      this.expression.searchTerm = value as any;
-      this.filterController.filterWithEvent(this.expression, type);
-    } else {
-      this.#removeExpression(this.expression);
+      await this.#commit(expression, { searchTerm: value });
+    } else if (
+      (!this.#isApplied(expression) || (await this.#removeExpression(expression))) &&
+      raw === '' &&
+      !this.#isApplied(expression)
+    ) {
+      // An emptied input leaves a draft with no term, as the input shows.
+      // A partial number ('-', '.') keeps the old term so the value binding
+      // does not wipe the typed character, and an input event that applied
+      // the expression again while the removal settled keeps its term.
+      expression.searchTerm = undefined;
     }
 
     this.requestUpdate();
@@ -284,8 +314,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   #chipCriteriaFor(expression: FilterExpression<T>) {
     return async (e: Event) => {
       e.stopPropagation();
-      expression.criteria = expression.criteria === 'and' ? 'or' : 'and';
-      this.filterController.filterWithEvent(expression, 'modify');
+      await this.#commit(expression, { criteria: expression.criteria === 'and' ? 'or' : 'and' });
       this.requestUpdate();
     };
   }
