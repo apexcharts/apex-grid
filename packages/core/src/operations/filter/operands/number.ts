@@ -11,6 +11,16 @@ export type NumberKeys =
   | 'empty'
   | 'notEmpty';
 
+/**
+ * A missing number: `null`, `undefined`, `NaN` or blank text (a missing value
+ * in CSV or JSON data). It is what Empty matches, and it never matches a range
+ * condition (JS would otherwise read `null` and `''` as 0).
+ */
+const isEmptyNumber = (target: unknown) =>
+  !isDefined(target) ||
+  Number.isNaN(target) ||
+  (typeof target === 'string' && target.trim() === '');
+
 export const NumberOperands = Object.freeze<FilterOperands<number, NumberKeys>>({
   equals: {
     name: 'equals',
@@ -28,36 +38,36 @@ export const NumberOperands = Object.freeze<FilterOperands<number, NumberKeys>>(
     name: 'greaterThan',
     label: 'Greater than',
     unary: false,
-    logic: (target, term) => target > term,
+    logic: (target, term) => !isEmptyNumber(target) && target > term,
   },
   lessThan: {
     name: 'lessThan',
     label: 'Less than',
     unary: false,
-    logic: (target, term) => target < term,
+    logic: (target, term) => !isEmptyNumber(target) && target < term,
   },
   greaterThanOrEqual: {
     name: 'greaterThanOrEqual',
     label: 'Greater than or equal',
     unary: false,
-    logic: (target, term) => target >= term,
+    logic: (target, term) => !isEmptyNumber(target) && target >= term,
   },
   lessThanOrEqual: {
     name: 'lessThanOrEqual',
     label: 'Less than or equal',
     unary: false,
-    logic: (target, term) => target <= term,
+    logic: (target, term) => !isEmptyNumber(target) && target <= term,
   },
   empty: {
     name: 'empty',
     label: 'Empty',
     unary: true,
-    logic: (target) => !isDefined(target) || Number.isNaN(target),
+    logic: (target) => isEmptyNumber(target),
   },
   notEmpty: {
     name: 'notEmpty',
     label: 'Not empty',
     unary: true,
-    logic: (target) => isDefined(target) && !Number.isNaN(target),
+    logic: (target) => !isEmptyNumber(target),
   },
 });

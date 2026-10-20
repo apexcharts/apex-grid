@@ -8,8 +8,10 @@ import {
   nextFrame,
 } from '@open-wc/testing';
 import { ApexGrid } from '../src/components/grid.js';
-import type { ColumnConfiguration } from '../src/internal/types.js';
+import type { ColumnConfiguration, DataType } from '../src/internal/types.js';
 import type { FilterExpression } from '../src/operations/filter/types.js';
+import GridTestFixture from './utils/grid-fixture.js';
+import data, { type TestData } from './utils/test-data.js';
 
 // B10 (filter evaluation): string operands on non-string cells, numeric column
 // types, OR criteria per column, null in numeric ranges, caseSensitive
@@ -139,6 +141,136 @@ describe('filter evaluation (B10)', () => {
       grid.filter({ key: 'id', condition: 'notEmpty' } as any);
       await settle(grid);
       expect(ids(grid)).to.deep.equal([1, 2, 3, 4, 5]);
+    });
+  });
+
+  describe('numeric column types', () => {
+    type Product = { id: number; price: number | null; stars: number; done: number };
+    const rows: Product[] = [
+      { id: 1, price: 10, stars: 1, done: 15 },
+      { id: 2, price: 20, stars: 3, done: 50 },
+      { id: 3, price: 42, stars: 5, done: 95 },
+    ];
+    const columns: ColumnConfiguration<Product>[] = [
+      { key: 'id', type: 'number' },
+      { key: 'price', type: 'currency', filter: true },
+      { key: 'stars', type: 'rating', filter: true },
+      { key: 'done', type: 'progress', filter: true },
+    ];
+
+    it('one rule classifies the numeric types, exposed on the state controller', async () => {
+      const grid = await mount(rows, columns);
+      const state = (grid as any).stateController;
+      const numeric: DataType[] = ['number', 'currency', 'rating', 'progress'];
+      const other: Array<DataType | undefined> = [
+        undefined,
+        'string',
+        'boolean',
+        'date',
+        'select',
+        'sparkline',
+      ];
+      for (const type of numeric)
+        expect(state.isNumericColumn({ key: 'x', type }), type).to.be.true;
+      for (const type of other) expect(state.isNumericColumn({ key: 'x', type }), type).to.be.false;
+    });
+
+    it('notEmpty on a currency column keeps every row with a number', async () => {
+      const grid = await mount(rows, columns);
+      grid.filter({ key: 'price', condition: 'notEmpty' } as any);
+      await settle(grid);
+      expect(ids(grid)).to.deep.equal([1, 2, 3]);
+    });
+
+    it('greaterThan on currency, rating and progress columns filters numerically', async () => {
+      const grid = await mount(rows, columns);
+      for (const [key, term] of [
+        ['price', 15],
+        ['stars', 2],
+        ['done', 20],
+      ] as const) {
+        grid.filterExpressions = [{ key, condition: 'greaterThan', searchTerm: term } as any];
+        await settle(grid);
+        expect(ids(grid), key).to.deep.equal([2, 3]);
+      }
+    });
+
+    it('getSchema advertises the number operands for the numeric types', async () => {
+      const grid = await mount(rows, columns);
+      const byKey = Object.fromEntries(grid.getSchema().columns.map((c) => [c.key, c]));
+      for (const key of ['price', 'stars', 'done']) {
+        expect(byKey[key].filterOperands, key).to.include('greaterThan');
+        expect(byKey[key].filterOperands, key).to.not.include('contains');
+      }
+    });
+
+    for (const type of ['currency', 'rating', 'progress'] as const) {
+      it(`typing a number into the ${type} panel narrows rows`, async () => {
+        const fx = new GridTestFixture<TestData>(data);
+        fx.updateConfig = function () {
+          this.columnConfig = this.columnConfig.map((config) =>
+            config.key === 'id'
+              ? ({ ...config, type, filter: true } as ColumnConfiguration<TestData>)
+              : { ...config, filter: true }
+          );
+        };
+        await fx.setUp();
+        try {
+          const errors = await collectErrors(async () => {
+            fx.filterRow.open('id');
+            await fx.waitForUpdate();
+            fx.filterRow.fireInputEvent('5');
+            await fx.waitForUpdate();
+          });
+          expect(errors).to.deep.equal([]);
+          expect(fx.grid.totalItems).to.equal(1);
+        } finally {
+          fx.tearDown();
+        }
+      });
+    }
+  });
+
+  describe('null in numeric range filters', () => {
+    type Score = { id: number; score: number | null | undefined };
+    const rows: Score[] = [
+      { id: 1, score: 10 },
+      { id: 2, score: null },
+      { id: 3, score: 30 },
+      { id: 4, score: undefined },
+      { id: 5, score: 0 },
+      { id: 6, score: '' as unknown as number },
+      { id: 7, score: '  ' as unknown as number },
+    ];
+    const columns: ColumnConfiguration<Score>[] = [
+      { key: 'id', type: 'number' },
+      { key: 'score', type: 'number', filter: true },
+    ];
+
+    it('null, undefined and blank text never match a range operand', async () => {
+      const grid = await mount(rows, columns);
+      const cases: Array<[string, number, number[]]> = [
+        ['lessThan', 20, [1, 5]],
+        ['lessThanOrEqual', 0, [5]],
+        ['greaterThanOrEqual', 0, [1, 3, 5]],
+        ['greaterThan', -1, [1, 3, 5]],
+        ['equals', 0, [5]],
+      ];
+      for (const [condition, searchTerm, expected] of cases) {
+        grid.filterExpressions = [{ key: 'score', condition, searchTerm } as any];
+        await settle(grid);
+        expect(ids(grid), condition).to.deep.equal(expected);
+      }
+    });
+
+    it('Empty matches null, undefined and blank text, Not empty the rest', async () => {
+      const grid = await mount(rows, columns);
+      grid.filterExpressions = [{ key: 'score', condition: 'empty' } as any];
+      await settle(grid);
+      expect(ids(grid)).to.deep.equal([2, 4, 6, 7]);
+      grid.filterExpressions = [{ key: 'score', condition: 'notEmpty' } as any];
+      await settle(grid);
+      expect(ids(grid)).to.deep.equal([1, 3, 5]);
     });
   });
 

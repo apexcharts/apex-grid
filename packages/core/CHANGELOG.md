@@ -16,6 +16,14 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   before `columns`; reading it back before that returns what was assigned. Sort
   entries for an unknown column or with an unknown direction are dropped with a
   console warning (an omitted direction still sorts ascending).
+- **`currency`, `rating` and `progress` columns filter as numbers**, as their
+  type docs already said. The filter panel offers the number conditions (Equals,
+  Greater than, Less than and so on) and reads the typed value as a number, and
+  `getSchema()` lists the number operands for these columns. A saved state or
+  `filter()` call that names a text condition such as `contains` on one of them
+  is now dropped with a console warning; in 3.5.0 those conditions threw inside
+  the pipeline and filtered nothing. Feature modules read the rule through
+  `StateController.isNumericColumn(column)`.
 
 ### Fixed
 - **Text filter conditions no longer throw on a cell that is not a string.**
@@ -29,6 +37,10 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   nullable or optional field keeps the names of its type (`number | null`
   still takes the number names only), and a field typed `unknown`, such as
   every field of a `Record<string, unknown>` row, keeps every operand name.
+- **Number range conditions no longer match an empty cell.** Greater than, Less
+  than and their or equal forms read `null`, and an empty string from CSV or
+  JSON data, as 0, so Less than 20 included rows with no value. Empty now
+  matches those cells instead.
 
 ## [3.5.0] - 2026-09-12
 

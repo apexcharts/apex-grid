@@ -18,7 +18,8 @@ import {
   type RowPresenterContext,
   type RowTransformer,
 } from '../internal/feature-module.js';
-import type { ActiveNode, GridHost } from '../internal/types.js';
+import type { ActiveNode, ColumnConfiguration, GridHost } from '../internal/types.js';
+import { isNumericColumn } from '../internal/utils.js';
 import { EditingController } from './editing.js';
 import { ExpansionController } from './expansion.js';
 import { FilterController } from './filter.js';
@@ -87,6 +88,16 @@ export class StateController<T extends object> implements ReactiveController {
    */
   public localize(key: GridLocaleKey, params?: LocaleParams, fallback?: string): string {
     return this.host.localize(key, params, fallback);
+  }
+
+  /**
+   * Whether `column` holds numbers (`'number'`, `'currency'`, `'rating'`,
+   * `'progress'`), so it filters with the number operands and a numeric term.
+   * The one numeric-type rule the core filter applies; features that classify
+   * columns should read it here rather than keep their own list.
+   */
+  public isNumericColumn(column: Pick<ColumnConfiguration<T>, 'type'>): boolean {
+    return isNumericColumn(column);
   }
 
   public get active() {

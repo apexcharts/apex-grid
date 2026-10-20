@@ -126,16 +126,27 @@ export function asArray<T>(value: T | T[]) {
   return Array.isArray(value) ? value : [value];
 }
 
-export function getFilterOperandsFor<T extends object>(column: ColumnConfiguration<T>) {
-  // Check for custom class in the filter config
+/**
+ * Whether a column holds numbers: `'number'` and the numeric presentation
+ * types `'currency'`, `'rating'` and `'progress'`, which filter as numbers.
+ * The one numeric-type rule; read it through
+ * {@link StateController.isNumericColumn} outside this package.
+ */
+export function isNumericColumn(column: Pick<ColumnConfiguration<any>, 'type'>): boolean {
   switch (column.type) {
-    case 'boolean':
-      return BooleanOperands;
     case 'number':
-      return NumberOperands;
+    case 'currency':
+    case 'rating':
+    case 'progress':
+      return true;
     default:
-      return StringOperands;
+      return false;
   }
+}
+
+export function getFilterOperandsFor<T extends object>(column: ColumnConfiguration<T>) {
+  if (column.type === 'boolean') return BooleanOperands;
+  return isNumericColumn(column) ? NumberOperands : StringOperands;
 }
 
 /**

@@ -36,7 +36,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   public state!: StateController<T>;
 
   protected get isNumeric() {
-    return this.column.type === 'number';
+    return this.state.isNumericColumn(this.column);
   }
 
   protected get filterController() {
