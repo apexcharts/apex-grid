@@ -884,6 +884,20 @@ describe('Column types: export and formatting', () => {
     });
   });
 
+  describe('boolean and numeric export', () => {
+    it('exports true only for a value the checkbox shows checked', () => {
+      const ok = fx.csvRows().map((cells) => cells[2]);
+      expect(ok).to.deep.equal(['false', 'false', 'true', 'false', 'false']);
+    });
+
+    it('exports currency and progress as numbers like number and rating', () => {
+      for (const type of ['number', 'rating', 'currency', 'progress'] as const) {
+        expect(defaultExportFormat({ key: 'price', type }, '12.5')).to.equal(12.5);
+        expect(defaultExportFormat({ key: 'price', type }, 'n/a')).to.equal('');
+      }
+    });
+  });
+
   describe('Intl formatter caching', () => {
     it('builds no date formatter per row when exporting 100k rows', async function () {
       this.timeout(30000);

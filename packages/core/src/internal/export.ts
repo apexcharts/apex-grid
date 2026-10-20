@@ -2,7 +2,7 @@ import type { ApexGrid } from '../components/grid.js';
 import type { StateController } from '../controllers/state.js';
 import { dateFormatter, parseDate } from './column-types.js';
 import type { ColumnConfiguration, Keys } from './types.js';
-import { getDisplayColumns } from './utils.js';
+import { getDisplayColumns, isNumericColumn } from './utils.js';
 
 /**
  * Primitive cell values supported by the export pipeline.
@@ -138,6 +138,10 @@ export function defaultExportFormat<T extends object>(
   value: unknown
 ): ExportCellValue {
   if (value === null || value === undefined) return '';
+  if (isNumericColumn(column)) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : '';
+  }
   switch (column.type) {
     case 'select': {
       const found = column.options?.find((option) => {
@@ -157,13 +161,9 @@ export function defaultExportFormat<T extends object>(
     // Text that is no date stays text.
     case 'date':
       return parseDate(value) ?? (typeof value === 'object' ? '' : String(value));
+    // Checked only for `true`, like the cell's checkbox and the filter.
     case 'boolean':
-      return Boolean(value);
-    case 'number':
-    case 'rating': {
-      const n = Number(value);
-      return Number.isFinite(n) ? n : '';
-    }
+      return value === true;
     default:
       return typeof value === 'number' || typeof value === 'boolean' ? value : String(value);
   }
