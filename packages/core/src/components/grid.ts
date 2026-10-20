@@ -183,7 +183,8 @@ export interface ApexCellValueChangingEvent<T extends object> {
    */
   key: Keys<T>;
   /**
-   * The view-relative row index (matches {@link ApexGrid.pageItems}).
+   * The view-relative row index (matches {@link ApexGrid.pageItems}), or
+   * -1 when the record is pinned or on another page.
    */
   rowIndex: number;
   /**
@@ -235,7 +236,8 @@ export interface ApexCellValidationFailedEvent<T extends object> {
    */
   key: Keys<T>;
   /**
-   * The view-relative row index of the rejected cell.
+   * The view-relative row index of the rejected cell, or -1 when the record
+   * is pinned or on another page.
    */
   rowIndex: number;
   /**
@@ -303,7 +305,8 @@ export interface ApexStateChangedEvent {
  */
 export interface ApexRowEditStartedEvent {
   /**
-   * The view-relative row index entering edit mode.
+   * The view-relative row index entering edit mode, or -1 when the record is
+   * pinned or on another page.
    */
   rowIndex: number;
 }
@@ -313,7 +316,8 @@ export interface ApexRowEditStartedEvent {
  */
 export interface ApexRowEditEndedEvent {
   /**
-   * The view-relative row index that left edit mode.
+   * The view-relative row index that left edit mode, or -1 when the record is
+   * pinned or on another page.
    */
   rowIndex: number;
   /**
@@ -406,6 +410,11 @@ export interface ApexRowSelectedEvent<T extends object> {
 
 /**
  * Event payload for the cancellable `treeRowExpanding` event.
+ *
+ * @remarks
+ * A parent that exists only as a path segment (no row of its own in
+ * {@link ApexGrid.data}) appears in these arrays as a synthesized placeholder
+ * row, not as one of your records.
  */
 export interface ApexTreeRowExpandingEvent<T extends object> {
   /** Rows that will become expanded by this change. */
@@ -420,6 +429,11 @@ export interface ApexTreeRowExpandingEvent<T extends object> {
 
 /**
  * Event payload for the `treeRowExpanded` event.
+ *
+ * @remarks
+ * A parent that exists only as a path segment (no row of its own in
+ * {@link ApexGrid.data}) appears in these arrays as a synthesized placeholder
+ * row, not as one of your records.
  */
 export interface ApexTreeRowExpandedEvent<T extends object> {
   /** Rows that became expanded in this change. */
@@ -2584,7 +2598,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
-   * The cell currently in edit mode, or `null`.
+   * The cell currently in edit mode, or `null`. `rowIndex` is view-relative
+   * (matches {@link ApexGrid.pageItems}), or -1 when the edited record is
+   * pinned or on another page.
    */
   public get editingCell(): { rowIndex: number; columnKey: Keys<T> } | null {
     const active = this.stateController.editing.activeCell;
@@ -2593,7 +2609,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
   /**
    * The view-relative index of the row currently in edit mode (row edit mode
-   * only), or `null`.
+   * only), or `null`. It is -1 when the edited record is pinned or on another
+   * page.
    */
   public get editingRow(): number | null {
     return this.stateController.editing.activeRow?.rowIndex ?? null;
