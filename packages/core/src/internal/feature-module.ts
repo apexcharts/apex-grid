@@ -176,7 +176,11 @@ export function isRowAriaProvider<T extends object>(
 export interface CellDecoratorContext<T extends object = any> {
   /** The row's backing data (or a synthesized row object). */
   readonly row: T;
-  /** Index of the row within the current page/view (matches `host.pageItems`). */
+  /**
+   * Index of the row within the current page/view (matches `host.pageItems`),
+   * or `-1` for a row rendered in a pinned band, which is outside that view.
+   * Key pinned-row state by {@link row} instead.
+   */
   readonly rowIndex: number;
   /** The cell's column configuration. */
   readonly column: ColumnConfiguration<T>;

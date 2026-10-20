@@ -59,8 +59,7 @@ export class GridDOMController<T extends object> implements ReactiveController {
   }
 
   public rowRenderer: RenderItemFunction<T> = (data: T, index: number) => {
-    const editingCell = this.state.editing.activeCell;
-    const editingKey = editingCell?.rowIndex === index ? editingCell.columnKey : null;
+    const editingKey = this.#editingKey(data);
     // Body rows follow the chrome rows and any pinned-top rows in the
     // aria-rowindex sequence.
     const ariaRowOffset = this.headerRowCount + this.state.rowPin.pinnedRows.top.length;
@@ -86,10 +85,22 @@ export class GridDOMController<T extends object> implements ReactiveController {
   };
 
   /**
+   * The column whose editor the row showing `data` renders, or `null`. Bound
+   * to the edited record, never to a view index, so a view change (sort,
+   * filter, paging, live data, pinning) cannot move the editor onto another
+   * record.
+   */
+  #editingKey(data: T): Keys<T> | null {
+    const editingCell = this.state.editing.activeCell;
+    return editingCell && editingCell.data === data ? editingCell.columnKey : null;
+  }
+
+  /**
    * Renders a single pinned row for a sticky band. Reuses {@link ApexGridRow}
-   * so selection / expansion / decoration all work by data reference, but pins a
-   * sentinel {@link ActiveNode} (pinned rows are presentation + selection
-   * surfaces in v1, never the active/edited cell) and renders no editor.
+   * so selection / expansion / decoration / editing all work by data
+   * reference, but pins a sentinel {@link ActiveNode} (pinned rows are
+   * presentation, selection and pointer-edit surfaces in v1, never the
+   * keyboard-active cell).
    *
    * @param localIndex - position within the band (drives the active sentinel id).
    * @param ariaRowOffset - so `aria-rowindex` continues the unified sequence.
@@ -104,7 +115,7 @@ export class GridDOMController<T extends object> implements ReactiveController {
         .data=${data}
         .columns=${this.displayColumns}
         .pinOffsets=${this.pinOffsets}
-        .editingKey=${null}
+        .editingKey=${this.#editingKey(data)}
         .ariaRowOffset=${ariaRowOffset}
         .decorationVersion=${this.state.decorationVersion}
         .validationVersion=${this.state.editing.validationVersion}

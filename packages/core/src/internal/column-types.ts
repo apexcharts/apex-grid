@@ -278,10 +278,14 @@ const dateType: ColumnTypeRenderer<object> = {
   editor(ctx) {
     const initial = parseDate(ctx.value);
     const initialInput = initial ? toDateInputValue(initial) : '';
+    // The record value sets the shape: ctx.value is the draft when the editor
+    // resumes an edit in progress, and a cleared draft (null) has no shape.
+    const { key } = ctx.column as { key: string };
+    const shape = (ctx.row.data as Record<string, unknown>)[key] ?? ctx.value;
 
     const read = (input: HTMLInputElement) => {
       const raw = input.value;
-      return commitDateInSameShape(ctx.value, raw ? parseDate(raw) : null);
+      return commitDateInSameShape(shape, raw ? parseDate(raw) : null);
     };
     const handleChange = (event: Event) => {
       const input = event.target as HTMLInputElement;

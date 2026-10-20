@@ -25,11 +25,17 @@ export const DEFAULT_EDITING_CONFIG = Object.freeze({
 const NO_DRAFT = Symbol('no-draft');
 
 interface ActiveCell<T> {
+  /**
+   * The record's view index (matches {@link ApexGrid.pageItems}), refreshed
+   * after every grid update; `-1` for a pinned record or one on another page.
+   */
   rowIndex: number;
   columnKey: Keys<T>;
   /**
    * Live reference to the underlying record (preserved through the pipeline so
-   * the source array can be mutated on commit).
+   * the source array can be mutated on commit). The edit is bound to this
+   * record, never to the view index, so a sort, filter, page or data change
+   * cannot move the editor onto another record.
    */
   data: T;
 }
@@ -72,7 +78,10 @@ export class EditingController<T extends object> implements ReactiveController {
   /** The cell currently in edit mode, or `null`. */
   public activeCell: ActiveCell<T> | null = null;
 
-  /** The row currently in edit mode (row mode only), or `null`. */
+  /**
+   * The row currently in edit mode (row mode only), or `null`. Bound to its
+   * record like {@link activeCell}.
+   */
   public activeRow: { rowIndex: number; data: T } | null = null;
 
   /**
@@ -85,9 +94,10 @@ export class EditingController<T extends object> implements ReactiveController {
   /**
    * Per-record validation errors, keyed by the live data reference and then by
    * column. Keyed by reference (not row index) so an invalid marker tracks its
-   * row across pipeline runs (sort / filter / paginate).
+   * row across pipeline runs (sort / filter / paginate). Weak, so the markers
+   * of records the app replaced are released with them.
    */
-  #invalid: Map<T, Map<Keys<T>, string[]>> = new Map();
+  #invalid: WeakMap<T, Map<Keys<T>, string[]>> = new WeakMap();
 
   #validationVersion = 0;
 
@@ -122,6 +132,50 @@ export class EditingController<T extends object> implements ReactiveController {
   public hostConnected() {}
 
   /**
+   * Keeps an open edit bound to its record after the view changed: refreshes
+   * the reported view index, and cancels the edit when the record left the
+   * view (removed, filtered out, replaced by a copy), so no hidden editor can
+   * commit later. A record on another page or in a pinned band stays open.
+   * Runs only while an edit is open.
+   */
+  public hostUpdated(): void {
+    const data = this.activeRow?.data ?? this.activeCell?.data;
+    if (!data) return;
+    const rowIndex = this.#indexOf(data);
+    if (rowIndex < 0 && !this.#inView(data)) {
+      if (this.activeRow) this.cancelRow();
+      else this.cancelCell();
+      return;
+    }
+    if (this.activeRow) this.activeRow.rowIndex = rowIndex;
+    if (this.activeCell) this.activeCell.rowIndex = rowIndex;
+  }
+
+  /** The record's view index (matches {@link ApexGrid.pageItems}), or `-1`. */
+  #indexOf(data: T): number {
+    return this.host.pageItems.indexOf(data);
+  }
+
+  /** Whether the record is still in the processed view or a pinned band. */
+  #inView(data: T): boolean {
+    return this.host.dataView.includes(data) || this.#isPinned(data);
+  }
+
+  #isPinned(data: T): boolean {
+    if (!this.host.rowPinning?.enabled) return false;
+    const { top, bottom } = this.host.pinnedRows;
+    return top.includes(data) || bottom.includes(data);
+  }
+
+  /**
+   * Whether the record of an open edit is out of sight: on another page, so
+   * neither a body row nor a pinned row renders its editor.
+   */
+  #isHidden(data: T): boolean {
+    return this.#indexOf(data) < 0 && !this.#isPinned(data);
+  }
+
+  /**
    * Whether editing is enabled at the grid level.
    */
   public get enabled(): boolean {
@@ -150,57 +204,56 @@ export class EditingController<T extends object> implements ReactiveController {
   }
 
   /**
-   * Whether the cell `(rowIndex, columnKey)` is currently in edit mode.
+   * Whether the cell `(data, columnKey)` is currently in edit mode.
    */
-  public isCellEditing(rowIndex: number, columnKey: Keys<T>): boolean {
-    return this.activeCell?.rowIndex === rowIndex && this.activeCell?.columnKey === columnKey;
+  public isCellEditing(data: T, columnKey: Keys<T>): boolean {
+    const active = this.activeCell;
+    return active !== null && active.data === data && active.columnKey === columnKey;
   }
 
   /**
-   * Whether the given row is currently in edit mode (row mode).
+   * Begins editing the cell at `(rowIndex, columnKey)`, where `rowIndex` is
+   * the view index (matches {@link ApexGrid.pageItems}). See
+   * {@link editRecord}.
    */
-  public isRowEditing(rowIndex: number): boolean {
-    return this.activeRow?.rowIndex === rowIndex;
+  public async editCell(rowIndex: number, columnKey: Keys<T>): Promise<boolean> {
+    const data = this.host.pageItems[rowIndex] as T | undefined;
+    return data ? this.editRecord(data, columnKey) : false;
   }
 
   /**
-   * Begins editing the cell at `(rowIndex, columnKey)`. Auto-commits any cell
-   * already in edit mode (in cell mode); in row mode it stages that cell and
-   * commits the row first on a cross-row move.
+   * Begins editing the `columnKey` cell of the record `data`, a body or a
+   * pinned row. Auto-commits any cell already in edit mode (in cell mode); in
+   * row mode it stages that cell and commits the row first on a cross-row
+   * move.
    *
    * @returns `true` if edit started, `false` if rejected (column not editable,
    * the in-flight cell's commit was rejected, or the previous row could not be
-   * committed). A rejected commit keeps the in-flight editor open.
+   * committed). A rejected commit keeps the in-flight editor open, unless its
+   * record is on another page: an edit the user cannot see or correct is
+   * cancelled instead, so it cannot block every other edit.
    */
-  public async editCell(rowIndex: number, columnKey: Keys<T>): Promise<boolean> {
+  public async editRecord(data: T, columnKey: Keys<T>): Promise<boolean> {
     if (!this.enabled) return false;
     const column = this.host.getColumn(columnKey);
     if (!column || !this.isEditable(column)) return false;
-    const data = this.host.pageItems[rowIndex] as T | undefined;
-    if (!data) return false;
-
-    if (this.mode === 'row') {
-      if (!this.activeRow) {
-        await this.editRow(rowIndex);
-      } else if (this.activeRow.rowIndex !== rowIndex) {
-        // Switching rows in row mode — commit pending edits in the previous row
-        // before starting elsewhere.
-        const committed = await this.commitRow();
-        if (!committed) return false;
-        await this.editRow(rowIndex);
-      }
-    }
-    if (this.activeCell && !this.isCellEditing(rowIndex, columnKey)) {
+    // Row mode: switching rows commits the pending edits of the previous row
+    // before starting elsewhere.
+    if (this.mode === 'row' && !(await this.#openRow(data))) return false;
+    if (this.activeCell && !this.isCellEditing(data, columnKey)) {
       // Commit (cell mode) or stage (row mode) the in-flight cell, draft
       // included, before switching. A rejected commit keeps that editor open
       // with its error instead of abandoning it over still-valid data. A
       // draft that already failed validation (the focus loss of the same
       // click) is not validated a second time.
-      if (this.#draftRejected || !(await this.commitCell())) return false;
+      if (this.#draftRejected || !(await this.commitCell())) {
+        if (!this.#isHidden(this.activeCell.data)) return false;
+        this.cancelCell();
+      }
     }
 
-    if (!this.isCellEditing(rowIndex, columnKey)) this.#resetDraft();
-    this.activeCell = { rowIndex, columnKey, data };
+    if (!this.isCellEditing(data, columnKey)) this.#resetDraft();
+    this.activeCell = { rowIndex: this.#indexOf(data), columnKey, data };
     this.host.requestUpdate();
     return true;
   }
@@ -212,12 +265,19 @@ export class EditingController<T extends object> implements ReactiveController {
   public async editRow(rowIndex: number): Promise<boolean> {
     if (!this.enabled || this.mode !== 'row') return false;
     const data = this.host.pageItems[rowIndex] as T | undefined;
-    if (!data) return false;
-    if (this.activeRow && this.activeRow.rowIndex !== rowIndex) {
-      const committed = await this.commitRow();
-      if (!committed) return false;
+    return data ? this.#openRow(data) : false;
+  }
+
+  /** Opens `data` for a row edit, committing a different open row first. */
+  async #openRow(data: T): Promise<boolean> {
+    if (this.activeRow?.data === data) return true;
+    if (this.activeRow && !(await this.commitRow())) {
+      // A rejected row on another page cannot be corrected there: cancel it
+      // rather than block every other edit.
+      if (!this.#isHidden(this.activeRow.data)) return false;
+      this.cancelRow();
     }
-    if (this.activeRow?.rowIndex === rowIndex) return true;
+    const rowIndex = this.#indexOf(data);
     this.activeRow = { rowIndex, data };
     this.pending.clear();
     this.host.requestUpdate();
@@ -349,6 +409,18 @@ export class EditingController<T extends object> implements ReactiveController {
     this.#draftRejected = false;
   }
 
+  /**
+   * The draft held for the open editor of `(data, columnKey)`, or `null` when
+   * that cell is not in edit or nothing was typed. An editor rendered again
+   * for an edit already open (its record paged or scrolled back into view)
+   * resumes from it, so it shows what a bare {@link commitCell} commits.
+   */
+  public heldDraft(data: T, columnKey: Keys<T>): { value: unknown } | null {
+    return this.#draft === NO_DRAFT || !this.isCellEditing(data, columnKey)
+      ? null
+      : { value: this.#draft };
+  }
+
   #resetDraft(): void {
     this.#draft = NO_DRAFT;
     this.#draftRejected = false;
@@ -410,26 +482,21 @@ export class EditingController<T extends object> implements ReactiveController {
   }
 
   /**
-   * Writes `value` directly to the cell at `(rowIndex, columnKey)` without
-   * entering edit mode. Used by interactive display widgets (e.g. the boolean
-   * checkbox) that handle their own input. Goes through the same
-   * `cellValueChanging` / `cellValueChanged` event path as a normal commit.
+   * Writes `value` directly to the `columnKey` cell of the record `data` (a
+   * body or a pinned row) without entering edit mode. Used by interactive
+   * display widgets (e.g. the boolean checkbox) that handle their own input.
+   * Goes through the same `cellValueChanging` / `cellValueChanged` event path
+   * as a normal commit.
    *
    * @returns `true` if the value was applied, `false` if rejected by
    * `cellValueChanging.preventDefault()` or the column is not editable.
    */
-  public async commitImmediate(
-    rowIndex: number,
-    columnKey: Keys<T>,
-    value: unknown
-  ): Promise<boolean> {
+  public async commitImmediate(data: T, columnKey: Keys<T>, value: unknown): Promise<boolean> {
     if (!this.enabled) return false;
     const column = this.host.getColumn(columnKey);
     if (!column || !this.isEditable(column)) return false;
-    const data = this.host.pageItems[rowIndex] as T | undefined;
-    if (!data) return false;
 
-    const result = this.applyCellEdit(rowIndex, columnKey, data, value);
+    const result = this.applyCellEdit(this.#indexOf(data), columnKey, data, value);
     if (result === 'cancelled') return false;
     if (result === 'invalid') {
       this.host.requestUpdate();
@@ -468,7 +535,7 @@ export class EditingController<T extends object> implements ReactiveController {
     const { rowIndex, data } = active;
 
     // Make sure any open cell editor flushes its pending value first.
-    if (this.activeCell?.rowIndex === rowIndex) {
+    if (this.activeCell?.data === data) {
       await this.commitCell();
     }
 

@@ -439,7 +439,7 @@ export interface ValidatorContext<T extends object, K extends Keys<T> = Keys<T>>
   column: ColumnConfiguration<T, K>;
   /** The full data record being edited (a live reference). */
   data: T;
-  /** The view-relative row index of the edited cell. */
+  /** The view-relative row index of the edited cell (`-1` for a pinned row). */
   rowIndex: number;
 }
 

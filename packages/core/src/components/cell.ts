@@ -181,7 +181,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
     // interactive widgets should render as read-only.
     if (this.isEditable) {
       ctx.commit = (next: unknown) =>
-        this.editingController.commitImmediate(this.row.index, this.column.key, next);
+        this.editingController.commitImmediate(this.row.data, this.column.key, next);
     }
     return ctx as unknown as ApexCellContext<T>;
   }
@@ -197,6 +197,12 @@ export default class ApexGridCell<T extends object> extends LitElement {
   protected get isEditable(): boolean {
     if (!this.editingController) return false;
     return this.editingController.isEditable(this.column);
+  }
+
+  /** Whether the cell's row renders in a pinned band rather than the body. */
+  get #inPinnedBand(): boolean {
+    const pin = this.state.rowPin;
+    return pin.hasPinnedRows && pin.enabled && pin.isPinned(this.row.data);
   }
 
   /**
@@ -233,6 +239,12 @@ export default class ApexGridCell<T extends object> extends LitElement {
   /** Validation errors resolved in {@link willUpdate}, consumed in render. */
   #errors: readonly string[] | null = null;
 
+  /**
+   * The held draft the editor resumed from when it opened on an edit already
+   * in progress (see {@link #editorValue}), or `null`.
+   */
+  #resumed: { value: unknown } | null = null;
+
   public override connectedCallback(): void {
     super.connectedCallback();
     this.setAttribute('role', 'gridcell');
@@ -250,7 +262,12 @@ export default class ApexGridCell<T extends object> extends LitElement {
     super.disconnectedCallback();
   }
 
-  protected override willUpdate() {
+  protected override willUpdate(changed: PropertyValues<this>) {
+    if (changed.has('editing')) {
+      this.#resumed = this.editing
+        ? this.editingController.heldDraft(this.row.data, this.column.key)
+        : null;
+    }
     if (this.colindex > 0) {
       this.setAttribute('aria-colindex', String(this.colindex));
     } else {
@@ -332,7 +349,9 @@ export default class ApexGridCell<T extends object> extends LitElement {
       this.state && this.row
         ? this.state.decorateCell({
             row: this.row.data,
-            rowIndex: this.row.index,
+            // A pinned row is outside the body view (`pageItems`), so its
+            // band-local index must not match a body row's.
+            rowIndex: this.#inPinnedBand ? -1 : this.row.index,
             column: this.column,
             value: this.value as unknown,
           })
@@ -409,7 +428,9 @@ export default class ApexGridCell<T extends object> extends LitElement {
 
   #startEdit() {
     if (!this.row) return;
-    this.editingController.editCell(this.row.index, this.column.key);
+    // By record, so a pinned row edits its own record, not the body row at
+    // its band-local index.
+    this.editingController.editRecord(this.row.data, this.column.key);
   }
 
   /** Set by keyboard-driven commit/cancel so `updated` refocuses the cell host. */
@@ -441,6 +462,13 @@ export default class ApexGridCell<T extends object> extends LitElement {
    */
   #commitAndTab(event: KeyboardEvent): void {
     event.preventDefault();
+    if (this.#inPinnedBand) {
+      // Pinned rows sit outside the body's keyboard model: commit and keep
+      // focus on this cell.
+      this.#refocusAfterEdit = true;
+      void this.#commit();
+      return;
+    }
     const step = event.shiftKey ? -1 : 1;
     const host = this.state.host;
     const body = this.row.parentElement as
@@ -607,8 +635,19 @@ export default class ApexGridCell<T extends object> extends LitElement {
     }
   };
 
+  /**
+   * The value the editor shows: the cell value, or the held draft when the
+   * editor opened on an edit already in progress (its record paged or
+   * scrolled back into view), so what it shows is what a commit writes. Read
+   * once on opening, so a later re-render never rewrites what the user is
+   * typing.
+   */
+  get #editorValue(): unknown {
+    return this.#resumed ? this.#resumed.value : this.value;
+  }
+
   protected renderDefaultEditor() {
-    const value = this.value as unknown;
+    const value = this.#editorValue;
     if (this.column.type === 'boolean') {
       return html`<input
         type="checkbox"
@@ -645,7 +684,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
       parent: this,
       row: this.row,
       column: this.column,
-      value: this.value,
+      value: this.#editorValue,
       commit: (next: unknown) => this.editingController.commitCell(next),
       cancel: () => this.editingController.cancelCell(),
       setDraft: (next: unknown) => this.editingController.setDraft(next),
