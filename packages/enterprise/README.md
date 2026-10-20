@@ -111,15 +111,17 @@ grid.getTotals(); // → { price: { sum: 657.92 }, sold: { sum: 347 } }
 
 This is not the same thing as the per-group aggregates `groupBy` renders, which
 total a group's own leaves. The total row totals the *view*, so it answers "what
-is the sum of this column" without grouping anything, and it follows filtering —
-a filtered grid totals what it shows. In a grouped view the group-header rows are
-excluded, so their aggregates are not counted twice.
+is the sum of this column" without grouping anything, and it follows filtering:
+a filtered grid totals what it shows. Rows on other pages and inside collapsed
+groups count too. In a grouped view the group-header rows are excluded, so their
+aggregates are not counted twice.
 
 `position: 'top'` moves it above the rows, `label` overrides the leading text
 (default: the localized "Grand Total"), and `null` removes it. Style it through
 the `total-row`, `total-row-content`, `total-row-label`, `total-row-values`, and
 `total-row-value` parts. Pivot brings its own grand total, so this covers the
-flat and grouped views.
+flat and grouped views; the row is not added while a pivot, the server-side row
+model or the infinite row model is active, and `getTotals()` is then empty.
 
 ## Row grouping
 
@@ -594,6 +596,21 @@ grid.refreshRows();     // refetch after a server-side mutation
 
 The grid emits `apex-rows-loaded` (`detail: { rowCount, exact, loadedBlocks,
 blockSize }`) so you can show live load status.
+
+**Failed requests.** When `getRows` rejects, the grid fires
+`apex-rows-load-failed` (`detail: { startRow, endRow, error, retrying }`) and
+retries the block: by default up to 2 more times, after 1000 ms and then
+2000 ms. Set `maxRetries` (0 turns retrying off, at most 10) and `retryDelay`
+(the first wait in milliseconds, doubled each time) on the config. After the
+last attempt the rows stay placeholders until `refreshRows()` or a sort or
+filter change. The same options and an `apex-server-rows-load-failed` event
+(`detail: { groupKeys, startRow, endRow, error, retrying }`) apply to
+`serverSideRowModel`.
+
+```ts
+grid.infiniteRowModel = { datasource, maxRetries: 0 }; // report failures, never retry
+grid.addEventListener('apex-rows-load-failed', (e) => showError(e.detail.error));
+```
 
 ### Server-side grouping + aggregation
 

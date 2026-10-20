@@ -442,15 +442,18 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   /**
    * A **grand-total row** over the whole view: one synthesized row showing the
-   * configured aggregations across every data row currently displayed.
+   * configured aggregations across every data row the view holds, including rows
+   * on other pages and inside collapsed groups.
    *
    * Distinct from the per-group aggregates {@link groupBy} renders, which total a
    * group's own leaves. This totals the view, so it answers "what is the sum of
-   * this column" without grouping anything, and it follows filtering — a filtered
+   * this column" without grouping anything, and it follows filtering: a filtered
    * grid totals what it shows. Group-header rows are excluded so their aggregates
    * are not counted twice. `null` (the default) renders nothing.
    *
    * Pivot supplies its own grand total, so this covers the flat and grouped views.
+   * The row is not added while a pivot, the server-side row model or the infinite
+   * row model is active.
    *
    * @example
    * ```ts
@@ -1491,7 +1494,9 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   /**
    * The grand-total row's computed values from the latest pipeline run, keyed by
-   * column then aggregation function. Empty when {@link totalRow} is unset.
+   * column then aggregation function. Empty when {@link totalRow} is unset or has
+   * no aggregations, and while a pivot, the server-side row model or the infinite
+   * row model is active.
    */
   public getTotals() {
     return this.#totalRowController()?.totals ?? {};
