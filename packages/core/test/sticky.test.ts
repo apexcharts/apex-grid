@@ -198,3 +198,72 @@ describe('Sticky chrome cells', () => {
     expect(grid.style.getPropertyValue('--scrollbar-offset')).to.equal('');
   });
 });
+
+describe('Column group header alignment', () => {
+  afterEach(() => fixtureCleanup());
+
+  const groups: ColumnGroupConfiguration[] = [
+    { id: 'pin', headerText: 'Pinned' },
+    { id: 'g', headerText: 'G' },
+  ];
+
+  function groupCell(grid: Grid, text: string): HTMLElement {
+    return Array.from(
+      shadow(grid, 'apex-grid-group-header-row').querySelectorAll("[part~='group-header']")
+    ).find((cell) => cell.textContent?.trim() === text) as HTMLElement;
+  }
+
+  function expectOver(grid: Grid, text: string, first: string, last: string) {
+    const cell = groupCell(grid, text).getBoundingClientRect();
+    const a = headerFor(grid, first).getBoundingClientRect();
+    const b = headerFor(grid, last).getBoundingClientRect();
+    expect(Math.round(cell.left), `${text} left`).to.equal(Math.round(Math.min(a.left, b.left)));
+    expect(Math.round(cell.right), `${text} right`).to.equal(
+      Math.round(Math.max(a.right, b.right))
+    );
+  }
+
+  it('sits over its members with every chrome column shown', async () => {
+    const columns = [
+      { key: 'id', pinned: 'start', width: '150px', group: 'pin' },
+      { key: 'name', width: '200px', group: 'g' },
+      { key: 'active', width: '200px', group: 'g' },
+      { key: 'importance', width: '200px' },
+    ] as ColumnConfiguration<TestData>[];
+    const grid = await mount({ columns, groups, parentStyle: 'height:600px;width:1200px' });
+    expectOver(grid, 'Pinned', 'id', 'id');
+    expectOver(grid, 'G', 'name', 'active');
+  });
+
+  it('keeps aria-colindex on the selection + expansion numbering', async () => {
+    const columns = [
+      { key: 'id', width: '150px' },
+      { key: 'name', width: '200px', group: 'g' },
+      { key: 'active', width: '200px', group: 'g' },
+    ] as ColumnConfiguration<TestData>[];
+    const grid = await mount({ columns, groups, parentStyle: 'height:600px;width:1200px' });
+    const cell = groupCell(grid, 'G');
+    // Selection 1, expansion 2, id 3, name 4: the gutter and grip are aria-hidden.
+    expect(cell.getAttribute('aria-colindex')).to.equal('4');
+  });
+
+  for (const dir of ['ltr', 'rtl'] as const) {
+    it(`spacers over chrome and pinned columns stay frozen on scroll (${dir})`, async () => {
+      const columns = [
+        { key: 'id', pinned: 'start', width: '150px' },
+        { key: 'name', width: '600px', group: 'g' },
+        { key: 'active', width: '600px', group: 'g' },
+      ] as ColumnConfiguration<TestData>[];
+      const grid = await mount({ columns, groups, dir });
+      await scrollBy(grid, dir === 'ltr' ? 300 : -300);
+      const root = shadow(grid, 'apex-grid-group-header-row');
+      const groupRow = grid.renderRoot.querySelector('apex-grid-group-header-row') as HTMLElement;
+      const y = groupRow.getBoundingClientRect().top + groupRow.offsetHeight / 2;
+      for (const element of headerParts(grid)) {
+        const rect = element.getBoundingClientRect();
+        const top = root.elementFromPoint(rect.left + rect.width / 2, y) as HTMLElement | null;
+        expect(top?.getAttribute('part'), 'above a frozen column').to.equal('group-spacer');
+      }
+    });
+  }
+});

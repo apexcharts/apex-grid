@@ -34,20 +34,20 @@ $header-border-color: var(--header-border-color, var(--ag-hairline));
     color: var(--ag-text-muted);
 }
 
-// Pinned group cells stay frozen during horizontal scroll, aligned to their
-// anchoring member's pin offset.
-[part~='group-header'][data-pinned='start'],
-[part~='group-header'][data-pinned='end'] {
+// Pinned group cells, and the spacers over pinned columns and chrome, stay
+// frozen during horizontal scroll, aligned to their member's pin offset.
+[data-pinned='start'],
+[data-pinned='end'] {
     position: sticky;
     z-index: calc(var(--z-index-base) + 2);
     background: inherit;
 }
 
-[part~='group-header'][data-pinned='start'] {
+[data-pinned='start'] {
     inset-inline-start: var(--apex-pin-offset, 0);
 }
 
-[part~='group-header'][data-pinned='end'] {
+[data-pinned='end'] {
     inset-inline-end: var(--apex-pin-offset, 0);
 }
 

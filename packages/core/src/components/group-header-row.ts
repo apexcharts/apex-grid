@@ -10,6 +10,7 @@ import type {
   ColumnConfiguration,
   ColumnGroupConfiguration,
 } from '../internal/types.js';
+import { leadingChromeTracks } from '../internal/utils.js';
 import { styles } from '../styles/group-header-row/group-header-row.css.js';
 
 /**
@@ -59,18 +60,34 @@ export default class ApexGridGroupHeaderRow<T extends object> extends LitElement
     this.setAttribute('aria-rowindex', '1');
   }
 
-  /** Number of leading chrome columns (selection + expansion). */
-  #chromeCount(): number {
-    return (
-      (this.state?.selection.showCheckboxColumn ? 1 : 0) +
-      (this.state?.expansion.showToggleColumn ? 1 : 0)
-    );
+  /**
+   * The inline pin offset style for a cell over `column`, so a cell over a
+   * frozen column stays frozen with it during horizontal scroll.
+   */
+  #pinStyle(column: ColumnConfiguration<T>): Record<string, string> {
+    const offset = column.pinned ? this.pinOffsets.get(column.key) : undefined;
+    return typeof offset === 'number' ? { '--apex-pin-offset': `${offset}px` } : {};
+  }
+
+  #spacer(line: number, column: ColumnConfiguration<T>) {
+    return html`<div
+      part="group-spacer"
+      data-pinned=${column.pinned ?? 'none'}
+      style=${styleMap({ gridColumn: `${line} / span 1`, ...this.#pinStyle(column) })}
+    ></div>`;
   }
 
   protected override render() {
     const groupsById = new Map(this.groups.map((group) => [group.id, group]));
     const visible = this.columns.filter((column) => !column.hidden);
-    const chrome = this.#chromeCount();
+    // Grid lines count every leading chrome track (the same list the grid
+    // template is built from); aria-colindex counts only the selection and
+    // expansion cells, as the header row does (the gutter and grip are
+    // aria-hidden).
+    const chrome = leadingChromeTracks(this.state).length;
+    const ariaChrome =
+      (this.state?.selection.showCheckboxColumn ? 1 : 0) +
+      (this.state?.expansion.showToggleColumn ? 1 : 0);
     const seen = new Set<string>();
     const cells = [];
 
@@ -78,12 +95,9 @@ export default class ApexGridGroupHeaderRow<T extends object> extends LitElement
     while (i < visible.length) {
       const column = visible[i];
       const group = column.group ? groupsById.get(column.group) : undefined;
-      const startLine = chrome + i + 1;
 
       if (!group) {
-        cells.push(
-          html`<div part="group-spacer" style=${styleMap({ gridColumn: `${startLine} / span 1` })}></div>`
-        );
+        cells.push(this.#spacer(chrome + i + 1, column));
         i += 1;
         continue;
       }
@@ -110,23 +124,35 @@ export default class ApexGridGroupHeaderRow<T extends object> extends LitElement
           );
         }
         for (let k = i; k <= end; k += 1) {
-          const line = chrome + k + 1;
-          cells.push(
-            html`<div part="group-spacer" style=${styleMap({ gridColumn: `${line} / span 1` })}></div>`
-          );
+          cells.push(this.#spacer(chrome + k + 1, visible[k]));
         }
         i = end + 1;
         continue;
       }
       seen.add(group.id);
 
-      cells.push(this.#renderGroupCell(group, visible[i], visible[end], startLine, end, chrome));
+      cells.push(
+        this.#renderGroupCell(
+          group,
+          visible[i],
+          visible[end],
+          end - i + 1,
+          chrome + i + 1,
+          ariaChrome + i + 1
+        )
+      );
       i = end + 1;
     }
 
+    // The spacer over the chrome tracks sticks at the inline start with the
+    // chrome cells below it, so scrolling group labels pass under it.
     return html`${
       chrome > 0
-        ? html`<div part="group-spacer" style=${styleMap({ gridColumn: `1 / span ${chrome}` })}></div>`
+        ? html`<div
+            part="group-spacer"
+            data-pinned="start"
+            style=${styleMap({ gridColumn: `1 / span ${chrome}` })}
+          ></div>`
         : nothing
     }${cells}`;
   }
@@ -135,24 +161,17 @@ export default class ApexGridGroupHeaderRow<T extends object> extends LitElement
     group: ColumnGroupConfiguration,
     first: ColumnConfiguration<T>,
     last: ColumnConfiguration<T>,
+    span: number,
     startLine: number,
-    endIndex: number,
-    chrome: number
+    colindex: number
   ) {
-    const span = endIndex - (startLine - chrome - 1) + 1;
-    const endLine = startLine + span;
     const pinned = first.pinned ?? null;
-
-    const style: Record<string, string> = { gridColumn: `${startLine} / ${endLine}` };
     // Pin the group cell to the edge of its anchoring member so it tracks the
     // frozen column(s) during horizontal scroll.
-    if (pinned === 'start') {
-      const offset = this.pinOffsets.get(first.key);
-      if (typeof offset === 'number') style['--apex-pin-offset'] = `${offset}px`;
-    } else if (pinned === 'end') {
-      const offset = this.pinOffsets.get(last.key);
-      if (typeof offset === 'number') style['--apex-pin-offset'] = `${offset}px`;
-    }
+    const style: Record<string, string> = {
+      gridColumn: `${startLine} / ${startLine + span}`,
+      ...this.#pinStyle(pinned === 'end' ? last : first),
+    };
 
     const content = group.headerTemplate
       ? group.headerTemplate({ group, span } as ApexColumnGroupContext)
@@ -161,7 +180,7 @@ export default class ApexGridGroupHeaderRow<T extends object> extends LitElement
     return html`<div
       part="group-header"
       role="columnheader"
-      aria-colindex=${startLine}
+      aria-colindex=${colindex}
       aria-colspan=${span}
       data-pinned=${pinned ?? 'none'}
       style=${styleMap(style)}
