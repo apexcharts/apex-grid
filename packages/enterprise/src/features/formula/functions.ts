@@ -10,6 +10,7 @@
  *
  * Pure: no DOM, no grid knowledge.
  */
+import { maxOf, minOf } from '../aggregation.js';
 import {
   type CellValue,
   divZeroError,
@@ -56,7 +57,7 @@ const MIN: FormulaFn = (args) => {
     return error;
   }
   const numbers = numbersOf(args);
-  return numbers.length ? Math.min(...numbers) : 0;
+  return numbers.length ? minOf(numbers) : 0;
 };
 
 const MAX: FormulaFn = (args) => {
@@ -65,7 +66,7 @@ const MAX: FormulaFn = (args) => {
     return error;
   }
   const numbers = numbersOf(args);
-  return numbers.length ? Math.max(...numbers) : 0;
+  return numbers.length ? maxOf(numbers) : 0;
 };
 
 // COUNT counts numbers only and (like Excel) ignores error values.

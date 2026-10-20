@@ -12,6 +12,25 @@ export type AggregationResults = Record<string, Partial<Record<AggregationFn, nu
 
 export const AGGREGATION_MODULE_ID = 'aggregation';
 
+/**
+ * The smallest of `values`, exactly as `Math.min(...values)` (NaN wins, -0 is
+ * below 0, Infinity when empty) but without the argument spread, which throws
+ * RangeError past roughly 120k values. The lazy AI engine keeps its own copy
+ * in ai/analytics.ts; change both together.
+ */
+export function minOf(values: readonly number[]): number {
+  let min = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < values.length; i += 1) min = Math.min(min, values[i]);
+  return min;
+}
+
+/** The largest of `values`, exactly as `Math.max(...values)`; see {@link minOf}. */
+export function maxOf(values: readonly number[]): number {
+  let max = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < values.length; i += 1) max = Math.max(max, values[i]);
+  return max;
+}
+
 /** Apply a single aggregation function over a list of numeric values. */
 function applyAggregation(fn: AggregationFn, values: number[]): number {
   const sum = values.reduce((total, value) => total + value, 0);
@@ -23,9 +42,9 @@ function applyAggregation(fn: AggregationFn, values: number[]): number {
     case 'avg':
       return values.length ? sum / values.length : 0;
     case 'min':
-      return values.length ? Math.min(...values) : 0;
+      return values.length ? minOf(values) : 0;
     case 'max':
-      return values.length ? Math.max(...values) : 0;
+      return values.length ? maxOf(values) : 0;
     default:
       return 0;
   }

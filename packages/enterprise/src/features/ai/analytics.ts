@@ -108,6 +108,26 @@ function numericValues(rows: readonly Row[], column: string): number[] {
   return rows.map((row) => toNumber(row[column])).filter((n) => Number.isFinite(n));
 }
 
+/**
+ * The smallest of `values`, exactly as `Math.min(...values)` but without the
+ * argument spread, which throws RangeError past roughly 120k values. A local
+ * twin of the helper in aggregation.ts: importing that module from here
+ * would pull it into its own eager chunk for consumers that code-split,
+ * because this file is only loaded with the lazy AI engine.
+ */
+export function minOf(values: readonly number[]): number {
+  let min = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < values.length; i += 1) min = Math.min(min, values[i]);
+  return min;
+}
+
+/** The largest of `values`, exactly as `Math.max(...values)`; see {@link minOf}. */
+export function maxOf(values: readonly number[]): number {
+  let max = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < values.length; i += 1) max = Math.max(max, values[i]);
+  return max;
+}
+
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
@@ -159,9 +179,9 @@ function computeMetric(
   if (values.length === 0) return { func, value: null };
   switch (func) {
     case 'min':
-      return { func, value: Math.min(...values) };
+      return { func, value: minOf(values) };
     case 'max':
-      return { func, value: Math.max(...values) };
+      return { func, value: maxOf(values) };
     case 'sum':
       return { func, value: values.reduce((s, n) => s + n, 0) };
     case 'avg':
@@ -169,7 +189,7 @@ function computeMetric(
     case 'median':
       return { func, value: median(values) };
     case 'range':
-      return { func, value: Math.max(...values) - Math.min(...values) };
+      return { func, value: maxOf(values) - minOf(values) };
     case 'stddev':
       return { func, value: stddev(values) };
     default:

@@ -16,7 +16,13 @@ import type { ColumnSchema, GridState, RowRef, SortingDirection } from 'apex-gri
 import type { AggregationConfig } from '../../aggregation.js';
 import { sanitizePatch } from '../../ai-sanitize.js';
 import type { StatePatch } from '../../ai-schema.js';
-import { type AnalyticsQuery, formatAnalyticsAnswer, runAnalytics } from '../analytics.js';
+import {
+  type AnalyticsQuery,
+  formatAnalyticsAnswer,
+  maxOf,
+  minOf,
+  runAnalytics,
+} from '../analytics.js';
 import type { GridContext } from '../context.js';
 import {
   createToolRegistry,
@@ -117,10 +123,10 @@ function answerQuestion(question: string, tc: ToolContext): string {
       const values = rows.map((row) => Number(row[column.key])).filter((n) => Number.isFinite(n));
       if (values.length > 0) {
         if (/highest|max|most|top|largest/.test(lower)) {
-          return `The highest ${column.label} is ${Math.max(...values)}.`;
+          return `The highest ${column.label} is ${maxOf(values)}.`;
         }
         if (/lowest|min|least|smallest|bottom/.test(lower)) {
-          return `The lowest ${column.label} is ${Math.min(...values)}.`;
+          return `The lowest ${column.label} is ${minOf(values)}.`;
         }
         if (/average|mean|avg/.test(lower)) {
           const avg = values.reduce((sum, n) => sum + n, 0) / values.length;
