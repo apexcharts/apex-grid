@@ -585,8 +585,11 @@ const sparklineType: ColumnTypeRenderer<object> = {
     const first = series[0];
     const last = series[series.length - 1];
     const trend = last > first ? 'up' : last < first ? 'down' : 'flat';
-    const delta = first === 0 ? 0 : ((last - first) / Math.abs(first)) * 100;
-    const showDelta = (ctx.column as { showDelta?: boolean }).showDelta !== false;
+    // A percent change from zero is undefined, so no label then. toFixed
+    // rounds a half away from zero, so a rise and a fall of the same size
+    // get the same label; `|| 0` turns the '-0' of a tiny decline into 0.
+    const delta = +(((last - first) / Math.abs(first)) * 100).toFixed(0) || 0;
+    const showDelta = first !== 0 && (ctx.column as { showDelta?: boolean }).showDelta !== false;
 
     return html`<span part="spark-cell">
       <svg
@@ -602,7 +605,7 @@ const sparklineType: ColumnTypeRenderer<object> = {
       ${
         showDelta
           ? html`<span part="spark-delta spark-delta--${trend}"
-            >${delta > 0 ? '+' : ''}${delta.toFixed(0)}%</span
+            >${delta > 0 ? '+' : ''}${delta}%</span
           >`
           : nothing
       }

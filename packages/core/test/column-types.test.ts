@@ -816,7 +816,13 @@ const exportRows = (): ExportRow[] =>
     ok: id === 0 ? 'false' : id === 1 ? 1 : id === 2,
     price: id === 0 ? '12.5' : 1234.5,
     pct: id === 0 ? 150 : 70,
-    spark: id === 0 ? [0, 5, 10] : id === 1 ? [1000, 999.6] : [10, 20],
+    spark: [
+      [0, 5, 10],
+      [1000, 999.6],
+      [10, 20],
+      [200, 195],
+      [200, 205],
+    ][id],
     status: id === 0 ? 'Cancelled' : 'Trialing',
     tier: id === 0 ? 'gold' : 'silver',
   }));
@@ -941,6 +947,48 @@ describe('Column types: export and formatting', () => {
       await fx.updateColumns({ key: 'price', type: 'currency', locale: 'de-DE', currency: 'EURO' });
       const usd = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'USD' });
       expect(fx.cellText(1, 'price')).to.equal(usd.format(1234.5).replace(/\s+/g, ' '));
+    });
+  });
+
+  describe('presentation renderers', () => {
+    it('formats currency with the column locale and currency', () => {
+      const expected = new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+      }).format(1234.5);
+      expect(fx.cellText(1, 'price')).to.equal(expected.replace(/\s+/g, ' '));
+    });
+
+    it('clamps progress to 100 and picks the tier from the percentage', () => {
+      const fill = fx.cellRoot(0, 'pct').querySelector<HTMLElement>('[part~="progress-fill"]')!;
+      expect(fill.style.width).to.equal('100%');
+      expect(fill.getAttribute('part')).to.contain('progress-fill--good');
+      expect(fx.cellText(0, 'pct')).to.equal('100');
+      const watch = fx.cellRoot(1, 'pct').querySelector('[part~="progress-fill"]')!;
+      expect(watch.getAttribute('part')).to.contain('progress-fill--watch');
+    });
+
+    it('omits the sparkline delta when the series starts at zero', () => {
+      const root = fx.cellRoot(0, 'spark');
+      expect(root.querySelector('[part~="sparkline--up"]')).to.exist;
+      expect(root.querySelector('[part~="spark-delta"]')).to.be.null;
+    });
+
+    it('prints a rounded-away decline as 0%, never -0%', () => {
+      expect(fx.cellText(1, 'spark')).to.equal('0%');
+      expect(fx.cellText(2, 'spark')).to.equal('+100%');
+    });
+
+    it('rounds an exact half away from zero in both directions', () => {
+      expect(fx.cellText(3, 'spark')).to.equal('-3%');
+      expect(fx.cellText(4, 'spark')).to.equal('+3%');
+    });
+
+    it('infers the status variant and calls the badge variant callback', () => {
+      expect(fx.cellRoot(0, 'status').querySelector('[part~="status--churn"]')).to.exist;
+      expect(fx.cellRoot(1, 'status').querySelector('[part~="status--trial"]')).to.exist;
+      expect(fx.cellRoot(0, 'tier').querySelector('[part~="pill--warning"]')).to.exist;
+      expect(fx.cellRoot(1, 'tier').querySelector('[part~="pill--neutral"]')).to.exist;
     });
   });
 });
