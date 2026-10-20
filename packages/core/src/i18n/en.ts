@@ -145,6 +145,8 @@ export const EN_LOCALE = {
   'toolPanel.moveUp': 'Move up',
   'toolPanel.moveDown': 'Move down',
   'toolPanel.groupByColumn': 'Group by this column',
+  'toolPanel.valueColumn': 'Use as value',
+  'toolPanel.columnLabelColumn': 'Use as column label',
   'toolPanel.pivotMode': 'Pivot mode',
   'toolPanel.rowGroups': 'Row Groups',
   'toolPanel.rowGroupsPivot': 'Row Groups (pivot rows)',

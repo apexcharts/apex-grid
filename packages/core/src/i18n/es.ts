@@ -151,6 +151,8 @@ export const esLocale: GridLocaleText = {
   'toolPanel.moveUp': 'Subir',
   'toolPanel.moveDown': 'Bajar',
   'toolPanel.groupByColumn': 'Agrupar por esta columna',
+  'toolPanel.valueColumn': 'Usar como valor',
+  'toolPanel.columnLabelColumn': 'Usar como etiqueta de columna',
   'toolPanel.pivotMode': 'Modo dinámico',
   'toolPanel.rowGroups': 'Grupos de filas',
   'toolPanel.rowGroupsPivot': 'Grupos de filas (filas dinámicas)',

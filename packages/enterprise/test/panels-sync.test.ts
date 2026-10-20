@@ -1,9 +1,15 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import { type ColumnConfiguration, esLocale } from 'apex-grid';
-import { ApexGridEnterprise, ApexGridStatusBar, enterpriseModules } from '../src/index.js';
+import {
+  ApexGridEnterprise,
+  ApexGridStatusBar,
+  ApexGridToolPanel,
+  enterpriseModules,
+} from '../src/index.js';
 
-// The status bar follows the grid it is bound to: value and locale changes
-// made anywhere else show up in it, and it survives being moved in the DOM.
+// The status bar and the tool panel follow the grid they are bound to: values,
+// columns, grouping, pivot and locale changes made anywhere else show up in
+// them, and they survive being moved in the DOM.
 
 interface Row {
   id: number;
@@ -81,6 +87,7 @@ describe('panels follow the grid', () => {
     ApexGridEnterprise.use(...enterpriseModules);
     ApexGridEnterprise.register();
     ApexGridStatusBar.register();
+    ApexGridToolPanel.register();
   });
   afterEach(() => fixtureCleanup());
 
@@ -191,6 +198,343 @@ describe('panels follow the grid', () => {
       expect(bar.shadowRoot!.querySelector('[part="hint"]')!.textContent!.trim()).to.equal(
         esLocale['statusBar.selectRange']
       );
+    });
+  });
+
+  // --- tool panel -------------------------------------------------------------
+
+  describe('tool panel', () => {
+    async function mountPanel(grid: ApexGridEnterprise<Row>) {
+      const panel = await fixture<ApexGridToolPanel>(
+        html`<apex-grid-tool-panel .grid=${grid}></apex-grid-tool-panel>`
+      );
+      await settle(grid, panel);
+      return panel;
+    }
+    const item = (panel: ApexGridToolPanel, key: string) =>
+      panel.shadowRoot!.querySelector(`li[data-key="${key}"]`)!;
+    const control = <E extends HTMLElement>(panel: ApexGridToolPanel, key: string, part: string) =>
+      item(panel, key)?.querySelector(`[part="${part}"]`) as E | null;
+    const listKeys = (panel: ApexGridToolPanel) =>
+      [...panel.shadowRoot!.querySelectorAll('li[part="item"]')].map((li) =>
+        li.getAttribute('data-key')
+      );
+    const zone = (panel: ApexGridToolPanel, title: string) =>
+      [...panel.shadowRoot!.querySelectorAll('[part="zone"]')].find(
+        (each) => each.querySelector('[part="zone-title"]')?.textContent?.trim() === title
+      ) as HTMLElement;
+    const chips = (panel: ApexGridToolPanel) =>
+      [...panel.shadowRoot!.querySelectorAll('[part="chip"]')].map((chip) =>
+        (chip.textContent ?? '').replace('×', '').trim()
+      );
+    const pivotToggle = (panel: ApexGridToolPanel) =>
+      panel.shadowRoot!.querySelector('[part="pivot-mode"]') as HTMLInputElement;
+    function drop(target: HTMLElement, text: string): void {
+      const transfer = new DataTransfer();
+      transfer.setData('text/plain', text);
+      target.dispatchEvent(
+        new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true })
+      );
+    }
+
+    it('reflects grouping set outside the panel, and its next click ungroups', async () => {
+      const grid = await mountGrid();
+      const panel = await mountPanel(grid);
+      grid.groupBy = ['name'];
+      await settle(grid, panel);
+      const group = control<HTMLButtonElement>(panel, 'name', 'group')!;
+      expect(group.getAttribute('aria-pressed')).to.equal('true');
+      expect(chips(panel)).to.eql(['Name']);
+      group.click();
+      await settle(grid, panel);
+      expect(grid.groupBy).to.eql([]);
+    });
+
+    it('reflects a column hidden outside the panel', async () => {
+      const grid = await mountGrid();
+      const panel = await mountPanel(grid);
+      grid.columns = grid.columns.map((c) => (c.key === 'name' ? { ...c, hidden: true } : c));
+      await settle(grid, panel);
+      expect(control<HTMLInputElement>(panel, 'name', 'visible')!.checked).to.equal(false);
+    });
+
+    it('reflects a column moved outside the panel', async () => {
+      const grid = await mountGrid();
+      const panel = await mountPanel(grid);
+      await grid.moveColumn('amount', 'id', 'before');
+      await settle(grid, panel);
+      expect(listKeys(panel)).to.eql(['amount', 'id', 'name']);
+    });
+
+    it('follows the grid after it is moved in the DOM, and not while detached', async () => {
+      const grid = await mountGrid();
+      const panel = await mountPanel(grid);
+      const parent = panel.parentElement!;
+      panel.remove();
+      let renders = 0;
+      const host = panel as unknown as { render(): unknown };
+      const render = host.render.bind(panel);
+      host.render = () => {
+        renders += 1;
+        return render();
+      };
+      grid.groupBy = ['name'];
+      await settle(grid);
+      expect(renders, 'a detached panel does not re-render').to.equal(0);
+      // A tab or dock switch: the grid changed while the panel was away.
+      parent.appendChild(panel);
+      await settle(grid, panel);
+      expect(control(panel, 'name', 'group')!.getAttribute('aria-pressed')).to.equal('true');
+      panel.remove();
+      parent.appendChild(panel);
+      grid.groupBy = ['id'];
+      await settle(grid, panel);
+      expect(control(panel, 'id', 'group')!.getAttribute('aria-pressed')).to.equal('true');
+    });
+
+    it('applies a pivotMode set before the grid to that grid', async () => {
+      const grid = await mountGrid({ groupBy: ['name'] });
+      const panel = await fixture<ApexGridToolPanel>(
+        html`<apex-grid-tool-panel .pivotMode=${true} .grid=${grid}></apex-grid-tool-panel>`
+      );
+      await settle(grid, panel);
+      expect(panel.pivotMode).to.be.true;
+      expect(grid.groupBy).to.eql([]);
+      expect(grid.pivotRows).to.eql(['name']);
+    });
+
+    it('applies a pivotMode set while unbound to the next grid', async () => {
+      const grid = await mountGrid({ groupBy: ['name'] });
+      const panel = await fixture<ApexGridToolPanel>(
+        html`<apex-grid-tool-panel .pivotMode=${true} .grid=${null}></apex-grid-tool-panel>`
+      );
+      await settle(panel);
+      panel.grid = grid as never;
+      await settle(grid, panel);
+      expect(panel.pivotMode).to.be.true;
+      expect(grid.groupBy).to.eql([]);
+      expect(grid.pivotRows).to.eql(['name']);
+    });
+
+    it('applies a pivotMode set right after the grid in the same task', async () => {
+      const grid = await mountGrid({ groupBy: ['name'] });
+      const panel = await fixture<ApexGridToolPanel>(
+        html`<apex-grid-tool-panel></apex-grid-tool-panel>`
+      );
+      panel.grid = grid as never;
+      panel.pivotMode = true;
+      await settle(grid, panel);
+      expect(grid.groupBy).to.eql([]);
+      expect(grid.pivotRows).to.eql(['name']);
+      expect(panel.pivotMode).to.be.true;
+      expect(pivotToggle(panel).checked).to.be.true;
+    });
+
+    it('applies a pivotMode bound after the grid in a template', async () => {
+      const grid = await mountGrid({ groupBy: ['name'] });
+      const panel = await fixture<ApexGridToolPanel>(
+        html`<apex-grid-tool-panel .grid=${grid} .pivotMode=${true}></apex-grid-tool-panel>`
+      );
+      await settle(grid, panel);
+      expect(grid.pivotRows).to.eql(['name']);
+      expect(panel.pivotMode).to.be.true;
+      expect(pivotToggle(panel).checked).to.be.true;
+    });
+
+    it('applies a pivotMode set right after swapping grids', async () => {
+      const first = await mountGrid();
+      const grid = await mountGrid({ groupBy: ['name'] });
+      const panel = await mountPanel(first);
+      panel.grid = grid as never;
+      panel.pivotMode = true;
+      await settle(grid, panel);
+      expect(grid.pivotRows).to.eql(['name']);
+      expect(panel.pivotMode).to.be.true;
+      expect(pivotToggle(panel).checked).to.be.true;
+    });
+
+    it('keeps the grouping of a grid swapped in with pivotMode false', async () => {
+      const pivoting = await mountGrid({
+        pivotRows: ['name'],
+        pivotOn: 'id',
+        pivotValues: { amount: ['sum'] },
+      } as never);
+      const grid = await mountGrid({ groupBy: ['name'] });
+      const panel = await mountPanel(pivoting);
+      expect(panel.pivotMode).to.be.true;
+      panel.grid = grid as never;
+      panel.pivotMode = false;
+      await settle(grid, panel);
+      expect(grid.groupBy).to.eql(['name']);
+      expect(panel.pivotMode).to.be.false;
+      expect(pivoting.pivotOn, 'the previous grid is left alone').to.equal('id');
+    });
+
+    it('does not carry the mode of the previous grid to the next one', async () => {
+      const pivoting = await mountGrid({
+        pivotRows: ['name'],
+        pivotOn: 'id',
+        pivotValues: { amount: ['sum'] },
+      } as never);
+      const grouped = await mountGrid({ groupBy: ['name'] });
+      const plain = await mountGrid();
+      const panel = await mountPanel(pivoting);
+      expect(panel.pivotMode).to.be.true;
+      // A framework ref often passes through null between two grids.
+      panel.grid = undefined;
+      await settle(panel);
+      panel.grid = grouped as never;
+      await settle(grouped, panel);
+      expect(grouped.groupBy).to.eql(['name']);
+      expect(grouped.pivotRows).to.eql([]);
+      expect(panel.pivotMode).to.be.false;
+      panel.grid = pivoting as never;
+      await settle(pivoting, panel);
+      panel.grid = plain as never;
+      await settle(plain, panel);
+      expect(panel.pivotMode, 'a grid with no pivot opens in grouping mode').to.be.false;
+    });
+
+    it('does not throw when bound to a grid element that is not upgraded yet', async () => {
+      const early = document.createElement('apex-grid-enterprise-later') as never;
+      const panel = await fixture<ApexGridToolPanel>(
+        html`<apex-grid-tool-panel .grid=${early}></apex-grid-tool-panel>`
+      );
+      const bar = await fixture<ApexGridStatusBar>(
+        html`<apex-grid-status-bar .grid=${early}></apex-grid-status-bar>`
+      );
+      await settle(panel, bar);
+      expect(listKeys(panel)).to.eql([]);
+      panel.remove();
+      bar.remove();
+    });
+
+    it('switches language with the grid', async () => {
+      const grid = await mountGrid();
+      const panel = await mountPanel(grid);
+      grid.localeText = esLocale;
+      await settle(grid, panel);
+      expect(panel.shadowRoot!.querySelector('[part="header"]')!.textContent!.trim()).to.equal(
+        esLocale['toolPanel.columns']
+      );
+    });
+
+    it('opens in pivot mode on a grid that is already pivoting', async () => {
+      const grid = await mountGrid({
+        pivotRows: ['id'],
+        pivotOn: 'name',
+        pivotValues: { amount: ['sum'] },
+      });
+      expect(grid.isPivoting).to.be.true;
+      const panel = await mountPanel(grid);
+      expect(pivotToggle(panel).checked).to.be.true;
+      expect(panel.pivotMode).to.be.true;
+    });
+
+    it('keeps existing pivot rows when entering pivot mode with no grouping', async () => {
+      const grid = await mountGrid({ pivotRows: ['id'], pivotValues: { amount: ['sum'] } });
+      const panel = await mountPanel(grid);
+      pivotToggle(panel).click();
+      await settle(grid, panel);
+      expect(grid.pivotRows).to.eql(['id']);
+    });
+
+    it('setting pivotMode from code carries the grouping across', async () => {
+      const grid = await mountGrid({ groupBy: ['name'] });
+      const panel = await mountPanel(grid);
+      panel.pivotMode = true;
+      await settle(grid, panel);
+      expect(grid.pivotRows).to.eql(['name']);
+      expect(grid.groupBy).to.eql([]);
+    });
+
+    it('pins through the grid so a cancelled columnPinning is honoured', async () => {
+      const grid = await mountGrid();
+      const panel = await mountPanel(grid);
+      const seen: string[] = [];
+      grid.addEventListener('columnPinning', (event) => {
+        seen.push('pinning');
+        event.preventDefault();
+      });
+      control<HTMLButtonElement>(panel, 'id', 'pin')!.click();
+      await settle(grid, panel);
+      expect(seen).to.eql(['pinning']);
+      expect(grid.columns.find((c) => c.key === 'id')!.pinned ?? null).to.equal(null);
+    });
+
+    it('moves through the grid so columnMoved fires', async () => {
+      const grid = await mountGrid();
+      const panel = await mountPanel(grid);
+      const moved: string[] = [];
+      grid.addEventListener('columnMoved', (event) => moved.push(String(event.detail.key)));
+      control<HTMLButtonElement>(panel, 'id', 'down')!.click();
+      await settle(grid, panel);
+      expect(moved).to.eql(['id']);
+      expect(listKeys(panel)).to.eql(['name', 'id', 'amount']);
+    });
+
+    it('lists columns in display order and moves within a pin group', async () => {
+      const grid = await mountGrid();
+      const panel = await mountPanel(grid);
+      await grid.pinColumn('amount', 'start');
+      await settle(grid, panel);
+      expect(listKeys(panel)).to.eql(['amount', 'id', 'name']);
+      expect(control<HTMLButtonElement>(panel, 'id', 'up')!.disabled).to.be.true;
+      expect(control<HTMLButtonElement>(panel, 'amount', 'down')!.disabled).to.be.true;
+      control<HTMLButtonElement>(panel, 'id', 'down')!.click();
+      await settle(grid, panel);
+      expect(listKeys(panel)).to.eql(['amount', 'name', 'id']);
+    });
+
+    it('pins a column whose pinned value is null on the first click', async () => {
+      const grid = await mountGrid();
+      grid.columns = grid.columns.map((c) => (c.key === 'id' ? { ...c, pinned: null } : c));
+      const panel = await mountPanel(grid);
+      control<HTMLButtonElement>(panel, 'id', 'pin')!.click();
+      await settle(grid, panel);
+      expect(grid.columns.find((c) => c.key === 'id')!.pinned).to.equal('start');
+    });
+
+    it('adds Values and Column Labels from the keyboard', async () => {
+      const grid = await mountGrid();
+      const panel = await mountPanel(grid);
+      const value = control<HTMLButtonElement>(panel, 'amount', 'value')!;
+      value.click();
+      await settle(grid, panel);
+      expect(grid.aggregations).to.eql({ amount: ['sum'] });
+      expect(control(panel, 'amount', 'value')!.getAttribute('aria-pressed')).to.equal('true');
+      control<HTMLButtonElement>(panel, 'amount', 'value')!.click();
+      await settle(grid, panel);
+      expect(grid.aggregations).to.eql({});
+
+      expect(control(panel, 'name', 'column-label'), 'only in pivot mode').to.be.null;
+      pivotToggle(panel).click();
+      await settle(grid, panel);
+      control<HTMLButtonElement>(panel, 'name', 'column-label')!.click();
+      await settle(grid, panel);
+      expect(grid.pivotOn).to.equal('name');
+    });
+
+    it('names its icon buttons with the localized label and column', async () => {
+      const grid = await mountGrid();
+      const panel = await mountPanel(grid);
+      const pin = control<HTMLButtonElement>(panel, 'id', 'pin')!;
+      expect(pin.getAttribute('aria-label')).to.equal('Pin column');
+      expect(pin.closest('[role="group"]')!.getAttribute('aria-label')).to.equal('ID');
+      grid.groupBy = ['name'];
+      await settle(grid, panel);
+      const remove = zone(panel, 'Row Groups').querySelector('[part="chip"] button')!;
+      expect(remove.getAttribute('aria-label')).to.equal('Remove Name');
+    });
+
+    it('ignores dropped text that is not a column key', async () => {
+      const grid = await mountGrid();
+      const panel = await mountPanel(grid);
+      drop(zone(panel, 'Row Groups'), 'Engineering');
+      drop(zone(panel, 'Values'), 'Engineering');
+      await settle(grid, panel);
+      expect(grid.groupBy).to.eql([]);
+      expect(grid.aggregations).to.eql({});
     });
   });
 });
