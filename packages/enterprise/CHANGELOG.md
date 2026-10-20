@@ -222,6 +222,29 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   still be undone; the analyze tool refuses a malformed query; AI `pivotOn`
   accepts several fields; `AIResult.skipped` lists only slices a step asked
   for that were not applied.
+- **Create chart and Ask AI appear only when their panels are registered.**
+  Without `<apex-grid-chart>` the toolbar Create chart button, the floating
+  chart button, Alt+F1 and the Chart range menu entry are not offered, and
+  without `<apex-grid-ai>` the Ask AI button is not shown. The `/define`
+  entry registers both, so its users see no change.
+- **Formula export uses file coordinates.** `exportToCSV({ formulas: true })`
+  writes references that point at the cells of the file (below the header, in
+  the exported order): `=A1*B1` on the first data row is written `=A2*B2`. A
+  formula that reads a cell the export leaves out or reorders, or calls a
+  registered custom function, exports its value. Exported formulas use the
+  spreadsheet spelling (`MOD`, `AVERAGE`, `CONCAT` over a range).
+  `exportToXLSX({ formulas: true })` writes real formula cells with their
+  computed value.
+- Charts of a pivot view use the row labels and leave subtotal and total rows
+  out, and cross-filter charts detect numeric columns from their values.
+- Set filter: toggling, Select all and Clear filter change only its own
+  condition, so other `and` conditions on the column stay; the selection is
+  saved by `getState()` and restored by `setState()`; a column with very many
+  values lists the first 1000 and asks to search.
+- Chart dialog: Escape inside an open popover closes only that popover; the
+  Format and Data popovers are named groups instead of menus; snapshot charts
+  ignore selection and view changes, and live charts no longer redraw on
+  selection changes.
 
 ### Fixed
 - **Integrated charts show cell text as text.** Categories and series names
@@ -320,6 +343,21 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   model they count only loaded rows.
 - Paste and fill compute a formula's value with ranges clipped to the sheet,
   matching the value the stored formula then computes.
+- XLSX export of very large grids no longer fails with an invalid string
+  length error, and an invalid date is written as an empty cell.
+- An open Ask AI dialog closes when its grid is removed (and stays open when
+  the grid is only moved).
+- Set filter: `refresh()` and a freshly mounted panel show the values the
+  applied filter keeps instead of everything checked, and Date values are
+  listed in date order with distinct labels.
+- Chart cross-filter: clicking another category switches the filter instead
+  of stacking it, clearing it keeps your own filters on that column, and
+  rebinding the chart releases the old grid's filter.
+- Chart heading rename: leaving it unchanged keeps the automatic title,
+  Escape cancels, Tab stays in the dialog, and Enter, Space or F2 start it.
+- A chart panel moved in the page keeps drawing, removing one mid-draw no
+  longer reports an error, and drag-selecting or dragging the range handle no
+  longer rescans the whole view per cell.
 
 ### Performance
 - Range formulas index their precedents instead of one key per cell, so a

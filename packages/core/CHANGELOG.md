@@ -22,6 +22,8 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   enterprise tool panel, in English and Spanish.
 - Locale key `chart.mapCategoryNone` (English "None", Spanish "Ninguna") for
   the enterprise chart panel's Category select.
+- Locale key `setFilter.more` for the enterprise set filter's list cap, in
+  English and Spanish.
 
 ### Changed
 - **CSV export neutralises spreadsheet formulas.** A text cell or header that
@@ -111,6 +113,18 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   request a pipeline run when content must change.
 - Feature modules can attach a command to a cell edit and its undo step, and
   read the header's sortable rule through `SortController.isSortable`.
+- Pressing on interactive content in a `headerTemplate` (an input, select,
+  textarea, button, link or editable element) no longer starts a column drag.
+- When a `columnMoving` listener cancels a live swap, the event is raised once
+  per target crossing instead of on every pointer move.
+- The filter panel's `filtering` event carries a proposed copy of the
+  expression for panel edits, and the change is applied only after the event
+  is not cancelled. Escape pressed outside the panel is no longer swallowed.
+- Switching an applied Empty or Not empty filter to a condition that needs a
+  value removes the filter (with a cancellable remove) until a value is typed.
+- `getState()` and `setState()` copy array filter terms, and feature modules
+  can register a filter operand by name (`registerFilterOperand` on
+  `apex-grid/internal`) so a saved filter that uses it restores.
 
 ### Fixed
 - **Text filter conditions no longer throw on a cell that is not a string.**
@@ -195,6 +209,19 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   leading columns stay frozen on horizontal scroll.
 - Pinned columns inside a CSS-scaled container no longer overlap on
   horizontal scroll.
+- A header drag toward later columns (rightward, or leftward with
+  `dir="rtl"`) keeps following the pointer after the first swap and always
+  ends on release, including a release outside the header or a lost release.
+- Column autosize no longer throws when group header, total or loading rows
+  are rendered.
+- With `dir="rtl"` the column resize guide is drawn on the dragged edge.
+- The filter panel: a cancelled change really leaves the filter unchanged, a
+  condition picked on a fresh panel is reported and announced as an add, the
+  filter icon of the open column closes it with a mouse, the panel stays under
+  its column on scroll, resize and keyboard column switches, and it no longer
+  runs off screen when the root font size is not 16px.
+- `setState(getState())` keeps the scroll position when the filter holds an
+  array term, and the filter panel chip lists such a term's values.
 
 ## [3.5.0] - 2026-09-12
 
