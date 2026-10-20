@@ -231,6 +231,55 @@ describe('filter evaluation (B10)', () => {
     }
   });
 
+  describe('OR criteria per column', () => {
+    const columns: ColumnConfiguration<TestData>[] = [
+      { key: 'id', type: 'number', filter: true },
+      { key: 'name', filter: true },
+      { key: 'active', type: 'boolean' },
+      { key: 'importance', filter: true },
+    ];
+
+    it('(importance high OR low) AND (id 99 OR id 2) keeps id 2', async () => {
+      const grid = await mount(data, columns);
+      grid.filter([
+        { key: 'importance', condition: 'equals', searchTerm: 'high' },
+        { key: 'importance', condition: 'equals', searchTerm: 'low', criteria: 'or' },
+        { key: 'id', condition: 'equals', searchTerm: 99 },
+        { key: 'id', condition: 'equals', searchTerm: 2, criteria: 'or' },
+      ] as any);
+      await settle(grid);
+      expect(ids(grid)).to.deep.equal([2]);
+    });
+
+    it('a column left with a single OR expression still filters', async () => {
+      const grid = await mount(data, columns);
+      grid.filter([
+        { key: 'id', condition: 'equals', searchTerm: 1 },
+        { key: 'id', condition: 'equals', searchTerm: 3, criteria: 'or' },
+      ] as any);
+      await settle(grid);
+      expect(ids(grid)).to.deep.equal([1, 3]);
+
+      const first = grid.filterExpressions.find((e) => e.searchTerm === 1)!;
+      await (grid as any).stateController.filtering.removeExpression(first);
+      await settle(grid);
+      expect(grid.filterExpressions.length).to.equal(1);
+      expect(ids(grid)).to.deep.equal([3]);
+    });
+
+    it('keeps the single-column (A and B) or C grouping', async () => {
+      const grid = await mount(data, columns);
+      grid.filter([
+        { key: 'id', condition: 'greaterThan', searchTerm: 2 },
+        { key: 'id', condition: 'lessThan', searchTerm: 5 },
+        { key: 'id', condition: 'equals', searchTerm: 8, criteria: 'or' },
+        { key: 'importance', condition: 'doesNotEqual', searchTerm: 'low' },
+      ] as any);
+      await settle(grid);
+      expect(ids(grid)).to.deep.equal([3, 8]);
+    });
+  });
+
   describe('null in numeric range filters', () => {
     type Score = { id: number; score: number | null | undefined };
     const rows: Score[] = [

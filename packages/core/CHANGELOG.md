@@ -41,6 +41,11 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   than and their or equal forms read `null`, and an empty string from CSV or
   JSON data, as 0, so Less than 20 included rows with no value. Empty now
   matches those cells instead.
+- **OR filter criteria are evaluated per column.** An OR on one column no longer
+  cancels the OR conditions of other columns, so `(city is Paris OR Oslo) AND
+  (id is 3 OR 99)` keeps the matching rows instead of none, and a column left
+  with only OR conditions (after removing its first chip) filters again instead
+  of keeping every row.
 
 ## [3.5.0] - 2026-09-12
 

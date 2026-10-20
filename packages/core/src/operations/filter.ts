@@ -13,23 +13,37 @@ export default class FilterDataOperation<T extends object> extends DataOperation
     );
   }
 
+  /**
+   * Whether `record` passes one column's expressions: all of its `and`
+   * expressions (when it has any) or any one of its `or` expressions. Criteria
+   * never reach across columns, so each column is matched on its own.
+   */
   protected match(record: T, ands: FilterExpression<T>[], ors: FilterExpression<T>[]): boolean {
-    for (const or of ors) {
-      if (this.resolveFilter(record, or)) {
-        return this.match(
-          record,
-          ands.filter((f) => f.key !== or.key),
-          []
-        );
-      }
+    if (ands.length === 0 && ors.length === 0) return true;
+    if (ands.length > 0) {
+      let all = true;
+      for (let i = 0; i < ands.length && all; i++) all = this.resolveFilter(record, ands[i]);
+      if (all) return true;
     }
-    return ands.every((f) => this.resolveFilter(record, f));
+    for (let i = 0; i < ors.length; i++) {
+      if (this.resolveFilter(record, ors[i])) return true;
+    }
+    return false;
   }
 
+  /** Keeps the records that pass every filtered column. */
   public apply(data: T[], state: FilterState<T>): T[] {
     if (state.empty) return data;
 
-    const { ands, ors } = state;
-    return data.filter((record) => this.match(record, ands, ors));
+    // Split each column into its and / or lists once per apply, not per record.
+    const trees = state.values;
+    const ands = trees.map((tree) => tree.ands);
+    const ors = trees.map((tree) => tree.ors);
+    return data.filter((record) => {
+      for (let i = 0; i < trees.length; i++) {
+        if (!this.match(record, ands[i], ors[i])) return false;
+      }
+      return true;
+    });
   }
 }
