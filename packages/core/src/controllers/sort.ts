@@ -178,6 +178,15 @@ export class SortController<T extends object> implements ReactiveController {
     } as SortExpression<T>;
   }
 
+  /**
+   * Whether the UI offers sorting on `column`: it declares `sort` and no
+   * manual row order is active (sorting and a manual order are mutually
+   * exclusive). The one rule for every sort affordance, built in or a module's.
+   */
+  public isSortable(column: ColumnConfiguration<T>): boolean {
+    return Boolean(column.sort) && !this.#rowReorder?.hasManualOrder;
+  }
+
   public reset(key?: Keys<T>) {
     key ? this.state.delete(key) : this.state.clear();
   }

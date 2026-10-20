@@ -250,3 +250,104 @@ describe('Context menu', () => {
     expect(item('Sort ascending')).to.equal(undefined);
   });
 });
+
+describe('Context menu: targets, events and entry points (ctx-menu batch)', () => {
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+  });
+  afterEach(() => {
+    for (const m of document.querySelectorAll('.apex-grid-context-menu')) m.remove();
+    fixtureCleanup();
+  });
+
+  async function waitFor(predicate: () => boolean, tries = 60): Promise<void> {
+    for (let i = 0; i < tries && !predicate(); i += 1) await nextFrame();
+  }
+
+  it('menu sort replaces the existing sort and fires sorting and sorted', async () => {
+    const grid = await mount();
+    const events: string[] = [];
+    grid.addEventListener('sorting', () => events.push('sorting'));
+    grid.addEventListener('sorted', () => events.push('sorted'));
+    rightClick(headerElement(grid, 'name')!);
+    item('Sort ascending')!.click();
+    await waitFor(() => events.length >= 2);
+    rightClick(headerElement(grid, 'value')!);
+    item('Sort descending')!.click();
+    await waitFor(() => events.length >= 4);
+    await grid.updateComplete;
+    expect(grid.sortExpressions.map((e) => String(e.key))).to.deep.equal(['value']);
+    expect(grid.dataView.map((r) => r.name).join(',')).to.equal('C,B,A');
+    expect(events).to.deep.equal(['sorting', 'sorted', 'sorting', 'sorted']);
+  });
+
+  it('a cancelled sorting event vetoes the menu sort', async () => {
+    const grid = await mount();
+    grid.addEventListener('sorting', (e) => e.preventDefault());
+    rightClick(headerElement(grid, 'value')!);
+    item('Sort ascending')!.click();
+    await grid.updateComplete;
+    expect(grid.sortExpressions).to.have.length(0);
+  });
+
+  it('omits the sort items on a column that is not sortable', async () => {
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise
+        .data=${data.map((r) => ({ ...r }))}
+        .columns=${[{ key: 'name', headerText: 'Name' }, columns[1]]}
+      ></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    await layoutComplete(grid);
+    rightClick(headerElement(grid, 'name')!);
+    expect(item('Pin to start')).to.exist;
+    expect(item('Sort ascending')).to.equal(undefined);
+    expect(item('Sort descending')).to.equal(undefined);
+    expect(item('Clear sort')).to.equal(undefined);
+    expect(menu()!.firstElementChild?.getAttribute('role')).to.not.equal('separator');
+  });
+
+  it('omits the sort items while a manual row order is active, like the header', async () => {
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise
+        .data=${data.map((r) => ({ ...r }))}
+        .columns=${columns}
+        .rowReordering=${{ enabled: true }}
+      ></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    await layoutComplete(grid);
+    rightClick(headerElement(grid, 'value')!);
+    expect(item('Sort ascending'), 'sortable before the move').to.exist;
+    for (const m of document.querySelectorAll('.apex-grid-context-menu')) m.remove();
+    expect(grid.moveRow(0, 2, 'after')).to.equal(true);
+    await layoutComplete(grid);
+    rightClick(headerElement(grid, 'value')!);
+    expect(item('Pin to start')).to.exist;
+    expect(item('Sort ascending')).to.equal(undefined);
+  });
+
+  it('pin and unpin go through pinColumn, so columnPinning can veto', async () => {
+    const grid = await mount();
+    const pinned: unknown[] = [];
+    grid.addEventListener('columnPinned', (e) => pinned.push((e as CustomEvent).detail.pinned));
+    rightClick(headerElement(grid, 'name')!);
+    item('Pin to end')!.click();
+    await waitFor(() => pinned.length > 0);
+    expect(pinned).to.deep.equal(['end']);
+
+    const veto = (e: Event) => e.preventDefault();
+    grid.addEventListener('columnPinning', veto);
+    rightClick(headerElement(grid, 'value')!);
+    item('Pin to start')!.click();
+    await grid.updateComplete;
+    expect(grid.columns.find((c) => c.key === 'value')?.pinned ?? null).to.equal(null);
+    grid.removeEventListener('columnPinning', veto);
+
+    rightClick(headerElement(grid, 'name')!);
+    item('Unpin')!.click();
+    await waitFor(() => pinned.length > 1);
+    expect(pinned).to.deep.equal(['end', null]);
+  });
+});

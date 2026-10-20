@@ -1,4 +1,4 @@
-import type { ColumnConfiguration, SortExpression } from 'apex-grid';
+import type { ColumnConfiguration } from 'apex-grid';
 import {
   type ColumnMenuProvider,
   escapeFormula,
@@ -230,48 +230,56 @@ export class ContextMenuController<T extends object>
   public defaultItems(target: ContextMenuTarget<T>): ContextMenuItem<T>[] {
     const column = target.column;
     const key = column.key;
+    const sorting = this.state?.sorting;
+    // The same path as a header click: replaces the sort and fires the
+    // cancellable `sorting` and the `sorted` events.
     const sortBy = (direction: 'ascending' | 'descending') =>
-      this.host.sort([{ key, direction }] as unknown as SortExpression<T>[]);
-    const items: ContextMenuItem<T>[] = [
-      {
-        id: 'sort-asc',
-        label: this.host.localize('contextMenu.sortAsc'),
-        run: () => sortBy('ascending'),
-      },
-      {
-        id: 'sort-desc',
-        label: this.host.localize('contextMenu.sortDesc'),
-        run: () => sortBy('descending'),
-      },
-      {
-        id: 'sort-clear',
-        label: this.host.localize('contextMenu.clearSort'),
-        run: () => this.host.clearSort(key),
-      },
+      void sorting?.sortFromUI(column, { direction });
+    const pin = (pinned: 'start' | 'end' | null) => void this.host.pinColumn(key, pinned);
+    const items: ContextMenuItem<T>[] = sorting?.isSortable(column)
+      ? [
+          {
+            id: 'sort-asc',
+            label: this.host.localize('contextMenu.sortAsc'),
+            run: () => sortBy('ascending'),
+          },
+          {
+            id: 'sort-desc',
+            label: this.host.localize('contextMenu.sortDesc'),
+            run: () => sortBy('descending'),
+          },
+          {
+            id: 'sort-clear',
+            label: this.host.localize('contextMenu.clearSort'),
+            run: () => this.host.clearSort(key),
+          },
+        ]
+      : [];
+    items.push(
       {
         id: 'pin-start',
         label: this.host.localize('contextMenu.pinStart'),
-        separatorBefore: true,
-        run: () => this.#repin(column, 'start'),
+        separatorBefore: items.length > 0,
+        run: () => pin('start'),
       },
       {
         id: 'pin-end',
         label: this.host.localize('contextMenu.pinEnd'),
-        run: () => this.#repin(column, 'end'),
+        run: () => pin('end'),
       },
       {
         id: 'unpin',
         label: this.host.localize('contextMenu.unpin'),
         disabled: !column.pinned,
-        run: () => this.#repin(column, null),
+        run: () => pin(null),
       },
       {
         id: 'hide',
         label: this.host.localize('contextMenu.hideColumn'),
         separatorBefore: true,
         run: () => this.#setHidden(column),
-      },
-    ];
+      }
+    );
     if (target.kind === 'cell') {
       items.push({
         id: 'copy',
@@ -281,10 +289,6 @@ export class ContextMenuController<T extends object>
       });
     }
     return items;
-  }
-
-  #repin(column: ColumnConfiguration<T>, pinned: 'start' | 'end' | null): void {
-    this.host.columns = this.host.columns.map((c) => (c.key === column.key ? { ...c, pinned } : c));
   }
 
   #setHidden(column: ColumnConfiguration<T>): void {
