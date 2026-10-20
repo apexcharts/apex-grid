@@ -140,4 +140,73 @@ describe('undo history and bulk edits', () => {
       expect(all[1].name).to.equal('Edited');
     });
   });
+
+  describe('nested batches', () => {
+    it('a listener batch inside an outer batch still undoes as one step', async () => {
+      const grid = await mount();
+      // Derive `code` from `name` through a nested applyEdits.
+      const derive = (event: Event) => {
+        const { key, data } = (event as CustomEvent<ApexCellValueChangedEvent<Row>>).detail;
+        if (key !== 'name') return;
+        grid.applyEdits([{ rowIndex: grid.pageItems.indexOf(data), column: 'code', value: 'B' }]);
+      };
+      grid.addEventListener('cellValueChanged', derive);
+
+      grid.applyEdits([
+        { rowIndex: 0, column: 'name', value: 'X' },
+        { rowIndex: 1, column: 'name', value: 'Y' },
+      ]);
+      await grid.updateComplete;
+      expect(grid.data.map((r) => r.code).slice(0, 2)).to.eql(['B', 'B']);
+
+      // Replay re-emits cellValueChanged; keep the listener out of the undo.
+      grid.removeEventListener('cellValueChanged', derive);
+      grid.undo();
+      await grid.updateComplete;
+      expect(grid.data.slice(0, 2).map((r) => [r.name, r.code])).to.eql([
+        ['Row 0', 'A'],
+        ['Row 1', 'A'],
+      ]);
+      expect(grid.canUndo, 'one step reverts the whole batch').to.be.false;
+    });
+  });
+
+  describe('replay', () => {
+    it('reads the view once per undo, not once per change', async () => {
+      const grid = await mount({ data: rows(40) });
+      grid.applyEdits(
+        grid.data.map((_, rowIndex) => ({ rowIndex, column: 'name' as const, value: 'Z' }))
+      );
+
+      const descriptor = Object.getOwnPropertyDescriptor(ApexGrid.prototype, 'pageItems')!;
+      let reads = 0;
+      Object.defineProperty(grid, 'pageItems', {
+        configurable: true,
+        get() {
+          reads += 1;
+          return descriptor.get!.call(this);
+        },
+      });
+      try {
+        grid.undo();
+      } finally {
+        delete (grid as unknown as Record<string, unknown>).pageItems;
+      }
+      expect(grid.data[39].name).to.equal('Row 39');
+      expect(reads, 'pageItems reads during one undo of 40 cells').to.be.at.most(1);
+    });
+
+    it('reports rowIndex -1 when the undone record is on another page', async () => {
+      const grid = await mount({ pagination: { enabled: true, pageSize: 3 } });
+      grid.applyEdits([{ rowIndex: 2, column: 'name', value: 'Renamed' }]);
+      await grid.gotoPage(1);
+      await grid.updateComplete;
+
+      const events = changedEvents(grid);
+      grid.undo();
+      expect(events).to.have.length(1);
+      expect(events[0].data).to.equal(grid.data[2]);
+      expect(events[0].rowIndex).to.equal(-1);
+    });
+  });
 });

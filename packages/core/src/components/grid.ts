@@ -209,7 +209,9 @@ export interface ApexCellValueChangedEvent<T extends object> {
    */
   key: Keys<T>;
   /**
-   * The view-relative row index after the change.
+   * The view-relative row index after the change (matches
+   * {@link ApexGrid.pageItems}), or -1 when the record is pinned or on
+   * another page. Use `data` to identify the row.
    */
   rowIndex: number;
   /**

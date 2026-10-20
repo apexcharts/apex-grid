@@ -15,6 +15,10 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   records outside `data` (a row model that drops collapsed rows and restores
   the same objects) overrides the protected `historyRecords()` to keep their
   history too.
+- **`cellValueChanged` from undo or redo reports `rowIndex` -1 when the
+  record is pinned or on another page**, instead of the index it had when
+  edited (which could name a different row). Listeners that read `rowIndex`
+  from a replayed change should identify the row by the event's `data`.
 - **`sortExpressions` and `filterExpressions` replace the current sort or filter
   instead of merging into it**, as documented and as `setState` already did;
   `[]`, `null` or `undefined` clears it. Apps that assigned one expression at a
@@ -66,6 +70,11 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   to the end of the shorter result and the first matches sat above the fold.
   Reapplying the same filter, such as `setState(getState())` or assigning an
   equal `filterExpressions` list on every render, keeps the scroll position.
+- **A batch of edits made inside another undoes as one step.** A
+  `cellValueChanged` listener that calls `applyEdits()` during a row commit,
+  a bulk edit or a paste no longer splits it, so one undo reverts all of it.
+- Undoing or redoing a large batch reads the view once instead of once per
+  cell.
 
 ## [3.5.0] - 2026-09-12
 

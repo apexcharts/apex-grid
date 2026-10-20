@@ -7,8 +7,8 @@ const DEFAULT_STACK_SIZE = 100;
 
 /**
  * A single recorded cell mutation: the record reference, its column, and the
- * before / after values. `rowIndex` is the view-relative index at record time
- * and is used only for the replayed `cellValueChanged` event (the live record
+ * before / after values. `rowIndex` is the view-relative index at record time;
+ * replay reports the record's index at replay time instead (the live record
  * reference is authoritative).
  */
 export interface CellChange<T extends object> {
@@ -44,34 +44,48 @@ export class CellEditCommand<T extends object> implements EditCommand {
   ) {}
 
   public apply(): void {
+    const indexOf = viewIndexer(this.host.pageItems, this.changes.length);
     for (const change of this.changes) {
-      this.#write(change, change.newValue);
+      this.#write(change, change.newValue, indexOf);
     }
   }
 
   public revert(): void {
+    const indexOf = viewIndexer(this.host.pageItems, this.changes.length);
     // Revert in reverse so overlapping writes to the same cell unwind cleanly.
     for (let i = this.changes.length - 1; i >= 0; i -= 1) {
-      this.#write(this.changes[i], this.changes[i].oldValue);
+      this.#write(this.changes[i], this.changes[i].oldValue, indexOf);
     }
   }
 
-  #write(change: CellChange<T>, value: unknown): void {
+  #write(change: CellChange<T>, value: unknown, indexOf: (record: T) => number): void {
     (change.record as Record<string, unknown>)[change.key as string] = value;
     // Re-emit `cellValueChanged` (never the cancellable `cellValueChanging`) so
     // data-bound consumers stay in sync. Validation and history recording are
-    // intentionally skipped on replay. Prefer the record's current view index
-    // when it is on the page; fall back to the recorded one.
-    const liveIndex = this.host.pageItems.indexOf(change.record);
+    // intentionally skipped on replay. The index is where the record is now:
+    // -1 when it is pinned or on another page.
     this.host.emitEvent('cellValueChanged', {
-      detail: {
-        key: change.key,
-        rowIndex: liveIndex >= 0 ? liveIndex : change.rowIndex,
-        data: change.record,
-        value,
-      },
+      detail: { key: change.key, rowIndex: indexOf(change.record), data: change.record, value },
     });
   }
+}
+
+/**
+ * Returns a lookup of a record's index in `items` (by reference, `-1` when
+ * absent). For more than one lookup it indexes `items` once, so a large batch
+ * costs one pass instead of one scan per record.
+ */
+export function viewIndexer<T>(items: ReadonlyArray<T>, lookups: number): (record: T) => number {
+  if (lookups < 2) return (record) => items.indexOf(record);
+  let index: Map<T, number> | undefined;
+  return (record) => {
+    if (!index) {
+      index = new Map();
+      // Backwards, so a record listed twice resolves to its first index.
+      for (let i = items.length - 1; i >= 0; i -= 1) index.set(items[i], i);
+    }
+    return index.get(record) ?? -1;
+  };
 }
 
 /**
@@ -87,7 +101,10 @@ export class CellEditCommand<T extends object> implements EditCommand {
 export class HistoryController<T extends object> implements ReactiveController {
   #undo: EditCommand[] = [];
   #redo: EditCommand[] = [];
-  #batch: CellChange<T>[] | null = null;
+  /** Changes recorded by the open batch, pushed as one command when it closes. */
+  #batch: CellChange<T>[] = [];
+  /** Open {@link beginBatch} calls; only the outermost {@link endBatch} commits. */
+  #depth = 0;
 
   constructor(protected host: GridHost<T>) {
     this.host.addController(this);
@@ -123,7 +140,7 @@ export class HistoryController<T extends object> implements ReactiveController {
    */
   public record(change: CellChange<T>): void {
     if (!this.enabled) return;
-    if (this.#batch) {
+    if (this.#depth > 0) {
       this.#batch.push(change);
       return;
     }
@@ -132,21 +149,24 @@ export class HistoryController<T extends object> implements ReactiveController {
 
   /**
    * Opens a batch so subsequent {@link record} calls coalesce into one command.
-   * Nestable calls are flattened (the outermost {@link endBatch} commits).
+   * Nested calls are flattened: a batch opened while another is open (a
+   * `cellValueChanged` listener that calls `applyEdits`, say) joins it, and
+   * only the outermost {@link endBatch} commits. Counted even while history
+   * is disabled, so every begin pairs with its end.
    */
   public beginBatch(): void {
-    if (!this.enabled) return;
-    this.#batch ??= [];
+    this.#depth += 1;
   }
 
   /**
-   * Closes the open batch, pushing it as a single command when it captured any
-   * changes.
+   * Closes the innermost open batch. Closing the outermost pushes everything
+   * it captured as a single command.
    */
   public endBatch(): void {
+    if (this.#depth === 0 || --this.#depth > 0) return;
     const batch = this.#batch;
-    this.#batch = null;
-    if (batch && batch.length > 0) {
+    this.#batch = [];
+    if (batch.length > 0) {
       this.#push(new CellEditCommand(this.host, batch));
     }
   }
@@ -169,12 +189,12 @@ export class HistoryController<T extends object> implements ReactiveController {
     this.#afterReplay(command, 'redo');
   }
 
-  /** Clears both stacks (e.g. after a data reset). */
+  /** Clears both stacks, and the changes an open batch has captured so far. */
   public clear(): void {
+    this.#batch = [];
     if (this.#undo.length === 0 && this.#redo.length === 0) return;
     this.#undo = [];
     this.#redo = [];
-    this.#batch = null;
     this.#emitChanged();
   }
 
