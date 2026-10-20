@@ -197,7 +197,8 @@ export function toJSONSchema(schema: GridSchema): JSONSchema {
   if (keys.length > 0) {
     properties.columns = {
       type: 'array',
-      description: 'Column layout overrides; array order sets column order.',
+      description:
+        'Column layout. A partial list changes only the fields each entry sets (pinned null unpins); a list naming every column is the full layout, in that order, and a field it leaves out is cleared.',
       items: {
         type: 'object',
         additionalProperties: false,
@@ -205,7 +206,7 @@ export function toJSONSchema(schema: GridSchema): JSONSchema {
         properties: {
           key: { enum: keys },
           hidden: { type: 'boolean' },
-          pinned: { enum: ['start', 'end'] },
+          pinned: { enum: ['start', 'end', null] },
           width: { type: 'string' },
         },
       },

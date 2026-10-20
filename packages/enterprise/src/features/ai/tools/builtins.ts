@@ -12,7 +12,7 @@
  * @see plans/ai-reasoning-layer-spec.md (section 4.7)
  */
 
-import type { GridState, RowRef, SortingDirection } from 'apex-grid';
+import type { ColumnLayoutState, GridState, RowRef, SortingDirection } from 'apex-grid';
 import type { AggregationConfig } from '../../aggregation.js';
 import { sanitizePatch } from '../../ai-sanitize.js';
 import type { StatePatch } from '../../ai-schema.js';
@@ -75,6 +75,98 @@ function normalizePin(value: unknown): 'start' | 'end' | null | undefined {
 
 type Blob = Record<string, unknown>;
 
+const LAYOUT_FIELDS = ['width', 'pinned', 'hidden'] as const;
+
+/**
+ * Overlay partial column entries on the live layout, keeping its order: an entry
+ * changes only the fields it defines, and `pinned: null` unpins. A local twin of
+ * core's `mergeColumnLayout`: a runtime import of `apex-grid` from this lazily
+ * loaded module would split the core into a shared chunk (see `minOf`).
+ */
+function overlayLayout(
+  live: readonly ColumnLayoutState[],
+  entries: readonly Blob[]
+): ColumnLayoutState[] {
+  const byKey = new Map(entries.map((entry) => [entry.key, entry]));
+  return live.map((column) => {
+    const entry = byKey.get(column.key);
+    if (!entry) return column;
+    const next: Blob = { ...column };
+    for (const field of LAYOUT_FIELDS) {
+      if (entry[field] !== undefined) next[field] = entry[field] ?? undefined;
+    }
+    return next as unknown as ColumnLayoutState;
+  });
+}
+
+/** `columns` sorted by the key order of `order`; keys it lacks go last. */
+function sortByKeys(columns: ColumnLayoutState[], order: readonly string[]): ColumnLayoutState[] {
+  const rank = (key: string) => {
+    const index = order.indexOf(key);
+    return index === -1 ? order.length : index;
+  };
+  return columns.sort((a, b) => rank(a.key) - rank(b.key));
+}
+
+/**
+ * Fold a patch's partial `columns` list into the live layout, since setState
+ * takes a full one: each entry changes only the fields it defines, the order,
+ * widths and pins of other columns stay, and naming every column is an
+ * explicit reorder. With `layout`, a list naming every column is instead the
+ * full layout setState documents (a missing pin, width or hidden clears it),
+ * which is what a patch copied from getState() means. A list whose entries
+ * were all refused is dropped, so the step does not report a layout it never
+ * changed.
+ */
+function mergeColumns(patch: StatePatch, live: GridState, layout = false): StatePatch {
+  if (!patch.columns) return patch;
+  const { columns: entries, ...rest } = patch;
+  if (entries.length === 0) return rest;
+  if (live.columns.length === 0) return patch;
+  const order = entries.map((entry) => entry.key);
+  const named = live.columns.every((column) => order.includes(column.key));
+  if (named && layout) return patch;
+  const columns = overlayLayout(live.columns, entries as unknown as Blob[]);
+  return { ...rest, columns: named ? sortByKeys(columns, order) : columns };
+}
+
+/**
+ * Take back a turn's column changes on the live layout: only the fields that
+ * differ between `before` and `after` are put back, and the order only when
+ * the turn changed it, so a column hidden or resized since then keeps that.
+ */
+function restoreColumns(
+  before: readonly ColumnLayoutState[],
+  after: readonly ColumnLayoutState[],
+  live: readonly ColumnLayoutState[]
+): ColumnLayoutState[] {
+  if (live.length === 0) return [...before];
+  const turned = new Map(after.map((column) => [column.key, column as unknown as Blob]));
+  const entries = before.map((column) => {
+    const was = column as unknown as Blob;
+    const now = turned.get(column.key);
+    const entry: Blob = { key: column.key };
+    for (const field of LAYOUT_FIELDS) {
+      if (now && was[field] !== now[field]) entry[field] = was[field] ?? null;
+    }
+    return entry;
+  });
+  const columns = overlayLayout(live, entries);
+  const order = before.map((column) => column.key);
+  const reordered = order.join('\n') !== after.map((column) => column.key).join('\n');
+  return reordered ? sortByKeys(columns, order) : columns;
+}
+
+/** `restore` with its columns slice narrowed by {@link restoreColumns}. */
+function narrowColumns(
+  restore: StatePatch,
+  after: readonly ColumnLayoutState[] | undefined,
+  live: GridState
+): StatePatch {
+  if (!restore.columns || !after) return restore;
+  return { ...restore, columns: restoreColumns(restore.columns, after, live.columns) };
+}
+
 /**
  * The slices of `state` that `shape` names, and inside the enterprise blob only
  * the fields `shape` names (other module blobs are taken whole): the undo
@@ -134,20 +226,29 @@ function changedShape(before: Blob, after: Blob, level = 0): Blob {
 /**
  * Sanitize a raw view-state patch against the live schema, apply it, and return an
  * outcome whose `undo` restores what the patch changed. The single code path shared
- * by every view-state tool, so they all inherit the same guardrails.
+ * by every view-state tool, so they all inherit the same guardrails. `merge` folds
+ * the sanitized patch into the live state (e.g. a partial column layout), so only
+ * the caller's own clauses are validated.
  */
-function applyViewState(raw: Partial<GridState>, tc: ToolContext): ToolOutcome {
-  const { patch, warnings } = sanitizePatch(raw, tc.ctx.schema);
-  const before = sliceOf(tc.api.getState(), patch);
+function applyViewState(
+  raw: Partial<GridState>,
+  tc: ToolContext,
+  merge?: (patch: StatePatch, live: GridState) => StatePatch
+): ToolOutcome {
+  const sanitized = sanitizePatch(raw, tc.ctx.schema);
+  const live = tc.api.getState();
+  const patch = merge ? merge(sanitized.patch, live) : sanitized.patch;
+  const before = sliceOf(live, patch);
   const result = tc.api.applyState(patch);
   const applied: string[] = result.applied;
+  const after = before.columns ? tc.api.getState().columns : undefined;
   return {
     applied,
     // Slices the tool asked for that did not land (dropped or refused).
     skipped: Object.keys(raw).filter((key) => key !== 'version' && !applied.includes(key)),
-    warnings: [...warnings, ...result.warnings],
+    warnings: [...sanitized.warnings, ...result.warnings],
     undo: () => {
-      tc.api.applyState(before);
+      tc.api.applyState(narrowColumns(before, after, tc.api.getState()));
     },
   };
 }
@@ -321,7 +422,15 @@ const filterTool: Tool<FilterArgs> = {
     return ok({ where: parsed });
   },
   execute(args, tc) {
-    return applyViewState({ filter: args.where }, tc);
+    // An empty list clears every filter. Otherwise the clauses join the live
+    // filters and replace only those on the same columns, so a compound prompt
+    // ("qty > 2 and price < 7") keeps each clause.
+    return applyViewState({ filter: args.where }, tc, (patch, live) => {
+      if (args.where.length === 0 || !patch.filter) return patch;
+      if (patch.filter.length === 0) return {}; // every clause was refused
+      const keys = new Set(patch.filter.map((entry) => entry.key));
+      return { filter: [...live.filter.filter((entry) => !keys.has(entry.key)), ...patch.filter] };
+    });
   },
 };
 
@@ -347,7 +456,8 @@ const quickFilterTool: Tool<QuickFilterArgs> = {
 
 const columnsTool: Tool<ColumnsArgs> = {
   name: 'columns',
-  description: 'Change column layout: show/hide, pin (start/end), reorder (array order), or width.',
+  description:
+    'Change column layout: show/hide, pin (start/end, null unpins), reorder (array order naming every column), or width. An entry changes only the fields it sets.',
   parameters: {
     type: 'object',
     required: ['columns'],
@@ -360,7 +470,7 @@ const columnsTool: Tool<ColumnsArgs> = {
           properties: {
             key: { type: 'string' },
             hidden: { type: 'boolean' },
-            pinned: { enum: ['start', 'end'] },
+            pinned: { enum: ['start', 'end', null] },
             width: { type: 'string' },
           },
         },
@@ -381,17 +491,7 @@ const columnsTool: Tool<ColumnsArgs> = {
     return ok({ columns: parsed });
   },
   execute(args, tc) {
-    return applyViewState(
-      {
-        columns: args.columns.map((c) => ({
-          key: c.key,
-          hidden: c.hidden,
-          pinned: c.pinned ?? undefined,
-          width: c.width,
-        })),
-      },
-      tc
-    );
+    return applyViewState({ columns: args.columns }, tc, mergeColumns);
   },
 };
 
@@ -448,7 +548,8 @@ const paginateTool: Tool<PaginateArgs> = {
     return ok({ page, pageSize });
   },
   execute(args, tc) {
-    const current = tc.ctx.state.pagination;
+    // Live, not the turn's context: an earlier step of this plan may have paged.
+    const current = tc.api.getState().pagination;
     return applyViewState(
       {
         pagination: {
@@ -636,7 +737,7 @@ const exportTool: Tool<ExportArgs> = {
  * passed over, and later edits (a formula typed after the turn, a sort the
  * user picked) are not the turn's to take back. `null` when there is nothing.
  */
-function undoRestore(memory: MemorySnapshot): StatePatch | null {
+function undoRestore(memory: MemorySnapshot, live: GridState): StatePatch | null {
   const { turns, lastControlBefore } = memory;
   for (let i = turns.length - 1; i >= 0; i--) {
     const { outcome, stateBefore: before, stateAfter: after } = turns[i];
@@ -644,7 +745,9 @@ function undoRestore(memory: MemorySnapshot): StatePatch | null {
     // A custom Memory may keep no after state: fall back to the view slices.
     if (!after) return sliceOf(before, withoutCells(before));
     const shape = changedShape(before as unknown as Blob, after as unknown as Blob);
-    if (Object.keys(shape).length > 0) return sliceOf(before, shape as Partial<GridState>);
+    if (Object.keys(shape).length > 0) {
+      return narrowColumns(sliceOf(before, shape as Partial<GridState>), after.columns, live);
+    }
   }
   // A custom Memory that reports a baseline but keeps no turns.
   if (turns.length === 0 && lastControlBefore) {
@@ -662,11 +765,12 @@ const undoTool: Tool<Record<string, never>> = {
     return ok({});
   },
   execute(_args, tc) {
-    const restore = undoRestore(tc.ctx.memory);
+    const live = tc.api.getState();
+    const restore = undoRestore(tc.ctx.memory, live);
     if (!restore) {
       return { applied: [], warnings: ['Nothing to undo.'], undo: noop };
     }
-    const before = sliceOf(tc.api.getState(), restore);
+    const before = sliceOf(live, restore);
     tc.api.applyState(restore);
     return {
       applied: ['undo'],
@@ -695,7 +799,9 @@ const applyStateTool: Tool<ApplyStateArgs> = {
     return ok({ patch: args.patch as StatePatch });
   },
   execute(args, tc) {
-    return applyViewState(args.patch, tc);
+    // An LLM hiding one column sends a partial list: merge it like the columns
+    // tool. A list naming every column stays the full layout setState takes.
+    return applyViewState(args.patch, tc, (patch, live) => mergeColumns(patch, live, true));
   },
 };
 
