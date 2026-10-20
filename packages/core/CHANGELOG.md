@@ -46,6 +46,12 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   (id is 3 OR 99)` keeps the matching rows instead of none, and a column left
   with only OR conditions (after removing its first chip) filters again instead
   of keeping every row.
+- A filter entry without `caseSensitive` (from `setState`, `filter()` or an AI
+  patch) keeps the column's `filter.caseSensitive` instead of turning case
+  sensitivity off.
+- Removing a filter that is not applied, such as typing `-` or `.` first into a
+  number filter, or clearing a column that has no filter, no longer fires
+  `filtering` and `filtered` or announces that the filter was cleared.
 
 ## [3.5.0] - 2026-09-12
 

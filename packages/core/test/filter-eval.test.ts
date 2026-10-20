@@ -323,6 +323,98 @@ describe('filter evaluation (B10)', () => {
     });
   });
 
+  describe('caseSensitive inherits the column setting', () => {
+    type City = { id: number; city: string };
+    const rows: City[] = [
+      { id: 1, city: 'Paris' },
+      { id: 2, city: 'Oslo' },
+      { id: 3, city: 'paris' },
+    ];
+    const columns: ColumnConfiguration<City>[] = [
+      { key: 'id', type: 'number' },
+      { key: 'city', filter: { caseSensitive: true } },
+    ];
+
+    it('setState with no caseSensitive keeps the column default', async () => {
+      const grid = await mount(rows, columns);
+      grid.setState({ filter: [{ key: 'city', operand: 'contains', searchTerm: 'p' }] });
+      await settle(grid);
+      expect(ids(grid)).to.deep.equal([3]);
+      expect(grid.filterExpressions[0].caseSensitive).to.equal(true);
+    });
+
+    it('grid.filter with caseSensitive: undefined keeps the column default', async () => {
+      const grid = await mount(rows, columns);
+      grid.filter({
+        key: 'city',
+        condition: 'equals',
+        searchTerm: 'paris',
+        caseSensitive: undefined,
+      } as any);
+      await settle(grid);
+      expect(ids(grid)).to.deep.equal([3]);
+    });
+
+    it('an explicit caseSensitive still overrides the column', async () => {
+      const grid = await mount(rows, columns);
+      grid.filter({
+        key: 'city',
+        condition: 'equals',
+        searchTerm: 'paris',
+        caseSensitive: false,
+      } as any);
+      await settle(grid);
+      expect(ids(grid)).to.deep.equal([1, 3]);
+    });
+  });
+
+  describe('removing an expression that is not applied', () => {
+    const columns: ColumnConfiguration<TestData>[] = [
+      { key: 'id', type: 'number', filter: true },
+      { key: 'name', filter: true },
+    ];
+
+    it('fires no filtering / filtered events and announces nothing', async () => {
+      const grid = await mount(data, columns);
+      const filtering = (grid as any).stateController.filtering;
+      const events: string[] = [];
+      grid.addEventListener('filtering', () => events.push('filtering'));
+      grid.addEventListener('filtered', () => events.push('filtered'));
+
+      const draft = filtering.getDefaultExpression(grid.getColumn('id')!);
+      await filtering.removeExpression(draft);
+      await filtering.removeAllExpressions('name');
+      await settle(grid);
+
+      expect(events).to.deep.equal([]);
+      expect((grid as any).stateController.announcement).to.equal('');
+    });
+
+    it('typing "-" first into an empty number filter fires nothing', async () => {
+      const fx = new GridTestFixture<TestData>(data);
+      fx.updateConfig = function () {
+        this.columnConfig = this.columnConfig.map((config) =>
+          config.key === 'id'
+            ? ({ ...config, type: 'number', filter: true } as ColumnConfiguration<TestData>)
+            : config
+        );
+      };
+      await fx.setUp();
+      try {
+        const events: string[] = [];
+        fx.grid.addEventListener('filtering', () => events.push('filtering'));
+        fx.grid.addEventListener('filtered', () => events.push('filtered'));
+        fx.filterRow.open('id');
+        await fx.waitForUpdate();
+        fx.filterRow.fireInputEvent('-');
+        await fx.waitForUpdate();
+        expect(events).to.deep.equal([]);
+      } finally {
+        fx.tearDown();
+      }
+    });
+  });
+
   describe('operand typings', () => {
     it('a Date field accepts the string operand names, not a Date', () => {
       type Dated = { created: Date };

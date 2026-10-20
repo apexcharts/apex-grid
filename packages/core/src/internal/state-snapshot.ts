@@ -318,13 +318,13 @@ export function deserializeFilter<T extends object>(
       onDrop?.(snapshot, `operand "${snapshot.operand}" needs a searchTerm`);
       continue;
     }
-    expressions.push({
-      key: snapshot.key as Keys<T>,
-      condition,
-      searchTerm: snapshot.searchTerm,
-      criteria: snapshot.criteria,
-      caseSensitive: snapshot.caseSensitive,
-    } as unknown as FilterExpression<T>);
+    // Omitted fields stay absent so the column defaults (case sensitivity,
+    // 'and' criteria) apply rather than an explicit undefined.
+    const expression: Record<string, unknown> = { key: snapshot.key as Keys<T>, condition };
+    if (snapshot.searchTerm !== undefined) expression.searchTerm = snapshot.searchTerm;
+    if (snapshot.criteria !== undefined) expression.criteria = snapshot.criteria;
+    if (snapshot.caseSensitive !== undefined) expression.caseSensitive = snapshot.caseSensitive;
+    expressions.push(expression as unknown as FilterExpression<T>);
   }
   return expressions;
 }

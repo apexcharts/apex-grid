@@ -100,6 +100,8 @@ export class FilterController<T extends object> implements ReactiveController {
   }
 
   public async removeAllExpressions(key: Keys<T>) {
+    // Nothing to clear: no events and no announcement.
+    if (!this.state.has(key)) return;
     const state = this.get(key)?.all ?? [];
 
     if (
@@ -125,14 +127,16 @@ export class FilterController<T extends object> implements ReactiveController {
 
   public async removeExpression(expression: FilterExpression<T>) {
     const state = this.get(expression.key);
+    // An expression that was never applied (the panel's draft) is a no-op.
+    if (!state?.has(expression)) return;
 
     if (!this.#emitFilteringEvent(expression, 'remove')) {
       return;
     }
 
-    state?.remove(expression);
+    state.remove(expression);
 
-    if (state?.empty) {
+    if (state.empty) {
       this.reset(state.key);
     }
 
@@ -140,7 +144,7 @@ export class FilterController<T extends object> implements ReactiveController {
 
     await this.host.updateComplete;
     this.#announce(expression.key, 'cleared');
-    this.#emitFilteredEvent({ key: expression.key, state: state?.all ?? [] });
+    this.#emitFilteredEvent({ key: expression.key, state: state.all });
   }
 
   public async filterWithEvent(expression: FilterExpression<T>, type: 'add' | 'modify' | 'remove') {
@@ -169,9 +173,16 @@ export class FilterController<T extends object> implements ReactiveController {
 
   public filter(expression: FilterExpression<T> | FilterExpression<T>[]) {
     this.#filter(
-      asArray(expression).map((expr) =>
-        Object.assign(this.getDefaultExpression(this.host.getColumn(expr.key)!), expr)
-      )
+      asArray(expression).map((expr) => {
+        const defaults = this.getDefaultExpression(this.host.getColumn(expr.key)!);
+        // An omitted or undefined field keeps the column default, so a
+        // caseSensitive: undefined from setState or an AI patch inherits the
+        // column's filter.caseSensitive instead of overriding it.
+        return Object.assign(defaults, expr, {
+          condition: expr.condition ?? defaults.condition,
+          caseSensitive: expr.caseSensitive ?? defaults.caseSensitive,
+        });
+      })
     );
   }
 }
