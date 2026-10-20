@@ -20,6 +20,7 @@ import {
   type StateController,
 } from 'apex-grid/internal';
 import type { ReactiveController } from 'lit';
+import { toFiniteNumber as toNumber } from './aggregation.js';
 import { offsetReferences, parseFormula, stringifyFormula } from './formula/parser.js';
 import { FORMULA_MODULE_ID, type FormulaController, FormulaStore } from './formula/store.js';
 
@@ -91,19 +92,6 @@ const EMPTY_STATS: RangeStats = {
 function isBlank(value: unknown): boolean {
   return value === null || value === undefined || value === '';
 }
-
-/** Coerce a cell value to a finite number, or `null` if it isn't numeric. */
-function toNumber(value: unknown): number | null {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value === 'string' && value.trim() !== '') {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
-
-/** Column types whose cells hold numbers: pasted text parses, a fill extrapolates. */
-const NUMERIC_TYPES = new Set(['number', 'currency', 'rating', 'progress']);
 
 /**
  * One clipboard field: a quoted one (closed right before a tab, a line break or
@@ -1035,7 +1023,7 @@ export class RangeSelectionController<T extends object>
         options.find((o) => o.label === trimmed);
       return option ? option.value : text;
     }
-    const numeric = NUMERIC_TYPES.has(type);
+    const numeric = this.state.isNumericColumn(column);
     if (!numeric && type !== 'boolean' && type !== 'date') return text;
     if (trimmed === '') return null;
     if (numeric) {
@@ -1084,7 +1072,7 @@ export class RangeSelectionController<T extends object>
     const numbers = sourceLine.map(toNumber);
     const type = column.type ?? 'string';
     const numeric =
-      NUMERIC_TYPES.has(type) ||
+      this.state.isNumericColumn(column) ||
       (type === 'string' && sourceLine.every((v) => typeof v === 'number'));
     if (m >= 2 && numeric && numbers.every((n) => n !== null)) {
       const first = numbers[0] as number;

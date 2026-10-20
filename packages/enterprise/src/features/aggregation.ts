@@ -33,10 +33,9 @@ export function maxOf(values: readonly number[]): number {
 
 /**
  * A cell value as a finite number, or `null` when the cell does not count:
- * NaN and Infinity do not, numeric strings do. The same rule as the status
- * bar's `toNumber` (range-selection.ts), so a group header, the total row, a
- * pivot cell and the status bar agree on which cells count; change both
- * together.
+ * NaN and Infinity do not, numeric strings do. The status bar and fill
+ * (range-selection.ts) use this rule too, so a group header, the total row,
+ * a pivot cell and the status bar agree on which cells count.
  */
 export function toFiniteNumber(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
