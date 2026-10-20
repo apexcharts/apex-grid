@@ -1,5 +1,5 @@
 import { elementUpdated, expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
-import type { ColumnConfiguration } from 'apex-grid';
+import type { ColumnConfiguration, GridState } from 'apex-grid';
 import {
   type CellValue,
   createFunctionRegistry,
@@ -31,6 +31,12 @@ const makeData = (): Row[] => [
   { id: 3, qty: 3, price: 10, total: 0 },
   { id: 4, qty: 4, price: 10, total: 400 },
 ];
+
+type FormulaEntry = { row: Record<string, unknown>; column: string; src: string };
+type FormulaSlice = { enterprise?: { formulas?: FormulaEntry[] } };
+const formulasOf = (state: GridState) => (state.modules as FormulaSlice).enterprise?.formulas;
+const withFormulas = (formulas: unknown[]) =>
+  ({ modules: { enterprise: { formulas } } }) as unknown as Partial<GridState>;
 
 function controllerOf(grid: ApexGridEnterprise<Row>): FormulaController<Row> {
   return (
@@ -292,6 +298,176 @@ describe('formula store (audit batch B15)', () => {
       } finally {
         other.remove();
       }
+    });
+  });
+
+  // --- state: rowId option, order, validation (ent-grid-core-1/2, store-6/7, security-2)
+
+  describe('state round trip', () => {
+    it('honours GetStateOptions.rowId and SetStateOptions.rowId', async () => {
+      const byId = (row: Row) => row.id;
+      const data = makeData();
+      const grid = await mount(data);
+      grid.setFormula(data[0], 'total', '=5*5');
+      const saved = grid.getState({ rowId: byId });
+      expect(formulasOf(saved)?.[0].row).to.deep.equal({ id: 1 });
+
+      // Reload: a fresh grid over the same records in another order.
+      const reloaded = makeData().reverse();
+      const next = await mount(reloaded);
+      next.setState(saved, { rowId: byId });
+      const id1 = reloaded.find((row) => row.id === 1)!;
+      const id4 = reloaded[0];
+      expect(id4.total, 'the row now at index 0 is untouched').to.equal(400);
+      expect(next.getFormula(id4, 'total')).to.be.undefined;
+      expect(next.getFormula(id1, 'total')).to.equal('=5*5');
+      expect(id1.total).to.equal(25);
+    });
+
+    it('re-offsets relative references when restored rows come back in another order', async () => {
+      const byId = (row: Row) => row.id;
+      const data = makeData();
+      const grid = await mount(data, { rowId: byId });
+      grid.setFormula(data[2], 'total', '=B3*C3');
+      const saved = grid.getState();
+
+      const reloaded = makeData().reverse(); // id3 now at index 1
+      for (const row of reloaded) row.qty *= 2;
+      const next = await mount(reloaded, { rowId: byId });
+      next.setState(saved);
+      const id3 = reloaded.find((row) => row.id === 3)!;
+      expect(next.getFormula(id3, 'total')).to.equal('=B2*C2');
+      expect(id3.total).to.equal(60);
+    });
+
+    it('restores in O(rows) rowId calls, not O(formulas x rows)', async () => {
+      let calls = 0;
+      const rowId = (row: Row) => {
+        calls += 1;
+        return row.id;
+      };
+      const N = 1000;
+      const data = Array.from({ length: N }, (_, i) => ({ id: i + 1, qty: i, price: 2, total: 0 }));
+      const grid = await mount(data, { rowId });
+      const formulas = data.map((row, i) => ({
+        row: { id: row.id },
+        column: 'total',
+        src: `=B${i + 1}*C${i + 1}`,
+      }));
+      calls = 0;
+      grid.setState(withFormulas(formulas));
+      expect(grid.getFormula(data[5], 'total')).to.equal('=B6*C6');
+      expect(data[5].total).to.equal(10);
+      expect(calls, 'rowId calls during setState').to.be.below(10 * N);
+    });
+
+    it('skips a malformed formula with a warning and keeps the valid ones', async () => {
+      const data = makeData();
+      const grid = await mount(data);
+      grid.setFormula(data[3], 'total', '=1+1');
+      let result: ReturnType<typeof grid.setState> | undefined;
+      expect(() => {
+        result = grid.setState(
+          withFormulas([
+            { row: { index: 0 }, column: 'total', src: '=B1*C1' },
+            { row: { index: 1 }, column: 'total', src: '=B2*' },
+            { row: { index: 2 }, column: 'total', src: '=B3*C3' },
+          ])
+        );
+      }).not.to.throw();
+      expect(grid.getFormula(data[0], 'total')).to.equal('=B1*C1');
+      expect(grid.getFormula(data[1], 'total')).to.be.undefined;
+      expect(grid.getFormula(data[2], 'total')).to.equal('=B3*C3');
+      expect(data[2].total).to.equal(30);
+      expect(result?.warnings.some((w) => w.includes('=B2*'))).to.equal(true);
+    });
+
+    it('restores formulas only into allowFormula columns', async () => {
+      const data = makeData();
+      const grid = await mount(data);
+      const result = grid.setState(
+        withFormulas([
+          { row: { index: 0 }, column: 'price', src: '=0' },
+          { row: { index: 1 }, column: 'total', src: '=B2*C2' },
+        ])
+      );
+      expect(data[0].price, 'non-formula column untouched').to.equal(10);
+      expect(grid.getFormula(data[0], 'price')).to.be.undefined;
+      expect(data[1].total).to.equal(20);
+      expect(result.warnings.some((w) => w.includes('price'))).to.equal(true);
+    });
+
+    it('fill and saved state reach only allowFormula columns', async () => {
+      const data = makeData();
+      const grid = await mount(data);
+      grid.setFormula(data[0], 'total', '=B1*C1');
+      expect(controllerOf(grid).fillFormula(data[0], 'total', data[0], 'id')).to.equal(false);
+      expect(data[0].id, 'no formula written into id').to.equal(1);
+
+      grid.setFormula(data[1], 'qty', '=A1+1'); // app code may target any column
+      expect(data[1].qty).to.equal(2);
+      const saved = grid.getState();
+      expect(formulasOf(saved)?.map((entry) => entry.column)).to.deep.equal(['total']);
+      expect(grid.setState(saved).warnings).to.deep.equal([]);
+      expect(grid.getFormula(data[0], 'total')).to.equal('=B1*C1');
+    });
+
+    it('a snapshot restore keeps formulas code set outside allowFormula columns', async () => {
+      const data = makeData();
+      const plain = columns.map((column) => ({ ...column, allowFormula: false }));
+      const grid = await mount(data, { cols: plain });
+      grid.setFormula(data[0], 'total', '=B1*C1');
+      const saved = grid.getState();
+      grid.sort({ key: 'id', direction: 'descending' });
+      await settle(grid);
+      expect(grid.setState(saved).warnings).to.deep.equal([]);
+      expect(grid.getFormula(data[0], 'total')).to.equal('=B1*C1');
+    });
+
+    it('an AI undo keeps a code set formula next to a saved one', async () => {
+      const data = makeData();
+      const grid = await mount(data);
+      grid.setFormula(data[0], 'total', '=B1*C1');
+      grid.setFormula(data[1], 'price', '=A2*2');
+      const result = await grid.runPrompt('sort by id descending');
+      await settle(grid);
+      if (result.mode !== 'control') throw new Error('expected a control result');
+      result.undo();
+      await settle(grid);
+      expect(grid.getFormula(data[0], 'total')).to.equal('=B1*C1');
+      expect(grid.getFormula(data[1], 'price')).to.equal('=A2*2');
+      expect(data[1].price).to.equal(4);
+    });
+
+    it('a reload without grid.rowId leaves literals for setState to restore by id', async () => {
+      const byId = (row: Row) => row.id;
+      const data = makeData();
+      const grid = await mount(data);
+      grid.setFormula(data[0], 'total', '=5*5');
+      const saved = grid.getState({ rowId: byId });
+
+      const reloaded = makeData().reverse();
+      grid.data = reloaded;
+      await settle(grid);
+      grid.setState(saved, { rowId: byId });
+      const id1 = reloaded.find((row) => row.id === 1)!;
+      expect(reloaded[0].total, 'id4 total untouched').to.equal(400);
+      expect(grid.getFormula(reloaded[0], 'total')).to.be.undefined;
+      expect(grid.getFormula(id1, 'total')).to.equal('=5*5');
+      expect(id1.total).to.equal(25);
+    });
+
+    it('strict throws before any stored formula changes', async () => {
+      const data = makeData();
+      const grid = await mount(data);
+      grid.setFormula(data[0], 'total', '=B1*C1');
+      const state = withFormulas([
+        { row: { index: 1 }, column: 'total', src: '=B2*C2' },
+        { row: { index: 2 }, column: 'total', src: '=(' },
+      ]);
+      expect(() => grid.setState(state, { strict: true })).to.throw('=(');
+      expect(grid.getFormula(data[0], 'total')).to.equal('=B1*C1');
+      expect(grid.getFormula(data[1], 'total')).to.be.undefined;
     });
   });
 

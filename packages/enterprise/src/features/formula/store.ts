@@ -172,10 +172,21 @@ export class FormulaStore {
   /**
    * Replace every formula with `entries` (already parsed) and recompute them
    * all in one pass. `entries` carry their AST so callers can validate first.
+   * Stored formulas whose address passes `keep` stay alongside them.
    */
-  public load(entries: ReadonlyArray<{ address: CellAddress; src: string; ast: FormulaAst }>) {
+  public load(
+    entries: ReadonlyArray<{ address: CellAddress; src: string; ast: FormulaAst }>,
+    keep?: (address: CellAddress) => boolean
+  ) {
+    const kept: Array<{ address: CellAddress; src: string; ast: FormulaAst }> = [];
+    for (const [key, { src, ast }] of keep ? this.#entries : []) {
+      const address = parseCellKey(key);
+      if (keep?.(address)) {
+        kept.push({ address, src, ast });
+      }
+    }
     this.clearAll();
-    for (const { address, src, ast } of entries) {
+    for (const { address, src, ast } of [...kept, ...entries]) {
       this.#insert(address, src, ast);
     }
     return this.recalcAll();
@@ -555,7 +566,11 @@ export class FormulaController<T extends object> implements ReactiveController, 
 
   // --- public API (forwarded by the grid in F5) -----------------------------
 
-  /** Set a formula on a cell and recompute it plus its dependents. */
+  /**
+   * Set a formula on a cell and recompute it plus its dependents. App code may
+   * target any column; fill, paste and `setState` only reach `allowFormula`
+   * columns, and `getState` saves only those.
+   */
   public setFormula(row: T, columnKey: keyof T & string, src: string): void {
     const address = this.#addressOf(row, columnKey, true);
     if (address) {
@@ -585,8 +600,9 @@ export class FormulaController<T extends object> implements ReactiveController, 
    * Copy the formula from a source cell to a target cell, shifting its
    * **relative** references by the data-row / column-letter delta between the
    * two cells; absolute (`$`) axes are preserved. Returns `false` without
-   * writing when the source holds no formula, so a caller (the fill handle or an
-   * intra-grid paste) can fall back to copying the literal value.
+   * writing when the source holds no formula or the target column has no
+   * `allowFormula`, so a caller (the fill handle or an intra-grid paste) can
+   * fall back to copying the literal value.
    */
   public fillFormula(
     sourceRow: T,
@@ -594,8 +610,8 @@ export class FormulaController<T extends object> implements ReactiveController, 
     targetRow: T,
     targetKey: keyof T & string
   ): boolean {
-    const source = this.#addressOf(sourceRow, sourceKey, true);
-    const target = this.#addressOf(targetRow, targetKey, true);
+    const source = this.#allows(targetKey) && this.#addressOf(sourceRow, sourceKey, true);
+    const target = source && this.#addressOf(targetRow, targetKey, true);
     if (!source || !target) {
       return false;
     }
@@ -804,7 +820,9 @@ export class FormulaController<T extends object> implements ReactiveController, 
 
   /**
    * The stored formulas as `(row object, data index, column key, src)`, for
-   * state serialization. The grid maps each row object to a durable row reference.
+   * state serialization. The grid maps each row object to a durable row
+   * reference. Formulas code set outside `allowFormula` columns are left out,
+   * as {@link restoreFormulas} would reject them.
    */
   public listFormulas(): Array<{ row: T; index: number; columnKey: string; src: string }> {
     this.#sync();
@@ -812,7 +830,7 @@ export class FormulaController<T extends object> implements ReactiveController, 
     for (const { address, src } of this.#store.list()) {
       const row = this.#frame()[address.row];
       const columnKey = this.#letterOrder[address.col];
-      if (row !== undefined && columnKey !== undefined) {
+      if (row !== undefined && this.#formulaColumns.has(columnKey)) {
         out.push({ row, index: address.row, columnKey, src });
       }
     }
@@ -820,14 +838,17 @@ export class FormulaController<T extends object> implements ReactiveController, 
   }
 
   /**
-   * Replace all formulas with `entries` and recompute them in one pass. Every
-   * entry is validated first, so a bad one never costs the others: a source
+   * Replace the formulas in `allowFormula` columns with `entries` and recompute
+   * them in one pass (formulas code set in other columns stay). Every entry is
+   * validated first, so a bad one never costs the others: a source
    * that does not parse, or a column without `allowFormula`, is skipped and
    * returned. A formula restored onto a row that now sits at another index than
    * its `origin` shifts its relative references by the move, as a fill would.
+   * With `strict`, any rejection leaves the stored formulas untouched.
    */
   public restoreFormulas(
-    entries: ReadonlyArray<FormulaRestoreEntry<T>>
+    entries: ReadonlyArray<FormulaRestoreEntry<T>>,
+    strict = false
   ): FormulaRestoreRejection[] {
     this.#sync();
     const rejected: FormulaRestoreRejection[] = [];
@@ -838,7 +859,7 @@ export class FormulaController<T extends object> implements ReactiveController, 
       if (!address) {
         continue;
       }
-      if (!this.#formulaColumns.has(columnKey)) {
+      if (!this.#allows(columnKey)) {
         rejected.push({ columnKey, src: saved, reason: 'column' });
         continue;
       }
@@ -856,7 +877,13 @@ export class FormulaController<T extends object> implements ReactiveController, 
       }
       valid.push({ address, src, ast });
     }
-    this.#settle(this.#store.load(valid), true);
+    if (!(strict && rejected.length)) {
+      // Saved state owns only allowFormula columns: formulas code set in other
+      // columns are never saved, so a restore (or an AI undo) leaves them.
+      const owned = this.#formulaColumns;
+      const keep = ({ col }: CellAddress) => !owned.has(this.#letterOrder[col]);
+      this.#settle(this.#store.load(valid, keep), true);
+    }
     return rejected;
   }
 
@@ -915,6 +942,12 @@ export class FormulaController<T extends object> implements ReactiveController, 
       }
     }
     return { changes: seeds.length ? this.#store.release(seeds) : [], dropped };
+  }
+
+  /** Whether the column takes formulas (`allowFormula`). */
+  #allows(key: string): boolean {
+    this.#syncColumns();
+    return this.#formulaColumns.has(key);
   }
 
   #addressOf(row: T, columnKey: keyof T & string, refresh = false): CellAddress | null {

@@ -31,7 +31,6 @@ import {
   resolveExportValue,
   resolveRowRefs,
   StateController,
-  serializeRowRefs,
   type ToolbarAction,
 } from 'apex-grid/internal';
 import { html, type PropertyValues } from 'lit';
@@ -80,6 +79,7 @@ import {
   type FormulaFn,
   formulaEditorTemplate,
 } from './features/formula/index.js';
+import type { FormulaRestoreEntry } from './features/formula/store.js';
 import {
   GROUPING_MODULE_ID,
   type GroupingController,
@@ -303,6 +303,12 @@ interface FormulaStateEntry {
   row: RowRef;
   column: string;
   src: string;
+  /**
+   * The data index the formula was saved at, written with an `id` row reference.
+   * When the row comes back at another index, its relative references shift by
+   * the move, so the formula keeps reading its own row.
+   */
+  origin?: number;
 }
 
 /** Custom-element tag for the enterprise grid. */
@@ -783,25 +789,22 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       pivotValues: { ...this.pivotValues },
       groupExpand: this.#groupingController()?.getExpandOverrides() ?? {},
       ranges: this.#rangeController()?.getRanges() ?? [],
-      formulas: this.#serializeFormulas(),
+      formulas: this.#serializeFormulas(options?.rowId ?? this.rowId),
     };
     return { ...base, modules: { ...base.modules, enterprise } };
   }
 
-  /** Serialize stored formulas with a durable row reference (rowId when set). */
-  #serializeFormulas(): FormulaStateEntry[] {
-    const controller = this.#formulaController();
-    if (!controller) {
-      return [];
-    }
-    const entries: FormulaStateEntry[] = [];
-    for (const { row, columnKey, src } of controller.listFormulas()) {
-      const [ref] = serializeRowRefs([row], this.data, this.rowId);
-      if (ref) {
-        entries.push({ row: ref, column: columnKey, src });
-      }
-    }
-    return entries;
+  /**
+   * Serialize stored formulas with a durable row reference: the `rowId` in
+   * effect for this call (the option, else the grid's), or the data index.
+   */
+  #serializeFormulas(rowId: ((row: T) => string | number) | undefined): FormulaStateEntry[] {
+    return (this.#formulaController()?.listFormulas() ?? []).map(
+      ({ row, index, columnKey, src }) =>
+        rowId
+          ? { row: { id: rowId(row) }, column: columnKey, src, origin: index }
+          : { row: { index }, column: columnKey, src }
+    );
   }
 
   /**
@@ -870,26 +873,60 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     // Formulas resolve their durable row references against the current data and
     // recompute on restore.
     if (enterprise?.formulas !== undefined) {
-      this.#restoreFormulas(enterprise.formulas);
+      const strict = options?.strict === true;
+      this.#restoreFormulas(
+        enterprise.formulas,
+        options?.rowId ?? this.rowId,
+        strict,
+        (message) => {
+          if (strict) throw new Error(`[apex-grid] setState: ${message}`);
+          result.warnings.push(message);
+        }
+      );
     }
 
     return result;
   }
 
-  /** Resolve persisted formula row references against `data` and restore them. */
-  #restoreFormulas(formulas: ReadonlyArray<FormulaStateEntry>): void {
+  /**
+   * Resolve persisted formula row references against `data` and restore them.
+   * Entries that do not resolve, do not parse, or target a column without
+   * `allowFormula` are skipped with a warning; the rest still restore. With
+   * `strict` the first one throws before any stored formula changes.
+   */
+  #restoreFormulas(
+    formulas: unknown,
+    rowId: ((row: T) => string | number) | undefined,
+    strict: boolean,
+    warn: (message: string) => void
+  ): void {
     const controller = this.#formulaController();
     if (!controller) {
       return;
     }
-    const entries: Array<{ row: T; columnKey: string; src: string }> = [];
-    for (const entry of formulas) {
-      const [row] = resolveRowRefs([entry.row], this.data, this.rowId);
-      if (row) {
-        entries.push({ row, columnKey: entry.column, src: entry.src });
-      }
+    if (!Array.isArray(formulas)) {
+      warn('formulas: expected an array; skipped');
+      return;
     }
-    controller.restoreFormulas(entries);
+    // One id map for every entry (a per-entry resolve rebuilt it per formula).
+    const byId = rowId ? new Map(this.data.map((row) => [rowId(row), row])) : null;
+    const entries: FormulaRestoreEntry<T>[] = [];
+    for (const entry of formulas as Partial<FormulaStateEntry>[]) {
+      const ref = entry?.row;
+      const byIdRef = typeof ref === 'object' && ref !== null && 'id' in ref;
+      const row = byIdRef ? byId?.get(ref.id) : resolveRowRefs(ref ? [ref] : [], this.data)[0];
+      if (!row || typeof entry.column !== 'string' || typeof entry.src !== 'string') {
+        warn(`formulas: ${JSON.stringify(ref)} is not a cell in the data; skipped`);
+        continue;
+      }
+      const origin = byIdRef ? entry.origin : (ref as { index: number }).index;
+      entries.push({ row, columnKey: entry.column, src: entry.src, origin });
+    }
+    for (const { columnKey, src, reason } of controller.restoreFormulas(entries, strict)) {
+      warn(
+        `formulas: "${src}" in "${columnKey}" skipped (${reason === 'column' ? 'no allowFormula' : 'invalid'})`
+      );
+    }
   }
 
   /**
@@ -1344,7 +1381,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * Set a spreadsheet formula on a cell (enterprise formula module). The source
    * may start with `=`; the computed result becomes the cell value and any
    * dependent cells recompute. No-op if the formula module is not enabled or the
-   * row is not in {@link ApexGrid.data}.
+   * row is not in {@link ApexGrid.data}. Only formulas in `allowFormula` columns
+   * are saved by {@link getState}.
    *
    * @example
    * ```ts

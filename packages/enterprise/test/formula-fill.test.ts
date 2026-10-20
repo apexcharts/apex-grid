@@ -16,7 +16,7 @@ interface Row {
 const columns: ColumnConfiguration<Row>[] = [
   { key: 'qty', type: 'number' }, // A
   { key: 'price', type: 'number' }, // B
-  { key: 'total', type: 'number' }, // C
+  { key: 'total', type: 'number', allowFormula: true }, // C
 ];
 
 /** A sized parent so the virtualizer lays out body rows. */

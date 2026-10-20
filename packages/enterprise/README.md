@@ -808,8 +808,24 @@ formula is filled or pasted to another cell; absolute axes stay put. A reference
 always resolves to a concrete cell, so recalculation itself is unaffected by
 relative-ness.
 
-Identity: formula attachment is durable when you set a grid `rowId` (it survives
-reload through `getState` / `setState`); without one it is positional.
+Identity: formulas belong to rows. When rows are reordered, removed or replaced,
+each formula moves with its row (matched by the grid `rowId` when set, else by
+object identity) and its relative references shift by the move, as a fill would.
+References to other rows shift with the formula; they do not follow the row they
+pointed at. A new row object at a formula's old position (an immutable copy, a
+reload without `rowId`) keeps the formula only while it still holds the value the
+formula computed there, so a reload never writes a result over a literal that
+differs from it. A literal that happens to equal that result takes the formula.
+Set a `rowId` to keep formulas through any reload.
+
+`getState` saves the formulas of `allowFormula` columns (by `rowId` when one is
+in effect, with the data index it was saved at as `origin`). `setState` skips an
+entry whose row does not resolve, whose source does not parse, or whose column
+lacks `allowFormula`, and reports each in `SetStateResult.warnings` (with
+`strict`, the first one throws before any formula changes). Fill and paste only
+write formulas into `allowFormula` columns; `setFormula` from app code may target
+any column, but such formulas are not saved, and `setState` (and so an AI undo)
+replaces only the formulas of `allowFormula` columns, leaving them in place.
 
 ### Authoring
 
