@@ -123,6 +123,7 @@ export class GridDOMController<T extends object> implements ReactiveController {
         .editingKey=${this.#editingKey(data)}
         .ariaRowOffset=${ariaRowOffset}
         .decorationVersion=${this.state.decorationVersion}
+        .dataVersion=${this.state.dataVersion}
         .validationVersion=${this.state.editing.validationVersion}
         .coordinateHints=${Boolean(this.host.coordinateHints)}
       >

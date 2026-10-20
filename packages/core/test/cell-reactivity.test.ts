@@ -82,6 +82,24 @@ describe('Cell reactivity: templates reading other row fields (core-cell-2)', ()
     expect(f.probeText()).to.equal('A/high');
   });
 
+  it('re-renders a pinned row after applyEdits changes a field the template reads', async () => {
+    f.grid.rowPinning = { enabled: true } as never;
+    await f.waitForUpdate();
+    const record = f.grid.data[1];
+    expect(f.grid.pinRow(record, 'top')).to.be.true;
+    await f.waitForUpdate();
+    await nextFrame();
+    const pinned = () => {
+      const row = f.grid.renderRoot.querySelector('apex-grid-row[part~="pinned-row"]')!;
+      return cellsOf(row)[1].shadowRoot!.querySelector('.probe')!.textContent!.trim();
+    };
+    expect(pinned()).to.equal(`${record.name}/${record.importance}`);
+    f.grid.applyEdits([{ row: record, column: 'importance', value: 'pinned-edit' }]);
+    await f.waitForUpdate();
+    await nextFrame();
+    expect(pinned()).to.equal(`${record.name}/pinned-edit`);
+  });
+
   it('re-renders after an inline edit commits', async () => {
     await f.grid.editCell(0, 'importance');
     await f.waitForUpdate();
