@@ -21,11 +21,15 @@ const GROUP_META = Symbol('apex-grid-enterprise.group');
 
 /** Metadata describing a single synthesized group-header row. */
 export interface GroupRowMeta<T extends object> {
-  /** Stable, path-joined identity (e.g. `/EMEA/2024`). */
+  /**
+   * Stable, path-joined identity (e.g. `/EMEA/2024`). A blank is `(blank)`. A
+   * value with a `/` in it is an empty segment plus the value with `%` and `/`
+   * percent-escaped (`A/B` is `//A%2FB`), so it never reads as a nested path.
+   */
   readonly key: string;
   /** The `groupBy` field this level groups on. */
   readonly field: string;
-  /** The shared field value for this group. */
+  /** The shared field value for this group (the first seen, for blanks and dates). */
   readonly value: unknown;
   /** Display label for the header (the stringified value). */
   readonly label: string;
@@ -52,8 +56,28 @@ export function getGroupMeta<T extends object>(row: T): GroupRowMeta<T> | undefi
     : undefined;
 }
 
-function stringifyValue(value: unknown): string {
-  return value === null || value === undefined || value === '' ? '(blank)' : String(value);
+const BLANK_SEGMENT = '(blank)';
+
+function isBlank(value: unknown): boolean {
+  return value === null || value === undefined || value === '';
+}
+
+/**
+ * The path segment for a group value. Blanks share `(blank)`, and a Date is
+ * `String(date)` as before unless it has milliseconds, which only the ISO
+ * instant keeps. A text that would not read back as one plain segment (it has
+ * a `/`, is empty or is a literal "(blank)") is written as an empty segment
+ * followed by the text with `%` and `/` escaped. Plain segments are never
+ * empty, so keys stay unique, and any other value keeps the key earlier
+ * releases wrote.
+ */
+function keySegment(value: unknown): string {
+  if (isBlank(value)) return BLANK_SEGMENT;
+  const text =
+    value instanceof Date && value.getMilliseconds() ? value.toISOString() : String(value);
+  return text && text !== BLANK_SEGMENT && !text.includes('/')
+    ? text
+    : `/${text.replace(/[%/]/g, (c) => (c === '/' ? '%2F' : '%25'))}`;
 }
 
 function formatNumber(value: number): string {
@@ -129,15 +153,12 @@ export class GroupingController<T extends object>
     const out: T[] = [];
 
     for (const [value, leaves] of this.#partition(rows, field)) {
-      const key = `${parentKey}/${stringifyValue(value)}`;
+      const key = `${parentKey}/${keySegment(value)}`;
       const meta: GroupRowMeta<T> = {
         key,
         field,
         value,
-        label:
-          value === null || value === undefined || value === ''
-            ? this.host.localize('grouping.blank')
-            : String(value),
+        label: isBlank(value) ? this.host.localize('grouping.blank') : String(value),
         depth,
         count: leaves.length,
         leaves,
@@ -161,11 +182,31 @@ export class GroupingController<T extends object>
     return out;
   }
 
-  /** Bucket rows by a field value, preserving first-seen (already-sorted) order. */
+  /**
+   * Bucket rows by a field value, preserving first-seen (already-sorted) order.
+   * Blanks (null, undefined, '') share one bucket, and so do equal dates held in
+   * distinct Date instances: each maps to the first such value seen, which is
+   * also the group's `value`.
+   */
   #partition(rows: ReadonlyArray<T>, field: string): Map<unknown, T[]> {
     const buckets = new Map<unknown, T[]>();
+    let dates: Map<number, Date> | undefined;
+    let blank: unknown;
+    let blankSeen = false;
     for (const row of rows) {
-      const value = (row as Record<string, unknown>)[field];
+      let value = (row as Record<string, unknown>)[field];
+      if (isBlank(value)) {
+        if (blankSeen) value = blank;
+        else {
+          blank = value;
+          blankSeen = true;
+        }
+      } else if (value instanceof Date) {
+        dates ??= new Map();
+        const first = dates.get(value.getTime());
+        if (first) value = first;
+        else dates.set(value.getTime(), value);
+      }
       const bucket = buckets.get(value);
       if (bucket) {
         bucket.push(row);
