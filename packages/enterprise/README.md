@@ -213,7 +213,7 @@ filter.grid = grid;                 // required
 await filter.updateComplete;
 filter.setSelectedTokens(['Engineering', 'Marketing']);
 
-filter.selectAll();                 // select all values (clears the column filter)
+filter.selectAll();                 // select all values (removes the set filter's own condition)
 filter.clearAll();                  // deselect all (hides every row)
 filter.refresh();                   // re-read distinct values after data changes
 filter.distinctValues;              // ReadonlyArray<{ token, value, label }>
@@ -223,6 +223,15 @@ filter.selectedTokens;              // string[]
 The panel includes a search box, a `(Select all)` row, and folds empty values
 (`null` / `undefined` / `''`) into a single entry. CSS parts are exposed for
 styling.
+
+Toggling, `selectAll()` and `clearAll()` change only the set filter's own
+condition, so other `and` conditions on the column stay applied. The selection is
+saved by `grid.getState()` (operand `'set'`, the selected tokens as `searchTerm`)
+and restored by `setState()` once the set filter module is imported. The panel
+reads the applied filter when it mounts and on `refresh()`, so call `refresh()`
+after a `setState()` or a programmatic filter change on a mounted panel. A column
+with very many distinct values lists the first 1000 matches and asks to search
+for the rest; the filter itself still covers every value.
 
 ## Advanced filter builder
 
