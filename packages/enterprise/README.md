@@ -464,7 +464,7 @@ available programmatically via the `format` property (`ChartFormat`):
 
 ```ts
 chart.format = {
-  colors: ['#2563eb', '#16a34a'], // per-series, in series order
+  colors: ['#2563eb', '#16a34a'], // per-series, in series order; unset series use the palette
   legend: true,
   dataLabels: false,
   gridlines: true,
@@ -477,6 +477,12 @@ chart.format = {
   forecastBand: true,             // add a ~95% prediction band around the forecast
 };
 ```
+
+Series without a color in `colors` take `apexOptions.colors`, then the theme
+palette, so picking one color in the Format popover leaves the others as drawn.
+`trendline`, `forecast` (whole periods, 0 to 1000) and `forecastBand` apply to
+column, line and area charts; other types, horizontal bars included, ignore them
+and the popover hides those controls.
 
 `trendline`, `forecast`, and `forecastBand` are also exposed as the pure functions
 `linearTrend()`, `linearForecast()`, and `linearForecastBand()`, and `ChartFormat` ↔
@@ -699,7 +705,8 @@ they work instantly and offline; anything outside the set escalates to your LLM
 reasoner (if you configured one) or is reported honestly (see below). It never
 guesses silently.
 
-- **Sort:** "sort by revenue, highest first", "order by name", "reverse the sort".
+- **Sort:** "sort by revenue, highest first", "sort by price high to low", "order by name",
+  "reverse the sort".
 - **Group / ungroup:** "group by region", "ungroup".
 - **Filter:** "filter status = open", "only show EMEA", "remove rows where salary
   is under 70000", "keep only rows with amount over 100". Removal keeps the
@@ -708,7 +715,8 @@ guesses silently.
 - **Search:** "search Acme".
 - **Pivot / aggregate:** "pivot on region", "sum of revenue".
 - **Pagination / export:** "page 2", "page size 50", "export as csv".
-- **Reset / undo:** "reset", "undo".
+- **Reset / undo:** "reset", "undo", "clear all filters" (column filters and the
+  quick filter only), "reset sort".
 - **Read-only questions:** "how many rows", "highest / lowest / average salary",
   "min, max and median of bonus", "average salary by department", "who has the
   highest salary", "top 5 by revenue", "which region has the highest total sales".
