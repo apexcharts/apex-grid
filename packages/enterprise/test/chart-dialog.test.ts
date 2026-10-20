@@ -332,4 +332,49 @@ describe('chart dialog', () => {
       expect(nameExpressions(gridB).length, 'user filter on the new grid kept').to.equal(1);
     });
   });
+
+  describe('lifecycle', () => {
+    it('a panel moved in the DOM rebinds and renders again', async () => {
+      const grid = await mountGrid();
+      const panel = await fixture<ApexGridChart>(
+        html`<apex-grid-chart mode="inline" source="view" type="column" .grid=${grid as never}></apex-grid-chart>`
+      );
+      expect(await until(() => panel.getChart() != null)).to.equal(true);
+      const other = document.createElement('div');
+      document.body.appendChild(other);
+      try {
+        other.appendChild(panel);
+        expect(await until(() => panel.getChart() != null), 'chart rebuilt').to.equal(true);
+        let reads = 0;
+        const original = grid.getViewChartModel.bind(grid);
+        grid.getViewChartModel = (definition) => {
+          reads += 1;
+          return original(definition);
+        };
+        grid.dispatchEvent(new CustomEvent('apex-view-changed'));
+        expect(await until(() => reads > 0), 'live signal still redraws').to.equal(true);
+      } finally {
+        other.remove();
+      }
+    });
+
+    it('a panel removed mid-render stops cleanly', async () => {
+      const grid = await mountGrid();
+      const panel = document.createElement('apex-grid-chart') as ApexGridChart;
+      panel.mode = 'inline';
+      panel.source = 'view';
+      panel.grid = grid as never;
+      document.body.appendChild(panel);
+      await panel.updateComplete;
+      const pending = panel.refresh();
+      panel.remove();
+      let error: unknown = null;
+      await pending.catch((e) => {
+        error = e;
+      });
+      for (let i = 0; i < 5; i += 1) await nextFrame();
+      expect(String(error)).to.equal('null');
+      expect(panel.getChart()).to.equal(null);
+    });
+  });
 });

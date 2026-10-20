@@ -320,6 +320,13 @@ export class ApexGridChart extends LitElement {
     super.disconnectedCallback();
   }
 
+  public override connectedCallback(): void {
+    super.connectedCallback();
+    // A moved panel was torn down on disconnect: rebind, which also redraws. The first connect
+    // binds from willUpdate.
+    if (this.hasUpdated) this.#attach();
+  }
+
   protected override willUpdate(changed: Map<PropertyKey, unknown>): void {
     if (changed.has('grid')) {
       // A filter this panel put on the previous grid goes with the old binding.
@@ -721,7 +728,7 @@ export class ApexGridChart extends LitElement {
       do {
         this.#refreshPending = false;
         await this.#renderOnce();
-      } while (this.#refreshPending);
+      } while (this.#refreshPending && this.isConnected);
     } finally {
       this.#refreshing = false;
     }
@@ -744,7 +751,8 @@ export class ApexGridChart extends LitElement {
       await this.updateComplete;
     }
     const canvas = this.renderRoot.querySelector<HTMLElement>('[part="canvas"]');
-    if (!next || !canvas) {
+    // A removed panel draws nothing: ApexCharts rejects a detached canvas.
+    if (!next || !canvas || !this.isConnected) {
       this.#destroyChart();
       return;
     }
@@ -761,10 +769,23 @@ export class ApexGridChart extends LitElement {
     if (this.#chart && (resolvedType !== this.#renderedType || this.#formatDirty))
       this.#destroyChart();
     this.#formatDirty = false;
-    if (this.#chart) {
-      await this.#chart.updateOptions(chartModelToApexOptions(renderModel, options), false, false);
-    } else {
-      this.#chart = await renderApexChart(canvas, renderModel, options);
+    try {
+      if (this.#chart) {
+        await this.#chart.updateOptions(
+          chartModelToApexOptions(renderModel, options),
+          false,
+          false
+        );
+      } else {
+        this.#chart = await renderApexChart(canvas, renderModel, options);
+      }
+    } catch (error) {
+      if (this.isConnected) throw error;
+    }
+    // Removed while ApexCharts loaded or drew: drop what it made and stop.
+    if (!this.isConnected) {
+      this.#destroyChart();
+      return;
     }
     this.#renderedType = resolvedType;
     // Open swatches show the drawn colors, which exist only now.
