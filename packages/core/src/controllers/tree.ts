@@ -48,7 +48,7 @@ export interface TreeRowMeta {
   hasChildren: boolean;
   /** Stable key for the row (path-joined string). Useful for keyed reconciliation. */
   key: string;
-  /** Last path segment — used as the group-column label for synthesized parents. */
+  /** Last path segment, used as the group-column label for synthesized parents. */
   label: string;
 }
 
@@ -57,11 +57,12 @@ export interface TreeRowMeta {
  *
  * @remarks
  * Tree mode keeps the data array flat. Each row's hierarchy is derived from a
- * user-supplied `getDataPath` callback (AG Grid's "tree data" pattern). The
- * controller:
+ * user-supplied `getDataPath` callback that returns the row's path from the
+ * root (the flat-array "tree data" pattern). The controller:
  *
  *  1. Builds an in-memory tree from the post-sort, post-filter rows.
- *  2. Synthesizes parent nodes for any path level that lacks a backing row.
+ *  2. Synthesizes parent nodes for any path level that lacks a backing row
+ *     in the data. A level whose own row was filtered out shows that row.
  *  3. Walks the tree honouring the current expansion set and emits a flat
  *     list of rows in display order.
  *  4. Records per-row metadata (depth, hasChildren) that the cell renderer
