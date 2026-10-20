@@ -222,6 +222,16 @@ export default class ApexGridCell<T extends object> extends LitElement {
   public decorationVersion = 0;
 
   /**
+   * Reactive token forwarded from {@link StateController.dataVersion}, bumped
+   * once per pipeline run. Re-renders only a cell that reads its row beyond
+   * its own value (see {@link shouldUpdate}).
+   *
+   * @internal
+   */
+  @property({ attribute: false })
+  public dataVersion = 0;
+
+  /**
    * Reactive token forwarded from {@link EditingController.validationVersion}.
    * Changing it re-runs {@link willUpdate} so the cell re-reads its validation
    * errors and toggles `aria-invalid` / the inline error node. Stays `0` until
@@ -263,6 +273,20 @@ export default class ApexGridCell<T extends object> extends LitElement {
     this.removeEventListener('keydown', this.#handleCellKeydown);
     this.removeEventListener('focusout', this.#handleCellFocusOut);
     super.disconnectedCallback();
+  }
+
+  /**
+   * Skips the update when only the data token changed for a cell that renders
+   * nothing but its own value. A cell that reads its row beyond {@link value}
+   * (a `cellTemplate`, which may read other fields, or the tree group cell,
+   * whose chevron shows the row's expansion) still renders.
+   */
+  protected override shouldUpdate(changed: PropertyValues<this>): boolean {
+    if (!this.hasUpdated || changed.size > 1 || !changed.has('dataVersion')) return true;
+    const tree = this.state?.tree;
+    return Boolean(
+      this.column.cellTemplate || (tree?.enabled && tree.isGroupColumn(this.column.key))
+    );
   }
 
   protected override willUpdate(changed: PropertyValues<this>) {

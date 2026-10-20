@@ -79,6 +79,7 @@ export class GridDOMController<T extends object> implements ReactiveController {
         .editingKey=${editingKey}
         .ariaRowOffset=${ariaRowOffset}
         .decorationVersion=${this.state.decorationVersion}
+        .dataVersion=${this.state.dataVersion}
         .validationVersion=${this.state.editing.validationVersion}
         .dragging=${this.state.rowReorder.dragging === data}
         .grabbed=${this.state.rowReorder.grabbed === data}

@@ -113,6 +113,14 @@ export default class ApexGridRow<T extends object> extends LitElement {
   public decorationVersion = 0;
 
   /**
+   * Reactive token from {@link StateController.dataVersion}, forwarded to each
+   * cell so a pipeline run (edit, data change, tree toggle) refreshes the row's
+   * ARIA and the cells that read their row. Stays `0` for pinned rows.
+   */
+  @property({ attribute: false })
+  public dataVersion = 0;
+
+  /**
    * Reactive token from {@link EditingController.validationVersion}, forwarded to
    * each cell so a validation-only change re-renders the row's cells (toggling
    * `aria-invalid` and the inline error node). Stays `0` until the first
@@ -519,6 +527,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
             .value=${this.data[column.key]}
             .colindex=${ariaColindex}
             .decorationVersion=${this.decorationVersion}
+            .dataVersion=${this.dataVersion}
             .validationVersion=${this.validationVersion}
           ></apex-grid-cell>`;
         }

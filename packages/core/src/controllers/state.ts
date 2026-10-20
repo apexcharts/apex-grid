@@ -329,6 +329,15 @@ export class StateController<T extends object> implements ReactiveController {
   }
 
   /**
+   * Monotonic token the grid bumps once per data pipeline run, forwarded to
+   * each body row and cell, so a cell whose output reads more than its own
+   * value (a `cellTemplate` reading other row fields, the tree group cell's
+   * chevron) re-renders after an edit, a data change or a tree toggle,
+   * although its own value binding did not change.
+   */
+  public dataVersion = 0;
+
+  /**
    * Signals that {@link CellDecorator} output may have changed. Bumps the
    * {@link decorationVersion} and requests a host update so cells re-run their
    * decoration. Called by feature modules after mutating decoration state.

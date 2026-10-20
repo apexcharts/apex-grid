@@ -1788,6 +1788,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     if (shaping) this.#shapingRuns++;
     try {
       this.dataState = await this.dataController.apply([...this.data], this.stateController);
+      this.stateController.dataVersion++;
       this.stateController.pagination.reclamp();
     } finally {
       if (shaping && !--this.#shapingRuns) this.#baselineStateIfUnset();
