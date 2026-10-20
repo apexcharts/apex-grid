@@ -98,28 +98,39 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+/**
+ * Collect the column keys one tool's args reference: the rule tools' shapes (`by`,
+ * `where`, `columns`, `on`, `aggregations`), an `analyze` query (`column`, `groupBy`,
+ * `where`), and an `applyState` patch (`sort`, `filter`, `columns`, and the enterprise
+ * `groupBy` / `pivotOn` / `aggregations`).
+ */
+function collectColumns(args: Record<string, unknown>, out: string[]): void {
+  for (const field of ['by', 'where', 'columns', 'sort', 'filter', 'groupBy']) {
+    const list = args[field];
+    if (!Array.isArray(list)) continue;
+    for (const entry of list) {
+      if (typeof entry === 'string') out.push(entry);
+      else if (isRecord(entry) && typeof entry.key === 'string') out.push(entry.key);
+    }
+  }
+  for (const field of ['on', 'column', 'groupBy', 'pivotOn']) {
+    const value = args[field];
+    if (typeof value === 'string') out.push(value);
+  }
+  if (isRecord(args.aggregations)) out.push(...Object.keys(args.aggregations));
+  for (const nested of [
+    args.query,
+    args.patch,
+    isRecord(args.modules) && args.modules.enterprise,
+  ]) {
+    if (isRecord(nested)) collectColumns(nested, out);
+  }
+}
+
 /** Collect the column keys a plan referenced, so memory can resolve later anaphora. */
 function entitiesFromPlan(plan: Plan): ResolvedEntities | undefined {
   const columns: string[] = [];
-  for (const step of plan.steps) {
-    const args = step.args;
-    const by = args.by;
-    if (Array.isArray(by)) {
-      for (const entry of by) {
-        if (typeof entry === 'string') columns.push(entry);
-        else if (isRecord(entry) && typeof entry.key === 'string') columns.push(entry.key);
-      }
-    }
-    for (const field of ['where', 'columns'] as const) {
-      const list = args[field];
-      if (Array.isArray(list)) {
-        for (const entry of list)
-          if (isRecord(entry) && typeof entry.key === 'string') columns.push(entry.key);
-      }
-    }
-    if (typeof args.on === 'string') columns.push(args.on);
-    if (isRecord(args.aggregations)) columns.push(...Object.keys(args.aggregations));
-  }
+  for (const step of plan.steps) collectColumns(step.args, columns);
   return columns.length > 0 ? { columns: [...new Set(columns)] } : undefined;
 }
 
@@ -162,7 +173,13 @@ export function createAIEngine<T = unknown>(
         // else fall back to the read-only `answer` tool over the prompt. A control plan
         // forced into ask can never run its mutating steps here.
         if (plan.answer !== undefined && plan.answer !== '') {
-          memory.record({ utterance: prompt, plan, outcome: 'answered', at: ctx.now });
+          memory.record({
+            utterance: prompt,
+            plan,
+            outcome: 'answered',
+            entities: entitiesFromPlan(plan),
+            at: ctx.now,
+          });
           return { mode: 'ask', plan, answer: plan.answer };
         }
         const readOnly =
@@ -177,7 +194,13 @@ export function createAIEngine<T = unknown>(
               source: plan.source,
             };
         const exec = executor.run(askPlan, tc);
-        memory.record({ utterance: prompt, plan: askPlan, outcome: 'answered', at: ctx.now });
+        memory.record({
+          utterance: prompt,
+          plan: askPlan,
+          outcome: 'answered',
+          entities: entitiesFromPlan(askPlan),
+          at: ctx.now,
+        });
         return { mode: 'ask', plan: askPlan, answer: exec.answer ?? '' };
       }
 
