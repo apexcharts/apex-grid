@@ -1,5 +1,6 @@
 import type { ColumnConfiguration } from 'apex-grid';
 import {
+  ApexGrid,
   type ColumnMenuProvider,
   escapeFormula,
   type GridFeatureModule,
@@ -39,7 +40,7 @@ export interface ContextMenuTarget<T extends object> {
   readonly column: ColumnConfiguration<T>;
   /** The row record (cell targets only). */
   readonly row?: T;
-  /** Row index within `pageItems` (cell targets only). */
+  /** Row index within `pageItems` (body cell targets only; unset for a pinned row). */
   readonly rowIndex?: number;
 }
 
@@ -188,33 +189,46 @@ export class ContextMenuController<T extends object>
   #onColumnMenu = (
     event: CustomEvent<{ column?: ColumnConfiguration<T>; anchor?: HTMLElement }>
   ): void => {
-    if (!this.enabled) return;
     const column = event.detail?.column;
     const anchor = event.detail?.anchor;
-    if (!column || !anchor) return;
+    if (!this.enabled || !column || !anchor || !this.#owns(event.composedPath())) return;
     event.preventDefault();
     const rect = anchor.getBoundingClientRect();
     this.#openAt({ kind: 'header', column }, rect.left, rect.bottom);
   };
 
+  /**
+   * Whether an event comes from this grid's own cells and headers: the first
+   * grid element on its path is this host, not a nested (master-detail) grid.
+   */
+  #owns(path: EventTarget[]): boolean {
+    return path.find((node) => node instanceof ApexGrid) === this.host;
+  }
+
   /** Resolve the cell/header (and its element) from an event's composed path. */
   #resolve(event: Event): { target: ContextMenuTarget<T>; element: HTMLElement } | null {
-    for (const node of event.composedPath()) {
-      if (!(node instanceof HTMLElement)) continue;
-      if (node.localName === 'apex-grid-cell') {
-        const cell = node as unknown as {
-          column?: ColumnConfiguration<T>;
-          row?: { index?: number };
+    const path = event.composedPath();
+    if (!this.#owns(path)) return null;
+    for (const node of path) {
+      const { localName, column, row } = node as HTMLElement & {
+        column?: ColumnConfiguration<T>;
+        row?: { data?: T; index?: number };
+      };
+      if (!column) continue;
+      if (localName === 'apex-grid-cell') {
+        // The row element carries its own record (body and pinned rows alike)
+        // and, for a body row, its pageItems index. Pinned rows are lifted out
+        // of pageItems, so the identity check leaves them without an index.
+        const data = row?.data;
+        const at = row?.index;
+        const rowIndex = at !== undefined && this.host.pageItems[at] === data ? at : undefined;
+        return {
+          target: { kind: 'cell', column, row: data, rowIndex },
+          element: node as HTMLElement,
         };
-        if (!cell.column) return null;
-        const rowIndex = cell.row?.index;
-        const row = typeof rowIndex === 'number' ? (this.host.pageItems[rowIndex] as T) : undefined;
-        return { target: { kind: 'cell', column: cell.column, row, rowIndex }, element: node };
       }
-      if (node.localName === 'apex-grid-header') {
-        const header = node as unknown as { column?: ColumnConfiguration<T> };
-        if (!header.column) return null;
-        return { target: { kind: 'header', column: header.column }, element: node };
+      if (localName === 'apex-grid-header') {
+        return { target: { kind: 'header', column }, element: node as HTMLElement };
       }
     }
     return null;

@@ -261,9 +261,168 @@ describe('Context menu: targets, events and entry points (ctx-menu batch)', () =
     fixtureCleanup();
   });
 
+  interface Child {
+    name: string;
+    qty: number;
+  }
+  interface Order {
+    name: string;
+    value: number;
+    items: Child[];
+  }
+  const orders: Order[] = [
+    { name: 'A', value: 1, items: [{ name: 'a1', qty: 5 }] },
+    { name: 'B', value: 2, items: [{ name: 'b1', qty: 6 }] },
+  ];
+  const detailColumns: ColumnConfiguration<Child>[] = [
+    { key: 'name', headerText: 'Child name', sort: true },
+    { key: 'qty', type: 'number', headerText: 'Qty', sort: true },
+  ];
+
   async function waitFor(predicate: () => boolean, tries = 60): Promise<void> {
     for (let i = 0; i < tries && !predicate(); i += 1) await nextFrame();
   }
+
+  async function mountMasterDetail(detailTag?: 'apex-grid' | 'apex-grid-enterprise') {
+    const grid = await fixture<ApexGridEnterprise<Order>>(
+      html`<apex-grid-enterprise
+        .data=${orders}
+        .columns=${columns as unknown as ColumnConfiguration<Order>[]}
+        .masterDetail=${{
+          columns: detailColumns,
+          getDetailData: (row: Order) => row.items,
+          detailTag,
+        }}
+      ></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    await layoutComplete(grid as unknown as ApexGridEnterprise<Row>);
+    await grid.expandRow(orders[0]);
+    await grid.updateComplete;
+    const root = (grid as unknown as { shadowRoot: ShadowRoot }).shadowRoot;
+    const childCell = () =>
+      deepFind(
+        root,
+        (el) =>
+          el.localName === 'apex-grid-cell' &&
+          (el as unknown as { column?: { headerText?: string } }).column?.headerText ===
+            'Child name'
+      );
+    await waitFor(() => !!childCell());
+    // An untyped view for the module's own event names.
+    return { grid, host: grid as HTMLElement, childCell: childCell()! };
+  }
+
+  it('ignores a right-click inside a nested community detail grid', async () => {
+    const { grid, host, childCell } = await mountMasterDetail();
+    let opened = 0;
+    host.addEventListener('apex-context-menu-opening', () => opened++);
+    const event = rightClick(childCell);
+    expect(opened, 'outer menu opened for an inner cell').to.equal(0);
+    expect(menu()).to.equal(null);
+    expect(event.defaultPrevented).to.equal(false);
+    expect(grid.columns.every((c) => !c.hidden)).to.equal(true);
+  });
+
+  it('opens only the nested enterprise grid menu, for its own column', async () => {
+    const { host, childCell } = await mountMasterDetail('apex-grid-enterprise');
+    let outer = 0;
+    let innerTarget: { column: { headerText?: string } } | null = null;
+    host.addEventListener('apex-context-menu-opening', (e) => {
+      const target = (e as CustomEvent).detail.target;
+      if (target.column.headerText === 'Child name') innerTarget = target;
+      else outer++;
+    });
+    rightClick(childCell);
+    expect(outer, 'outer grid opened its own menu too').to.equal(0);
+    expect(innerTarget, 'inner grid opened its menu').to.not.equal(null);
+    expect(document.querySelectorAll('.apex-grid-context-menu').length).to.equal(1);
+  });
+
+  it('Shift+F10 inside a nested detail grid does not open the outer menu', async () => {
+    const { host, childCell } = await mountMasterDetail();
+    let opened = 0;
+    host.addEventListener('apex-context-menu-opening', () => opened++);
+    childCell.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'F10',
+        shiftKey: true,
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+      })
+    );
+    expect(opened).to.equal(0);
+    expect(menu()).to.equal(null);
+  });
+
+  it('targets the record of a pinned row', async () => {
+    const rows = data.map((r) => ({ ...r }));
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise
+        .data=${rows}
+        .columns=${columns}
+        .rowPinning=${{ enabled: true }}
+      ></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    await layoutComplete(grid);
+    let seen: { row?: Row; rowIndex?: number } | null = null;
+    grid.contextMenu = {
+      items: (target) => {
+        seen = target as { row?: Row; rowIndex?: number };
+        return [{ id: 'x', label: 'X', run: () => {} }];
+      },
+    };
+    expect(grid.pinRow(rows[2], 'top')).to.equal(true);
+    await layoutComplete(grid);
+    const root = (grid as unknown as { shadowRoot: ShadowRoot }).shadowRoot;
+    const nameCell = (record: Row, pinned: boolean) =>
+      deepFind(root, (el) => {
+        const cell = el as unknown as {
+          column?: { key?: unknown };
+          row?: HTMLElement & { data?: Row };
+        };
+        return (
+          el.localName === 'apex-grid-cell' &&
+          String(cell.column?.key) === 'name' &&
+          cell.row?.data === record &&
+          (cell.row?.getAttribute('part') ?? '').includes('pinned-row') === pinned
+        );
+      });
+    const pinnedCell = nameCell(rows[2], true);
+    expect(pinnedCell, 'pinned name cell').to.exist;
+    rightClick(pinnedCell!);
+    expect(seen!.row?.name).to.equal('C');
+    expect(seen!.rowIndex, 'a pinned row has no pageItems index').to.equal(undefined);
+
+    rightClick(nameCell(rows[0], false)!);
+    expect(seen!.row?.name).to.equal('A');
+    expect(seen!.rowIndex).to.equal(0);
+  });
+
+  it('reports the rendered row index when one record appears twice', async () => {
+    const twice = { name: 'X', value: 1 };
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise
+        .data=${[twice, { name: 'Y', value: 2 }, twice]}
+        .columns=${columns}
+      ></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    await layoutComplete(grid);
+    let seen: { row?: Row; rowIndex?: number } | null = null;
+    grid.contextMenu = {
+      items: (target) => {
+        seen = target as { row?: Row; rowIndex?: number };
+        return [{ id: 'x', label: 'X', run: () => {} }];
+      },
+    };
+    await grid.updateComplete;
+    rightClick(cellElement(grid, 2, 'name')!);
+    expect(seen!.row).to.equal(twice);
+    expect(seen!.rowIndex).to.equal(2);
+  });
 
   it('menu sort replaces the existing sort and fires sorting and sorted', async () => {
     const grid = await mount();
