@@ -5,7 +5,6 @@ import type {
   ColumnGroupConfiguration,
   CSVExportOptions,
   DataPipelineConfiguration,
-  DataType,
   ExportCellValue,
   GetStateOptions,
   GridLocaleKey,
@@ -41,6 +40,7 @@ import {
   type AdvancedFilterModel,
   copyAdvancedFilter,
   filterRows,
+  isNumericType,
 } from './features/advanced-filter.js';
 import {
   AGGREGATION_MODULE_ID,
@@ -914,7 +914,6 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    */
   public override getSchema(): GridSchema {
     const base = super.getSchema();
-    const numeric = (type: DataType): boolean => type === 'number' || type === 'currency';
     const formulaColumns = new Set(
       this.columns.filter((column) => column.allowFormula).map((column) => String(column.key))
     );
@@ -924,8 +923,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
         ...column,
         groupable: true,
         pivotable: true,
-        aggregatable: numeric(column.dataType),
-        aggFuncs: numeric(column.dataType) ? [...AGGREGATION_FUNCS] : undefined,
+        aggregatable: isNumericType(column.dataType),
+        aggFuncs: isNumericType(column.dataType) ? [...AGGREGATION_FUNCS] : undefined,
         allowFormula: formulaColumns.has(column.key) || undefined,
       })),
       capabilities: {

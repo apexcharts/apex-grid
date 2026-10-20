@@ -87,6 +87,25 @@ describe('AI Toolkit — schema (toJSONSchema) + sanitizePatch', () => {
     ]);
   });
 
+  it('marks rating and progress columns aggregatable, like the aggregation engine', async () => {
+    const grid = await fixture<ApexGridEnterprise<{ name: string; score: number; done: number }>>(
+      html`<apex-grid-enterprise
+        .data=${[{ name: 'A', score: 4, done: 50 }]}
+        .columns=${[
+          { key: 'name' },
+          { key: 'score', type: 'rating' },
+          { key: 'done', type: 'progress' },
+        ]}
+      ></apex-grid-enterprise>`
+    );
+    await grid.updateComplete;
+    const byKey = new Map(grid.getSchema().columns.map((c) => [c.key, c]));
+    expect(byKey.get('score')?.aggregatable).to.be.true;
+    expect(byKey.get('done')?.aggregatable).to.be.true;
+    expect(byKey.get('done')?.aggFuncs).to.not.be.empty;
+    expect(byKey.get('name')?.aggregatable).to.be.false;
+  });
+
   it('omits slices the grid does not support', async () => {
     const schema = (await mount()).getSchema();
     const json = toJSONSchema(schema);
