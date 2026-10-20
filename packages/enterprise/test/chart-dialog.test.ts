@@ -44,6 +44,11 @@ async function settle(panel: ApexGridChart, frames = 6) {
   }
 }
 
+async function until(check: () => boolean, frames = 60) {
+  for (let i = 0; i < frames && !check(); i += 1) await nextFrame();
+  return check();
+}
+
 const part = (panel: ApexGridChart, name: string) =>
   panel.querySelector<HTMLElement>(`[part="${name}"]`)!;
 
@@ -148,5 +153,83 @@ describe('chart dialog', () => {
       await expect(menu).to.be.accessible();
     }
     expect(part(panel, 'export-button').getAttribute('aria-haspopup')).to.equal('menu');
+  });
+
+  describe('heading rename', () => {
+    async function openNamed(heading?: string) {
+      const grid = await mountGrid();
+      const panel = await fixture<ApexGridChart>(
+        html`<apex-grid-chart .grid=${grid as never} heading=${heading ?? 'Chart'}></apex-grid-chart>`
+      );
+      panel.show();
+      await settle(panel);
+      return { grid, panel };
+    }
+
+    it('leaving the auto title unchanged keeps it automatic', async () => {
+      const { panel } = await openNamed();
+      expect(
+        await until(() => part(panel, 'heading').textContent?.trim() === 'Q1 by Name')
+      ).to.equal(true);
+      part(panel, 'heading').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      await panel.updateComplete;
+      part(panel, 'heading-input').dispatchEvent(new Event('blur'));
+      await panel.updateComplete;
+      expect(panel.heading).to.equal('Chart');
+      panel.definition = { category: 'region' };
+      expect(
+        await until(() => part(panel, 'heading')?.textContent?.trim() === 'Q1 by Region')
+      ).to.equal(true);
+    });
+
+    it('Escape cancels the rename and returns focus to the heading', async () => {
+      const { panel } = await openNamed('Original');
+      part(panel, 'heading').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      await settle(panel, 1);
+      const input = part(panel, 'heading-input') as HTMLInputElement;
+      expect(document.activeElement).to.equal(input);
+      input.value = 'Typed';
+      key(input, { key: 'Escape' });
+      await settle(panel, 1);
+      expect(panel.heading).to.equal('Original');
+      expect(panel.open, 'Escape in the rename leaves the dialog open').to.equal(true);
+      expect(document.activeElement).to.equal(part(panel, 'heading'));
+    });
+
+    it('Enter commits the rename', async () => {
+      const { panel } = await openNamed('Original');
+      part(panel, 'heading').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      await settle(panel, 1);
+      const input = part(panel, 'heading-input') as HTMLInputElement;
+      input.value = 'Renamed';
+      key(input, { key: 'Enter' });
+      await settle(panel, 1);
+      expect(panel.heading).to.equal('Renamed');
+      expect(document.activeElement).to.equal(part(panel, 'heading'));
+    });
+
+    for (const k of ['Enter', ' ', 'F2']) {
+      it(`the heading is focusable and ${k === ' ' ? 'Space' : k} starts the rename`, async () => {
+        const { panel } = await openNamed('Original');
+        const heading = part(panel, 'heading');
+        expect(heading.tabIndex).to.equal(0);
+        expect(heading.getAttribute('role')).to.equal('button');
+        heading.focus();
+        expect(key(heading, { key: k }).defaultPrevented).to.equal(true);
+        await settle(panel, 1);
+        expect(document.activeElement).to.equal(part(panel, 'heading-input'));
+      });
+    }
+
+    it('Shift+Tab from the rename input stays in the dialog', async () => {
+      const { panel } = await openNamed('Original');
+      part(panel, 'heading').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      await settle(panel, 1);
+      const input = part(panel, 'heading-input');
+      expect(document.activeElement).to.equal(input);
+      const event = key(input, { key: 'Tab', shiftKey: true });
+      expect(event.defaultPrevented, 'the focus trap handled Shift+Tab').to.equal(true);
+      expect(panel.contains(document.activeElement)).to.equal(true);
+    });
   });
 });

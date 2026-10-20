@@ -295,6 +295,8 @@ export class ApexGridChart extends LitElement {
   /** Cross-filter: the column key being filtered, and the active category value (or null). */
   #crossFilterKey: string | null = null;
   #activeCategory: string | null = null;
+  /** The text the rename input opened with, so committing it unchanged keeps the auto-title. */
+  #renameSeed = '';
   #rafHandle = 0;
   #drag: { pointerId: number; offsetX: number; offsetY: number } | null = null;
   /** What had focus before {@link show}, so a dialog close can put focus back. */
@@ -1694,6 +1696,7 @@ export class ApexGridChart extends LitElement {
   }
 
   #startRenameHeading = (): void => {
+    this.#renameSeed = this.#effectiveHeading();
     this.headingEditing = true;
     void this.updateComplete.then(() => {
       const input = this.renderRoot.querySelector<HTMLInputElement>('[part="heading-input"]');
@@ -1702,17 +1705,34 @@ export class ApexGridChart extends LitElement {
     });
   };
 
-  /** Commit the inline rename: a blank value reverts to the auto-title (heading = default 'Chart'). */
+  /** Enter, Space (it is a button) or F2 on the focused heading renames it, like a grid cell. */
+  #onHeadingTitleKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'F2') return;
+    event.preventDefault();
+    this.#startRenameHeading();
+  };
+
+  /**
+   * Commit the inline rename: a blank value reverts to the auto-title (heading = default 'Chart'),
+   * and the untouched seed keeps whatever heading there was. Ignored once the rename ended (the
+   * blur an Escape causes by removing the input).
+   */
   #commitHeading = (event: Event): void => {
+    if (!this.headingEditing) return;
     const value = (event.target as HTMLInputElement).value.trim();
-    this.heading = value || 'Chart';
+    if (value !== this.#renameSeed) this.heading = value || 'Chart';
     this.headingEditing = false;
   };
 
+  /** Enter commits and Escape cancels, both returning focus to the heading; Tab reaches the trap. */
   #onHeadingKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter' && event.key !== 'Escape') return;
     event.stopPropagation(); // don't let Escape bubble to the dialog's close handler
-    if (event.key === 'Enter') (event.target as HTMLInputElement).blur();
-    else if (event.key === 'Escape') this.headingEditing = false;
+    if (event.key === 'Enter') this.#commitHeading(event);
+    else this.headingEditing = false;
+    void this.updateComplete.then(() =>
+      this.renderRoot.querySelector<HTMLElement>('[part="heading"]')?.focus()
+    );
   };
 
   /**
@@ -1922,8 +1942,11 @@ export class ApexGridChart extends LitElement {
                       />`
                     : html`<span
                         part="heading"
+                        role="button"
+                        tabindex="0"
                         title=${this.#t('chart.renameHint')}
                         @dblclick=${this.#startRenameHeading}
+                        @keydown=${this.#onHeadingTitleKeydown}
                         >${this.#effectiveHeading()}</span
                       >`
                 }
