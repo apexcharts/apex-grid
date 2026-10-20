@@ -12,7 +12,7 @@
  * @see plans/ai-reasoning-layer-spec.md (section 4.7)
  */
 
-import type { ColumnSchema, GridState, RowRef, SortingDirection } from 'apex-grid';
+import type { GridState, RowRef, SortingDirection } from 'apex-grid';
 import type { AggregationConfig } from '../../aggregation.js';
 import { sanitizePatch } from '../../ai-sanitize.js';
 import type { StatePatch } from '../../ai-schema.js';
@@ -24,6 +24,7 @@ import {
   runAnalytics,
 } from '../analytics.js';
 import type { GridContext } from '../context.js';
+import { isNumericColumn, mentionsColumn } from '../entities.js';
 import {
   createToolRegistry,
   type Tool,
@@ -71,10 +72,6 @@ function normalizePin(value: unknown): 'start' | 'end' | null | undefined {
   return undefined;
 }
 
-function isNumericColumn(column: ColumnSchema): boolean {
-  return column.dataType === 'number' || column.dataType === 'currency';
-}
-
 /**
  * Sanitize a raw view-state patch against the live schema, apply it, and return an
  * outcome whose `undo` restores the pre-apply snapshot. The single code path shared
@@ -116,9 +113,7 @@ function answerQuestion(question: string, tc: ToolContext): string {
   const lower = question.toLowerCase();
   if (rows.length > 0) {
     if (/how many|number of|count/.test(lower)) return `There are ${rows.length} rows.`;
-    const column = tc.ctx.columns
-      .filter(isNumericColumn)
-      .find((c) => lower.includes(c.key.toLowerCase()) || lower.includes(c.label.toLowerCase()));
+    const column = tc.ctx.columns.filter(isNumericColumn).find((c) => mentionsColumn(question, c));
     if (column) {
       const values = rows.map((row) => Number(row[column.key])).filter((n) => Number.isFinite(n));
       if (values.length > 0) {

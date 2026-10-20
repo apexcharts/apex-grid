@@ -81,8 +81,15 @@ describe('AI compositional — broadened filters', () => {
     });
   });
 
-  it('fails with a note when the complement is not expressible', async () => {
+  it('inverts "contains" to "doesNotContain" for exclusion', async () => {
     const p = await plan('remove all rows where product contains A');
+    expect(p.steps[0]?.args).to.deep.equal({
+      where: [{ key: 'product', operand: 'doesNotContain', searchTerm: 'A' }],
+    });
+  });
+
+  it('fails with a note when the complement is not expressible', async () => {
+    const p = await plan('remove all rows where product starts with A');
     expect(p.steps).to.be.empty;
     expect(p.notes?.[0]).to.contain("can't");
   });

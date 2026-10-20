@@ -8,7 +8,7 @@
  */
 
 import type { GridContext } from './context.js';
-import type { ResolveResult } from './entities.js';
+import { columnLabels, isNumericColumn, mentionsColumn, type ResolveResult } from './entities.js';
 import type { Intent, Plan } from './types.js';
 
 /** Turns a resolved intent into a plan. */
@@ -18,7 +18,7 @@ export interface Planner {
 
 /** A short "try one of ..." hint listing a few real column labels. */
 function columnHint(ctx: GridContext): string {
-  const labels = ctx.columns.slice(0, 6).map((c) => c.label);
+  const labels = columnLabels(ctx);
   return labels.length > 0 ? ` Try one of: ${labels.join(', ')}.` : '';
 }
 
@@ -37,11 +37,7 @@ function asksGroundedAnswer(raw: string, ctx: GridContext): boolean {
       lower
     );
   if (!hasMetric) return false;
-  return ctx.columns.some(
-    (c) =>
-      (c.dataType === 'number' || c.dataType === 'currency') &&
-      (lower.includes(c.key.toLowerCase()) || lower.includes(c.label.toLowerCase()))
-  );
+  return ctx.columns.some((c) => isNumericColumn(c) && mentionsColumn(raw, c));
 }
 
 class RulePlanner implements Planner {
@@ -74,7 +70,14 @@ class RulePlanner implements Planner {
           key: c.key,
           direction: resolved.direction ?? 'ascending',
         }));
-        return { mode: 'control', steps: [{ tool: 'sort', args: { by } }], confidence, source };
+        // A part that did not resolve ("sort by amount and zzz") is reported, not dropped.
+        return {
+          mode: 'control',
+          steps: [{ tool: 'sort', args: { by } }],
+          confidence,
+          source,
+          notes: resolved.errors.length > 0 ? [...resolved.errors] : undefined,
+        };
       }
 
       case 'filter': {

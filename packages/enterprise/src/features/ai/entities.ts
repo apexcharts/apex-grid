@@ -41,7 +41,9 @@ export interface EntityResolver {
   resolve(intent: Intent, ctx: GridContext): ResolveResult;
 }
 
-const DESCENDING_RE = /desc|descending|high|highest|large|largest|most|top|z-?a|z to a/i;
+/** The first endpoint of a direction phrase ("high" in "high to low") that sorts descending. */
+const DESCENDING_RE =
+  /^(?:desc(?:ending)?|high(?:est)?|large(?:st)?|big(?:gest)?|most|top|z|newest|latest)$/i;
 const PRONOUN_RE = /^(?:it|that|those|them|this|these)$/i;
 
 function editDistance(a: string, b: string): number {
@@ -59,55 +61,127 @@ function editDistance(a: string, b: string): number {
   return dp[m][n];
 }
 
-function isNumericColumn(column: ColumnSchema): boolean {
-  return column.dataType === 'number' || column.dataType === 'currency';
+/**
+ * Whether a column holds numbers: the core rule (`StateController.isNumericColumn`:
+ * `number`, `currency`, `rating`, `progress`), the one copy every AI component reads.
+ * It is restated rather than imported because a runtime import of `apex-grid/internal`
+ * from this lazily loaded chunk would split the whole core out of the define bundle.
+ */
+export function isNumericColumn(column: ColumnSchema): boolean {
+  return /^(?:number|currency|rating|progress)$/.test(column.dataType);
 }
 
-/** Resolve one column name: exact key/label, then substring, then bounded fuzzy. */
+/** A column's lowercased match names (label, key). An empty header contributes none. */
+function columnNames(column: ColumnSchema): string[] {
+  const names: string[] = [];
+  for (const name of [column.label, column.key]) {
+    const lower = name.trim().toLowerCase();
+    if (lower && !names.includes(lower)) names.push(lower);
+  }
+  return names;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const WORD_CHAR = '[\\p{L}\\p{N}\\p{M}_]';
+
+/**
+ * A whole-word pattern for one column name that also accepts its plural ("ages",
+ * "prices", "salaries"). A name shorter than three characters matches only as written,
+ * so a key such as "a" never reads "as".
+ */
+function mentionPattern(name: string): RegExp {
+  let body = escapeRegExp(name);
+  if (name.length >= 3 && /\p{L}$/u.test(name)) {
+    body = /[^aeiou]y$/i.test(name) ? `${body.slice(0, -1)}(?:y|ies)` : `${body}(?:e?s)?`;
+  }
+  return new RegExp(`(?<!${WORD_CHAR})${body}(?!${WORD_CHAR})`, 'iu');
+}
+
+/** The earliest whole-word mention of a column (longest name on a tie), or undefined. */
+function findMention(
+  text: string,
+  column: ColumnSchema
+): { at: number; length: number } | undefined {
+  let best: { at: number; length: number } | undefined;
+  for (const name of columnNames(column)) {
+    const match = mentionPattern(name).exec(text);
+    if (
+      match &&
+      (!best || match.index < best.at || (match.index === best.at && match[0].length > best.length))
+    ) {
+      best = { at: match.index, length: match[0].length };
+    }
+  }
+  return best;
+}
+
+/** Up to six non-empty column labels, for a "try one of ..." hint. */
+export function columnLabels(ctx: GridContext): string[] {
+  return ctx.columns
+    .map((c) => c.label.trim())
+    .filter((label) => label !== '')
+    .slice(0, 6);
+}
+
+/** Whether `text` names the column (key or label) as a whole word, never inside a longer word. */
+export function mentionsColumn(text: string, column: ColumnSchema): boolean {
+  return findMention(text, column) !== undefined;
+}
+
+function exactColumn(target: string, ctx: GridContext): ColumnSchema | undefined {
+  return ctx.columns.find((c) => columnNames(c).includes(target));
+}
+
+const sortedWords = (text: string) => text.split(/\s+/).sort().join(' ');
+
+/** Resolve one column name: exact key/label, then partial (whole words), then bounded fuzzy. */
 function resolveColumn(name: string, ctx: GridContext): ColumnSchema | undefined {
   const target = name.trim().toLowerCase();
   if (!target) return undefined;
-  const columns = ctx.columns;
-
-  const exact = columns.find(
-    (c) => c.key.toLowerCase() === target || c.label.toLowerCase() === target
-  );
+  const exact = exactColumn(target, ctx);
   if (exact) return exact;
 
-  const partial = columns.find((c) => {
-    const key = c.key.toLowerCase();
-    const label = c.label.toLowerCase();
-    return (
-      label.includes(target) ||
-      key.includes(target) ||
-      target.includes(key) ||
-      target.includes(label)
-    );
-  });
+  const words = sortedWords(target);
+  const partial = ctx.columns.find((c) =>
+    columnNames(c).some((n) => n.includes(target) || sortedWords(n) === words)
+  );
   if (partial) return partial;
+  // A column named inside the phrase: the earliest mention, not the first in schema order.
+  const named = extractColumnSpan(target, ctx);
+  if (named) return named.column;
 
   let best: { column: ColumnSchema; distance: number } | undefined;
-  for (const column of columns) {
-    const distance = Math.min(
-      editDistance(target, column.key.toLowerCase()),
-      editDistance(target, column.label.toLowerCase())
-    );
-    if (!best || distance < best.distance) best = { column, distance };
+  for (const column of ctx.columns) {
+    for (const n of columnNames(column)) {
+      const distance = editDistance(target, n);
+      if (!best || distance < best.distance) best = { column, distance };
+    }
   }
   return best && best.distance <= 2 ? best.column : undefined;
 }
 
-/** Resolve a possibly multi-column phrase ("region and product"), or a pronoun via memory. */
+/** The columns remembered from an earlier turn, for a pronoun ("sort it", "filter those"). */
+function rememberedColumns(ctx: GridContext): ColumnSchema[] {
+  return (ctx.memory.lastEntities?.columns ?? [])
+    .map((key) => ctx.columns.find((c) => c.key === key))
+    .filter((c): c is ColumnSchema => c !== undefined);
+}
+
+/**
+ * Resolve a possibly multi-column phrase ("region and product"), or a pronoun via memory.
+ * A name that itself contains a separator ("Profit and Loss") is matched whole before the
+ * phrase is split, and each column is listed once.
+ */
 function resolveColumns(
   phrase: string,
   ctx: GridContext
 ): { columns: ColumnSchema[]; usedMemory: boolean; errors: string[] } {
   const trimmed = phrase.trim();
   if (PRONOUN_RE.test(trimmed)) {
-    const remembered = ctx.memory.lastEntities?.columns ?? [];
-    const columns = remembered
-      .map((key) => ctx.columns.find((c) => c.key === key))
-      .filter((c): c is ColumnSchema => c !== undefined);
+    const columns = rememberedColumns(ctx);
     return {
       columns,
       usedMemory: true,
@@ -115,46 +189,45 @@ function resolveColumns(
     };
   }
 
-  const parts = trimmed
-    .split(/\s*(?:,| and | then | & )\s*/i)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
+  // Even indices are names, odd indices the separators between them.
+  const pieces = trimmed.split(/(\s*(?:,| and | then | & )\s*)/i);
   const columns: ColumnSchema[] = [];
   const errors: string[] = [];
-  for (const part of parts) {
-    const column = resolveColumn(part, ctx);
-    if (column) columns.push(column);
-    else errors.push(`No column matches "${part}".`);
+  let i = 0;
+  while (i < pieces.length) {
+    const part = pieces[i].trim();
+    let next = i + 2;
+    let column: ColumnSchema | undefined;
+    // Greedy: the longest run of pieces that names a column exactly.
+    for (let j = pieces.length - 1; j > i && !column; j -= 2) {
+      column = exactColumn(
+        pieces
+          .slice(i, j + 1)
+          .join('')
+          .trim()
+          .toLowerCase(),
+        ctx
+      );
+      if (column) next = j + 2;
+    }
+    column ??= part ? resolveColumn(part, ctx) : undefined;
+    if (column) {
+      if (!columns.includes(column)) columns.push(column);
+    } else if (part) {
+      errors.push(`No column matches "${part}".`);
+    }
+    i = next;
   }
   return { columns, usedMemory: false, errors };
 }
 
+/** Read a direction phrase by its first endpoint, so "high to low" and "z to a" sort descending. */
 function resolveDirection(text: string | undefined): SortingDirection {
-  return text && DESCENDING_RE.test(text) ? 'descending' : 'ascending';
-}
-
-/** Map a natural-language operator to candidate operand names (longest/most-specific first). */
-function operandCandidates(op: string): string[] {
-  const o = op.trim().toLowerCase();
-  if (/^(?:!=|is not|not equals?)$/.test(o)) return ['doesNotEqual', 'notEquals'];
-  if (/^(?:=|==|is|equals?)$/.test(o)) return ['equals'];
-  if (/contains?|has|includes?/.test(o)) return ['contains'];
-  if (/starts with/.test(o)) return ['startsWith'];
-  if (/ends with/.test(o)) return ['endsWith'];
-  if (/>=|greater than or equal|at least/.test(o))
-    return ['greaterThanOrEqual', 'greaterThanOrEqualTo'];
-  if (/<=|less than or equal|at most/.test(o)) return ['lessThanOrEqual', 'lessThanOrEqualTo'];
-  if (/>|greater than|more than|over|above/.test(o)) return ['greaterThan'];
-  if (/<|less than|under|below/.test(o)) return ['lessThan'];
-  return ['equals'];
-}
-
-/** Pick the first candidate the column advertises; fall back to its first operand (never invalid). */
-function pickOperand(column: ColumnSchema, candidates: string[]): string | undefined {
-  for (const candidate of candidates) {
-    if (column.filterOperands.includes(candidate)) return candidate;
-  }
-  return column.filterOperands[0];
+  const head = (text ?? '')
+    .trim()
+    .replace(/^from\s+/i, '')
+    .split(/\s+to\s+|-|\s+/i)[0];
+  return DESCENDING_RE.test(head) ? 'descending' : 'ascending';
 }
 
 function typeValue(raw: string, column: ColumnSchema): unknown {
@@ -172,22 +245,62 @@ function typeValue(raw: string, column: ColumnSchema): unknown {
   return unquoted;
 }
 
-/** Like {@link pickOperand} but never falls back: returns undefined if none is advertised. */
-function pickOperandStrict(column: ColumnSchema, candidates: string[]): string | undefined {
-  for (const candidate of candidates) {
-    if (column.filterOperands.includes(candidate)) return candidate;
-  }
-  return undefined;
-}
+// --- the operator table (filter / keep / remove, and analytics scope) ------
 
-// --- filter predicate parsing (order-agnostic; for remove / keep / exclude) ---------
+/**
+ * Natural-language operators, keyed by the core filter operand each one means. Order
+ * matters where two forms start at the same place: negations before their positive
+ * forms, and the two-character symbols before their one-character prefixes. Word forms
+ * match only as whole words, so "Overdue" or "Hanover" never read as "over".
+ */
+const OPERATORS = [
+  [
+    'doesNotEqual',
+    "\\b(?:is not|isn['’]?t|does(?:n['’]?t| not) equals?(?: to)?|not equals?(?: to)?)\\b|!=|<>",
+  ],
+  [
+    'doesNotContain',
+    "\\b(?:does(?:n['’]?t| not) (?:contain|include)|not (?:contain|include)s?)\\b",
+  ],
+  ['greaterThanOrEqual', '\\b(?:greater than or equal(?: to)?|at least)\\b|>='],
+  ['lessThanOrEqual', '\\b(?:less than or equal(?: to)?|at most)\\b|<='],
+  ['greaterThan', '\\b(?:greater than|more than|over|above)\\b|>'],
+  ['lessThan', '\\b(?:less than|fewer than|under|below)\\b|<'],
+  ['startsWith', '\\b(?:starts?|begins?) with\\b'],
+  ['endsWith', '\\bends? with\\b'],
+  ['contains', '\\b(?:contains?|includes?|has)\\b'],
+  ['equals', '\\b(?:equals?(?: to)?|is)\\b|==|='],
+] as const;
 
-/** Comparison operators, longest / most-specific first so the leftmost match is greedy-correct. */
-const OP_RE =
-  /(?:is not|isn'?t|does(?:n'?t| not) equal(?:s| to)?|not equal(?:s| to)?|greater than or equal(?: to)?|less than or equal(?: to)?|greater than|less than|more than|fewer than|at least|at most|starts? with|ends? with|equals?|contains?|includes?|\bis\b|\bhas\b|over|above|under|below|>=|<=|<>|!=|==|=|>|<)/i;
+/** A canonical comparison: the core operand name an {@link OPERATORS} form maps to. */
+type Comparator = (typeof OPERATORS)[number][0];
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** One capture group per {@link OPERATORS} entry, so a match names its comparator. */
+const OP_RE = new RegExp(OPERATORS.map(([, form]) => `(${form})`).join('|'), 'i');
+
+/** The comparisons that only order numbers. */
+const NUMERIC_COMPARATORS: ReadonlySet<Comparator> = new Set([
+  'greaterThan',
+  'greaterThanOrEqual',
+  'lessThan',
+  'lessThanOrEqual',
+]);
+
+/** The exact complement a removal keeps. Starts / ends with have none, so removal abstains. */
+const COMPLEMENT: Partial<Record<Comparator, Comparator>> = {
+  equals: 'doesNotEqual',
+  doesNotEqual: 'equals',
+  greaterThan: 'lessThanOrEqual',
+  greaterThanOrEqual: 'lessThan',
+  lessThan: 'greaterThanOrEqual',
+  lessThanOrEqual: 'greaterThan',
+  contains: 'doesNotContain',
+  doesNotContain: 'contains',
+};
+
+function comparatorOf(match: RegExpMatchArray | null): Comparator {
+  const group = match ? match.findIndex((text, i) => i > 0 && text !== undefined) : 0;
+  return group > 0 ? OPERATORS[group - 1][0] : 'equals';
 }
 
 /** Remove the first column mention (key or label) from the text; return it and the remainder. */
@@ -195,27 +308,40 @@ function extractColumnSpan(
   text: string,
   ctx: GridContext
 ): { column: ColumnSchema; rest: string } | null {
-  let best: { column: ColumnSchema; index: number; length: number } | undefined;
+  let best: { column: ColumnSchema; at: number; length: number } | undefined;
   for (const column of ctx.columns) {
-    for (const name of [column.label, column.key]) {
-      const match = text.match(new RegExp(`\\b${escapeRegExp(name)}\\b`, 'i'));
-      if (match?.index !== undefined && (!best || match.index < best.index)) {
-        best = { column, index: match.index, length: match[0].length };
-      }
+    const hit = findMention(text, column);
+    if (hit && (!best || hit.at < best.at || (hit.at === best.at && hit.length > best.length))) {
+      best = { column, ...hit };
     }
   }
   if (!best) return null;
-  const rest = `${text.slice(0, best.index)} ${text.slice(best.index + best.length)}`
+  const rest = `${text.slice(0, best.at)} ${text.slice(best.at + best.length)}`
     .replace(/\s+/g, ' ')
     .trim();
   return { column: best.column, rest };
 }
 
-/** Parse a condition into a grounded `{ column, operator, value }`, either argument order. */
+/** A filler word between a filter verb and its condition: "filter where / on / for ...". */
+const FILLER_RE = /^(?:where|on|for|by|with|whose|that|having)\s+(?:the\s+)?/i;
+
+/**
+ * Drop a leading filler word ("filter where age > 30", "filter on status equals Paid"),
+ * unless a column name starts with it ("On Hold"), so the column span is not cut out of
+ * the middle and the filler is not left in the value.
+ */
+function stripFiller(text: string, ctx: GridContext): string {
+  const filler = text.match(FILLER_RE);
+  if (!filler) return text;
+  if (ctx.columns.some((column) => findMention(text, column)?.at === 0)) return text;
+  return text.slice(filler[0].length);
+}
+
+/** Parse a condition into a grounded `{ column, comparator, value }`, either argument order. */
 function parseComparison(
   text: string,
   ctx: GridContext
-): { column: ColumnSchema; operator: string; value: unknown } | null {
+): { column: ColumnSchema; comparator: Comparator; value: unknown; usedMemory?: boolean } | null {
   const cleaned = text
     .trim()
     .replace(
@@ -223,38 +349,59 @@ function parseComparison(
       ''
     )
     .trim();
-  const found = extractColumnSpan(cleaned, ctx);
+  const body = stripFiller(cleaned, ctx);
+  let found = extractColumnSpan(body, ctx);
+  let usedMemory = false;
+  if (!found) {
+    // "filter it > 5": a leading pronoun names the column of an earlier turn.
+    const pronoun = body.match(/^(\S+)\s+(.*)$/);
+    const column = pronoun && PRONOUN_RE.test(pronoun[1]) ? rememberedColumns(ctx)[0] : undefined;
+    if (column && pronoun) {
+      found = { column, rest: pronoun[2] };
+      usedMemory = true;
+    }
+  }
   if (found) {
     // Drop a leading copula ("amount IS greater than 5") so the real operator is read,
     // but keep "is not" intact (that IS the operator).
     const rest = found.rest.replace(/^(?:is|are|was|were|be|been)\s+(?!not\b)/i, '').trim();
     const opMatch = rest.match(OP_RE);
-    const operator = opMatch ? opMatch[0] : '=';
+    const comparator = comparatorOf(opMatch);
+    // After a copula, a single operator-like word the column cannot use is part of the
+    // value: "status is Under Review" or "is over budget" mean equals that text.
+    if (
+      rest !== found.rest.trim() &&
+      opMatch &&
+      /^\p{L}+$/u.test(opMatch[0]) &&
+      (!found.column.filterOperands.includes(comparator) ||
+        (NUMERIC_COMPARATORS.has(comparator) && !isNumericColumn(found.column)))
+    ) {
+      return {
+        column: found.column,
+        comparator: 'equals',
+        value: typeValue(rest, found.column),
+        usedMemory,
+      };
+    }
     const value = rest.replace(OP_RE, ' ').replace(/\s+/g, ' ').trim();
     if (value === '') return null;
-    return { column: found.column, operator, value: typeValue(value, found.column) };
+    return {
+      column: found.column,
+      comparator,
+      value: typeValue(value, found.column),
+      usedMemory,
+    };
   }
   // No column named: treat a bare value ("Engineering") as identifying its column.
-  const byValue = findColumnByValue(cleaned.toLowerCase(), ctx);
+  // "filter for Paid" names the value Paid; a value that starts with a filler word
+  // ("On Time") is still found whole.
+  const byValue =
+    findColumnByValue(body.toLowerCase(), ctx) ?? findColumnByValue(cleaned.toLowerCase(), ctx);
   if (byValue) {
     const column = ctx.columns.find((c) => c.key === byValue.key);
-    if (column) return { column, operator: '=', value: byValue.value };
+    if (column) return { column, comparator: 'equals', value: byValue.value };
   }
   return null;
-}
-
-/** Operand-name candidates for the NEGATION of a comparison ("remove"/"exclude" keeps the complement). */
-function invertedOperandCandidates(operator: string): string[] {
-  const o = operator.trim().toLowerCase();
-  if (/>=|greater than or equal|at least/.test(o)) return ['lessThan'];
-  if (/<=|less than or equal|at most/.test(o)) return ['greaterThan'];
-  if (/>|greater than|more than|over|above/.test(o))
-    return ['lessThanOrEqual', 'lessThanOrEqualTo', 'lessThan'];
-  if (/<|less than|under|below|fewer/.test(o))
-    return ['greaterThanOrEqual', 'greaterThanOrEqualTo', 'greaterThan'];
-  if (/is not|isn'?t|!=|<>|does.*equal|not equal/.test(o)) return ['equals'];
-  if (/contains?|includes?|has/.test(o)) return []; // no standard "not contains" -> inexpressible
-  return ['doesNotEqual', 'notEquals'];
 }
 
 function resolveAggFunc(text: string | undefined): AggregationFn {
@@ -280,7 +427,10 @@ function normalizeFormat(text: string | undefined): string | undefined {
 /** Metric keywords, in the canonical output order the answer uses. */
 const METRIC_PATTERNS: Array<[AnalyticsFunc, RegExp]> = [
   ['min', /\b(?:min|minimum|lowest|smallest|least|cheapest)\b/i],
-  ['max', /\b(?:max|maximum|highest|largest|biggest|greatest|most|dearest)\b/i],
+  [
+    'max',
+    /\b(?:max|maximum|highest|largest|biggest|greatest|most(?! common| frequent)|dearest)\b/i,
+  ],
   ['avg', /\b(?:average|avg|mean)\b/i],
   ['median', /\bmedian\b/i],
   ['sum', /\b(?:sum|total)\b/i],
@@ -297,12 +447,24 @@ const WHICH_DIM_RE =
   /\b(?:which|what)\s+([a-z][a-z0-9 ]*?)\s+(?:has|have|had|shows?|gets?|earns?)\b/i;
 const TOPN_RE = /\b(top|bottom)\s+(\d+)\b/i;
 const WHO_RE = /\bwho(?:m|se)?\b/i;
-const SUPER_TOP_RE = /\b(?:highest|most|largest|biggest|greatest|max(?:imum)?|dearest|top)\b/i;
+const SUPER_TOP_RE =
+  /\b(?:highest|most(?! common| frequent)|largest|biggest|greatest|max(?:imum)?|dearest|top)\b/i;
 const SUPER_BOTTOM_RE = /\b(?:lowest|least|smallest|cheapest|min(?:imum)?|bottom)\b/i;
 const NUM_SCOPE_RE =
   /\b(over|above|more than|greater than or equal|greater than|at least|under|below|less than or equal|less than|at most)\s+\$?([\d][\d,]*\.?\d*)\s*([km])?\b/i;
 const IN_SCOPE_RE =
   /\b(?:in|for|within|from)\s+([a-z0-9][\w '&-]*?)(?:\s*$|\s+(?:by|per|where|over|under|above|below|group|and)\b)/i;
+
+/** The metrics that need a numeric measure column (count, distinct and mode do not). */
+const NUMERIC_METRICS: ReadonlySet<AnalyticsFunc> = new Set([
+  'sum',
+  'avg',
+  'min',
+  'max',
+  'median',
+  'range',
+  'stddev',
+]);
 
 /** Every metric keyword present, in canonical order (fixes the old first-match bug). */
 function detectMetrics(raw: string): AnalyticsFunc[] {
@@ -311,18 +473,17 @@ function detectMetrics(raw: string): AnalyticsFunc[] {
   return out;
 }
 
-/** Columns whose key or label appears in the utterance, in order of first mention. */
-function mentionedColumns(raw: string, ctx: GridContext): ColumnSchema[] {
-  const lower = raw.toLowerCase();
-  const hits: Array<{ column: ColumnSchema; at: number }> = [];
+/** Columns whose key or label appears (as whole words) in the utterance, in order of first mention. */
+function mentionedColumns(
+  raw: string,
+  ctx: GridContext
+): Array<{ column: ColumnSchema; at: number; length: number }> {
+  const hits: Array<{ column: ColumnSchema; at: number; length: number }> = [];
   for (const column of ctx.columns) {
-    const positions = [
-      lower.indexOf(column.key.toLowerCase()),
-      lower.indexOf(column.label.toLowerCase()),
-    ].filter((i) => i >= 0);
-    if (positions.length > 0) hits.push({ column, at: Math.min(...positions) });
+    const hit = findMention(raw, column);
+    if (hit) hits.push({ column, ...hit });
   }
-  return hits.sort((a, b) => a.at - b.at).map((h) => h.column);
+  return hits.sort((a, b) => a.at - b.at);
 }
 
 /** The column that best names a row in a rank answer (a name/title, else a string col). */
@@ -347,13 +508,29 @@ function buildScope(raw: string, ctx: GridContext, measureKey: string | undefine
 
   const numMatch = raw.match(NUM_SCOPE_RE);
   if (numMatch) {
-    const operand = pickComparisonOperand(numMatch[1]);
+    const operand = comparatorOf(numMatch[1].match(OP_RE));
     const value = parseScopeNumber(numMatch[2], numMatch[3]);
+    // Bind the comparison to the numeric column named nearest to it ("age over 30"),
+    // then to the measure, then to the first numeric column.
+    const start = numMatch.index ?? 0;
+    const end = start + numMatch[0].length;
+    let target: ColumnSchema | undefined;
+    let nearest = Number.POSITIVE_INFINITY;
+    for (const hit of mentionedColumns(raw, ctx)) {
+      if (!isNumericColumn(hit.column)) continue;
+      const distance =
+        hit.at + hit.length <= start
+          ? start - hit.at - hit.length
+          : hit.at >= end
+            ? hit.at - end
+            : -1;
+      if (distance >= 0 && distance < nearest) {
+        nearest = distance;
+        target = hit.column;
+      }
+    }
     const numericCols = ctx.columns.filter(isNumericColumn);
-    const target =
-      numericCols.find((c) => measureKey && c.key === measureKey) ??
-      mentionedColumns(raw, ctx).find(isNumericColumn) ??
-      numericCols[0];
+    target ??= numericCols.find((c) => c.key === measureKey) ?? numericCols[0];
     if (target && Number.isFinite(value)) where.push({ key: target.key, operand, value });
   }
 
@@ -367,23 +544,18 @@ function buildScope(raw: string, ctx: GridContext, measureKey: string | undefine
   return where;
 }
 
-/** Map a comparison word to a filter operand (independent of any column's advertised set). */
-function pickComparisonOperand(word: string): string {
-  const w = word.toLowerCase();
-  if (/greater than or equal|at least/.test(w)) return 'greaterThanOrEqual';
-  if (/less than or equal|at most/.test(w)) return 'lessThanOrEqual';
-  if (/over|above|more than|greater than/.test(w)) return 'greaterThan';
-  return 'lessThan';
-}
-
-/** Find a column whose sampled data contains `phrase` as a value; return the original-cased value. */
+/**
+ * Find a column holding `phrase` as a value; return the original-cased value. Scans
+ * every row (not only the context sample), since the query then runs over every row.
+ */
 function findColumnByValue(
   phrase: string,
   ctx: GridContext
 ): { key: string; value: unknown } | undefined {
+  const rows = (ctx.data.rows ?? ctx.data.sample) as ReadonlyArray<Record<string, unknown>>;
   for (const column of ctx.columns) {
     if (isNumericColumn(column)) continue;
-    for (const row of ctx.data.sample as ReadonlyArray<Record<string, unknown>>) {
+    for (const row of rows) {
       const cell = row[column.key];
       if (cell !== null && cell !== undefined && String(cell).toLowerCase() === phrase) {
         return { key: column.key, value: cell };
@@ -399,13 +571,16 @@ function buildAnalyticsQuery(
   ctx: GridContext
 ): { query?: AnalyticsQuery; errors: string[] } {
   const errors: string[] = [];
-  const metrics = detectMetrics(raw);
-  const mentioned = mentionedColumns(raw, ctx);
+  // A numeric scope ("at least 50000") is a filter, not a metric or a superlative.
+  const scope = raw.match(NUM_SCOPE_RE);
+  const signal = scope ? raw.replace(scope[0], ' ') : raw;
+  const metrics = detectMetrics(signal);
+  const mentioned = mentionedColumns(raw, ctx).map((hit) => hit.column);
   const numericMentioned = mentioned.filter(isNumericColumn);
 
   const topN = raw.match(TOPN_RE);
-  const superTop = SUPER_TOP_RE.test(raw);
-  const superBottom = SUPER_BOTTOM_RE.test(raw);
+  const superTop = SUPER_TOP_RE.test(signal);
+  const superBottom = SUPER_BOTTOM_RE.test(signal);
 
   // rank (whole rows): "top/bottom N ...", or "who has the highest/lowest ...".
   if (topN || (WHO_RE.test(raw) && (superTop || superBottom))) {
@@ -455,6 +630,10 @@ function buildAnalyticsQuery(
     const func: AnalyticsFunc = ranked
       ? (aggregation ?? (measure ? 'sum' : 'count'))
       : (metrics.find((m) => m !== 'count') ?? (measure ? 'sum' : 'count'));
+    // A numeric metric with no numeric column to measure would answer every group "n/a".
+    if (!measure && NUMERIC_METRICS.has(func)) {
+      return { errors: [`Tell me which numeric column to measure.${columnList(ctx)}`] };
+    }
     return {
       query: {
         kind: 'group',
@@ -497,7 +676,7 @@ function optional(where: QueryFilter[]): QueryFilter[] | undefined {
 }
 
 function columnList(ctx: GridContext): string {
-  const labels = ctx.columns.slice(0, 6).map((c) => c.label);
+  const labels = columnLabels(ctx);
   return labels.length > 0 ? ` Try a column like: ${labels.join(', ')}.` : '';
 }
 
@@ -508,6 +687,7 @@ class DefaultEntityResolver implements EntityResolver {
 
     switch (intent.kind) {
       case 'sort': {
+        if (intent.slots.clear) break;
         if (intent.slots.reverse) {
           const current = ctx.state.sort[0];
           if (current) {
@@ -528,42 +708,46 @@ class DefaultEntityResolver implements EntityResolver {
         break;
       }
       case 'filter': {
-        // Broadened path: a "remove / keep / exclude ... <predicate>" rule captured a
-        // free-form predicate (either argument order). Removal keeps the complement.
-        const predicate = intent.slots.predicate;
-        if (predicate) {
-          const remove = intent.slots.polarityVerb !== undefined;
-          const parsed = parseComparison(predicate.text, ctx);
-          if (!parsed) {
-            errors.push(`I could not read a condition from "${predicate.text}".`);
-            break;
-          }
-          const operand = remove
-            ? pickOperandStrict(parsed.column, invertedOperandCandidates(parsed.operator))
-            : pickOperand(parsed.column, operandCandidates(parsed.operator));
-          if (operand === undefined) {
-            errors.push(
-              `This grid can't ${remove ? 'exclude' : 'filter'} by that ${parsed.column.label} condition.`
-            );
-            break;
-          }
-          result.columns = [parsed.column];
-          result.operand = operand;
-          result.value = parsed.value;
+        // Every filter rule captures one free-form predicate (either argument order),
+        // grounded against the real column names. Removal keeps the exact complement.
+        if (intent.slots.clear) break;
+        const predicate = intent.slots.predicate?.text ?? '';
+        const remove = intent.slots.polarityVerb !== undefined;
+        const parsed = parseComparison(predicate, ctx);
+        if (!parsed) {
+          errors.push(`I could not read a condition from "${predicate}".`);
           break;
         }
-        const resolved = resolveColumns(intent.slots.column?.text ?? '', ctx);
-        result.usedMemory = resolved.usedMemory;
-        errors.push(...resolved.errors);
-        const column = resolved.columns[0];
-        if (column) {
-          result.columns = [column];
-          result.operand = pickOperand(
-            column,
-            operandCandidates(intent.slots.operator?.text ?? '=')
-          );
-          result.value = typeValue(intent.slots.value?.text ?? '', column);
+        const comparator = remove ? COMPLEMENT[parsed.comparator] : parsed.comparator;
+        let candidate: string | undefined = comparator;
+        let value = parsed.value;
+        // A boolean column filters by its unary true / false operands.
+        const flag = /^(?:true|yes)$/i.test(String(value))
+          ? true
+          : /^(?:false|no)$/i.test(String(value))
+            ? false
+            : undefined;
+        if (
+          parsed.column.dataType === 'boolean' &&
+          flag !== undefined &&
+          (comparator === 'equals' || comparator === 'doesNotEqual')
+        ) {
+          value = flag === (comparator === 'equals');
+          candidate = String(value);
         }
+        // Never a different operand: one the column does not advertise is an abstention.
+        const operand =
+          candidate && parsed.column.filterOperands.includes(candidate) ? candidate : undefined;
+        if (operand === undefined) {
+          errors.push(
+            `This grid can't ${remove ? 'exclude' : 'filter'} by that ${parsed.column.label} condition.`
+          );
+          break;
+        }
+        result.columns = [parsed.column];
+        result.operand = operand;
+        result.value = value;
+        result.usedMemory = parsed.usedMemory;
         break;
       }
       case 'group':

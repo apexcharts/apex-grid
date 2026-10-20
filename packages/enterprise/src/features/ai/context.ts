@@ -21,8 +21,18 @@ export interface GridContext<T = unknown> {
   state: GridState;
   /** Convenience alias of `schema.columns`. */
   columns: ColumnSchema[];
-  /** A bounded sample of the current rows, plus the true total and whether it was cut. */
-  data: { sample: readonly T[]; rowCount: number; truncated: boolean };
+  /**
+   * A bounded sample of the current rows, plus the true total and whether it was cut.
+   * `rows` is every current row, for grounding a value the sample may miss (the rule
+   * resolver reads it). It is not enumerable, so serializing `data` (as an LLM
+   * reasoner does with the sample) never sends it.
+   */
+  data: {
+    sample: readonly T[];
+    rowCount: number;
+    truncated: boolean;
+    readonly rows?: readonly T[];
+  };
   memory: MemorySnapshot;
   locale?: GridLocaleText;
   /** Injected clock (0 by default). The engine passes a real value at call time. */
@@ -70,7 +80,11 @@ export function createContextBuilder<T = unknown>(): ContextBuilder<T> {
         schema,
         state: api.getState(),
         columns: schema.columns,
-        data: { sample, rowCount: rows.length, truncated: sample.length < rows.length },
+        data: Object.defineProperty(
+          { sample, rowCount: rows.length, truncated: sample.length < rows.length },
+          'rows',
+          { value: rows }
+        ),
         memory: memory.snapshot(),
         locale: api.getLocaleText(),
         now: opts.now ?? 0,
