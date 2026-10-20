@@ -6,7 +6,63 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- `apex-rows-load-failed` (infinite row model: `startRow`, `endRow`, `error`,
+  `retrying`) and `apex-server-rows-load-failed` (server-side row model: also
+  `groupKeys`) report a rejected `getRows`, with the `RowsLoadFailedDetail`,
+  `ServerRowsLoadFailedDetail` and `RowLoadRetryConfig` types.
+- Tool panel rows have a Values toggle, and in pivot mode a Column Labels
+  toggle, so aggregations and pivot columns can be set from the keyboard.
+
 ### Changed
+- **Copy neutralises spreadsheet formulas.** Range copy (Ctrl/Cmd+C,
+  `copySelection`, `getSelectionTSV`) and the context menu Copy item follow
+  the core CSV rule: copied text such as `=HYPERLINK(...)` or `-note` reaches
+  the clipboard as `'=HYPERLINK(...)` or `'-note`. Pasting the grid's own last
+  copy back into the grid still writes the original text. Set
+  `escapeFormulas = false` on the range selection controller to copy raw
+  text. `exportToCSV({ formulas: true })` still writes formula sources such as
+  `=A1*B1` unescaped while escaping other text.
+- **Rejected `getRows` calls are retried.** Both server row models retry a
+  rejected request up to `maxRetries` times (default 2, at most 10, 0 turns it
+  off) after `retryDelay` milliseconds (default 1000, doubled each time).
+  After the last attempt the rows stay placeholders until `refreshRows()`,
+  `refreshServerSide()` or a sort or filter change, and a server group with
+  nothing loaded collapses so expanding it asks again. Before, the infinite
+  model asked again on every scroll over a failed block.
+- Infinite and server-side row models keep working when the grid is moved in
+  the DOM: sort and filter still go to the server, the group column stays, and
+  blocks in flight during the move are applied. Removing the grid no longer
+  stops the row model, so a request already in flight still completes.
+- Server-side row model: a group whose value is null, undefined or empty
+  expands to its own children and shows as "(blank)", a value containing a
+  slash no longer collides with a nested path, and a NULL and an empty-string
+  group from the server merge into one "(blank)" group. CSV and XLSX export
+  write the auto group column and leave out rows not loaded yet; the group
+  column header uses the grouped columns' `headerText`, and a flat request
+  adds no empty group column.
+- Turning on `serverSideRowModel` on a grid with client `groupBy` or `pivotOn`
+  clears them in the same update.
+- Unloaded placeholder rows of both row models, group header rows and the
+  grand total row cannot be edited: `editCell` and `editRow` return false and
+  `applyEdits` counts them as skipped. Fill, export and selection skip
+  placeholders, and a paste drops the lines that land on them.
+- **Grand total row counts every leaf.** Collapsing a group no longer lowers
+  the total. While a pivot, the server-side row model or the infinite row
+  model is active the row is not added (a pivot shows its own grand total),
+  and `getTotals()` is empty then and when `totalRow` is unset.
+- **Tool panel follows the grid.** It re-renders on changes made elsewhere
+  (header menu, `setState`, app code), lists columns in display order with
+  pinned columns at their ends, and moves within a pin group. Pin and move go
+  through `pinColumn` and `moveColumn`, so cancelling `columnPinning` or
+  `columnMoving` is honoured. While pivoting it lists the source fields, it
+  opens in pivot mode on a grid that is already pivoting, and setting
+  `pivotMode` from code carries the row dimension like the toggle.
+  `pivotMode` is now a getter and setter.
+- Status bar Sum, Avg, Min and Max refresh when values under the selection
+  change (edit, paste, fill, undo, formula recalculation, new data); a burst
+  of edits recomputes once.
+
 - **Formulas stay on their rows.** Reordering rows with `applyToData`,
   deleting rows, or reloading data with a `rowId` moves each formula with its
   row and shifts its relative references, instead of recomputing at the old
@@ -142,6 +198,18 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Keyboard copy and paste work where the async Clipboard API is unavailable,
   such as an http origin: the grid uses the browser's copy and paste events.
   Inside a cell editor the keys keep their usual text behaviour.
+- Infinite row model: when blocks answer out of order, the exact row count
+  from the last block is kept, so no placeholder rows stay at the end.
+- Server-side row model with `blockSize`: rows on a local page past the first,
+  or after pinned rows, load instead of staying placeholders.
+- Both server row models refetch when only a filter's AND/OR criteria or
+  `caseSensitive` changes.
+- Status bar and tool panel keep working after being moved in the DOM, switch
+  language with the grid's `localeText`, and no longer throw when bound to a
+  grid that is not upgraded yet.
+- Tool panel icon buttons are announced by their localized label, dropping
+  text that is not a column key onto a zone is ignored, and the first pin
+  click on a column whose `pinned` is null pins it to the start.
 
 ### Performance
 - Range formulas index their precedents instead of one key per cell, so a

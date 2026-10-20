@@ -17,8 +17,19 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   or from a grid nested in one of its master-detail panels. The grid uses it
   so cells of a nested grid no longer drive the outer one (clicks, Space
   selection, Ctrl+Z, pointer drags).
+- `CSVExportOptions.escapeFormulas` (default `true`), see the change below.
+- Locale keys `toolPanel.valueColumn` and `toolPanel.columnLabelColumn` for the
+  enterprise tool panel, in English and Spanish.
 
 ### Changed
+- **CSV export neutralises spreadsheet formulas.** A text cell or header that
+  starts with `=`, `+`, `-`, `@`, a tab or a carriage return is written with a
+  leading apostrophe, so a spreadsheet opening the file shows it as text
+  instead of running it. Numbers are untouched, and so is text that is a plain
+  signed decimal such as `-5` or `+1.5`. Other text with a leading sign gains
+  the apostrophe too: a lone `-`, a phone number such as `+44 20 7946 0958`,
+  `-1,234.50`, or formatter output such as `-$5.00`. Pass
+  `exportToCSV({ escapeFormulas: false })` for the old output.
 - **An open editor stays on the record it was opened for** when the data,
   sort, filter or page changes while editing; before, it could jump to another
   row and Enter wrote into the wrong record. The edit is cancelled when its
