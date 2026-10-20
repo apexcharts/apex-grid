@@ -115,6 +115,7 @@ export const EN_LOCALE = {
   'setFilter.selectAll': '(Select all)',
   'setFilter.clearFilter': 'Clear filter',
   'setFilter.blanks': '(Blanks)',
+  'setFilter.more': 'Showing {shown} of {total} values. Search to narrow the list.',
 
   // Enterprise: advanced filter builder
   'filterBuilder.and': 'AND',

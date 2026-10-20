@@ -324,4 +324,42 @@ describe('ApexGridSetFilter: sync with the applied filter', () => {
     await settle(grid, filter);
     expect((grid.dataView as DRow[]).map((r) => r.id)).to.eql([2, 5]);
   });
+
+  // ent-setfilter-xlsx-9
+  it('caps the rendered options for a high-cardinality column', async () => {
+    const rows = Array.from({ length: 5000 }, (_, i) => ({ id: i, department: `D${i}` }));
+    const { grid, filter } = await mount(rows, columns, 'department');
+    const options = filter.shadowRoot!.querySelectorAll('[part="option"]');
+    expect(options.length).to.be.lessThan(1001);
+    const more = filter.shadowRoot!.querySelector('[part="more"]');
+    expect(more?.textContent?.trim()).to.equal(
+      `Showing ${options.length} of 5000 values. Search to narrow the list.`
+    );
+
+    grid.localeText = {
+      'setFilter.more': 'Mostrando {shown} de {total} valores. Busque para acotar la lista.',
+    };
+    await grid.updateComplete;
+    filter.requestUpdate();
+    await filter.updateComplete;
+    expect(filter.shadowRoot!.querySelector('[part="more"]')?.textContent?.trim()).to.equal(
+      `Mostrando ${options.length} de 5000 valores. Busque para acotar la lista.`
+    );
+
+    // A narrow search renders every match and no refine row.
+    const search = filter.shadowRoot!.querySelector('[part="search"]') as HTMLInputElement;
+    search.value = 'D499';
+    search.dispatchEvent(new Event('input'));
+    await filter.updateComplete;
+    expect(filter.shadowRoot!.querySelectorAll('[part="option"]').length).to.equal(11);
+    expect(filter.shadowRoot!.querySelector('[part="more"]')).to.equal(null);
+
+    // Every value still takes part in select-all and the filter.
+    filter.clearAll();
+    await settle(grid, filter);
+    expect(grid.dataView.length).to.equal(0);
+    filter.selectAll();
+    await settle(grid, filter);
+    expect(grid.dataView.length).to.equal(5000);
+  });
 });

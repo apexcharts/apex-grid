@@ -121,6 +121,7 @@ export const esLocale: GridLocaleText = {
   'setFilter.selectAll': '(Seleccionar todo)',
   'setFilter.clearFilter': 'Borrar filtro',
   'setFilter.blanks': '(Vacíos)',
+  'setFilter.more': 'Mostrando {shown} de {total} valores. Busque para acotar la lista.',
 
   // Enterprise: constructor de filtros avanzado
   'filterBuilder.and': 'Y',

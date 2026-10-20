@@ -2,6 +2,7 @@ import {
   type FilterExpression,
   type FilterOperation,
   type GridLocaleKey,
+  type LocaleParams,
   localize,
 } from 'apex-grid';
 import { registerComponent, registerFilterOperand } from 'apex-grid/internal';
@@ -13,6 +14,9 @@ export const SET_FILTER_TAG = 'apex-grid-set-filter';
 
 /** Stable token for blank cells (null / undefined / empty string). */
 const BLANK_TOKEN = '\u0000blank';
+
+/** Most options rendered at once; a search narrows the rest. */
+const MAX_RENDERED = 1000;
 
 /** A distinct value option in the checklist. */
 interface SetFilterValue {
@@ -114,6 +118,7 @@ type AnyGrid = ApexGridEnterprise<Record<string, unknown>>;
  * @csspart option-label - The `<label>` wrapping an option's checkbox + text.
  * @csspart checkbox - An option's checkbox.
  * @csspart label - An option's label.
+ * @csspart more - The row asking to search when more options match than are shown.
  * @csspart actions - The footer button row.
  * @csspart clear - The "Clear filter" button.
  */
@@ -200,7 +205,8 @@ export class ApexGridSetFilter extends LitElement {
     [part='clear']:hover {
       background: #f3f4f6;
     }
-    [part='empty'] {
+    [part='empty'],
+    [part='more'] {
       padding: 8px;
       opacity: 0.6;
     }
@@ -226,8 +232,12 @@ export class ApexGridSetFilter extends LitElement {
   /** Whether a set expression is applied to the column. */
   #applied = false;
 
+  /** Lowercased label per entry of `values`, matched by the search. */
+  #searchKeys: string[] = [];
+
   /** Resolve a locale key against the bound grid's overrides (English when unbound). */
-  #t = (key: GridLocaleKey): string => localize(this.grid?.localeText, key);
+  #t = (key: GridLocaleKey, params?: LocaleParams): string =>
+    localize(this.grid?.localeText, key, params);
 
   protected override willUpdate(changed: Map<PropertyKey, unknown>): void {
     if (changed.has('grid') || changed.has('column')) this.#computeValues();
@@ -276,6 +286,7 @@ export class ApexGridSetFilter extends LitElement {
     const key = this.column;
     if (!grid || !key) {
       this.values = [];
+      this.#searchKeys = [];
       this.checked = new Set();
       this.#applied = false;
       return;
@@ -289,6 +300,7 @@ export class ApexGridSetFilter extends LitElement {
     this.values = [...seen.entries()]
       .sort((a, b) => compareValues(a[1], b[1]))
       .map(([token, value]) => ({ token, value, label: labelOf(value) }));
+    this.#searchKeys = this.values.map((value) => value.label.toLowerCase());
     // Checked = passes the set expressions applied to the column (all of them
     // when there is none), so the panel never claims a value its rows hide:
     // one the applied selection does not list, new since then or not, stays
@@ -345,11 +357,14 @@ export class ApexGridSetFilter extends LitElement {
   #visibleValues(): SetFilterValue[] {
     const query = this.search.trim().toLowerCase();
     if (!query) return this.values;
-    return this.values.filter((value) => value.label.toLowerCase().includes(query));
+    return this.values.filter((_, index) => this.#searchKeys[index].includes(query));
   }
 
   protected override render() {
-    const visible = this.#visibleValues();
+    const matches = this.#visibleValues();
+    // A capped list keeps a high-cardinality column responsive; the search
+    // reaches the rest, and select-all and the filter still cover every value.
+    const visible = matches.length > MAX_RENDERED ? matches.slice(0, MAX_RENDERED) : matches;
     // An applied selection that lists every current value still hides values
     // added later, so select-all reads as partial until it is cleared.
     const allChecked =
@@ -401,7 +416,14 @@ export class ApexGridSetFilter extends LitElement {
                     <span part="label" title=${display}>${display}</span>
                   </label>
                 </li>`;
-              })}`
+              })}
+              ${
+                visible.length < matches.length
+                  ? html`<li part="more">
+                      ${this.#t('setFilter.more', { shown: visible.length, total: matches.length })}
+                    </li>`
+                  : nothing
+              }`
         }
       </ul>
       ${
