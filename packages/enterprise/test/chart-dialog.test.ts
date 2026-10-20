@@ -377,4 +377,101 @@ describe('chart dialog', () => {
       expect(panel.getChart()).to.equal(null);
     });
   });
+
+  describe('grid signals', () => {
+    it('a snapshot dialog chart ignores range changes', async () => {
+      const grid = await mountGrid();
+      grid.selectRange({ row: 0, column: 'name' }, { row: 1, column: 'q1' });
+      key(grid, { key: 'F1', altKey: true });
+      const panel = document.querySelector('apex-grid-chart') as ApexGridChart;
+      expect(panel.staticModel).to.not.equal(null);
+      expect(await until(() => panel.getChart() != null)).to.equal(true);
+      await settle(panel);
+      let fields = 0;
+      let renders = 0;
+      const original = grid.getChartFields.bind(grid);
+      grid.getChartFields = () => {
+        fields += 1;
+        return original();
+      };
+      panel.addEventListener('apex-chart-created', () => {
+        renders += 1;
+      });
+      for (let r = 0; r < 3; r += 1) {
+        grid.selectRange({ row: 0, column: 'name' }, { row: r, column: 'q1' });
+      }
+      grid.dispatchEvent(new CustomEvent('apex-view-changed'));
+      await settle(panel);
+      expect(fields).to.equal(0);
+      expect(renders).to.equal(0);
+    });
+
+    it('a live view chart skips range changes and reads fields once per frame', async () => {
+      const grid = await mountGrid();
+      const panel = await fixture<ApexGridChart>(
+        html`<apex-grid-chart mode="inline" source="view" .grid=${grid as never}></apex-grid-chart>`
+      );
+      expect(await until(() => panel.getChart() != null)).to.equal(true);
+      await settle(panel);
+      let fields = 0;
+      let models = 0;
+      const originalFields = grid.getChartFields.bind(grid);
+      grid.getChartFields = () => {
+        fields += 1;
+        return originalFields();
+      };
+      const originalModel = grid.getViewChartModel.bind(grid);
+      grid.getViewChartModel = (definition) => {
+        models += 1;
+        return originalModel(definition);
+      };
+      for (let r = 0; r < 3; r += 1) {
+        grid.selectRange({ row: 0, column: 'name' }, { row: r, column: 'q1' });
+      }
+      await settle(panel);
+      expect(fields, 'range changes read no fields').to.equal(0);
+      expect(models, 'range changes leave a view chart alone').to.equal(0);
+
+      for (let i = 0; i < 5; i += 1) grid.dispatchEvent(new CustomEvent('apex-view-changed'));
+      expect(fields, 'not read synchronously').to.equal(0);
+      await settle(panel);
+      expect(fields, 'one read for the burst').to.equal(1);
+      expect(models).to.equal(1);
+    });
+
+    it('a snapshot panel turned live again re-reads the fields', async () => {
+      const grid = await mountGrid();
+      const panel = await fixture<ApexGridChart>(
+        html`<apex-grid-chart mode="inline" .grid=${grid as never}></apex-grid-chart>`
+      );
+      panel.staticModel = grid.getChartModel() as ChartModel;
+      await settle(panel);
+      grid.columns = [...columns, { key: 'q2', type: 'number', headerText: 'Q2' }] as never;
+      await grid.updateComplete;
+      await settle(panel);
+      const fields = () => (panel as unknown as { dataFields: { key: string }[] }).dataFields;
+      expect(fields().some((f) => f.key === 'q2')).to.equal(false);
+      panel.staticModel = null;
+      expect(
+        await until(() => fields().some((f) => f.key === 'q2')),
+        'q2 added while a snapshot is listed once live'
+      ).to.equal(true);
+    });
+
+    it('a selection chart still follows range changes', async () => {
+      const grid = await mountGrid();
+      const panel = await fixture<ApexGridChart>(
+        html`<apex-grid-chart mode="inline" .grid=${grid as never}></apex-grid-chart>`
+      );
+      await settle(panel);
+      let models = 0;
+      const original = grid.getChartModel.bind(grid);
+      grid.getChartModel = (definition) => {
+        models += 1;
+        return original(definition);
+      };
+      grid.selectRange({ row: 0, column: 'name' }, { row: 1, column: 'q1' });
+      expect(await until(() => models > 0)).to.equal(true);
+    });
+  });
 });

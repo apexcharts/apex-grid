@@ -302,6 +302,8 @@ export class ApexGridChart extends LitElement {
     value: string;
     condition: object;
   } | null = null;
+  /** A view signal arrived: re-read the chartable columns on the next render pass. */
+  #fieldsDirty = false;
   /** The text the rename input opened with, so committing it unchanged keeps the auto-title. */
   #renameSeed = '';
   #rafHandle = 0;
@@ -344,6 +346,8 @@ export class ApexGridChart extends LitElement {
     // are rare and interactive, so the rebuild is imperceptible; live data / sort / filter (which
     // arrive via the grid signal, not a property change) keep the smooth updateOptions path.
     if (changed.has('format') || changed.has('definition')) this.#formatDirty = true;
+    // A snapshot ignores view signals, so a panel turned live again re-reads the fields.
+    if (changed.has('staticModel')) this.#fieldsDirty = true;
     // Type / source / theme / cross-filter changes (and a fresh grid) all force a redraw.
     if (
       changed.has('type') ||
@@ -736,6 +740,10 @@ export class ApexGridChart extends LitElement {
 
   /** One pass of model resolution + ApexCharts render. Never call directly — go through {@link refresh}. */
   async #renderOnce(): Promise<void> {
+    if (this.#fieldsDirty) {
+      this.#fieldsDirty = false;
+      this.#refreshFields();
+    }
     const model = this.#resolveModel();
     const next = model.series.length > 0;
     // Remember series names so the Format popover can offer a color swatch per series.
@@ -828,21 +836,31 @@ export class ApexGridChart extends LitElement {
     this.#detach();
     const grid = this.grid as unknown as HTMLElement | null;
     if (!grid) return;
-    grid.addEventListener(RANGE_CHANGED_EVENT, this.#onGridSignal);
-    grid.addEventListener(VIEW_CHANGED_EVENT, this.#onGridSignal);
+    grid.addEventListener(RANGE_CHANGED_EVENT, this.#onRangeChanged);
+    grid.addEventListener(VIEW_CHANGED_EVENT, this.#onViewChanged);
     this.#boundGrid = grid;
     this.#refreshFields();
     this.#scheduleRefresh();
   }
 
   #detach(): void {
-    this.#boundGrid?.removeEventListener(RANGE_CHANGED_EVENT, this.#onGridSignal);
-    this.#boundGrid?.removeEventListener(VIEW_CHANGED_EVENT, this.#onGridSignal);
+    this.#boundGrid?.removeEventListener(RANGE_CHANGED_EVENT, this.#onRangeChanged);
+    this.#boundGrid?.removeEventListener(VIEW_CHANGED_EVENT, this.#onViewChanged);
     this.#boundGrid = null;
   }
 
-  #onGridSignal = (): void => {
-    this.#refreshFields();
+  /**
+   * A range change (one per cell crossed in a drag) moves no column or row, so the fields stand.
+   * Only charts fed by the selection redraw: not a snapshot, nor a view chart without cross-filter.
+   */
+  #onRangeChanged = (): void => {
+    if (!this.staticModel && (this.source !== 'view' || this.crossFilter)) this.#scheduleRefresh();
+  };
+
+  /** A view change can change the fields: re-read them once, on the coalesced render pass. */
+  #onViewChanged = (): void => {
+    if (this.staticModel) return;
+    this.#fieldsDirty = true;
     this.#scheduleRefresh();
   };
 
