@@ -550,7 +550,8 @@ grid.contextMenu = false; // disable
 
 grid.contextMenu = {      // or replace the items
   items: (target) => [
-    { id: 'sort-asc', label: 'Sort ascending', run: () => grid.sort([{ key: target.column.key, direction: 'ascending' }]) },
+    // grid.sort() adds to the current sort, so clear it first to sort by this column only.
+    { id: 'sort-asc', label: 'Sort ascending', run: () => { grid.clearSort(); grid.sort({ key: target.column.key, direction: 'ascending' }); } },
     { id: 'copy', label: 'Copy', separatorBefore: true, run: (t) => copyCell(t) },
   ],
 };
@@ -561,8 +562,13 @@ where a `ContextMenuItem<T>` is `{ id, label, run?, disabled?, submenu?, separat
 (provide a `submenu` for a nested menu, or a `run` callback for a leaf). The `target`
 is `{ kind: 'cell' | 'header', column, row?, rowIndex? }`.
 
-The built-in default items are **sort ascending / descending / clear sort**, **pin to
-start / pin to end / unpin**, **hide column**, and (on cell targets) **copy**. On header
+The built-in default items are **sort ascending / descending / clear sort** (only on
+sortable columns, and not while a manual row order is active), **pin to start / pin to
+end / unpin**, **hide column**, and (on cell targets) **copy**. Menu sorts replace the
+current sort like a header click and fire the cancellable `sorting` and the `sorted`
+events; menu pins go through `pinColumn`, so `columnPinning` and `columnPinned` fire.
+A right-click inside a master-detail child grid opens that grid's own menu, and one
+inside a text field of a cell editor keeps the browser's menu. On header
 targets, when the grouping module is present, the menu also offers **group by this
 column**, **un-group all**, and **expand / collapse all groups**. When you leave
 `contextMenu` at its default (rather than supplying your own `items`), the menu also
@@ -710,7 +716,8 @@ guesses silently.
 - **Group / ungroup:** "group by region", "ungroup".
 - **Filter:** "filter status = open", "only show EMEA", "remove rows where salary
   is under 70000", "keep only rows with amount over 100". Removal keeps the
-  complement (it inverts the operand, or reports that it cannot).
+  complement (it inverts the operand, or reports that it cannot). A filter adds
+  to the active filters and replaces only one on the same column.
 - **Columns:** "hide the notes column", "show salary", "pin name to the left".
 - **Search:** "search Acme".
 - **Pivot / aggregate:** "pivot on region", "sum of revenue".
