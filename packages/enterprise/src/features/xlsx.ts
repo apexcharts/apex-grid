@@ -208,8 +208,10 @@ function renderCell(ref: string, cell: XLSXCell, styleIndex?: number): string {
   const f = formula ? `<f>${escapeXml(formula.formula)}</f>` : '';
   let value = formula ? formula.value : (cell as ExportCellValue);
   if (value instanceof Date) {
+    // An invalid Date has no serial: it is written as an empty cell.
     value = toExcelSerial(value);
-    s = ` s="${STYLE_DATE}"`;
+    if (Number.isFinite(value)) s = ` s="${STYLE_DATE}"`;
+    else value = '';
   }
   if (value === null || value === undefined || value === '') {
     return f ? `<c r="${ref}"${s}>${f}</c>` : styleIndex ? `<c r="${ref}"${s}/>` : '';

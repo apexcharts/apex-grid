@@ -505,5 +505,28 @@ describe('enterprise export and grid API', () => {
       expect(entry.text).to.include('<c r="A20001"><v>19999</v></c>');
       expect(entry.text.endsWith('</sheetData></worksheet>')).to.equal(true);
     });
+
+    it('writes an invalid Date as an empty cell, not NaN', () => {
+      const sheet = sheetOf(
+        buildXLSX({ headers: ['d', 'n'], rows: [[new Date('not a date'), 1]] })
+      );
+      expect(sheet).to.not.include('NaN');
+      expect(sheet).to.include('<row r="2"><c r="B2"><v>1</v></c></row>');
+    });
+
+    it('escapes markup, quotes and control characters in text cells', () => {
+      const bytes = buildXLSX({
+        name: 'P&L',
+        headers: ['text'],
+        rows: [[`</t></is></c><c r="Z1"><f>1</f></c> & 'q' \u0001x\ty`]],
+      });
+      const sheet = sheetOf(bytes);
+      expect(sheet).to.include(
+        '<t xml:space="preserve">&lt;/t&gt;&lt;/is&gt;&lt;/c&gt;&lt;c r=&quot;Z1&quot;&gt;' +
+          '&lt;f&gt;1&lt;/f&gt;&lt;/c&gt; &amp; &apos;q&apos; x\ty</t>'
+      );
+      expect(sheet).to.not.include('<f>');
+      expect(storedEntry(bytes, 'xl/workbook.xml')!.text).to.include('name="P&amp;L"');
+    });
   });
 });
