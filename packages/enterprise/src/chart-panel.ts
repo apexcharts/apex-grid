@@ -558,7 +558,10 @@ export class ApexGridChart extends LitElement {
     if (active.has(key)) active.delete(key);
     else active.add(key);
     const measures = this.dataFields.filter((f) => active.has(f.key)).map((f) => f.key);
-    const secondary = (this.definition.secondaryMeasures ?? []).filter((k) => active.has(k));
+    // Only the toggled measure can leave the 2nd axis: other entries may be calculated-field names.
+    const secondary = (this.definition.secondaryMeasures ?? []).filter(
+      (k) => k !== key || active.has(k)
+    );
     this.#patchDefinition({
       measures,
       secondaryMeasures: secondary.length ? secondary : undefined,
@@ -903,35 +906,38 @@ export class ApexGridChart extends LitElement {
   #options(): RenderChartOptions {
     const theme = this.#themeOptions();
     const user = this.apexOptions ?? {};
-    // Cross-filter wires ApexCharts' point-selection event to the grid filter.
-    const events = this.crossFilter
-      ? {
-          chart: {
-            events: {
-              dataPointSelection: (
-                _event: unknown,
-                _ctx: unknown,
-                config: { dataPointIndex?: number }
-              ) => this.selectCategory(config?.dataPointIndex ?? -1),
-            },
-          },
-        }
-      : {};
     // Format popover overlay, layered last so the user's interactive choices win over author
     // `apexOptions` — but only for the keys they actually set (see formatToApexOptions).
     const overlay = formatToApexOptions(this.format, this.type) as Record<string, unknown>;
     // A saved config may hold blank color slots (ApexCharts draws them white): fill them.
     if (overlay.colors) overlay.colors = this.#seriesColors();
     const userRec = user as Record<string, unknown>;
-    const merged: Record<string, unknown> = { ...theme, ...events, ...user, ...overlay };
+    const userChart = userRec.chart as { events?: Record<string, any> } | undefined;
+    const merged: Record<string, unknown> = { ...theme, ...user, ...overlay };
     merged.chart = {
       // ApexCharts' own floating toolbar is off by default: the panel provides a single,
       // consistent Export control in its toolbar row. A caller can turn it back on via
       // `apexOptions.chart.toolbar`.
       toolbar: { show: false },
       ...(theme as { chart?: object }).chart,
-      ...(events as { chart?: object }).chart,
-      ...(userRec.chart as object),
+      ...userChart,
+      // Cross-filter wires ApexCharts' point-selection event to the grid filter, keeping the
+      // author's other events and calling their own dataPointSelection first.
+      ...(this.crossFilter
+        ? {
+            events: {
+              ...userChart?.events,
+              dataPointSelection: (
+                event: unknown,
+                ctx: unknown,
+                config: { dataPointIndex?: number }
+              ) => {
+                userChart?.events?.dataPointSelection?.(event, ctx, config);
+                this.selectCategory(config?.dataPointIndex ?? -1);
+              },
+            },
+          }
+        : {}),
     };
     // Shallow-merge the nested keys the overlay touches so a caller's other sub-keys survive
     // (these are all plain objects — never the multi-axis `yaxis` array the overlay stays off).
@@ -1544,8 +1550,10 @@ export class ApexGridChart extends LitElement {
         color: #6b7280;
         text-align: center;
       }
-      /* The display:flex above outranks the [hidden] attribute's UA display:none, so restore it. */
-      apex-grid-chart [part='placeholder'][hidden] {
+      /* An author display: rule outranks the [hidden] attribute's UA display:none, so restore it. */
+      apex-grid-chart [part='placeholder'][hidden],
+      apex-grid-chart [part='toolbar'][hidden],
+      apex-grid-chart [part='toolbar'][data-empty] > :not([part='data']) {
         display: none;
       }
       apex-grid-chart [part='empty-icon'] {
@@ -1692,9 +1700,15 @@ export class ApexGridChart extends LitElement {
         <label part="format-row">
           <span>${this.#t('chart.mapCategory')}</span>
           <select @change=${(e: Event) => this.#setCategory((e.target as HTMLSelectElement).value)}>
+            ${
+              // No non-numeric column means no category: say so rather than show the first column.
+              this.dataFields.every((f) => f.numeric)
+                ? html`<option value="" .selected=${category === ''}>${this.#t('chart.mapCategoryNone')}</option>`
+                : nothing
+            }
             ${this.dataFields.map(
               (f) =>
-                html`<option value=${f.key} ?selected=${category === f.key}>${f.label}</option>`
+                html`<option value=${f.key} .selected=${category === f.key}>${f.label}</option>`
             )}
           </select>
         </label>
@@ -1731,7 +1745,7 @@ export class ApexGridChart extends LitElement {
               this.#setAggregation((e.target as HTMLSelectElement).value as ChartAggregation)}
           >
             ${aggregations.map(
-              (fn) => html`<option value=${fn} ?selected=${this.#currentAggregation() === fn}>
+              (fn) => html`<option value=${fn} .selected=${this.#currentAggregation() === fn}>
                 ${this.#t(`chart.agg.${fn}` as GridLocaleKey)}
               </option>`
             )}
@@ -1832,6 +1846,8 @@ export class ApexGridChart extends LitElement {
     const empty = !this.hasModel;
     // Swatches are only read while the Format popover is open (opening it re-renders).
     const colors = this.formatOpen ? this.#seriesColors() : [];
+    // Empty: only the Data popover stays, as the mapping itself may be what emptied the chart.
+    const dataMenu = this.#renderDataMenu();
     return html`${this.#renderStyle()}
       <div
         part="panel"
@@ -1875,7 +1891,7 @@ export class ApexGridChart extends LitElement {
               </div>`
             : nothing
         }
-        <div part="toolbar" ?hidden=${empty}>
+        <div part="toolbar" ?hidden=${empty && dataMenu === nothing} ?data-empty=${empty}>
           ${TYPE_GROUPS.map(
             (group, i) =>
               html`${i > 0 ? html`<span part="type-divider" aria-hidden="true"></span>` : nothing}${group.map(
@@ -1892,7 +1908,7 @@ export class ApexGridChart extends LitElement {
           >
             ${this.#typeIcon('auto')}<span>${this.#t('chart.suggested')}</span>
           </button>
-          ${this.#renderDataMenu()}
+          ${dataMenu}
           <div part="export" @focusout=${this.#onExportBlur}>
             <button
               part="export-button"
@@ -1998,7 +2014,7 @@ export class ApexGridChart extends LitElement {
                   ${(['none', 'currency', 'percent', 'thousands'] as const).map(
                     (value) => html`<option
                       value=${value}
-                      ?selected=${(this.format.numberFormat ?? 'none') === value}
+                      .selected=${(this.format.numberFormat ?? 'none') === value}
                     >
                       ${this.#t(`chart.format.${value}` as GridLocaleKey)}
                     </option>`

@@ -194,6 +194,7 @@ export const esLocale: GridLocaleText = {
   'chart.swapAxesHint': 'Intercambia los ejes X e Y (barras horizontales)',
   'chart.data': 'Datos',
   'chart.mapCategory': 'Categoría (X)',
+  'chart.mapCategoryNone': 'Ninguna',
   'chart.mapSeries': 'Series (Y)',
   'chart.mapAggregation': 'Agregación',
   'chart.secondaryAxis': 'Dibujar en el eje secundario (derecho)',

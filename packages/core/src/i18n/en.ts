@@ -189,6 +189,7 @@ export const EN_LOCALE = {
   'chart.swapAxesHint': 'Swap the X and Y axes (horizontal bars)',
   'chart.data': 'Data',
   'chart.mapCategory': 'Category (X)',
+  'chart.mapCategoryNone': 'None',
   'chart.mapSeries': 'Series (Y)',
   'chart.mapAggregation': 'Aggregation',
   'chart.secondaryAxis': 'Draw on the secondary (right) axis',

@@ -716,4 +716,155 @@ describe('ApexGridChart Format and Data controls', () => {
     expect(drawn(panel).w.globals.colors.slice(0, 2)).to.eql(['#112233', '#ff0000']);
     expect(swatches(panel)[0].value).to.equal('#112233');
   });
+
+  it('toggling a measure keeps a calculated field on the secondary axis', async () => {
+    const panel = await mountChart(await mountWide(), 'line');
+    panel.definition = {
+      calculatedFields: [{ name: 'Rate', formula: 'B1/A1' }],
+      secondaryMeasures: ['Rate', 'q2'],
+    };
+    await panel.updateComplete;
+    panel.querySelector<HTMLButtonElement>('[part="data-button"]')!.click();
+    await panel.updateComplete;
+    const rows = panel.querySelectorAll('[part="data-measure"]');
+    // Turn Q2 off: it leaves the secondary axis, the calculated field stays there.
+    rows[1].querySelector<HTMLInputElement>('[part="data-measure-name"] input')!.click();
+    await panel.updateComplete;
+    expect(panel.definition.measures).to.eql(['q1']);
+    expect(panel.definition.secondaryMeasures).to.eql(['Rate']);
+  });
+
+  it('author chart.events merge with the cross-filter dataPointSelection', async () => {
+    const grid = await mountWide();
+    grid.selectRange({ row: 0, column: 'name' }, { row: 2, column: 'q1' });
+    let clicks = 0;
+    let selections = 0;
+    const panel = await fixture<ApexGridChart>(
+      html`<apex-grid-chart
+        mode="inline"
+        type="column"
+        cross-filter
+        .apexOptions=${{
+          chart: {
+            events: {
+              click: () => {
+                clicks += 1;
+              },
+              dataPointSelection: () => {
+                selections += 1;
+              },
+            },
+          },
+        }}
+        .grid=${grid as never}
+      ></apex-grid-chart>`
+    );
+    await waitUntil(() => panel.getChart() != null, 'chart never rendered');
+    const events = drawn(panel).w.config.chart.events;
+    expect(events.click).to.be.a('function');
+    events.click();
+    events.dataPointSelection(null, null, { dataPointIndex: 0 });
+    expect(clicks).to.equal(1);
+    expect(selections).to.equal(1);
+    expect(grid.filterExpressions.some((f) => f.key === 'name')).to.equal(true);
+  });
+
+  const shown = (el: Element | null) => (el?.getClientRects().length ?? 0) > 0;
+
+  it('keeps only the Data control in the empty state', async () => {
+    const panel = await mountPanel((await mountWide([])) as never);
+    const toolbar = panel.querySelector<HTMLElement>('[part="toolbar"]')!;
+    expect(shown(panel.querySelector('[part="data-button"]'))).to.equal(true);
+    for (const part of ['type-button', 'suggest-button', 'export-button', 'format-button']) {
+      expect(shown(panel.querySelector(`[part="${part}"]`)), part).to.equal(false);
+    }
+    // No Data popover to offer (a snapshot chart): the whole toolbar hides.
+    panel.staticModel = EMPTY;
+    await panel.refresh();
+    await panel.updateComplete;
+    expect(toolbar.hidden).to.equal(true);
+    expect(getComputedStyle(toolbar).display).to.equal('none');
+  });
+
+  it('a mapping that empties the chart can be undone from the Data popover', async () => {
+    const panel = await mountChart(await mountGrid());
+    panel.querySelector<HTMLButtonElement>('[part="data-button"]')!.click();
+    await panel.updateComplete;
+    const category = () => panel.querySelector<HTMLSelectElement>('[part="data-menu"] select')!;
+    // The only numeric column as the category leaves no measure to chart.
+    category().value = 'q1';
+    category().dispatchEvent(new Event('change'));
+    await panel.refresh();
+    await panel.updateComplete;
+    expect(panel.getChart()).to.equal(null);
+    expect(shown(panel.querySelector('[part="data-button"]'))).to.equal(true);
+    expect(shown(category())).to.equal(true);
+    category().value = 'name';
+    category().dispatchEvent(new Event('change'));
+    await panel.refresh();
+    await panel.updateComplete;
+    expect(panel.getChart()).to.not.equal(null);
+    expect(shown(panel.querySelector('[part="type-button"]'))).to.equal(true);
+  });
+
+  it('selects follow programmatic changes after a user pick', async () => {
+    const panel = await mountChart(await mountWide());
+    panel.querySelector<HTMLButtonElement>('[part="format-button"]')!.click();
+    panel.querySelector<HTMLButtonElement>('[part="data-button"]')!.click();
+    await panel.updateComplete;
+    const numberSelect = panel.querySelector<HTMLSelectElement>('[part="format-menu"] select')!;
+    const [categorySelect, aggSelect] = panel.querySelectorAll<HTMLSelectElement>(
+      '[part="data-menu"] select'
+    );
+    numberSelect.value = 'currency';
+    numberSelect.dispatchEvent(new Event('change'));
+    aggSelect.value = 'max';
+    aggSelect.dispatchEvent(new Event('change'));
+    categorySelect.value = 'q1';
+    categorySelect.dispatchEvent(new Event('change'));
+    await panel.updateComplete;
+    panel.restore({ format: { numberFormat: 'percent' }, definition: { aggregation: 'avg' } });
+    await panel.updateComplete;
+    expect([numberSelect.value, aggSelect.value]).to.eql(['percent', 'avg']);
+    // Back to the values the user picked: the selects must show them again.
+    panel.restore({
+      format: { numberFormat: 'currency' },
+      definition: { aggregation: 'max', category: 'q1' },
+    });
+    await panel.updateComplete;
+    expect([numberSelect.value, aggSelect.value, categorySelect.value]).to.eql([
+      'currency',
+      'max',
+      'q1',
+    ]);
+    panel.restore({ format: {}, definition: {} });
+    await panel.updateComplete;
+    expect(numberSelect.value).to.equal('none');
+    expect(aggSelect.value).to.equal('sum');
+    expect(categorySelect.value).to.equal('name');
+  });
+
+  it('offers a None category when no column is non-numeric', async () => {
+    const grid = await mountWide(
+      [
+        { year: 2020, q1: 1 },
+        { year: 2021, q1: 2 },
+      ],
+      [
+        { key: 'year', type: 'number', headerText: 'Year' },
+        { key: 'q1', type: 'number', headerText: 'Q1' },
+      ]
+    );
+    const panel = await mountChart(grid);
+    panel.querySelector<HTMLButtonElement>('[part="data-button"]')!.click();
+    await panel.updateComplete;
+    const select = panel.querySelector<HTMLSelectElement>('[part="data-menu"] select')!;
+    expect(select.value).to.equal('');
+    expect(select.options[0].textContent?.trim()).to.equal('None');
+    select.value = 'year';
+    select.dispatchEvent(new Event('change'));
+    await panel.updateComplete;
+    expect(panel.definition.category).to.equal('year');
+    expect(select.value).to.equal('year');
+  });
 });
