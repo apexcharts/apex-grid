@@ -280,6 +280,31 @@ describe('advanced filter with the server row models', () => {
     await flush(grid);
     expect(grid.dataView[0]?.id, 'column sort applies').to.equal(18);
   });
+
+  it('filters a numeric source field while pivoting (sweep-regression-3.5-3)', async () => {
+    type Sale = { region: string; year: string; value: number };
+    const grid = await fixture<ApexGridEnterprise<Sale>>(html`<apex-grid-enterprise
+      .data=${[
+        { region: 'N', year: '2024', value: 5 },
+        { region: 'N', year: '2024', value: 500 },
+        { region: 'S', year: '2025', value: 7 },
+      ]}
+      .columns=${[{ key: 'region' }, { key: 'year' }, { key: 'value', type: 'number' }]}
+      .pivotOn=${'year'}
+      .pivotRows=${['region']}
+      .pivotValues=${{ value: ['sum'] }}
+    ></apex-grid-enterprise>`);
+    await flush(grid as unknown as ApexGridEnterprise<Row>);
+    grid.applyAdvancedFilter({
+      kind: 'group',
+      join: 'and',
+      children: [{ kind: 'condition', column: 'value', operator: 'greaterThan', value: 100 }],
+    });
+    await flush(grid as unknown as ApexGridEnterprise<Row>);
+    const rows = grid.pageItems as ReadonlyArray<Record<string, unknown>>;
+    expect(rows.map((row) => row.region)).to.eql(['N']);
+    expect(rows[0]['pivot::2024::value::sum']).to.equal(500);
+  });
 });
 
 type Step = 'startFilter' | 'startModel' | 'stopFilter' | 'stopModel';

@@ -646,7 +646,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * Apply a nested AND/OR advanced filter. On client data it evaluates through
    * the `dataPipelineConfiguration.filter` hook and, while active, owns column
    * filtering (it replaces the built-in filter and any app filter hook).
-   * Composes with sort / pagination / grouping. Under
+   * Composes with sort / pagination / grouping / pivoting. Under
    * `infiniteRowModel` or `serverSideRowModel` it is sent to the datasource as
    * `advancedFilterModel` instead, and the rows reload. Call
    * {@link clearAdvancedFilter} to remove it. The grid keeps a copy, so
@@ -682,7 +682,9 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     if (next) {
       for (const hook of Object.values(next)) if (hook) this.#gridHooks.add(hook);
     } else if (model) {
-      const filter = ({ data }: { data: T[] }) => filterRows(data, model, this.columns);
+      // It filters the source rows, so while pivoting it reads the source columns.
+      const filter = ({ data }: { data: T[] }) =>
+        filterRows(data, model, this.#savedColumns ?? this.columns);
       this.#gridHooks.add(filter);
       next = { ...this.#appPipeline, filter };
     } else {
