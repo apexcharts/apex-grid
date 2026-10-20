@@ -278,4 +278,146 @@ describe('Filter panel', () => {
       }
     });
   });
+
+  describe('trigger and Escape', () => {
+    it('closes when the open column filter icon is clicked with a pointer', async () => {
+      await TDD.open('name');
+      const btn = TDD.filterButton('name');
+      btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+      btn.click();
+      await TDD.waitForUpdate();
+      expect(TDD.panel.active).to.equal(false);
+    });
+
+    it('still closes on a pointerdown outside the panel', async () => {
+      await TDD.open('name');
+      document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      await TDD.waitForUpdate();
+      expect(TDD.panel.active).to.equal(false);
+    });
+
+    it('lets Escape outside the panel through', async () => {
+      await TDD.open('name');
+      const outside = document.createElement('input');
+      document.body.appendChild(outside);
+      let seen = false;
+      outside.addEventListener('keydown', () => {
+        seen = true;
+      });
+      try {
+        outside.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true })
+        );
+        await TDD.waitForUpdate();
+        expect(seen).to.equal(true);
+        expect(TDD.panel.active).to.equal(true);
+      } finally {
+        outside.remove();
+      }
+    });
+
+    it('closes on Escape from inside the panel', async () => {
+      await TDD.open('name');
+      TDD.filterRow.input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true })
+      );
+      await TDD.waitForUpdate();
+      expect(TDD.panel.active).to.equal(false);
+    });
+
+    it('closes on Escape once focus has fallen to the page', async () => {
+      await TDD.open('name');
+      TDD.filterRow.input.blur();
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true })
+      );
+      await TDD.waitForUpdate();
+      expect(TDD.panel.active).to.equal(false);
+    });
+
+    it('closes on Escape from the trigger of a panel with no input', async () => {
+      await TDD.open('active');
+      TDD.filterButton('active').dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true })
+      );
+      await TDD.waitForUpdate();
+      expect(TDD.panel.active).to.equal(false);
+    });
+  });
+
+  describe('position', () => {
+    it('moves under the new column when switched by keyboard', async () => {
+      await TDD.open('id');
+      const before = TDD.left;
+      // Enter on a native button fires click without a pointerdown.
+      TDD.filterButton('importance').click();
+      await TDD.waitForUpdate();
+      expect(TDD.panel.column.key).to.equal('importance');
+      expect(TDD.left).to.not.equal(before);
+      const rect = TDD.filterButton('importance').getBoundingClientRect();
+      const width = TDD.panel.offsetWidth;
+      expect(TDD.left).to.equal(Math.min(rect.left, Math.max(8, window.innerWidth - width - 8)));
+    });
+
+    it('follows its trigger when the grid scrolls and stops after close', async () => {
+      TDD.grid.style.width = '300px';
+      TDD.grid.columns = TDD.grid.columns.map((c) => ({ ...c, width: '200px' }));
+      await TDD.waitForUpdate();
+      await TDD.open('name');
+      const btn = TDD.filterButton('name');
+      const start = TDD.left;
+      expect(start).to.be.closeTo(btn.getBoundingClientRect().left, 0.5);
+
+      TDD.grid.scrollLeft = 60;
+      await nextFrame();
+      await nextFrame();
+      expect(TDD.left).to.be.closeTo(btn.getBoundingClientRect().left, 0.5);
+      expect(TDD.left).to.be.closeTo(start - 60, 0.5);
+
+      TDD.filterRow.close();
+      await TDD.waitForUpdate();
+      TDD.grid.scrollLeft = 0;
+      await nextFrame();
+      await nextFrame();
+      expect(TDD.panel.style.getPropertyValue('--fp-left')).to.equal('');
+    });
+
+    it('follows its trigger when the page scrolls', async () => {
+      const spacer = document.createElement('div');
+      spacer.style.height = '3000px';
+      document.body.appendChild(spacer);
+      try {
+        await TDD.open('name');
+        const btn = TDD.filterButton('name');
+        window.scrollTo(0, 40);
+        await nextFrame();
+        await nextFrame();
+        expect(TDD.top).to.be.closeTo(btn.getBoundingClientRect().bottom + 4, 0.5);
+      } finally {
+        window.scrollTo(0, 0);
+        spacer.remove();
+      }
+    });
+
+    it('clamps with its rendered width when the root font size is not 16px', async () => {
+      const root = document.documentElement;
+      const previous = root.style.fontSize;
+      root.style.fontSize = '20px';
+      try {
+        Object.assign(TDD.grid.style, {
+          position: 'fixed',
+          insetInlineEnd: '0',
+          top: '0',
+          width: '400px',
+        });
+        await TDD.waitForUpdate();
+        await TDD.open('importance');
+        const rect = TDD.panel.getBoundingClientRect();
+        expect(rect.width).to.equal(300);
+        expect(rect.right).to.be.at.most(window.innerWidth - 8 + 0.5);
+      } finally {
+        root.style.fontSize = previous;
+      }
+    });
+  });
 });

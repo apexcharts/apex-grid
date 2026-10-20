@@ -188,6 +188,20 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     }
   };
 
+  /** The filter button of the open column, found live so the panel tracks it. */
+  #trigger() {
+    return this.state.headerRow?.headers
+      .find((header) => header.column.key === this.column.key)
+      ?.renderRoot.querySelector('[part~="filter-btn"]');
+  }
+
+  /** Whether an event came from the panel or from the button that opened it. */
+  #fromPanel(event: Event) {
+    const path = event.composedPath();
+    const trigger = this.#trigger();
+    return path.includes(this) || (!!trigger && path.includes(trigger));
+  }
+
   #handleOutsidePointer = (event: PointerEvent) => {
     const path = event.composedPath();
 
@@ -199,14 +213,20 @@ export default class ApexFilterRow<T extends object> extends LitElement {
       return;
     }
 
-    // Close the whole panel if clicking outside it.
-    if (this.active && !path.includes(this)) {
+    // Close the whole panel if clicking outside it. A press on the open
+    // column's filter button is left to its click, which toggles the panel.
+    if (this.active && !this.#fromPanel(event)) {
       this.active = false;
     }
   };
 
   #handleDocumentKey = (event: KeyboardEvent) => {
-    if (event.key !== 'Escape') return;
+    // Escape belongs to whatever has focus outside the panel. With focus on
+    // the page itself (a click on panel chrome drops it there) nobody else
+    // owns it, so it still closes the panel.
+    const origin = event.composedPath()[0];
+    const unowned = origin === document.body || origin === document.documentElement;
+    if (event.key !== 'Escape' || !this.active || !(unowned || this.#fromPanel(event))) return;
 
     if (this.dropdownOpen) {
       event.stopPropagation();
@@ -278,27 +298,53 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     super.connectedCallback();
     document.addEventListener('pointerdown', this.#handleOutsidePointer, true);
     document.addEventListener('keydown', this.#handleDocumentKey, true);
+    if (this.active) this.#listenForMoves(true);
   }
 
   public override disconnectedCallback(): void {
     document.removeEventListener('pointerdown', this.#handleOutsidePointer, true);
     document.removeEventListener('keydown', this.#handleDocumentKey, true);
+    this.#listenForMoves(false);
     super.disconnectedCallback();
+  }
+
+  /** Keeps the panel under its trigger while the page or the grid scrolls or resizes. */
+  #listenForMoves(on: boolean) {
+    const method = on ? 'addEventListener' : 'removeEventListener';
+    // Scroll does not bubble or cross shadow roots: capture the page's
+    // scrollers on window and listen on the grid, which scrolls itself.
+    window[method]('scroll', this.#position, true);
+    window[method]('resize', this.#position);
+    this.state?.host[method]('scroll', this.#position);
+  }
+
+  #position = () => {
+    const rect = this.#trigger()?.getBoundingClientRect() ?? this.triggerRect;
+    if (!rect) return;
+    // Measured, so a root font size other than 16px still clamps correctly.
+    const width = this.offsetWidth;
+    const viewportWidth = window.innerWidth;
+    let left = rect.left;
+    // Clamp so the panel doesn't overflow the right edge of the viewport.
+    if (left + width > viewportWidth - 8) {
+      left = Math.max(8, viewportWidth - width - 8);
+    }
+    this.style.setProperty('--fp-top', `${rect.bottom + 4}px`);
+    this.style.setProperty('--fp-left', `${left}px`);
+  };
+
+  /** Switching the open panel to another column moves it under that column. */
+  @watch('triggerRect', { waitUntilFirstUpdate: true })
+  protected triggerChanged() {
+    if (this.active) this.#position();
   }
 
   @watch('active', { waitUntilFirstUpdate: true })
   protected async activeChanged() {
-    if (this.active && this.triggerRect) {
-      const panelWidth = 240;
-      const viewportWidth = window.innerWidth;
-      let left = this.triggerRect.left;
-      // Clamp so the panel doesn't overflow the right edge of the viewport.
-      if (left + panelWidth > viewportWidth - 8) {
-        left = Math.max(8, viewportWidth - panelWidth - 8);
-      }
-      this.style.setProperty('--fp-top', `${this.triggerRect.bottom + 4}px`);
-      this.style.setProperty('--fp-left', `${left}px`);
+    this.#listenForMoves(this.active);
+    if (this.active) {
       this.setAttribute('data-active', '');
+      this.#position();
       await this.updateComplete;
       this.input?.select();
     } else {
