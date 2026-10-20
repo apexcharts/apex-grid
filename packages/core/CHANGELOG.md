@@ -94,6 +94,23 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   under RTL and read the scroll insets through the grid's navigation
   controller (`revealCell`, `towardsInlineEnd`, `scrollInsets`), so the
   enterprise range selection follows core navigation instead of a copy.
+- **Cell templates run again after each data pipeline run.** A column
+  `cellTemplate` is called for every visible row, body and pinned, after each
+  pipeline run (sort, filter, quick filter, edit, tree toggle), so a template
+  that reads other fields of its row stays current. Keep templates light;
+  plain and typed cells are not re-rendered by this.
+- Start-pinned columns freeze after the leading checkbox, expansion, reorder
+  grip and row-number columns instead of at the grid edge. The grid sets
+  `--apex-chrome-offset-row-number`, `--apex-chrome-offset-reorder`,
+  `--apex-chrome-offset-selection` and `--apex-chrome-offset-expansion` on the
+  host and no longer writes `--scrollbar-offset` inline (the stylesheet
+  default stays).
+- A decoration-only change (range selection, formula reference highlight)
+  updates cell attributes without re-rendering cell content. For feature
+  modules, `bumpDecoration` now only re-applies `CellDecorator` attributes;
+  request a pipeline run when content must change.
+- Feature modules can attach a command to a cell edit and its undo step, and
+  read the header's sortable rule through `SortController.isSortable`.
 
 ### Fixed
 - **Text filter conditions no longer throw on a cell that is not a string.**
@@ -164,6 +181,20 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   date format falls back to a default instead of failing every cell.
 - Sparkline cells no longer show a misleading 0% delta when the series starts
   at zero, and never print -0%.
+- A `cellTemplate` that reads other fields of its row updates after an inline
+  edit, `applyEdits`, paste, fill or a data change, in body and pinned rows.
+- The tree data chevron and `aria-expanded` follow every expand and collapse,
+  including `expandTreeRow` and `collapseTreeRow`.
+- Range selection highlights stay on the selected positions after a sort,
+  filter or expand moves rows.
+- With the row-number gutter, reorder grip, selection or expansion column
+  shown, a horizontal scroll no longer stacks those cells or a start-pinned
+  column on top of each other, in LTR and RTL.
+- Column group headers sit over their member columns when the reorder grip or
+  the row-number gutter is shown, and the group row's cells over pinned and
+  leading columns stay frozen on horizontal scroll.
+- Pinned columns inside a CSS-scaled container no longer overlap on
+  horizontal scroll.
 
 ## [3.5.0] - 2026-09-12
 

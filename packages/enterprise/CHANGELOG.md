@@ -200,6 +200,28 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   starts with or ends with reports that it cannot be expressed.
 - `getSchema` marks rating and progress columns aggregatable, as the
   aggregation engine already treats them.
+- **AI filters add to the active filters.** An AI filter replaces only a
+  filter on the same column instead of clearing the others, so a compound
+  prompt keeps every clause ("clear all filters" still clears).
+- AI undo restores only what the AI turn changed: formulas, ranges and later
+  view or column changes are kept, and the "undo" prompt passes over turns
+  that changed nothing. AI column prompts and an `applyState` patch with a
+  partial `columns` list keep the column order, widths and other pins (a list
+  naming every column is still the full layout), and `pinned: null` unpins.
+- **Formula entry runs the edit pipeline.** A formula entered in the formula
+  editor is judged by the column validators and the cancellable
+  `cellValueChanging` on its computed value, dispatches one
+  `cellValueChanged`, is staged with the row in row editing mode, and is
+  undoable; a validator that rejects error values now rejects such a formula.
+- Context menu sorts replace the current sort like a header click and fire
+  `sorting` and `sorted`; the sort items are omitted on columns that are not
+  sortable and while a manual row order is active; menu pins go through
+  `pinColumn`, so `columnPinning` and `columnPinned` fire.
+- A right-click inside a text field of a cell editor keeps the browser's menu.
+- A custom AI tool that throws becomes a warning and the applied steps can
+  still be undone; the analyze tool refuses a malformed query; AI `pivotOn`
+  accepts several fields; `AIResult.skipped` lists only slices a step asked
+  for that were not applied.
 
 ### Fixed
 - **Integrated charts show cell text as text.** Categories and series names
@@ -278,6 +300,26 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   common" no longer change the metric; under the highest-score routing policy
   the rule engine competes with its grounded plan confidence; "it" refers to
   the columns of a previous analytics answer or LLM state change.
+- Opening the formula editor on a cell and leaving it unchanged no longer
+  rewrites the value, a typed literal is read by the column type (text such
+  as 00123 stays text, booleans and dates keep their type), and a literal
+  over a formula that a validator or a cancelled `cellValueChanging` rejects
+  keeps the formula.
+- Formula suggestions and the parse error paint above the following rows and
+  follow scrolling, moving the caret dismisses the suggestions, the input is
+  announced as a combobox, and a formula grid inside a master-detail panel no
+  longer blocks clicks on the parent grid.
+- The context menu of a master-detail child grid acts on that grid, a
+  right-click on a pinned row targets that row's record, and pressing the
+  header kebab again closes its menu (with `aria-expanded` set while open).
+- `context-menu="false"` and `range-selection="false"` turn those features
+  off as documented.
+- The "export as csv" and "export to excel" AI prompts export from the grid,
+  "page size 50 and go to page 3" keeps the new page size, AI answers skip
+  blank cells and match keywords as whole words, and under a server row
+  model they count only loaded rows.
+- Paste and fill compute a formula's value with ranges clipped to the sheet,
+  matching the value the stored formula then computes.
 
 ### Performance
 - Range formulas index their precedents instead of one key per cell, so a
