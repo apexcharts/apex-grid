@@ -88,32 +88,27 @@ function sanitizeEnterpriseModule(
     }
   }
 
+  const pivotable = new Set(pivotableKeys(schema));
+  const keepPivotable = (keys: unknown[], field: string) =>
+    keys.filter((key) => {
+      const ok = typeof key === 'string' && pivotable.has(key);
+      if (!ok) warnings.push(`${field}: "${String(key)}" is not pivotable, dropped`);
+      return ok;
+    });
+
   if (blob.pivotOn !== undefined) {
+    // One column key ('' disables the pivot) or several (a multi-field pivot).
     if (!caps.pivot) warnings.push('pivot: not available, pivotOn dropped');
-    else {
-      const pivotable = new Set(pivotableKeys(schema));
-      if (
-        blob.pivotOn === '' ||
-        (typeof blob.pivotOn === 'string' && pivotable.has(blob.pivotOn))
-      ) {
-        clean.pivotOn = blob.pivotOn;
-      } else {
-        warnings.push(`pivotOn: "${String(blob.pivotOn)}" is not pivotable, dropped`);
-      }
+    else if (Array.isArray(blob.pivotOn)) clean.pivotOn = keepPivotable(blob.pivotOn, 'pivotOn');
+    else if (blob.pivotOn === '' || keepPivotable([blob.pivotOn], 'pivotOn').length > 0) {
+      clean.pivotOn = blob.pivotOn;
     }
   }
 
   if (blob.pivotRows !== undefined) {
     if (!caps.pivot) warnings.push('pivot: not available, pivotRows dropped');
     else if (!Array.isArray(blob.pivotRows)) warnings.push('pivotRows: expected an array, dropped');
-    else {
-      const pivotable = new Set(pivotableKeys(schema));
-      clean.pivotRows = blob.pivotRows.filter((key) => {
-        const ok = typeof key === 'string' && pivotable.has(key);
-        if (!ok) warnings.push(`pivotRows: "${String(key)}" is not pivotable, dropped`);
-        return ok;
-      });
-    }
+    else clean.pivotRows = keepPivotable(blob.pivotRows, 'pivotRows');
   }
 
   for (const field of ['aggregations', 'pivotValues'] as const) {

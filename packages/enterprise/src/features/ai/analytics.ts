@@ -158,7 +158,7 @@ function mode(rows: readonly Row[], column: string): string | number | null {
 }
 
 /** Compute one metric over the (already scoped) rows. Returns null when undefined. */
-function computeMetric(
+export function computeMetric(
   func: AnalyticsFunc,
   rows: readonly Row[],
   column: string | undefined

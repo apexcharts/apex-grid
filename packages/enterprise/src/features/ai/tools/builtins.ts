@@ -17,10 +17,11 @@ import type { AggregationConfig } from '../../aggregation.js';
 import { sanitizePatch } from '../../ai-sanitize.js';
 import type { StatePatch } from '../../ai-schema.js';
 import {
+  type AnalyticsFunc,
   type AnalyticsQuery,
+  computeMetric,
   formatAnalyticsAnswer,
-  maxOf,
-  minOf,
+  formatNumber,
   runAnalytics,
 } from '../analytics.js';
 import type { GridContext } from '../context.js';
@@ -55,6 +56,25 @@ function fail(...errors: string[]): { ok: false; errors: string[] } {
 const noop = () => undefined;
 
 const always = () => true;
+
+/**
+ * Every function the analytics engine computes (validates `analyze` queries).
+ * Keyed by the union, so a new func cannot be left out of the validator and
+ * the published tool schema.
+ */
+const ANALYTICS_FUNC_KEYS: Record<AnalyticsFunc, true> = {
+  min: true,
+  max: true,
+  avg: true,
+  median: true,
+  sum: true,
+  count: true,
+  distinct: true,
+  range: true,
+  stddev: true,
+  mode: true,
+};
+const ANALYTICS_FUNCS = new Set(Object.keys(ANALYTICS_FUNC_KEYS) as AnalyticsFunc[]);
 
 function normalizeDirection(direction: string | undefined): SortingDirection {
   if (direction && /^desc/i.test(direction)) return 'descending';
@@ -270,28 +290,29 @@ function summarizeView(ctx: GridContext): string {
   return `Current view: ${parts.join('; ')}.`;
 }
 
+/** The metric a question names, as whole words, with the word its answer uses. */
+const ANSWER_METRICS: ReadonlyArray<[AnalyticsFunc, RegExp, string]> = [
+  ['max', /\b(?:highest|max(?:imum)?|most|top|largest)\b/, 'highest'],
+  ['min', /\b(?:lowest|min(?:imum)?|least|smallest|bottom)\b/, 'lowest'],
+  ['avg', /\b(?:average|mean|avg)\b/, 'average'],
+  ['sum', /\b(?:sum|total)\b/, 'total'],
+];
+
+/**
+ * Answer a free-form question. Metrics are computed by the analytics engine, so
+ * this path and the `analyze` tool count blanks and numeric text the same way.
+ */
 function answerQuestion(question: string, tc: ToolContext): string {
   const rows = tc.api.getData() as ReadonlyArray<Record<string, unknown>>;
   const lower = question.toLowerCase();
   if (rows.length > 0) {
-    if (/how many|number of|count/.test(lower)) return `There are ${rows.length} rows.`;
+    if (/\b(?:how many|number of|count)\b/.test(lower)) return `There are ${rows.length} rows.`;
     const column = tc.ctx.columns.filter(isNumericColumn).find((c) => mentionsColumn(question, c));
-    if (column) {
-      const values = rows.map((row) => Number(row[column.key])).filter((n) => Number.isFinite(n));
-      if (values.length > 0) {
-        if (/highest|max|most|top|largest/.test(lower)) {
-          return `The highest ${column.label} is ${maxOf(values)}.`;
-        }
-        if (/lowest|min|least|smallest|bottom/.test(lower)) {
-          return `The lowest ${column.label} is ${minOf(values)}.`;
-        }
-        if (/average|mean|avg/.test(lower)) {
-          const avg = values.reduce((sum, n) => sum + n, 0) / values.length;
-          return `The average ${column.label} is ${Math.round(avg * 100) / 100}.`;
-        }
-        if (/sum|total/.test(lower)) {
-          return `The total ${column.label} is ${values.reduce((sum, n) => sum + n, 0)}.`;
-        }
+    const metric = column && ANSWER_METRICS.find(([, pattern]) => pattern.test(lower));
+    if (column && metric) {
+      const { value } = computeMetric(metric[0], rows, column.key);
+      if (typeof value === 'number') {
+        return `The ${metric[2]} ${column.label} is ${formatNumber(value)}.`;
       }
     }
   }
@@ -328,7 +349,7 @@ interface GroupArgs {
   by: string[];
 }
 interface PivotArgs {
-  on?: string;
+  on?: string | string[];
   rows?: string[];
   values?: AggregationConfig;
 }
@@ -602,7 +623,7 @@ const pivotTool: Tool<PivotArgs> = {
   parameters: {
     type: 'object',
     properties: {
-      on: { type: 'string' },
+      on: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
       rows: { type: 'array', items: { type: 'string' } },
       values: { type: 'object' },
     },
@@ -610,7 +631,7 @@ const pivotTool: Tool<PivotArgs> = {
   available: (ctx) => ctx.schema.capabilities.pivot === true,
   validate(args) {
     if (!isRecord(args)) return fail('pivot: expected an object');
-    const on = typeof args.on === 'string' ? args.on : undefined;
+    const on = typeof args.on === 'string' ? args.on : asArray(args.on)?.map((key) => String(key));
     const rows = asArray(args.rows)?.map((key) => String(key));
     const values = isRecord(args.values) ? (args.values as AggregationConfig) : undefined;
     return ok({ on, rows, values });
@@ -690,14 +711,52 @@ const analyzeTool: Tool<AnalyzeArgs> = {
   parameters: {
     type: 'object',
     required: ['query'],
-    properties: { query: { type: 'object' } },
+    properties: {
+      query: {
+        type: 'object',
+        required: ['kind', 'metrics'],
+        properties: {
+          kind: { enum: ['aggregate', 'group', 'rank'] },
+          metrics: { type: 'array', items: { enum: [...ANALYTICS_FUNCS] } },
+          column: { type: 'string' },
+          groupBy: { type: 'string' },
+          labelColumn: { type: 'string' },
+          where: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['key', 'operand'],
+              properties: { key: { type: 'string' }, operand: { type: 'string' }, value: {} },
+            },
+          },
+          direction: { enum: ['top', 'bottom'] },
+          limit: { type: 'integer', minimum: 0 },
+        },
+      },
+    },
   },
   available: always,
   validate(args) {
-    if (!isRecord(args) || !isRecord(args.query)) {
-      return fail('analyze: "query" must be an object');
+    // The shape runAnalytics dereferences; a malformed query is refused, not thrown on.
+    const query = isRecord(args) ? args.query : undefined;
+    if (
+      !isRecord(query) ||
+      !['aggregate', 'group', 'rank'].includes(query.kind as string) ||
+      !asArray(query.metrics)?.every((func) => ANALYTICS_FUNCS.has(func as AnalyticsFunc)) ||
+      (query.where !== undefined &&
+        !asArray(query.where)?.every(
+          (clause) =>
+            isRecord(clause) && typeof clause.key === 'string' && typeof clause.operand === 'string'
+        )) ||
+      // The rule planner reads "top 0" as limit 0, which analytics clamps to 1.
+      (query.limit !== undefined &&
+        !(Number.isInteger(query.limit) && (query.limit as number) >= 0))
+    ) {
+      return fail(
+        'analyze: "query" must be { kind, metrics: [], where?: [{ key, operand, value }], limit?: integer >= 0 } as in the tool schema'
+      );
     }
-    return ok({ query: args.query as unknown as AnalyticsQuery });
+    return ok({ query: query as unknown as AnalyticsQuery });
   },
   execute(args, tc) {
     const result = runAnalytics(args.query, tc.api.getData(), tc.ctx.schema);

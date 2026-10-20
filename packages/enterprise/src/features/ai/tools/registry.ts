@@ -147,12 +147,22 @@ class DefaultToolExecutor implements ToolExecutor {
         warnings.push(`tool "${step.tool}" is not available here, skipped`);
         continue;
       }
-      const validation = tool.validate(step.args, tc.ctx);
-      if (!validation.ok) {
-        warnings.push(...validation.errors);
-        continue;
+      let outcome: ToolOutcome;
+      try {
+        const validation = tool.validate(step.args, tc.ctx);
+        if (!validation.ok) {
+          warnings.push(...validation.errors);
+          continue;
+        }
+        outcome = tool.execute(validation.value, tc);
+      } catch (error) {
+        // Stop at a throwing tool (later steps may build on it), but still return
+        // the undo of the steps already applied, so the turn can be taken back.
+        warnings.push(
+          `tool "${step.tool}" failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+        break;
       }
-      const outcome = tool.execute(validation.value, tc);
       outcomes.push(outcome);
       undos.push(outcome.undo);
       applied.push(...outcome.applied);

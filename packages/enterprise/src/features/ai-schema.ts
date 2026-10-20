@@ -107,8 +107,9 @@ function enterpriseModuleSchema(schema: GridSchema): JSONSchema | null {
     const pivotable = pivotableKeys(schema);
     if (pivotable.length > 0) {
       properties.pivotOn = {
-        enum: ['', ...pivotable],
-        description: "Column whose distinct values become pivot columns ('' disables pivot).",
+        anyOf: [{ enum: ['', ...pivotable] }, { type: 'array', items: { enum: pivotable } }],
+        description:
+          "Column (or columns, outermost first) whose distinct values become pivot columns ('' disables pivot).",
       };
       properties.pivotRows = { type: 'array', items: { enum: pivotable } };
     }
