@@ -1788,6 +1788,14 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     if (this.hasUpdated || this.quickFilter) this.requestUpdate(PIPELINE);
   }
 
+  /** The first render shapes the tree in dataChanged; later changes rebuild it. */
+  @watch('tree', { waitUntilFirstUpdate: true })
+  protected treeChanged(previous?: GridTreeConfiguration<T>) {
+    if (!viewShapeChanged(VIEW_SHAPING_PROPERTIES.get('tree')!, previous, this.tree)) return;
+    this.stateController.tree.resetForDataChange();
+    this.requestUpdate(PIPELINE);
+  }
+
   /** The latest pipeline run; an older one that settles later is dropped. */
   #pipelineRun = 0;
   /**

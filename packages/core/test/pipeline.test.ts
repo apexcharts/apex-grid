@@ -1,7 +1,11 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import { ApexGrid } from '../src/components/grid.js';
 import { PIPELINE } from '../src/internal/constants.js';
-import type { ColumnConfiguration, DataPipelineConfiguration } from '../src/internal/types.js';
+import type {
+  ColumnConfiguration,
+  DataPipelineConfiguration,
+  GridTreeConfiguration,
+} from '../src/internal/types.js';
 import type { FilterExpression } from '../src/operations/filter/types.js';
 import type { SortExpression } from '../src/operations/sort/types.js';
 
@@ -407,6 +411,38 @@ describe('Data pipeline orchestration', () => {
       grid.quickFilter = 'x';
       await settle(grid);
       expect(events).to.eql([]);
+    });
+  });
+
+  describe('tree changes after the first render', () => {
+    interface Node extends Row {
+      path: string[];
+    }
+    const org = (): Node[] => [
+      { id: 0, name: 'Adrian', path: ['Adrian'] },
+      { id: 1, name: 'Bryan', path: ['Adrian', 'Bryan'] },
+      { id: 2, name: 'Chris', path: ['Adrian', 'Bryan', 'Chris'] },
+      { id: 3, name: 'Cheryl', path: ['Cheryl'] },
+    ];
+    const tree: GridTreeConfiguration<Row> = {
+      enabled: true,
+      getDataPath: (row) => (row as Node).path,
+    };
+
+    it('reshapes the rows when tree mode is enabled', async () => {
+      const grid = await mount({ data: org() });
+      expect(grid.pageItems.length).to.equal(4);
+      grid.tree = tree;
+      await settle(grid);
+      expect(grid.pageItems.map((row) => row.name)).to.eql(['Adrian', 'Cheryl']);
+    });
+
+    it('shows every row again when tree mode is disabled', async () => {
+      const grid = await mount({ data: org(), tree });
+      expect(grid.pageItems.length).to.equal(2);
+      grid.tree = { ...tree, enabled: false };
+      await settle(grid);
+      expect(grid.pageItems.length).to.equal(4);
     });
   });
 });
