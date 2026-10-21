@@ -808,6 +808,16 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     // `disconnectedCallback` drops the watermark layer and Lit does not re-render on reconnect,
     // so repaint here. Before the first update there is nothing to restore: `updated` paints.
     if (this.hasUpdated) this.#syncWatermark();
+    // Bring back the dialogs a detach took off the page (see disconnectedCallback).
+    for (const dialog of this.#floatingDialogs()) {
+      if (!dialog.isConnected) document.body.appendChild(dialog);
+    }
+    this.#chartRangeManagerInstance?.reposition();
+  }
+
+  /** The open floating chart and Ask AI dialogs this grid owns. */
+  #floatingDialogs(): HTMLElement[] {
+    return this.#aiDialog ? [...this.#chartDialogs, this.#aiDialog] : [...this.#chartDialogs];
   }
 
   /** Keep both the selection affordance and any charted-range overlays anchored on scroll/resize. */
@@ -845,21 +855,15 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.#watermarkLayer = null;
     this.#chartAffordance?.remove();
     this.#chartAffordance = null;
-    // Floating chart dialogs + charted-range overlays live on document.body, not under the grid.
-    this.#chartRangeManagerInstance?.destroy();
-    for (const chart of this.#chartDialogs) chart.remove();
-    this.#chartDialogs.clear();
-    // The Ask AI dialog keeps its conversation across a move (disconnected and connected again in
-    // the same task) and closes with the grid otherwise.
-    const ai = this.#aiDialog;
-    if (ai) {
-      queueMicrotask(() => {
-        if (!this.isConnected && this.#aiDialog === ai) {
-          ai.remove();
-          this.#aiDialog = null;
-        }
-      });
-    }
+    // The floating dialogs and charted-range overlays live on document.body. A same-task move (a
+    // keyed reorder, a dashboard drag) leaves them in place; otherwise they leave the page with the
+    // grid and come back when it is attached again (a detail grid scrolled out and back), or go
+    // with it to garbage collection. Nothing else holds them.
+    queueMicrotask(() => {
+      if (this.isConnected) return;
+      for (const dialog of this.#floatingDialogs()) dialog.remove();
+      this.#chartRangeManagerInstance?.reposition();
+    });
     super.disconnectedCallback();
   }
 

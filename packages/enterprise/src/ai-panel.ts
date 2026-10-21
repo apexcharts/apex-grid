@@ -297,6 +297,8 @@ export class ApexGridAI extends LitElement {
   @state() private transcript: TranscriptEntry[] = [];
 
   #controller: AbortController | null = null;
+  /** The request aborted because the dialog left the page (its grid parked it), not by the user. */
+  #parkedRun: AbortController | null = null;
   #drag: { pointerId: number; offsetX: number; offsetY: number } | null = null;
   /** What had focus before {@link show}, so a dialog close can put focus back. */
   #restoreFocus: HTMLElement | null = null;
@@ -306,6 +308,7 @@ export class ApexGridAI extends LitElement {
     localize(this.grid?.localeText, key, undefined, fallback);
 
   public override disconnectedCallback(): void {
+    this.#parkedRun = this.#controller;
     this.#controller?.abort();
     this.#controller = null;
     super.disconnectedCallback();
@@ -383,11 +386,12 @@ export class ApexGridAI extends LitElement {
     this.previewPlan = null;
     this.undone = false;
     this.busy = true;
-    this.#controller = new AbortController();
+    const controller = new AbortController();
+    this.#controller = controller;
     try {
       const result = await grid.runPrompt(this.prompt, {
         mode: this.currentMode,
-        signal: this.#controller.signal,
+        signal: controller.signal,
       });
       this.result = result;
       this.transcript = [
@@ -403,7 +407,7 @@ export class ApexGridAI extends LitElement {
         new CustomEvent('apex-ai-result', { detail: { result }, bubbles: true, composed: true })
       );
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      this.#fail(controller, error);
     } finally {
       this.busy = false;
       this.#controller = null;
@@ -418,18 +422,31 @@ export class ApexGridAI extends LitElement {
     this.result = null;
     this.previewPlan = null;
     this.busy = true;
-    this.#controller = new AbortController();
+    const controller = new AbortController();
+    this.#controller = controller;
     try {
       this.previewPlan = await grid.previewPrompt(this.prompt, {
         mode: this.currentMode,
-        signal: this.#controller.signal,
+        signal: controller.signal,
       });
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      this.#fail(controller, error);
     } finally {
       this.busy = false;
       this.#controller = null;
     }
+  }
+
+  /**
+   * Show a failed request's error, unless the dialog's own disconnect aborted it: a parked dialog
+   * that comes back with its grid should not greet the user with an abort message.
+   */
+  #fail(controller: AbortController, error: unknown): void {
+    if (controller === this.#parkedRun) {
+      this.#parkedRun = null;
+      return;
+    }
+    this.error = error instanceof Error ? error.message : String(error);
   }
 
   #cancel(): void {

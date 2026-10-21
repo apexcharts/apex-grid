@@ -1,6 +1,15 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration, GridExpansionConfiguration } from 'apex-grid';
-import { ApexGridEnterprise, type MasterDetailConfig } from '../src/index.js';
+import {
+  ApexGridAI,
+  ApexGridChart,
+  ApexGridEnterprise,
+  enterpriseModules,
+  type MasterDetailConfig,
+} from '../src/index.js';
+
+// No render animation: its async callbacks can outlive a removed chart.
+(window as unknown as { Apex?: unknown }).Apex = { chart: { animations: { enabled: false } } };
 
 interface Item {
   sku: string;
@@ -79,9 +88,54 @@ async function settle(grid: ApexGridEnterprise<Order>) {
   await nextFrame();
 }
 
+/**
+ * Detach `element`, let a frame and a task pass (so nothing treats it as a same-task move), then
+ * attach it to `parent` (its old parent by default) and wait for it to update.
+ */
+async function reconnect(element: HTMLElement, parent = element.parentNode as ParentNode) {
+  element.remove();
+  await nextFrame();
+  await new Promise((resolve) => setTimeout(resolve));
+  parent.appendChild(element);
+  await (element as HTMLElement & { updateComplete?: Promise<unknown> }).updateComplete;
+  await nextFrame();
+}
+
+type EnterpriseDetail = ApexGridEnterprise<Item>;
+
+/** The nested enterprise detail grids currently rendered. */
+function enterpriseDetails(grid: ApexGridEnterprise<Order>): EnterpriseDetail[] {
+  return deepQueryAll(grid.shadowRoot!, 'apex-grid-enterprise') as EnterpriseDetail[];
+}
+
+const chartDialogs = () => document.body.querySelectorAll('apex-grid-chart');
+
+/** Open a Create chart dialog from `grid`'s toolbar. */
+function createChart(grid: ApexGridEnterprise<never>) {
+  grid.toolbarActions.find((action) => action.id === 'create-chart')!.run();
+}
+
+const activeNode = (grid: HTMLElement) =>
+  (grid as unknown as { stateController: { active: { column: string; row: number } } })
+    .stateController.active;
+
+function bodyOf(grid: HTMLElement) {
+  return grid.shadowRoot!.querySelector('apex-virtualizer') as HTMLElement;
+}
+
 describe('Master/detail', () => {
-  before(() => ApexGridEnterprise.register());
-  afterEach(() => fixtureCleanup());
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+    ApexGridChart.register();
+    ApexGridAI.register();
+  });
+  afterEach(() => {
+    for (const el of chartDialogs()) el.remove();
+    for (const el of document.body.querySelectorAll('apex-grid-ai')) el.remove();
+    for (const el of document.body.querySelectorAll('[part^="chart-range-"]')) el.remove();
+    fixtureCleanup();
+  });
 
   it('enables expansion and renders a nested detail grid on expand', async () => {
     const grid = await mount({ columns: detailColumns, getDetailData: (order) => order.items });
@@ -323,5 +377,177 @@ describe('Master/detail', () => {
       console.warn = original;
     }
     expect(warnings.filter((line) => line.includes('[apex-grid]'))).to.eql([]);
+  });
+
+  describe('enterprise detail grids across a detach', () => {
+    const many: Order[] = Array.from({ length: 200 }, (_, i) => ({
+      id: i + 1,
+      customer: `C${i + 1}`,
+      items: [
+        { sku: `S-${i}-a`, qty: 1 },
+        { sku: `S-${i}-b`, qty: 2 },
+        { sku: `S-${i}-c`, qty: 3 },
+      ],
+    }));
+
+    async function mountEnterpriseDetail() {
+      const grid = await fixture<ApexGridEnterprise<Order>>(
+        html`<apex-grid-enterprise
+          style="height:500px"
+          .data=${many}
+          .columns=${columns}
+          .masterDetail=${
+            {
+              columns: detailColumns,
+              getDetailData: (order: Order) => order.items,
+              detailTag: 'apex-grid-enterprise',
+            } as MasterDetailConfig<Order>
+          }
+        ></apex-grid-enterprise>`,
+        { parentNode: sizedParent() }
+      );
+      await grid.updateComplete;
+      await waitFor(() => deepQueryAll(grid.shadowRoot!, 'apex-grid-cell').length > 0);
+      await grid.expandRow(many[0]);
+      await settle(grid);
+      await waitFor(() => enterpriseDetails(grid).length > 0);
+      const detail = enterpriseDetails(grid)[0];
+      await detail.updateComplete;
+      await waitFor(() => deepQueryAll(detail.shadowRoot!, 'apex-grid-cell').length > 0);
+      return { grid, detail };
+    }
+
+    async function assertWorking(detail: EnterpriseDetail) {
+      await waitFor(() => deepQueryAll(detail.shadowRoot!, 'apex-grid-cell').length > 0);
+      expect(
+        detail.renderRoot.querySelector('[part~="license-watermark"]'),
+        'watermark repainted'
+      ).to.not.equal(null);
+      const cell = deepQueryAll(detail.shadowRoot!, 'apex-grid-cell')[0] as HTMLElement;
+      cell.click();
+      await detail.updateComplete;
+      const start = activeNode(detail).row;
+      bodyOf(detail).dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, composed: true })
+      );
+      await detail.updateComplete;
+      expect(activeNode(detail).row, 'keyboard navigation moves').to.equal(start + 1);
+    }
+
+    it('a detached and re-attached detail grid keeps its chart dialog and still works', async () => {
+      const { detail } = await mountEnterpriseDetail();
+      createChart(detail as unknown as ApexGridEnterprise<never>);
+      await nextFrame();
+      const dialog = chartDialogs()[0] as ApexGridChart;
+      expect(dialog?.isConnected).to.equal(true);
+
+      await reconnect(detail);
+      expect(dialog.isConnected, 'dialog back after re-attach').to.equal(true);
+      expect(dialog.open).to.equal(true);
+      expect(chartDialogs().length).to.equal(1);
+      await assertWorking(detail);
+    });
+
+    it('scrolling the master past an expanded row and back keeps the detail working', async () => {
+      const { grid, detail } = await mountEnterpriseDetail();
+      createChart(detail as unknown as ApexGridEnterprise<never>);
+      await nextFrame();
+      const dialog = chartDialogs()[0] as ApexGridChart;
+
+      grid.scrollTop = 4000;
+      await waitFor(() => !detail.isConnected);
+      await settle(grid);
+      await new Promise((resolve) => setTimeout(resolve));
+      expect(detail.isConnected, 'detail scrolled out').to.equal(false);
+      expect(dialog.isConnected, 'dialog hidden with its grid').to.equal(false);
+
+      grid.scrollTop = 0;
+      await waitFor(() => detail.isConnected);
+      await settle(grid);
+      expect(detail.isConnected, 'detail back').to.equal(true);
+      expect(dialog.isConnected, 'dialog back with its grid').to.equal(true);
+      expect(dialog.open).to.equal(true);
+      expect(chartDialogs().length).to.equal(1);
+      await assertWorking(detail);
+    });
+
+    it('a top-level grid detached for a while gets its chart dialog back', async () => {
+      const { grid } = await mountEnterpriseDetail();
+      createChart(grid as unknown as ApexGridEnterprise<never>);
+      await nextFrame();
+      const dialog = chartDialogs()[0] as ApexGridChart;
+      const parent = grid.parentNode as ParentNode;
+      grid.remove();
+      await nextFrame();
+      expect(dialog.isConnected).to.equal(false);
+      parent.appendChild(grid);
+      await grid.updateComplete;
+      expect(dialog.isConnected, 'restored on a later re-attach').to.equal(true);
+    });
+
+    it('a charted range outline leaves and returns with its grid', async () => {
+      const { grid } = await mountEnterpriseDetail();
+      grid.selectRange({ row: 2, column: 'id' }, { row: 4, column: 'customer' });
+      grid.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'F1', altKey: true, bubbles: true, cancelable: true })
+      );
+      await nextFrame();
+      const outlines = () => document.body.querySelectorAll('[part="chart-range-outline"]');
+      expect(outlines().length, 'outline drawn').to.equal(1);
+      const parent = grid.parentNode as ParentNode;
+      grid.remove();
+      await nextFrame();
+      expect(outlines().length, 'outline off the page with its grid').to.equal(0);
+      expect(chartDialogs().length).to.equal(0);
+      parent.appendChild(grid);
+      await grid.updateComplete;
+      expect(outlines().length, 'outline back').to.equal(1);
+      expect(chartDialogs().length).to.equal(1);
+    });
+
+    it('an Ask AI request cut off by a detach shows no error when the dialog returns', async () => {
+      const { grid } = await mountEnterpriseDetail();
+      let fail: Error | null = null;
+      // A request that only settles when it is aborted, or with `fail` once that is set.
+      (grid as unknown as { runPrompt: unknown }).runPrompt = (
+        _prompt: string,
+        options: { signal: AbortSignal }
+      ) =>
+        fail
+          ? Promise.reject(fail)
+          : new Promise((_resolve, reject) => {
+              options.signal.addEventListener('abort', () =>
+                reject(new DOMException('The operation was aborted.', 'AbortError'))
+              );
+            });
+      grid.toolbarActions.find((action) => action.id === 'ask-ai')!.run();
+      await nextFrame();
+      const dialog = document.body.querySelector('apex-grid-ai') as ApexGridAI;
+      await dialog.updateComplete;
+      const send = async () => {
+        const input = dialog.renderRoot.querySelector('[part="input"]') as HTMLTextAreaElement;
+        input.value = 'sort by id';
+        input.dispatchEvent(new Event('input'));
+        await dialog.updateComplete;
+        (dialog.renderRoot.querySelector('[part="send"]') as HTMLButtonElement).click();
+        await dialog.updateComplete;
+      };
+      const error = () => dialog.renderRoot.querySelector('[part="error"]');
+
+      await send();
+      expect(dialog.renderRoot.querySelector('[part="notice"]'), 'request in flight').to.not.equal(
+        null
+      );
+      await reconnect(grid);
+      await dialog.updateComplete;
+      expect(dialog.isConnected, 'dialog back with its grid').to.equal(true);
+      expect(error(), 'no abort message after the park').to.equal(null);
+
+      // A real failure still shows.
+      fail = new Error('boom');
+      await send();
+      await dialog.updateComplete;
+      expect(error()?.textContent).to.equal('boom');
+    });
   });
 });

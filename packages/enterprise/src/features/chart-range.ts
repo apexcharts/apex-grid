@@ -122,8 +122,18 @@ export class ChartRangeManager {
   public reposition = (): void => {
     if (!this.#links.size) return;
     const attached = this.host.gridElement.isConnected;
+    if (!attached) this.#dragging = null;
     const clip = this.host.gridElement.getBoundingClientRect();
     for (const link of this.#links.values()) {
+      // An overlay is on the page only while its grid is: a detached grid takes it off, and the
+      // next reposition after a re-attach puts it back.
+      if (attached !== link.outline.isConnected) {
+        if (attached) document.body.append(link.outline, link.handle);
+        else {
+          link.outline.remove();
+          link.handle.remove();
+        }
+      }
       const rect = attached ? this.host.boundsClientRect(link.bounds) : null;
       // Hide when the range is scrolled out of the body or the rect leaves the grid box.
       if (!rect || rect.bottom <= clip.top || rect.top >= clip.bottom) {
