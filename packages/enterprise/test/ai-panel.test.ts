@@ -82,6 +82,16 @@ describe('AI Toolkit — <apex-grid-ai>', () => {
     expect(part(panel, 'undo'), 'undo button').to.exist;
   });
 
+  it('names an applied enterprise field without its state path', async () => {
+    const { panel } = await mount();
+    await type(panel, 'group by region');
+    part<HTMLButtonElement>(panel, 'send')?.click();
+    await waitForResult(panel);
+    const text = part(panel, 'result')?.textContent ?? '';
+    expect(text).to.contain('groupBy');
+    expect(text).not.to.contain('modules');
+  });
+
   it('undo restores the prior view', async () => {
     const { grid, panel } = await mount();
     await type(panel, 'sort by amount descending');

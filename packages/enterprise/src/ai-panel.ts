@@ -24,6 +24,20 @@ function deepActiveElement(): HTMLElement | null {
 }
 
 /**
+ * The applied slices as the user reads them: enterprise fields
+ * (`modules.enterprise.groupBy`) by name, in place of the bare `modules` slice.
+ */
+function appliedLabels(applied: readonly string[]): string {
+  const fields = applied
+    .filter((slice) => slice.startsWith('modules.'))
+    .map((slice) => slice.slice(slice.lastIndexOf('.') + 1));
+  const slices = applied.filter(
+    (slice) => !slice.startsWith('modules.') && !(slice === 'modules' && fields.length)
+  );
+  return [...slices, ...fields].join(', ');
+}
+
+/**
  * Prompt panel for the enterprise grid's AI Toolkit. Mount it beside a grid and
  * set its `grid` property: it sends a natural-language prompt through the grid's
  * {@link ApexGridEnterprise.runPrompt} (the built-in rule engine, plus any
@@ -475,7 +489,7 @@ export class ApexGridAI extends LitElement {
       return result.abstained ? this.#t('ai.abstained') : result.answer;
     }
     return result.applied.length
-      ? `${this.#t('ai.applied')}: ${result.applied.join(', ')}`
+      ? `${this.#t('ai.applied')}: ${appliedLabels(result.applied)}`
       : this.#t('ai.noChanges');
   }
 
@@ -548,7 +562,7 @@ export class ApexGridAI extends LitElement {
 
     const applied = result.applied;
     const summary = applied.length
-      ? `${this.#t('ai.applied')}: ${applied.join(', ')}`
+      ? `${this.#t('ai.applied')}: ${appliedLabels(applied)}`
       : this.#t('ai.noChanges');
     return html`<div part="result">
       <div>${summary} ${this.#renderSource(result.plan.source)}</div>
