@@ -660,6 +660,26 @@ export class PivotController<T extends object>
     this.host.requestUpdate(PIPELINE);
   }
 
+  /**
+   * The explicit per-node expand overrides (node key → expanded), for state
+   * serialization. Nodes using `options.defaultExpanded` are absent.
+   */
+  public getExpandOverrides(): Record<string, boolean> {
+    return Object.fromEntries(this.#expandOverrides);
+  }
+
+  /**
+   * Replaces the per-node expand overrides from a snapshot (silent) and
+   * re-runs the pipeline so the next pass honors them.
+   */
+  public restoreExpandOverrides(overrides: Record<string, boolean>): void {
+    this.#expandOverrides.clear();
+    for (const [key, expanded] of Object.entries(overrides)) {
+      this.#expandOverrides.set(key, expanded);
+    }
+    this.host.requestUpdate(PIPELINE);
+  }
+
   // --- RowAriaProvider -----------------------------------------------------
 
   /**

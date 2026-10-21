@@ -330,11 +330,67 @@ interface EnterpriseStateBlob {
    * leave the current default in place.
    */
   groupDefaultExpanded?: boolean | number;
+  /**
+   * {@link ApexGridEnterprise.pivotOptions}. A `maxValueColumns` of `null`
+   * stands for `Infinity` (no cap), which JSON cannot hold.
+   */
+  pivotOptions?: Omit<PivotOptions, 'maxValueColumns'> & { maxValueColumns?: number | null };
+  /** Per-node expand overrides of the expandable pivot tree (node key → expanded). */
+  pivotExpand?: Record<string, boolean>;
   /** Range-selection rectangles (view coordinates; round-trip within a session). */
   ranges?: RangeBounds[];
   /** Stored cell formulas (durable across reload when `rowId` is set, else positional). */
   formulas?: FormulaStateEntry[];
+  /**
+   * The applied advanced filter ({@link ApexGridEnterprise.applyAdvancedFilter}),
+   * or `null` when none is. Restored through the same path, so it reaches a
+   * server row model as well.
+   */
+  advancedFilter?: AdvancedFilterModel | null;
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isKeyList = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((key) => typeof key === 'string');
+
+const isAggregationConfig = (value: unknown): boolean =>
+  isRecord(value) && Object.values(value).every(isKeyList);
+
+/** A group or condition shaped as {@link AdvancedFilterNode} (a condition's value is optional). */
+function isFilterNode(node: unknown): boolean {
+  if (!isRecord(node)) return false;
+  return node.kind === 'condition'
+    ? typeof node.column === 'string' &&
+        typeof node.operator === 'string' &&
+        ['undefined', 'string', 'number', 'boolean'].includes(typeof node.value)
+    : node.kind === 'group' &&
+        (node.join === 'and' || node.join === 'or') &&
+        Array.isArray(node.children) &&
+        node.children.every(isFilterNode);
+}
+
+/**
+ * The shape check of each enterprise snapshot field. `groupExpand` /
+ * `groupDefaultExpanded` go through {@link readGroupExpansion}; formula entries
+ * are checked one by one. Pivot options only need to be an object: the pivot
+ * reads each option defensively, as it does an app's own assignment.
+ */
+const BLOB_FIELDS: Record<string, (value: unknown) => boolean> = {
+  groupBy: isKeyList,
+  aggregations: isAggregationConfig,
+  pivotOn: (value) => typeof value === 'string' || isKeyList(value),
+  pivotRows: isKeyList,
+  pivotValues: isAggregationConfig,
+  pivotOptions: isRecord,
+  // Single-sourced with groupExpand: only a valid record comes back as overrides.
+  pivotExpand: (value) => !!readGroupExpansion(undefined, value, () => {}).overrides,
+  ranges: Array.isArray,
+  formulas: Array.isArray,
+  advancedFilter: (value) =>
+    value === null || (isRecord(value) && value.kind === 'group' && isFilterNode(value)),
+};
 
 /** A persisted cell formula: a durable row reference, the column key, and the source. */
 interface FormulaStateEntry {
@@ -941,7 +997,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   /**
    * Extends the core {@link ApexGrid.getState} snapshot with the enterprise view
-   * state (row grouping, aggregations, and pivoting), stored under
+   * state (row grouping, aggregations, pivoting and its options, group and pivot
+   * tree expansion, ranges, formulas, and the advanced filter), stored under
    * `modules.enterprise`.
    *
    * @remarks
@@ -951,16 +1008,26 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    */
   public override getState(options?: GetStateOptions<T>): GridState {
     const base = super.getState(options);
+    const pivotOptions: EnterpriseStateBlob['pivotOptions'] = { ...this.pivotOptions };
+    const cap = pivotOptions.maxValueColumns;
+    // JSON has no Infinity (no cap): store it as null. Other non-finite values
+    // mean the default, so they are left out.
+    if (cap === Number.POSITIVE_INFINITY) pivotOptions.maxValueColumns = null;
+    else if (cap != null && !Number.isFinite(cap)) delete pivotOptions.maxValueColumns;
+    const filter = this.#advancedFilterModel;
     const enterprise: EnterpriseStateBlob = {
       groupBy: [...this.groupBy],
       aggregations: { ...this.aggregations },
       pivotOn: this.pivotOn,
       pivotRows: [...this.pivotRows],
       pivotValues: { ...this.pivotValues },
+      pivotOptions,
+      pivotExpand: this.#pivotController()?.getExpandOverrides() ?? {},
       groupExpand: this.#groupingController()?.getExpandOverrides() ?? {},
       groupDefaultExpanded: this.#groupingController()?.defaultExpanded,
       ranges: this.#rangeController()?.getRanges() ?? [],
       formulas: this.#serializeFormulas(options?.rowId ?? this.rowId),
+      advancedFilter: filter && copyAdvancedFilter(filter),
     };
     return { ...base, modules: { ...base.modules, enterprise } };
   }
@@ -1022,100 +1089,142 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * then applies the core slices via {@link ApexGrid.setState}. Enterprise
    * structure (grouping / pivot) is set first so the transformed view is in
    * place before the core pass resolves row-referencing slices.
+   *
+   * Keeps the core defensive contract: every enterprise field is checked before
+   * anything is applied, a malformed one is skipped with a message in
+   * `warnings` (or throws, with `strict`), unresolved formula rows are counted
+   * the way core row slices are, and each accepted field whose module is
+   * registered is listed in `applied` as `modules.enterprise.<field>`. These
+   * dotted names sit next to the core slice names, so an app that maps
+   * `applied` back to the core slice keys should skip them.
    */
   public override setState(
     state: Partial<GridState>,
     options?: SetStateOptions<T>
   ): SetStateResult {
-    const enterprise = state.modules?.enterprise as EnterpriseStateBlob | undefined;
     const strict = options?.strict === true;
-    // Validate group expansion before applying anything, so a wrong-typed slice
-    // is skipped (or throws, in strict mode) without leaving the rest half set.
     const warnings: string[] = [];
-    const expansion = readGroupExpansion(
-      enterprise?.groupDefaultExpanded,
-      enterprise?.groupExpand,
-      (message) => {
-        if (strict) throw new Error(`[apex-grid] setState: ${message}`);
-        warnings.push(message);
-      }
-    );
-    if (enterprise) {
-      if (enterprise.groupBy !== undefined) this.groupBy = [...enterprise.groupBy];
-      if (enterprise.aggregations !== undefined) this.aggregations = { ...enterprise.aggregations };
-      if (enterprise.pivotOn !== undefined) this.pivotOn = enterprise.pivotOn;
-      if (enterprise.pivotRows !== undefined) this.pivotRows = [...enterprise.pivotRows];
-      if (enterprise.pivotValues !== undefined) this.pivotValues = { ...enterprise.pivotValues };
-      // Group expansion before the core pass: it must be in place when the
-      // pipeline rebuilds the (restored) group structure.
-      this.#groupingController()?.restoreExpansion(expansion);
+    const warn = (message: string): void => {
+      if (strict) throw new Error(`[apex-grid] setState: ${message}`);
+      warnings.push(message);
+    };
+    // Validate the whole blob first, so a wrong-typed field is skipped (or
+    // throws, in strict mode) without leaving the rest half set.
+    const raw = isRecord(state.modules) ? state.modules.enterprise : undefined;
+    if (raw !== undefined && !isRecord(raw)) {
+      warn(`modules.enterprise: expected an object, got ${typeof raw}; skipped`);
     }
+    const blob = isRecord(raw) ? raw : {};
+    const valid: Record<string, unknown> = {};
+    for (const [field, check] of Object.entries(BLOB_FIELDS)) {
+      const value = blob[field];
+      if (value === undefined) continue;
+      if (check(value)) valid[field] = value;
+      else warn(`${field}: malformed; skipped`);
+    }
+    const enterprise = valid as EnterpriseStateBlob;
+    const expansion = readGroupExpansion(blob.groupDefaultExpanded, blob.groupExpand, warn);
+    const formulaController = this.#formulaController();
+    const formulas =
+      enterprise.formulas && formulaController
+        ? this.#resolveFormulas(enterprise.formulas, options?.rowId ?? this.rowId, warn)
+        : undefined;
+
+    if (enterprise.groupBy) this.groupBy = [...enterprise.groupBy];
+    if (enterprise.aggregations) this.aggregations = { ...enterprise.aggregations };
+    if (enterprise.pivotOn !== undefined) this.pivotOn = enterprise.pivotOn;
+    if (enterprise.pivotRows) this.pivotRows = [...enterprise.pivotRows];
+    if (enterprise.pivotValues) this.pivotValues = { ...enterprise.pivotValues };
+    if (enterprise.pivotOptions) {
+      const next = { ...enterprise.pivotOptions } as PivotOptions;
+      if (enterprise.pivotOptions.maxValueColumns === null) {
+        next.maxValueColumns = Number.POSITIVE_INFINITY;
+      }
+      this.pivotOptions = next;
+    }
+    // Expansion before the core pass: it must be in place when the pipeline
+    // rebuilds the (restored) group and pivot structure.
+    this.#groupingController()?.restoreExpansion(expansion);
+    if (enterprise.pivotExpand) {
+      this.#pivotController()?.restoreExpandOverrides(enterprise.pivotExpand);
+    }
+    // Through the filter builder's own path, so a server row model reloads too.
+    if (enterprise.advancedFilter === null) this.clearAdvancedFilter();
+    else if (enterprise.advancedFilter) this.applyAdvancedFilter(enterprise.advancedFilter);
 
     const result = super.setState(state, options);
-    result.warnings.push(...warnings);
 
     // Ranges last: their bounds are view coordinates into the freshly-restored
     // columns / rows, so resolve them against the post-restore view.
-    if (enterprise?.ranges !== undefined) {
-      this.#rangeController()?.restoreRanges(enterprise.ranges);
+    if (enterprise.ranges) this.#rangeController()?.restoreRanges(enterprise.ranges);
+
+    // Formulas recompute on restore. Their rows resolved above, against the
+    // same data; entries that do not parse or target a column without
+    // `allowFormula` are skipped here (strict throws before any changes).
+    if (formulas) {
+      for (const { columnKey, src, reason } of formulaController!.restoreFormulas(
+        formulas,
+        strict
+      )) {
+        warn(
+          `formulas: "${src}" in "${columnKey}" skipped (${reason === 'column' ? 'no allowFormula' : 'invalid'})`
+        );
+      }
     }
 
-    // Formulas resolve their durable row references against the current data and
-    // recompute on restore.
-    if (enterprise?.formulas !== undefined) {
-      this.#restoreFormulas(
-        enterprise.formulas,
-        options?.rowId ?? this.rowId,
-        strict,
-        (message) => {
-          if (strict) throw new Error(`[apex-grid] setState: ${message}`);
-          result.warnings.push(message);
-        }
-      );
-    }
-
+    const fields = Object.keys(valid);
+    if (expansion.overrides) fields.push('groupExpand');
+    if (expansion.defaultExpanded !== undefined) fields.push('groupDefaultExpanded');
+    // Report only what the grid can show: a field whose module is not
+    // registered is set but has no effect. The advanced filter is built in.
+    const has = (id: string): boolean => !!this.stateController.module(id);
+    const grouping = has(GROUPING_MODULE_ID);
+    const pivot = has(PIVOT_MODULE_ID);
+    const shown = (field: string): boolean =>
+      field === 'advancedFilter' ||
+      (field.startsWith('group') && grouping) ||
+      (field.startsWith('pivot') && pivot) ||
+      (field === 'aggregations' && (grouping || has(AGGREGATION_MODULE_ID))) ||
+      (field === 'ranges' && has(RANGE_SELECTION_MODULE_ID)) ||
+      (field === 'formulas' && !!formulaController);
+    result.applied.push(...fields.filter(shown).map((field) => `modules.enterprise.${field}`));
+    result.warnings.push(...warnings);
     return result;
   }
 
   /**
-   * Resolve persisted formula row references against `data` and restore them.
-   * Entries that do not resolve, do not parse, or target a column without
-   * `allowFormula` are skipped with a warning; the rest still restore. With
-   * `strict` the first one throws before any stored formula changes.
+   * Resolve persisted formula row references against the current data. Entries
+   * that lack a row, column or source are malformed; entries whose row is gone
+   * do not resolve. Both are dropped and counted, one message each, as core row
+   * slices report them, through `warn` (which throws in strict mode).
    */
-  #restoreFormulas(
-    formulas: unknown,
+  #resolveFormulas(
+    formulas: ReadonlyArray<unknown>,
     rowId: ((row: T) => string | number) | undefined,
-    strict: boolean,
     warn: (message: string) => void
-  ): void {
-    const controller = this.#formulaController();
-    if (!controller) {
-      return;
-    }
-    if (!Array.isArray(formulas)) {
-      warn('formulas: expected an array; skipped');
-      return;
-    }
+  ): FormulaRestoreEntry<T>[] {
     // One id map for every entry (a per-entry resolve rebuilt it per formula).
     const byId = rowId ? new Map(this.data.map((row) => [rowId(row), row])) : null;
     const entries: FormulaRestoreEntry<T>[] = [];
+    let malformed = 0;
     for (const entry of formulas as Partial<FormulaStateEntry>[]) {
-      const ref = entry?.row;
-      const byIdRef = typeof ref === 'object' && ref !== null && 'id' in ref;
-      const row = byIdRef ? byId?.get(ref.id) : resolveRowRefs(ref ? [ref] : [], this.data)[0];
-      if (!row || typeof entry.column !== 'string' || typeof entry.src !== 'string') {
-        warn(`formulas: ${JSON.stringify(ref)} is not a cell in the data; skipped`);
+      const ref = isRecord(entry) ? entry.row : undefined;
+      if (!isRecord(ref) || typeof entry.column !== 'string' || typeof entry.src !== 'string') {
+        malformed++;
         continue;
       }
-      const origin = byIdRef ? entry.origin : (ref as { index: number }).index;
-      entries.push({ row, columnKey: entry.column, src: entry.src, origin });
+      const byIdRef = 'id' in ref;
+      const row = byIdRef ? byId?.get(ref.id) : resolveRowRefs([ref], this.data)[0];
+      if (row) {
+        const origin = byIdRef ? entry.origin : (ref as { index: number }).index;
+        entries.push({ row, columnKey: entry.column, src: entry.src, origin });
+      }
     }
-    for (const { columnKey, src, reason } of controller.restoreFormulas(entries, strict)) {
-      warn(
-        `formulas: "${src}" in "${columnKey}" skipped (${reason === 'column' ? 'no allowFormula' : 'invalid'})`
-      );
-    }
+    if (malformed) warn(`formulas: ${malformed} of ${formulas.length} entries malformed; skipped`);
+    const wellFormed = formulas.length - malformed;
+    const missed = wellFormed - entries.length;
+    if (missed) warn(`formulas: ${missed} of ${wellFormed} row(s) could not be resolved`);
+    return entries;
   }
 
   /**
