@@ -98,9 +98,13 @@ interface PivotColumnSpec {
   readonly fn: AggregationFn;
 }
 
-/** The leaves of one {@link PivotController.processRows} run. */
+/** Per-leaf inputs of one {@link PivotController.processRows} run, read once per leaf. */
 interface LeafIndex<T> {
   readonly rows: ReadonlyArray<T>;
+  /** Combination index of each leaf, or -1 when no generated column takes it. */
+  readonly combo: Int32Array;
+  /** Measure values, `measures` per leaf; NaN where the cell is not a finite number. */
+  readonly values: Float64Array;
 }
 
 const BLANK = '(blank)';
@@ -183,9 +187,9 @@ function capitalize(value: string): string {
  * generated synthetic column keys) and exposes {@link computeColumns} +
  * {@link computeColumnGroups} so the grid can swap in the generated columns and
  * their spanning headers. The existing cell renderer reads `data[column.key]`,
- * which is the precomputed aggregate, so no core change is needed. Each cell
- * aggregates the (filtered) leaves of its row and combination, counting cells
- * by the same rule as the other aggregates (`toFiniteNumber`).
+ * which is the precomputed aggregate, so no core change is needed. Each run
+ * reads every (filtered) leaf once and aggregates per (combination, measure),
+ * counting cells by the same rule as the other aggregates (`toFiniteNumber`).
  *
  * Multi-field `on` renders one spanning header level over the **outer** field
  * (core column groups are single-level); the inner field(s) fold into the leaf
@@ -466,36 +470,55 @@ export class PivotController<T extends object>
     return out;
   }
 
+  /**
+   * Read each leaf once for this run: the generated combination it falls in
+   * and its measure values, so filling a row walks its leaves once instead of
+   * once per value column.
+   */
   #indexLeaves(rows: ReadonlyArray<T>): LeafIndex<T> {
-    return { rows };
+    const measures = this.#measures;
+    const combo = new Int32Array(rows.length);
+    const values = new Float64Array(rows.length * measures.length);
+    for (let i = 0; i < rows.length; i++) {
+      const rec = rows[i] as Record<string, unknown>;
+      combo[i] = this.#comboIndex.get(comboId(this.on.map((field) => rec[field]))) ?? -1;
+      for (let m = 0; m < measures.length; m++) {
+        values[i * measures.length + m] = toFiniteNumber(rec[measures[m]]) ?? Number.NaN;
+      }
+    }
+    return { rows, combo, values };
   }
 
   /**
    * Fill every value column of `row` from `leaves` (indices into the run's
-   * rows; every row when omitted).
+   * rows; every row when omitted), accumulating per (combination, measure).
    */
   #fillCells(row: Record<string, unknown>, index: LeafIndex<T>, leaves?: readonly number[]): void {
-    const all = leaves ?? index.rows.map((_, i) => i);
-    for (const spec of this.#specs) {
-      const measure = this.#measures[spec.measure];
-      let count = 0;
-      let sum = 0;
-      let min = Number.POSITIVE_INFINITY;
-      let max = Number.NEGATIVE_INFINITY;
-      for (const i of all) {
-        const rec = index.rows[i] as Record<string, unknown>;
-        if (this.#comboIndex.get(comboId(this.on.map((field) => rec[field]))) !== spec.combo) {
-          continue;
-        }
-        const value = toFiniteNumber(rec[measure]);
-        if (value === null) continue;
-        count += 1;
-        sum += value;
+    const width = this.#measures.length;
+    const slots = this.#comboIndex.size * width;
+    const count = new Float64Array(slots);
+    const sum = new Float64Array(slots);
+    const min = new Float64Array(slots).fill(Number.POSITIVE_INFINITY);
+    const max = new Float64Array(slots).fill(Number.NEGATIVE_INFINITY);
+    const total = leaves ? leaves.length : index.rows.length;
+    for (let n = 0; n < total; n++) {
+      const i = leaves ? leaves[n] : n;
+      const c = index.combo[i];
+      if (c < 0) continue;
+      for (let m = 0; m < width; m++) {
+        const value = index.values[i * width + m];
+        if (Number.isNaN(value)) continue;
+        const slot = c * width + m;
+        count[slot] += 1;
+        sum[slot] += value;
         // Math.min / Math.max, not < / >, so -0 still sorts below 0.
-        min = Math.min(min, value);
-        max = Math.max(max, value);
+        min[slot] = Math.min(min[slot], value);
+        max[slot] = Math.max(max[slot], value);
       }
-      row[spec.key] = cellValue(spec.fn, count, sum, min, max);
+    }
+    for (const spec of this.#specs) {
+      const slot = spec.combo * width + spec.measure;
+      row[spec.key] = cellValue(spec.fn, count[slot], sum[slot], min[slot], max[slot]);
     }
   }
 

@@ -51,6 +51,14 @@ function rowsOf(grid: ApexGridEnterprise<Rec>) {
   return grid.pageItems as ReadonlyArray<Rec>;
 }
 
+function pivotOf(grid: ApexGridEnterprise<Rec>) {
+  return (
+    grid as unknown as {
+      stateController: { modules: Map<string, { processRows(rows: Rec[]): Rec[] }> };
+    }
+  ).stateController.modules.get('pivot')!;
+}
+
 describe('pivot columns (B38)', () => {
   before(() => {
     ApexGridEnterprise.use(...enterpriseModules);
@@ -79,6 +87,42 @@ describe('pivot columns (B38)', () => {
         'pivot::Veg|Leek::amount::sum',
       ]);
       expect(grid.getPivotColumnGroups().map((g) => g.headerText)).to.eql(['Fruit', 'Veg']);
+    });
+  });
+
+  describe('ent-pivot-2: one bucketing pass per run', () => {
+    it('reads each leaf on field a bounded number of times per processRows', async () => {
+      const N = 2000;
+      let reads = 0;
+      const data: Rec[] = [];
+      for (let i = 0; i < N; i++) {
+        const month = `m${String((i % 12) + 1).padStart(2, '0')}`;
+        const row: Rec = { region: `r${i % 5}`, amount: i };
+        Object.defineProperty(row, 'month', {
+          enumerable: true,
+          get() {
+            reads++;
+            return month;
+          },
+        });
+        data.push(row);
+      }
+      const grid = await mount({
+        data,
+        columns: [{ key: 'region' }, { key: 'month' }, { key: 'amount' }],
+        on: 'month',
+        rows: ['region'],
+        values: { amount: ['sum'] },
+        options: { grandTotal: true, subtotals: true },
+      });
+      reads = 0;
+      const rows = pivotOf(grid).processRows(data);
+      expect(rows.length).to.equal(6);
+      expect(reads, `on-field reads for ${N} leaves x 12 value columns`).to.be.at.most(2 * N);
+      // The bucketed totals still match a direct sum.
+      const grand = rows[rows.length - 1];
+      const all = valueColumns(grid).reduce((total, c) => total + Number(grand[String(c.key)]), 0);
+      expect(all).to.equal((N * (N - 1)) / 2);
     });
   });
 
