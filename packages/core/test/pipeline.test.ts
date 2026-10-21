@@ -445,4 +445,45 @@ describe('Data pipeline orchestration', () => {
       expect(grid.pageItems.length).to.equal(4);
     });
   });
+
+  describe('nullish data', () => {
+    let rejections: unknown[] = [];
+    const onRejection = (event: PromiseRejectionEvent) => {
+      rejections.push(event.reason);
+      event.preventDefault();
+    };
+    beforeEach(() => {
+      rejections = [];
+      window.addEventListener('unhandledrejection', onRejection);
+    });
+    afterEach(() => window.removeEventListener('unhandledrejection', onRejection));
+
+    for (const empty of [undefined, null]) {
+      it(`treats data set to ${empty} as an empty array`, async () => {
+        const grid = await mount();
+        expect(grid.totalItems).to.equal(12);
+        grid.data = empty as unknown as Row[];
+        await settle(grid, 10);
+        expect(rejections).to.eql([]);
+        expect(grid.data).to.eql([]);
+        expect(grid.totalItems).to.equal(0);
+        expect(grid.rows.length).to.equal(0);
+        expect(() => grid.getState()).not.to.throw();
+        grid.data = rows(3);
+        await settle(grid);
+        expect(grid.totalItems).to.equal(3);
+      });
+    }
+
+    it('keeps the same empty array for a repeated nullish value', async () => {
+      const grid = await mount();
+      grid.data = undefined as unknown as Row[];
+      const empty = grid.data;
+      await settle(grid);
+      grid.data = undefined as unknown as Row[];
+      grid.data = null as unknown as Row[];
+      expect(grid.data).to.equal(empty);
+      expect(grid.isUpdatePending, 'a repeated nullish value requested an update').to.be.false;
+    });
+  });
 });

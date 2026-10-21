@@ -953,9 +953,24 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   @property({ attribute: false })
   public columns: Array<ColumnConfiguration<T>> = [];
 
-  /** The data source for the grid. */
+  #data: Array<T> = [];
+
+  /**
+   * The data source for the grid. `null` or `undefined` (a framework prop that
+   * is still loading) is stored as an empty array.
+   *
+   * @default []
+   */
   @property({ attribute: false })
-  public data: Array<T> = [];
+  public get data(): Array<T> {
+    return this.#data;
+  }
+
+  public set data(value: Array<T>) {
+    // Keep the current empty array, so a repeated nullish value is no change.
+    if (value == null && !this.#data.length) return;
+    this.#data = value ?? [];
+  }
 
   /**
    * Optional stable row-identity resolver.
