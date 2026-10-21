@@ -2581,16 +2581,18 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     const next = value ?? '';
     if (next === this.quickFilter) return false;
 
+    const previous = this.quickFilter;
     const writes = this.#quickFilterWrites;
     const proceed = this.emitEvent('quickFilterChanging', {
-      detail: { value: this.quickFilter, nextValue: next },
+      detail: { value: previous, nextValue: next },
       cancelable: true,
     });
     if (!proceed) return false;
 
-    // A listener that assigned quickFilter substituted its own value, even
-    // one equal to the current value.
+    // A listener that assigned quickFilter substituted its own value. A
+    // substitute equal to the previous value changes nothing.
     if (this.#quickFilterWrites === writes) this.quickFilter = next;
+    if (this.quickFilter === previous) return false;
     const pageReset = this.stateController.pagination.resetPage();
     await this.pipelineSettled();
     await pageReset;

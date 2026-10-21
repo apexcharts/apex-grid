@@ -363,19 +363,20 @@ describe('Data pipeline orchestration', () => {
       expect(ids(grid)).to.eql([1]);
     });
 
-    it('keeps a substitute equal to the current value', async () => {
-      const grid = await mount();
-      await grid.setQuickFilter('x1');
+    it('treats a substitute equal to the current value as a no-op', async () => {
+      const grid = await mount({ pagination: { enabled: true, pageSize: 1 } });
+      await grid.setQuickFilter('x');
+      await grid.gotoPage(2);
       grid.addEventListener('quickFilterChanging', (event) => {
         grid.quickFilter = event.detail.nextValue.trim();
       });
-      let reported: string | undefined;
-      grid.addEventListener('quickFilterChanged', (event) => {
-        reported = event.detail.value;
-      });
-      expect(await grid.setQuickFilter('x1 ')).to.be.true;
-      expect(grid.quickFilter).to.equal('x1');
-      expect(reported).to.equal('x1');
+      const events: string[] = [];
+      grid.addEventListener('pageChanged', () => events.push('pageChanged'));
+      grid.addEventListener('quickFilterChanged', () => events.push('quickFilterChanged'));
+      expect(await grid.setQuickFilter('x ')).to.be.false;
+      expect(grid.quickFilter).to.equal('x');
+      expect(grid.page).to.equal(2);
+      expect(events).to.eql([]);
     });
 
     it('fires pageChanged and announces when it moves to the first page', async () => {
