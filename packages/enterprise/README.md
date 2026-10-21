@@ -159,6 +159,23 @@ grid.pivotOn = '';                      // disable, restoring the original colum
 
 `grid.isPivoting` reflects whether a pivot view is currently active.
 
+Value columns are generated only for the column-dimension values (or, with
+several `pivotOn` fields, the combinations of values) that occur in the data.
+Headers take the source column's `headerText` and the localized function name
+(`Amount (Sum)`), and a measure from a `type: 'currency'` column keeps its
+currency format (a count is always a plain number). Where no row matches an
+intersection, `avg`, `min` and `max` are blank while `count` and `sum` show 0,
+so totals still add up across the row. A pivot chart plots a blank cell as 0.
+
+Columns are not virtualized, so `pivotOptions.maxValueColumns` (default `200`)
+caps the generated value columns. Whole combinations are kept in sorted order;
+when some are left out the grid announces it and logs one console warning.
+Pass `Infinity` to turn the cap off.
+
+```ts
+grid.pivotOptions = { maxValueColumns: 500 };
+```
+
 ### Spanning headers, totals, and multi-field column dimensions
 
 With more than one measure, or more than one column-dimension field, the value

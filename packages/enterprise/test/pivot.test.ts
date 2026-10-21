@@ -151,7 +151,7 @@ describe('ApexGridEnterprise pivoting', () => {
     // Each value's two measure columns join its group, contiguously.
     const valueCols = grid.columns.filter((c) => c.group);
     expect(valueCols.map((c) => c.group)).to.eql(['pv::A', 'pv::A', 'pv::B', 'pv::B']);
-    expect(valueCols[0].headerText).to.equal('amount (sum)');
+    expect(valueCols[0].headerText).to.equal('Amount (Sum)');
   });
 
   it('emits a grand-total row over all leaves', async () => {

@@ -1,14 +1,20 @@
-import type { ApexCellContext, ColumnConfiguration, ColumnGroupConfiguration } from 'apex-grid';
+import type {
+  ApexCellContext,
+  ColumnConfiguration,
+  ColumnGroupConfiguration,
+  GridLocaleKey,
+} from 'apex-grid';
 import {
   type GridFeatureModule,
   type GridHost,
+  getColumnTypeRenderer,
   PIPELINE,
   type RowAria,
   type RowAriaProvider,
   type RowTransformer,
 } from 'apex-grid/internal';
 import { html, type ReactiveController, type TemplateResult } from 'lit';
-import { type AggregationConfig, type AggregationFn, computeAggregations } from './aggregation.js';
+import { type AggregationConfig, type AggregationFn, toFiniteNumber } from './aggregation.js';
 
 /** Synthetic key of the auto group column emitted in expandable (tree) mode. */
 export const PIVOT_GROUP_KEY = '__pivot_group__';
@@ -66,49 +72,97 @@ export interface PivotOptions {
    * or a depth threshold (expand nodes shallower than it). Default `true`.
    */
   defaultExpanded?: boolean | number;
+  /**
+   * Most value columns the pivot generates. Columns are not virtualized, so a
+   * column dimension with thousands of distinct values would otherwise render
+   * thousands of cells per row. Whole column-dimension combinations are kept
+   * in their sorted order (always at least one); when some are left out the
+   * grid announces it and logs one console warning per recompute. A positive
+   * integer, or `Infinity` to turn the cap off; anything else means the
+   * default, `200`.
+   */
+  maxValueColumns?: number;
 }
+
+/** Default for {@link PivotOptions.maxValueColumns}. */
+const DEFAULT_MAX_VALUE_COLUMNS = 200;
 
 interface PivotColumnSpec {
   /** Synthetic column key the pivot row carries its computed value under. */
   readonly key: string;
-  /** Stringified distinct values of the column-dimension field(s), aligned to `on`. */
-  readonly combo: readonly string[];
-  /** Measure (source field) being aggregated. */
-  readonly measure: string;
+  /** Index of the column-dimension combination, see `PivotController.#comboIndex`. */
+  readonly combo: number;
+  /** Index of the measure in `PivotController.#measures`. */
+  readonly measure: number;
   /** Aggregation function. */
   readonly fn: AggregationFn;
 }
 
+/** The leaves of one {@link PivotController.processRows} run. */
+interface LeafIndex<T> {
+  readonly rows: ReadonlyArray<T>;
+}
+
+const BLANK = '(blank)';
+
+/**
+ * A dimension value's identity: blanks (null, undefined, '') share one, and
+ * anything else is its text, so equal Dates and 1 and '1' fall together.
+ */
 function stringify(value: unknown): string {
-  return value === null || value === undefined || value === '' ? '(blank)' : String(value);
+  return value === null || value === undefined || value === '' ? BLANK : String(value);
+}
+
+/** A value's identity with `separators` (and the backslash) escaped. */
+function escaped(value: unknown, separators: RegExp): string {
+  return stringify(value).replace(separators, '\\$&');
+}
+
+/** Column identity of a combination: escaped so no two combinations share it. */
+function comboId(values: readonly unknown[]): string {
+  return values.map((value) => escaped(value, /[\\|:]/g)).join('|');
+}
+
+/** Tree node identity: the parent path plus one escaped segment. */
+function childKey(parentKey: string, value: unknown): string {
+  return `${parentKey}/${escaped(value, /[\\/]/g)}`;
+}
+
+/**
+ * A currency measure's cell: blank for an empty intersection (the currency
+ * renderer would show null as 0), the column's currency format otherwise.
+ */
+function currencyCell<T extends object>(ctx: ApexCellContext<T>): unknown {
+  return ctx.value == null ? '' : getColumnTypeRenderer<T>('currency')?.display?.(ctx as never);
+}
+
+/** One cell from running totals: avg, min and max are blank over no values. */
+function cellValue(fn: AggregationFn, count: number, sum: number, min: number, max: number) {
+  if (fn === 'count') return count;
+  if (fn === 'sum') return sum;
+  if (!count) return null;
+  return fn === 'avg' ? sum / count : fn === 'min' ? min : max;
 }
 
 function capitalize(value: string): string {
   return value ? value[0].toUpperCase() + value.slice(1) : value;
 }
 
-/** Cartesian product of the per-field distinct-value lists, first field varying slowest. */
-function product(lists: string[][]): string[][] {
-  return lists.reduce<string[][]>(
-    (acc, list) => acc.flatMap((prefix) => list.map((value) => [...prefix, value])),
-    [[]]
-  );
-}
-
 /**
- * Enterprise feature: pivoting (v2). Turns the distinct values of one or more
- * column-dimension fields (`on`) into columns, groups rows by one or more
- * row-dimension fields (`rows`), and fills each cell with an aggregate
- * (`values`) of the matching leaves — a cross-tab pivot table with spanning
- * column headers, subtotals, and a grand total.
+ * Enterprise feature: pivoting (v2). Turns the value combinations of one or
+ * more column-dimension fields (`on`) that occur in the data into columns,
+ * groups rows by one or more row-dimension fields (`rows`), and fills each cell
+ * with an aggregate (`values`) of the matching leaves: a cross-tab pivot table
+ * with spanning column headers, subtotals, and a grand total.
  *
  * Implemented purely enterprise-side: it implements {@link RowTransformer} to
  * synthesize the pivot rows (each carrying the computed aggregates under
  * generated synthetic column keys) and exposes {@link computeColumns} +
  * {@link computeColumnGroups} so the grid can swap in the generated columns and
- * their spanning headers. The existing cell renderer reads `data[column.key]` —
- * which is the precomputed aggregate — so no core change is needed. Aggregates
- * reuse {@link computeAggregations} over the (filtered) leaves.
+ * their spanning headers. The existing cell renderer reads `data[column.key]`,
+ * which is the precomputed aggregate, so no core change is needed. Each cell
+ * aggregates the (filtered) leaves of its row and combination, counting cells
+ * by the same rule as the other aggregates (`toFiniteNumber`).
  *
  * Multi-field `on` renders one spanning header level over the **outer** field
  * (core column groups are single-level); the inner field(s) fold into the leaf
@@ -133,6 +187,10 @@ export class PivotController<T extends object>
 
   #specs: PivotColumnSpec[] = [];
   #groups: ColumnGroupConfiguration[] = [];
+  /** Combination identity ({@link comboId}) → its index in the generated columns. */
+  #comboIndex = new Map<string, number>();
+  /** The measures of {@link values}, in order; specs refer to them by index. */
+  #measures: string[] = [];
   /** Explicit per-node expand/collapse overrides in expandable mode (key → expanded). */
   readonly #expandOverrides = new Map<string, boolean>();
   /** Depth of each tree node built in the most recent {@link processRows} (key → depth). */
@@ -151,8 +209,12 @@ export class PivotController<T extends object>
 
   /** Display a raw value, localizing the blank placeholder. */
   #label(value: unknown): string {
-    const s = stringify(value);
-    return s === stringify('') ? this.host.localize('pivot.blank') : s;
+    return String(this.#rowLabel(value));
+  }
+
+  /** A row-dimension cell: the raw value, or the localized blank label for a blank. */
+  #rowLabel(value: unknown): unknown {
+    return stringify(value) === BLANK ? this.host.localize('pivot.blank') : value;
   }
 
   /** Whether pivoting is fully configured and should transform the view. */
@@ -164,6 +226,14 @@ export class PivotController<T extends object>
 
   #valueSpecCount(): number {
     return Object.values(this.values).reduce((total, fns) => total + fns.length, 0);
+  }
+
+  /** {@link PivotOptions.maxValueColumns}, or the default when it is not a valid cap. */
+  #maxValueColumns(): number {
+    const max = this.options.maxValueColumns;
+    return max === Number.POSITIVE_INFINITY || (Number.isInteger(max) && (max as number) > 0)
+      ? (max as number)
+      : DEFAULT_MAX_VALUE_COLUMNS;
   }
 
   /** Whether the grand total should render, and where. Off unless requested. */
@@ -181,73 +251,118 @@ export class PivotController<T extends object>
 
   /**
    * Build the pivot column set from `data`: one leading column per row-dimension
-   * field, then one column per (distinct column-dimension combo × measure × fn).
+   * field, then one column per (column-dimension combination that occurs in the
+   * data × measure × fn), combinations sorted field by field by their text and
+   * capped by {@link PivotOptions.maxValueColumns}.
    * A single measure over a single `on` field stays flat (the value is the
    * header); otherwise columns group under a spanning header. Stores the specs
    * and column groups for {@link processRows} / {@link computeColumnGroups}.
    *
    * `previous` (the currently-rendered generated columns) lets width / pin state
-   * carry across a re-pivot for keys that survive.
+   * carry across a re-pivot for keys that survive. `source` (the pre-pivot
+   * columns) supplies the header text of row dimensions and measures, and the
+   * currency format of a measure.
    */
   public computeColumns(
     data: ReadonlyArray<T>,
-    previous?: ReadonlyArray<ColumnConfiguration<T>>
+    previous?: ReadonlyArray<ColumnConfiguration<T>>,
+    source?: ReadonlyArray<ColumnConfiguration<T>>
   ): ColumnConfiguration<T>[] {
     const carry = new Map<string, Record<string, unknown>>();
     for (const col of previous ?? []) {
       carry.set(String(col.key), { width: col.width, pinned: col.pinned, hidden: col.hidden });
     }
+    const sourceOf = new Map((source ?? []).map((col) => [String(col.key), col]));
+    const header = (field: string) => sourceOf.get(field)?.headerText || capitalize(field);
 
-    // Distinct values per `on` field, then their cartesian product (outer slowest).
-    const perField = this.on.map((field) =>
-      [...new Set(data.map((row) => stringify((row as Record<string, unknown>)[field])))].sort()
-    );
-    const combos = product(perField);
+    // The combinations that occur, one pass, keeping the first raw values of each.
+    const observed = new Map<string, unknown[]>();
+    for (const row of data) {
+      const values = this.on.map((field) => (row as Record<string, unknown>)[field]);
+      const id = comboId(values);
+      if (!observed.has(id)) observed.set(id, values);
+    }
+    const sorted = [...observed].sort(([, a], [, b]) => {
+      for (let i = 0; i < a.length; i++) {
+        const x = stringify(a[i]);
+        const y = stringify(b[i]);
+        if (x !== y) return x < y ? -1 : 1;
+      }
+      return 0;
+    });
 
-    const singleMeasure = this.#valueSpecCount() === 1;
+    const perCombo = this.#valueSpecCount();
+    const keep = Math.max(1, Math.floor(this.#maxValueColumns() / perCombo));
+    const combos = sorted.slice(0, keep);
+    if (combos.length < sorted.length) {
+      const shown = combos.length * perCombo;
+      const total = sorted.length * perCombo;
+      this.host.announce(this.host.localize('pivot.columnsTruncated', { shown, total }));
+      // biome-ignore lint/suspicious/noConsole: the one channel a developer sees for a cut view
+      console.warn(`pivot: ${shown}/${total} columns (maxValueColumns)`);
+    }
+
+    const singleMeasure = perCombo === 1;
     const grouped = !(this.on.length === 1 && singleMeasure);
-    const blankLabel = this.host.localize('pivot.blank');
-    const display = (value: string) => (value === stringify('') ? blankLabel : value);
 
     this.#specs = [];
     this.#groups = [];
+    this.#comboIndex = new Map();
+    this.#measures = Object.keys(this.values);
     const seenGroups = new Set<string>();
     const valueCols: ColumnConfiguration<T>[] = [];
 
-    for (const combo of combos) {
+    combos.forEach(([id, combo], c) => {
+      this.#comboIndex.set(id, c);
       // Outer value heads the spanning group; inner values fold into the leaf header.
-      const groupId = grouped ? `pv::${combo[0]}` : undefined;
+      const groupId = grouped ? `pv::${comboId(combo.slice(0, 1))}` : undefined;
       if (groupId && !seenGroups.has(groupId)) {
         seenGroups.add(groupId);
-        this.#groups.push({ id: groupId, headerText: display(combo[0]) });
+        this.#groups.push({ id: groupId, headerText: this.#label(combo[0]) });
       }
-      const innerLabel = combo.slice(1).map(display).join(' / ');
+      const innerLabel = combo
+        .slice(1)
+        .map((value) => this.#label(value))
+        .join(' / ');
 
-      for (const [measure, fns] of Object.entries(this.values)) {
-        for (const fn of fns) {
-          const key = `pivot::${combo.join('|')}::${measure}::${fn}`;
-          this.#specs.push({ key, combo, measure, fn });
+      this.#measures.forEach((measure, m) => {
+        const src = sourceOf.get(measure);
+        for (const fn of this.values[measure]) {
+          const key = `pivot::${id}::${measure}::${fn}`;
+          this.#specs.push({ key, combo: c, measure: m, fn });
 
-          // Leaf header: inner value(s) and/or measure(fn); ungrouped ⇒ the value itself.
+          // Leaf header: inner value(s) and/or measure (fn); ungrouped ⇒ the value itself.
+          const measureLabel = `${header(measure)} (${this.host.localize(`chart.agg.${fn}` as GridLocaleKey)})`;
           let headerText: string;
           if (!grouped) {
-            headerText = display(combo[0]);
+            headerText = this.#label(combo[0]);
           } else if (this.on.length > 1) {
-            headerText = singleMeasure ? innerLabel : `${innerLabel} · ${measure} (${fn})`;
+            headerText = singleMeasure ? innerLabel : `${innerLabel} · ${measureLabel}`;
           } else {
-            headerText = `${measure} (${fn})`;
+            headerText = measureLabel;
           }
+
+          // A count is a number whatever it counts; other aggregates keep a currency format.
+          const format =
+            fn !== 'count' && src?.type === 'currency'
+              ? {
+                  type: 'currency',
+                  currency: src.currency,
+                  locale: src.locale,
+                  cellTemplate: currencyCell,
+                }
+              : { type: 'number' };
 
           valueCols.push({
             key,
             headerText,
-            type: 'number',
+            ...format,
             ...(groupId ? { group: groupId } : {}),
             ...carry.get(key),
           } as unknown as ColumnConfiguration<T>);
         }
-      }
-    }
+      });
+    });
 
     // Expandable mode collapses the per-field leading columns into one auto group
     // column that renders the nested tree (indent + chevron + label).
@@ -255,7 +370,7 @@ export class PivotController<T extends object>
       ? [
           {
             key: PIVOT_GROUP_KEY,
-            headerText: this.rows.map(capitalize).join(' / '),
+            headerText: this.rows.map(header).join(' / '),
             cellTemplate: (ctx: ApexCellContext<T>) => this.#groupCellTemplate(ctx),
             ...carry.get(PIVOT_GROUP_KEY),
           } as unknown as ColumnConfiguration<T>,
@@ -264,7 +379,7 @@ export class PivotController<T extends object>
           (field) =>
             ({
               key: field,
-              headerText: capitalize(field),
+              headerText: header(field),
               ...carry.get(field),
             }) as unknown as ColumnConfiguration<T>
         );
@@ -278,19 +393,20 @@ export class PivotController<T extends object>
 
   public processRows(rows: ReadonlyArray<T>): T[] {
     if (!this.active) return rows as T[];
-    if (this.#isTree()) return this.#buildTreeRows(rows);
+    const index = this.#indexLeaves(rows);
+    if (this.#isTree()) return this.#buildTreeRows(index);
 
     // Partition leaves by the full row-dimension combination (first-seen order).
-    const combos = new Map<string, { values: unknown[]; leaves: T[] }>();
-    for (const row of rows) {
-      const rec = row as Record<string, unknown>;
+    const combos = new Map<string, { values: unknown[]; leaves: number[] }>();
+    for (let i = 0; i < rows.length; i++) {
+      const rec = rows[i] as Record<string, unknown>;
       const values = this.rows.map((field) => rec[field]);
-      const comboKey = values.map(stringify).join('\u0000');
+      const comboKey = values.reduce<string>((key, value) => childKey(key, value), '');
       const bucket = combos.get(comboKey);
       if (bucket) {
-        bucket.leaves.push(row);
+        bucket.leaves.push(i);
       } else {
-        combos.set(comboKey, { values, leaves: [row] });
+        combos.set(comboKey, { values, leaves: [i] });
       }
     }
 
@@ -298,11 +414,14 @@ export class PivotController<T extends object>
     const out: T[] = [];
     const grand = this.#grandTotalPlacement();
 
-    if (grand === 'top') out.push(this.#grandTotalRow(rows));
+    if (grand === 'top') out.push(this.#grandTotalRow(index));
 
     if (this.#showSubtotals()) {
       // Group the row-combos by the first row-dimension field, in first-seen order.
-      const byFirst = new Map<string, { value: unknown; leaves: T[]; rows: typeof dataRows }>();
+      const byFirst = new Map<
+        string,
+        { value: unknown; leaves: number[]; rows: typeof dataRows }
+      >();
       for (const entry of dataRows) {
         const fk = stringify(entry.values[0]);
         const group = byFirst.get(fk);
@@ -314,54 +433,73 @@ export class PivotController<T extends object>
         }
       }
       for (const group of byFirst.values()) {
-        for (const entry of group.rows) out.push(this.#dataRow(entry.values, entry.leaves));
-        out.push(this.#subtotalRow(group.value, group.leaves));
+        for (const entry of group.rows) out.push(this.#dataRow(entry.values, index, entry.leaves));
+        out.push(this.#subtotalRow(group.value, index, group.leaves));
       }
     } else {
-      for (const entry of dataRows) out.push(this.#dataRow(entry.values, entry.leaves));
+      for (const entry of dataRows) out.push(this.#dataRow(entry.values, index, entry.leaves));
     }
 
-    if (grand === 'bottom') out.push(this.#grandTotalRow(rows));
+    if (grand === 'bottom') out.push(this.#grandTotalRow(index));
     return out;
   }
 
-  /** Aggregate a column spec over a leaf subset (leaves matching the spec's `on` combo). */
-  #cell(spec: PivotColumnSpec, leaves: ReadonlyArray<T>): number {
-    const subset = leaves.filter((row) =>
-      this.on.every(
-        (field, i) => stringify((row as Record<string, unknown>)[field]) === spec.combo[i]
-      )
-    );
-    const agg = computeAggregations(subset, { [spec.measure]: [spec.fn] });
-    return agg[spec.measure]?.[spec.fn] ?? 0;
+  #indexLeaves(rows: ReadonlyArray<T>): LeafIndex<T> {
+    return { rows };
   }
 
-  #fillCells(row: Record<string, unknown>, leaves: ReadonlyArray<T>): void {
-    for (const spec of this.#specs) row[spec.key] = this.#cell(spec, leaves);
+  /**
+   * Fill every value column of `row` from `leaves` (indices into the run's
+   * rows; every row when omitted).
+   */
+  #fillCells(row: Record<string, unknown>, index: LeafIndex<T>, leaves?: readonly number[]): void {
+    const all = leaves ?? index.rows.map((_, i) => i);
+    for (const spec of this.#specs) {
+      const measure = this.#measures[spec.measure];
+      let count = 0;
+      let sum = 0;
+      let min = Number.POSITIVE_INFINITY;
+      let max = Number.NEGATIVE_INFINITY;
+      for (const i of all) {
+        const rec = index.rows[i] as Record<string, unknown>;
+        if (this.#comboIndex.get(comboId(this.on.map((field) => rec[field]))) !== spec.combo) {
+          continue;
+        }
+        const value = toFiniteNumber(rec[measure]);
+        if (value === null) continue;
+        count += 1;
+        sum += value;
+        // Math.min / Math.max, not < / >, so -0 still sorts below 0.
+        min = Math.min(min, value);
+        max = Math.max(max, value);
+      }
+      row[spec.key] = cellValue(spec.fn, count, sum, min, max);
+    }
   }
 
-  #dataRow(values: unknown[], leaves: ReadonlyArray<T>): T {
+  #dataRow(values: unknown[], index: LeafIndex<T>, leaves: readonly number[]): T {
     const row: Record<string, unknown> = {};
     this.rows.forEach((field, i) => {
-      row[field] = values[i];
+      row[field] = this.#rowLabel(values[i]);
     });
-    this.#fillCells(row, leaves);
+    this.#fillCells(row, index, leaves);
     Object.defineProperty(row, PIVOT_META, { value: { kind: 'data' }, enumerable: false });
     return row as unknown as T;
   }
 
-  #subtotalRow(value: unknown, leaves: ReadonlyArray<T>): T {
+  #subtotalRow(value: unknown, index: LeafIndex<T>, leaves: readonly number[]): T {
     const row: Record<string, unknown> = {};
     // Label the group value, put "Total" in the next row-dimension column.
     this.rows.forEach((field, i) => {
-      row[field] = i === 0 ? value : i === 1 ? this.host.localize('pivot.total') : '';
+      row[field] =
+        i === 0 ? this.#rowLabel(value) : i === 1 ? this.host.localize('pivot.total') : '';
     });
-    this.#fillCells(row, leaves);
+    this.#fillCells(row, index, leaves);
     Object.defineProperty(row, PIVOT_META, { value: { kind: 'subtotal' }, enumerable: false });
     return row as unknown as T;
   }
 
-  #grandTotalRow(leaves: ReadonlyArray<T>): T {
+  #grandTotalRow(index: LeafIndex<T>): T {
     const row: Record<string, unknown> = {};
     const label = this.host.localize('pivot.grandTotal');
     // Flat mode uses the per-field leading columns; tree mode uses the group column.
@@ -369,7 +507,7 @@ export class PivotController<T extends object>
       row[field] = i === 0 ? label : '';
     });
     row[PIVOT_GROUP_KEY] = label;
-    this.#fillCells(row, leaves);
+    this.#fillCells(row, index);
     Object.defineProperty(row, PIVOT_META, {
       value: { kind: 'grandTotal', depth: 0, label, expandable: false },
       enumerable: false,
@@ -380,44 +518,66 @@ export class PivotController<T extends object>
   // --- Expandable (tree) mode ----------------------------------------------
 
   /** Build nested, expandable pivot rows (one auto group column + value columns). */
-  #buildTreeRows(allLeaves: ReadonlyArray<T>): T[] {
+  #buildTreeRows(index: LeafIndex<T>): T[] {
     this.#nodeDepth.clear();
     const out: T[] = [];
     const grand = this.#grandTotalPlacement();
-    if (grand === 'top') out.push(this.#grandTotalRow(allLeaves));
-    this.#buildTree(allLeaves, 0, '', out);
-    if (grand === 'bottom') out.push(this.#grandTotalRow(allLeaves));
+    if (grand === 'top') out.push(this.#grandTotalRow(index));
+    this.#buildTree(
+      index,
+      index.rows.map((_, i) => i),
+      0,
+      '',
+      out
+    );
+    if (grand === 'bottom') out.push(this.#grandTotalRow(index));
     return out;
   }
 
-  #buildTree(leaves: ReadonlyArray<T>, depth: number, parentKey: string, out: T[]): void {
+  #buildTree(
+    index: LeafIndex<T>,
+    leaves: readonly number[],
+    depth: number,
+    parentKey: string,
+    out: T[]
+  ): void {
     const field = this.rows[depth];
     const isLeaf = depth === this.rows.length - 1;
-    for (const [value, subLeaves] of this.#partition(leaves, field)) {
-      const key = `${parentKey}/${stringify(value)}`;
+    for (const { value, leaves: subLeaves } of this.#partition(index, leaves, field)) {
+      const key = childKey(parentKey, value);
       this.#nodeDepth.set(key, depth);
-      out.push(this.#nodeRow(value, subLeaves, depth, key, !isLeaf));
+      out.push(this.#nodeRow(value, index, subLeaves, depth, key, !isLeaf));
       if (!isLeaf && this.isExpanded(key, depth)) {
-        this.#buildTree(subLeaves, depth + 1, key, out);
+        this.#buildTree(index, subLeaves, depth + 1, key, out);
       }
     }
   }
 
-  /** Bucket rows by a field value, preserving first-seen (already-sorted) order. */
-  #partition(leaves: ReadonlyArray<T>, field: string): Map<unknown, T[]> {
-    const buckets = new Map<unknown, T[]>();
-    for (const row of leaves) {
-      const value = (row as Record<string, unknown>)[field];
-      const bucket = buckets.get(value);
-      if (bucket) bucket.push(row);
-      else buckets.set(value, [row]);
+  /**
+   * Bucket leaves by a field value, preserving first-seen (already-sorted)
+   * order. Buckets by the same identity as flat mode ({@link stringify}), so
+   * equal Dates share a node and every blank is one node.
+   */
+  #partition(
+    index: LeafIndex<T>,
+    leaves: readonly number[],
+    field: string
+  ): Iterable<{ value: unknown; leaves: number[] }> {
+    const buckets = new Map<string, { value: unknown; leaves: number[] }>();
+    for (const i of leaves) {
+      const value = (index.rows[i] as Record<string, unknown>)[field];
+      const id = stringify(value);
+      const bucket = buckets.get(id);
+      if (bucket) bucket.leaves.push(i);
+      else buckets.set(id, { value, leaves: [i] });
     }
-    return buckets;
+    return buckets.values();
   }
 
   #nodeRow(
     value: unknown,
-    leaves: ReadonlyArray<T>,
+    index: LeafIndex<T>,
+    leaves: readonly number[],
     depth: number,
     key: string,
     expandable: boolean
@@ -425,7 +585,7 @@ export class PivotController<T extends object>
     const row: Record<string, unknown> = {};
     const label = this.#label(value);
     row[PIVOT_GROUP_KEY] = label;
-    this.#fillCells(row, leaves);
+    this.#fillCells(row, index, leaves);
     Object.defineProperty(row, PIVOT_META, {
       value: { kind: expandable ? 'subtotal' : 'data', depth, key, label, expandable },
       enumerable: false,

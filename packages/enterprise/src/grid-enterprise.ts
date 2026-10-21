@@ -1470,7 +1470,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * Activate/deactivate pivoting. On activate it saves the current columns, swaps
    * in the generated pivot columns, disables grouping, and re-runs the pipeline;
    * on deactivate it restores the saved columns. Recomputes columns when the data
-   * changes while pivoting (distinct column-dimension values may differ).
+   * changes while pivoting (distinct column-dimension values may differ), and
+   * when the locale changes (generated headers and total labels are localized).
    */
   #syncPivot(changed: PropertyValues): void {
     const configChanged =
@@ -1478,7 +1479,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       changed.has('pivotRows') ||
       changed.has('pivotValues') ||
       changed.has('pivotOptions');
-    if (!configChanged && !(changed.has('data') && this.#pivotActive)) return;
+    const relabel = changed.has('localeText') && this.#pivotActive;
+    if (!configChanged && !relabel && !(changed.has('data') && this.#pivotActive)) return;
 
     const pivot = this.#pivotController();
     if (!pivot) return;
@@ -1496,7 +1498,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       pivot.on = on;
       pivot.values = this.pivotValues;
       pivot.options = this.pivotOptions ?? {};
-      if (!this.#pivotActive) {
+      const repivot = this.#pivotActive;
+      if (!repivot) {
         this.#savedColumns = this.columns;
         this.#savedColumnGroups = this.columnGroups;
         this.#pivotActive = true;
@@ -1505,8 +1508,13 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       const grouping = this.#groupingController();
       if (grouping) grouping.groupBy = [];
       this.groupBy = [];
-      // Carry width / pin state across a re-pivot for keys that survive.
-      this.columns = pivot.computeColumns(this.data, this.#pivotActive ? this.columns : undefined);
+      // Carry width / pin state across a re-pivot for keys that survive; the flat
+      // view's columns only lend their header text and format.
+      this.columns = pivot.computeColumns(
+        this.data,
+        repivot ? this.columns : undefined,
+        this.#savedColumns ?? undefined
+      );
       this.columnGroups = pivot.computeColumnGroups();
       this.requestUpdate(PIPELINE);
     } else if (this.#pivotActive) {
@@ -1883,6 +1891,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
           : String(row[PIVOT_GROUP_KEY])
       );
       const valueCols = this.columns.filter((column) => String(column.key).startsWith('pivot::'));
+      // A blank cell (an avg, min or max over no values) plots as 0: the model does not
+      // know the chart type, and a pie or donut cannot draw a null slice.
       const series: ChartSeries[] = valueCols.map((column) => ({
         name: column.headerText ?? String(column.key),
         data: rows.map((row) => Number(row[String(column.key)]) || 0),

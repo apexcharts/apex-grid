@@ -253,6 +253,7 @@ export const esLocale: GridLocaleText = {
   'pivot.blank': '(vacío)',
   'pivot.total': 'Total',
   'pivot.grandTotal': 'Total general',
+  'pivot.columnsTruncated': 'Se muestran {shown} de {total} columnas dinámicas',
 
   // Enterprise: selección de rango
   'rangeSelection.copied': 'Selección copiada al portapapeles',

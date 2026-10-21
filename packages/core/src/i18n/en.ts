@@ -247,6 +247,7 @@ export const EN_LOCALE = {
   'pivot.blank': '(blank)',
   'pivot.total': 'Total',
   'pivot.grandTotal': 'Grand Total',
+  'pivot.columnsTruncated': 'Showing {shown} of {total} pivot columns',
 
   // Enterprise: range selection
   'rangeSelection.copied': 'Copied selection to the clipboard',
