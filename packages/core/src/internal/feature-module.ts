@@ -115,6 +115,12 @@ export interface PresentedRow {
   readonly expanded?: boolean;
   /** Shadow part for the container element; defaults to `group-row`. */
   readonly part?: string;
+  /**
+   * Parts used inside {@link content} that the row should re-export, so
+   * `apex-grid::part(name)` can style them. The container {@link part} is
+   * exported without being listed here.
+   */
+  readonly exportParts?: ReadonlyArray<string>;
 }
 
 /**

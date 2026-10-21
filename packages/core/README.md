@@ -531,6 +531,28 @@ apex-grid::part(paginator) { background: var(--surface-2); }
 apex-grid-toolbar::part(search-input) { font-family: var(--font-mono); }
 ```
 
+Body rows re-export these parts, so `apex-grid::part(name)` reaches them:
+
+| Part | What |
+|---|---|
+| `cell` | A data cell |
+| `selection-cell`, `selection-checkbox` | Selection column cell and its checkbox |
+| `expansion-cell`, `expansion-toggle`, `expansion-chevron` | Expansion column cell, its button and the chevron icon |
+| `detail-panel` | Expanded detail panel container |
+| `row-number-cell`, `row-number` | Row-number gutter cell and its label (`coordinateHints`) |
+| `reorder-handle-cell`, `reorder-handle`, `reorder-grip` | Row-reorder grip cell, handle and icon (handle mode) |
+| `group-row` | Default container of a row a feature module renders full width |
+
+Parts used inside your own `detailTemplate` content are re-exported when you list them in `expansion.exportParts`:
+
+```js
+grid.expansion = {
+  enabled: true,
+  exportParts: ['order-summary'],
+  detailTemplate: ({ data }) => html`<div part="order-summary">${data.total}</div>`,
+};
+```
+
 ### Right-to-left
 
 Set `dir="rtl"` on the grid or any ancestor and the whole grid mirrors — no

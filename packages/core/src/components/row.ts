@@ -29,6 +29,15 @@ const GRIP_ICON = html`<svg
 </svg>`;
 
 /**
+ * Every part a row renders in its own shadow root. Rows live in the grid's
+ * shadow root, so the row's `exportparts` is the whole surface that
+ * `apex-grid::part(...)` can reach; a part missing here cannot be styled.
+ * `group-row` is the default container part of a module-rendered row.
+ */
+const ROW_PARTS =
+  'cell,row-number-cell,row-number,reorder-handle-cell,reorder-handle,reorder-grip,selection-cell,selection-checkbox,expansion-cell,expansion-toggle,expansion-chevron,detail-panel,group-row';
+
+/**
  * Component representing the DOM row in the Apex grid.
  */
 export default class ApexGridRow<T extends object> extends LitElement {
@@ -208,7 +217,6 @@ export default class ApexGridRow<T extends object> extends LitElement {
 
   public override connectedCallback(): void {
     super.connectedCallback();
-    this.setAttribute('exportparts', 'cell');
     this.setAttribute('role', 'row');
     this.addEventListener('pointerdown', this.#handleReorderPointerDown);
   }
@@ -235,6 +243,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
     this.#presented = this.state
       ? this.state.presentRow(this.data, { columns: this.columns, rowIndex: this.index })
       : null;
+    this.#syncExportParts();
     if (this.#presented) {
       this.selected = false;
       this.removeAttribute('aria-selected');
@@ -298,6 +307,28 @@ export default class ApexGridRow<T extends object> extends LitElement {
           this.removeAttribute('aria-expanded');
         }
       }
+    }
+  }
+
+  /**
+   * Re-exports the row's own parts plus the ones a module declares for the
+   * content it renders here: a presented row's container part and
+   * {@link PresentedRow.exportParts}, or the expansion config's
+   * `exportParts` for the detail panel content. Re-run on every update, so a
+   * row element the virtualizer reuses for another record drops the parts of
+   * the one it showed before.
+   */
+  #syncExportParts() {
+    // Runs on every row update, scroll recycling included, so the common
+    // case (no extra parts) builds no arrays.
+    const presented = this.#presented;
+    const own = presented?.part?.split(' ').join(',');
+    const list = presented ? presented.exportParts : this.state?.host.expansion?.exportParts;
+    let value = ROW_PARTS;
+    if (own) value += `,${own}`;
+    if (list?.length) value += `,${list.join(',')}`;
+    if (this.getAttribute('exportparts') !== value) {
+      this.setAttribute('exportparts', value);
     }
   }
 

@@ -689,6 +689,12 @@ export interface GridExpansionConfiguration<T extends object> {
    * custom cell template.
    */
   showToggleColumn?: boolean;
+  /**
+   * Parts used inside the `detailTemplate` content to re-export, so
+   * `apex-grid::part(name)` can style them from outside the grid. The panel
+   * itself is always reachable as `detail-panel`.
+   */
+  exportParts?: ReadonlyArray<string>;
 }
 
 /**

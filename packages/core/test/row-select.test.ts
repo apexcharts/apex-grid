@@ -1,8 +1,17 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame, waitUntil } from '@open-wc/testing';
 import { resetMouse, sendKeys, sendMouse } from '@web/test-runner-commands';
+import type { ReactiveController } from 'lit';
 import { ApexGrid } from '../src/components/grid.js';
 import ApexGridHeaderRow from '../src/components/header-row.js';
-import type { ColumnConfiguration } from '../src/internal/types.js';
+import type ApexGridRow from '../src/components/row.js';
+import { StateController } from '../src/controllers/state.js';
+import type {
+  GridFeatureModule,
+  PresentedRow,
+  RowPresenter,
+  RowTransformer,
+} from '../src/internal/feature-module.js';
+import type { ColumnConfiguration, GridHost } from '../src/internal/types.js';
 
 interface Row {
   id: number;
@@ -196,5 +205,150 @@ describe('Row selection cell: cancelled rowSelecting', () => {
     expect(grid.selectedRows.length).to.equal(1);
     expect(box.checked, 'select all was refused').to.be.false;
     expect(box.indeterminate, 'still mixed').to.be.true;
+  });
+});
+
+describe('Row parts', () => {
+  afterEach(() => fixtureCleanup());
+
+  const SUMMARY: Row = { id: -1, name: 'summary' };
+  const GROUP: Row = { id: -2, name: 'group' };
+
+  class PresenterStub implements ReactiveController, RowTransformer<Row>, RowPresenter<Row> {
+    constructor(host: GridHost<Row>) {
+      host.addController(this);
+    }
+    hostConnected() {}
+    processRows(rows: ReadonlyArray<Row>): Row[] {
+      return [SUMMARY, GROUP, ...rows];
+    }
+    presentRow(row: Row): PresentedRow | null {
+      if (row === SUMMARY) {
+        return {
+          part: 'summary-row',
+          exportParts: ['summary-label'],
+          content: html`<span part="summary-label">Summary</span>`,
+        };
+      }
+      if (row === GROUP) return { content: html`<span part="group-label">Group</span>` };
+      return null;
+    }
+  }
+
+  const presenterModule: GridFeatureModule<Row> = {
+    id: 'row-parts-stub',
+    create: (host) => new PresenterStub(host),
+  };
+
+  class PartsGrid<T extends object> extends ApexGrid<T> {
+    public static override get tagName() {
+      return 'apex-grid-row-parts-test';
+    }
+    public static override register() {
+      ApexGrid.register();
+      if (!customElements.get(PartsGrid.tagName)) {
+        customElements.define(PartsGrid.tagName, PartsGrid);
+      }
+    }
+    protected override createStateController(): StateController<T> {
+      return new StateController<T>(this, [presenterModule as unknown as GridFeatureModule<T>]);
+    }
+  }
+
+  const COLORS: Record<string, string> = {
+    'selection-cell': 'rgb(1, 1, 1)',
+    'selection-checkbox': 'rgb(2, 2, 2)',
+    'expansion-cell': 'rgb(3, 3, 3)',
+    'expansion-toggle': 'rgb(4, 4, 4)',
+    'detail-panel': 'rgb(5, 5, 5)',
+    'row-number': 'rgb(6, 6, 6)',
+    'reorder-handle': 'rgb(7, 7, 7)',
+    'summary-row': 'rgb(8, 8, 8)',
+    'summary-label': 'rgb(9, 9, 9)',
+    'group-row': 'rgb(10, 10, 10)',
+    'my-detail': 'rgb(11, 11, 11)',
+    cell: 'rgb(12, 12, 12)',
+  };
+
+  async function mountParts() {
+    PartsGrid.register();
+    const grid = await fixture<PartsGrid<Row>>(
+      html`<apex-grid-row-parts-test
+        .data=${data}
+        .columns=${columns}
+        .coordinateHints=${true}
+        .rowReordering=${{ enabled: true }}
+        .selection=${{ enabled: true, mode: 'multiple', showCheckboxColumn: true }}
+        .expansion=${{
+          enabled: true,
+          exportParts: ['my-detail'],
+          detailTemplate: () => html`<span part="my-detail">detail</span>`,
+        }}
+      ></apex-grid-row-parts-test>`,
+      { parentNode: sizedParent() }
+    );
+    await settle(grid);
+    return grid;
+  }
+
+  function rowFor(grid: ApexGrid<Row>, record: Row) {
+    return grid.rows.find((row) => row.data === record) as ApexGridRow<Row>;
+  }
+
+  function outline(row: ApexGridRow<Row>, part: string) {
+    const el = row.renderRoot.querySelector<HTMLElement>(`[part="${part}"]`);
+    expect(el, `part ${part} renders`).to.exist;
+    return getComputedStyle(el!).outlineColor;
+  }
+
+  it('apex-grid::part() reaches every part a row renders', async () => {
+    const style = document.createElement('style');
+    style.textContent = Object.entries(COLORS)
+      .map(([part, color]) => `apex-grid-row-parts-test::part(${part}){outline:3px solid ${color}}`)
+      .join('\n');
+    document.head.append(style);
+    try {
+      const grid = await mountParts();
+      await grid.expandRow(data[0]);
+      await settle(grid);
+
+      const dataRow = rowFor(grid, data[0]);
+      for (const part of [
+        'cell',
+        'selection-cell',
+        'selection-checkbox',
+        'expansion-cell',
+        'expansion-toggle',
+        'detail-panel',
+        'my-detail',
+        'row-number',
+        'reorder-handle',
+      ]) {
+        expect(outline(dataRow, part), part).to.equal(COLORS[part]);
+      }
+
+      const summary = rowFor(grid, SUMMARY);
+      expect(outline(summary, 'summary-row'), 'presenter part').to.equal(COLORS['summary-row']);
+      expect(outline(summary, 'summary-label'), 'declared child part').to.equal(
+        COLORS['summary-label']
+      );
+      const group = rowFor(grid, GROUP);
+      expect(outline(group, 'group-row'), 'default presenter part').to.equal(COLORS['group-row']);
+    } finally {
+      style.remove();
+    }
+  });
+
+  it('exportparts follows the presented row when the element is reused', async () => {
+    const grid = await mountParts();
+    const summary = rowFor(grid, SUMMARY);
+    expect(summary.getAttribute('exportparts')).to.contain('summary-label');
+
+    summary.data = data[5];
+    await summary.updateComplete;
+    const parts = summary.getAttribute('exportparts')!.split(',');
+    expect(parts).to.not.include('summary-label');
+    expect(parts).to.not.include('summary-row');
+    expect(parts).to.include('selection-checkbox');
   });
 });
