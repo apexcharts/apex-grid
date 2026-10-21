@@ -486,4 +486,17 @@ describe('Data pipeline orchestration', () => {
       expect(grid.isUpdatePending, 'a repeated nullish value requested an update').to.be.false;
     });
   });
+
+  describe('moveColumn', () => {
+    it('does not emit columnMoving for a move that changes nothing', async () => {
+      const grid = await mount();
+      const events: string[] = [];
+      grid.addEventListener('columnMoving', () => events.push('columnMoving'));
+      grid.addEventListener('columnMoved', () => events.push('columnMoved'));
+      expect(await grid.moveColumn('id', 'name', 'before')).to.be.false;
+      expect(events).to.eql([]);
+      expect(await grid.moveColumn('id', 'name', 'after')).to.be.true;
+      expect(events).to.eql(['columnMoving', 'columnMoved']);
+    });
+  });
 });

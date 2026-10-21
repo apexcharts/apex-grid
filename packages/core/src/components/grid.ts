@@ -3028,20 +3028,19 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     const target = this.columns[toIndex];
     if ((source.pinned ?? null) !== (target.pinned ?? null)) return false;
 
+    const next = this.columns.slice();
+    const [moved] = next.splice(fromIndex, 1);
+    let insertIndex = next.findIndex((column) => column.key === toKey);
+    if (position === 'after') insertIndex += 1;
+    next.splice(insertIndex, 0, moved);
+    // A move that changes nothing is a no-op, with no columnMoving.
+    if (next.every((column, index) => column === this.columns[index])) return false;
+
     const proceed = this.emitEvent('columnMoving', {
       detail: { key: fromKey, fromIndex, toKey, position },
       cancelable: true,
     });
     if (!proceed) return false;
-
-    const next = this.columns.slice();
-    const [moved] = next.splice(fromIndex, 1);
-    let insertIndex = next.findIndex((column) => column.key === toKey);
-    if (insertIndex < 0) return false;
-    if (position === 'after') insertIndex += 1;
-    next.splice(insertIndex, 0, moved);
-
-    if (next.every((column, index) => column === this.columns[index])) return false;
 
     this.columns = next;
     await this.updateComplete;
