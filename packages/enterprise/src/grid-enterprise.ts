@@ -979,31 +979,40 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   /**
-   * Extends the core {@link ApexGrid.getSchema} descriptor with enterprise
-   * capabilities: marks every column groupable / pivotable, numeric columns
-   * aggregatable (with the supported aggregation functions), and advertises
-   * grouping / pivot / aggregation at the grid level.
+   * Extends the core {@link ApexGrid.getSchema} descriptor with the enterprise
+   * capabilities this grid's registered modules provide: grouping (columns
+   * groupable), pivot (columns pivotable), and aggregation (numeric columns
+   * aggregatable, with the supported functions). A grid set up with
+   * {@link ApexGridEnterprise.use} without a module does not advertise it.
    */
   public override getSchema(): GridSchema {
     const base = super.getSchema();
     const formulaColumns = new Set(
       this.columns.filter((column) => column.allowFormula).map((column) => String(column.key))
     );
+    const grouping = !!this.#groupingController();
+    const pivot = !!this.#pivotController();
+    // Group header aggregates, pivot values and the aggregation module all take
+    // aggregation configs, so any of them offers the functions.
+    const aggregation = grouping || pivot || !!this.stateController.module(AGGREGATION_MODULE_ID);
     return {
       ...base,
-      columns: base.columns.map((column) => ({
-        ...column,
-        groupable: true,
-        pivotable: true,
-        aggregatable: isNumericType(column.dataType),
-        aggFuncs: isNumericType(column.dataType) ? [...AGGREGATION_FUNCS] : undefined,
-        allowFormula: formulaColumns.has(column.key) || undefined,
-      })),
+      columns: base.columns.map((column) => {
+        const aggregatable = aggregation && isNumericType(column.dataType);
+        return {
+          ...column,
+          groupable: grouping,
+          pivotable: pivot,
+          aggregatable,
+          aggFuncs: aggregatable ? [...AGGREGATION_FUNCS] : undefined,
+          allowFormula: formulaColumns.has(column.key) || undefined,
+        };
+      }),
       capabilities: {
         ...base.capabilities,
-        grouping: true,
-        pivot: true,
-        aggregation: { funcs: [...AGGREGATION_FUNCS] },
+        grouping,
+        pivot,
+        ...(aggregation && { aggregation: { funcs: [...AGGREGATION_FUNCS] } }),
       },
     };
   }
