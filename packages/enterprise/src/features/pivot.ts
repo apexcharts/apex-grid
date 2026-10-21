@@ -135,24 +135,28 @@ function childKey(parentKey: string, value: unknown): string {
 let collator: Intl.Collator | undefined;
 
 /**
- * Column order: numbers and Dates by value, text with numeric collation, blanks
- * last. Values the collation ranks equal ('1' and '01') but whose identities
- * differ are ordered by identity, so the order is total and the columns of one
- * outer value stay together under its spanning header.
+ * Column order: numbers and Dates by value, then text with numeric collation,
+ * blanks last. Values the collation ranks equal ('1' and '01') but whose
+ * identities differ are ordered by identity, so the order is total and the
+ * columns of one outer value stay together under its spanning header.
  */
 function compareDimension(a: unknown, b: unknown): number {
   const x = stringify(a);
   const y = stringify(b);
   if (x === y) return 0;
   if (x === BLANK || y === BLANK) return x === BLANK ? 1 : -1;
-  const p = a instanceof Date ? a.getTime() : a;
-  const q = b instanceof Date ? b.getTime() : b;
+  const p = sortNumber(a);
+  const q = sortNumber(b);
+  if ((p === undefined) !== (q === undefined)) return p === undefined ? 1 : -1;
   collator ??= new Intl.Collator(undefined, { numeric: true });
-  const order =
-    typeof p === 'number' && typeof q === 'number' && !Number.isNaN(p - q)
-      ? p - q
-      : collator.compare(x, y);
+  const order = p !== undefined && q !== undefined ? p - q : collator.compare(x, y);
   return order || (x < y ? -1 : 1);
+}
+
+/** A number or valid Date as a number to order by; anything else sorts as text. */
+function sortNumber(value: unknown): number | undefined {
+  const n = value instanceof Date ? value.getTime() : value;
+  return typeof n === 'number' && !Number.isNaN(n) ? n : undefined;
 }
 
 /**

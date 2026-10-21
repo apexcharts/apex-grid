@@ -178,6 +178,24 @@ describe('pivot columns (B38)', () => {
       expect(groups).to.eql(['pv::01', 'pv::1', 'pv::1']);
       expect(grid.getPivotColumnGroups().map((g) => g.id)).to.eql(['pv::01', 'pv::1']);
     });
+
+    it('orders a field mixing Dates and text the same for any row order', async () => {
+      const jan = (day: number) => new Date(2024, 0, day);
+      const codes = [jan(1), 'Pending', jan(2), jan(8), 'Pending', jan(1), jan(2), jan(8)];
+      const pivot = (order: unknown[]) =>
+        mount({
+          data: order.map((code, i) => ({ code, sub: `s${i}`, r: 'x', v: i })),
+          on: ['code', 'sub'],
+          rows: ['r'],
+          values: { v: ['sum'] },
+        });
+      const expected = [jan(1), jan(2), jan(8), 'Pending'].map((code) => `pv::${String(code)}`);
+      for (const order of [codes, [...codes].reverse()]) {
+        const grid = await pivot(order);
+        const ids = grid.getPivotColumnGroups().map((g) => g.id.replaceAll('\\:', ':'));
+        expect(ids).to.eql(expected);
+      }
+    });
   });
 
   describe('ent-pivot-4: one blank and one Date bucket in tree mode', () => {
