@@ -7,6 +7,7 @@ import type {
   DataPipelineConfiguration,
   ExportCellValue,
   GetStateOptions,
+  GridExpansionConfiguration,
   GridLocaleKey,
   GridSchema,
   GridState,
@@ -592,12 +593,16 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * Declarative master/detail: each expanded master row renders a nested grid
    * of related rows. Setting this configures the grid's {@link expansion}
    * automatically (creating, caching, and populating the child grids), so you
-   * don't hand-write a `detailTemplate`. Overrides any manual `expansion`.
+   * don't hand-write a `detailTemplate`. Overrides any manual `expansion`;
+   * setting it back to `null` restores the `expansion` it replaced.
    */
   @property({ attribute: false })
   public masterDetail: MasterDetailConfig<T> | null = null;
 
   #masterDetailManager: MasterDetailManager<T> | null = null;
+  /** The expansion config master/detail installed, and the one it replaced (restored on off). */
+  #masterDetailExpansion?: GridExpansionConfiguration<T>;
+  #expansionBeforeMasterDetail?: GridExpansionConfiguration<T>;
 
   /**
    * Infinite (server-side) row model: lazily fetch fixed-size blocks from a
@@ -1441,13 +1446,20 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   /** Wire the declarative master/detail config onto the grid's expansion. */
   #syncMasterDetail(changed: PropertyValues): void {
     if (!changed.has('masterDetail')) return;
+    const installed =
+      !!this.#masterDetailExpansion && this.expansion === this.#masterDetailExpansion;
     if (this.masterDetail) {
+      if (!installed) this.#expansionBeforeMasterDetail = this.expansion;
       this.#masterDetailManager = new MasterDetailManager<T>(this.masterDetail, () =>
         this.requestUpdate()
       );
-      this.expansion = this.#masterDetailManager.buildExpansion();
+      this.expansion = this.#masterDetailExpansion = this.#masterDetailManager.buildExpansion();
     } else {
+      // Off: put back what master/detail replaced, unless the app has set its own since. Dropping
+      // the installed config releases the old manager and its cached detail grids.
+      if (installed) this.expansion = this.#expansionBeforeMasterDetail;
       this.#masterDetailManager = null;
+      this.#masterDetailExpansion = this.#expansionBeforeMasterDetail = undefined;
     }
   }
 

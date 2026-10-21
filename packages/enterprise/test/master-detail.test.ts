@@ -1,5 +1,5 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
-import type { ColumnConfiguration } from 'apex-grid';
+import type { ColumnConfiguration, GridExpansionConfiguration } from 'apex-grid';
 import { ApexGridEnterprise, type MasterDetailConfig } from '../src/index.js';
 
 interface Item {
@@ -167,5 +167,55 @@ describe('Master/detail', () => {
 
     // The grid is built once and reused — configureDetail ran a single time.
     expect(calls.filter((row) => row === orders[0]).length).to.equal(1);
+  });
+
+  describe('turning master/detail off', () => {
+    it('stops expanding rows and renders no detail when set to null', async () => {
+      const grid = await mount({ columns: detailColumns, getDetailData: (order) => order.items });
+      await grid.expandRow(orders[0]);
+      await settle(grid);
+      await waitFor(() => detailGrids(grid).length > 0);
+      expect(detailGrids(grid).length).to.equal(1);
+
+      grid.masterDetail = null;
+      await settle(grid);
+      // Assert on primitives: a failing compare of a closure hangs the runner's serializer.
+      expect(typeof grid.expansion?.detailTemplate, 'no detail template left').to.equal(
+        'undefined'
+      );
+      expect(grid.expansion?.enabled ?? false, 'expansion off').to.be.false;
+      expect(detailGrids(grid).length, 'expanded row renders no detail').to.equal(0);
+      expect(await grid.expandRow(orders[1]), 'other rows not expandable').to.be.false;
+    });
+
+    it("restores the app's own expansion config it replaced", async () => {
+      const own: GridExpansionConfiguration<Order> = {
+        enabled: true,
+        detailTemplate: () => html`<span class="own-detail">own</span>`,
+      };
+      const grid = await mount({ columns: detailColumns, getDetailData: (order) => order.items });
+      grid.masterDetail = null;
+      await settle(grid);
+      grid.expansion = own;
+      grid.masterDetail = { columns: detailColumns, getDetailData: (order) => order.items };
+      await settle(grid);
+      expect(grid.expansion === own).to.be.false;
+      // Switching configs keeps the app's config as the one to restore.
+      grid.masterDetail = { columns: detailColumns, getDetailData: () => [] };
+      await settle(grid);
+      grid.masterDetail = null;
+      await settle(grid);
+      expect(grid.expansion === own, 'own config restored').to.be.true;
+    });
+
+    it('leaves an expansion config the app set while master/detail was on', async () => {
+      const grid = await mount({ columns: detailColumns, getDetailData: (order) => order.items });
+      const own: GridExpansionConfiguration<Order> = { enabled: true, detailTemplate: () => 'x' };
+      grid.expansion = own;
+      await settle(grid);
+      grid.masterDetail = null;
+      await settle(grid);
+      expect(grid.expansion === own, 'own config kept').to.be.true;
+    });
   });
 });
