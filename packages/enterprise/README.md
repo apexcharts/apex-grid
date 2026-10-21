@@ -216,7 +216,8 @@ grid.pivotOptions = { expandable: true, defaultExpanded: true, grandTotal: 'bott
 
 `defaultExpanded` accepts `true` / `false` / a depth threshold. Clicking a chevron
 toggles a node; total rows still compose. In expandable mode the `subtotals` option
-is ignored (parent rows already are the subtotals).
+is ignored (parent rows already are the subtotals). `getState()` / `setState()` save
+and restore `pivotOptions` and the nodes the user expanded or collapsed.
 
 ## Set filter
 
@@ -292,7 +293,8 @@ replaces the built-in filter). Under `infiniteRowModel` or `serverSideRowModel` 
 grid does not filter: it sends the model to your datasource as `advancedFilterModel`
 on the `getRows` params (`null` when none) and reloads from the first block, so apply
 it on the server (`filterRows` does it for in-memory data). The model is plain JSON,
-so it round-trips through storage.
+so it round-trips through storage, and `getState()` / `setState()` save and restore
+it (changing it fires `stateChanged`).
 The pure evaluator (`filterRows`, `isEmptyModel`) is exported for headless use.
 
 ## Columns tool panel
