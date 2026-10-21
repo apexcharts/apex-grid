@@ -396,50 +396,48 @@ export default class ApexGridRow<T extends object> extends LitElement {
   }
 
   protected renderSelectionCell(colindex: number) {
-    if (!this.state?.selection.showCheckboxColumn) return nothing;
-    const selected = this.selected;
-    const handleChange = (event: Event) => {
-      const mouseEvent = event as Event & {
-        shiftKey?: boolean;
-        ctrlKey?: boolean;
-        metaKey?: boolean;
-      };
-      // The native `change` event on a checkbox doesn't expose modifier keys
-      // — they're carried on the preceding `click`. We handle Shift/Ctrl in
-      // the click listener below; the change handler covers keyboard toggles
-      // (Space on a focused checkbox) which always behave as plain toggles.
-      void mouseEvent;
-      this.state.selection.toggleRow(this.data);
+    const selection = this.state?.selection;
+    if (!selection?.showCheckboxColumn) return nothing;
+    // Shift extends a range from the anchor and Ctrl or Cmd toggles one row
+    // without moving it (multiple mode only). Shared by the checkbox and the
+    // cell around it, so both give the same result for the same gesture.
+    // Returns false for a plain click, which the checkbox toggles itself.
+    const modifierToggle = (event: MouseEvent): boolean => {
+      if (selection.mode !== 'multiple') return false;
+      if (event.shiftKey) {
+        void selection.rangeToggle(this.data);
+      } else if (event.ctrlKey || event.metaKey) {
+        void selection.additiveToggle(this.data);
+      } else {
+        return false;
+      }
+      return true;
+    };
+    // The native `change` carries no modifier keys (they ride on the click
+    // above), so it covers plain clicks and Space on a focused checkbox.
+    const handleChange = () => {
+      void selection.toggleRow(this.data);
     };
     const handleClick = (event: MouseEvent) => {
-      // Prevent the click from bubbling to the grid's body click handler
-      // (which would otherwise re-target the active cell to a non-existent
-      // selection column).
+      // Keeps checkbox clicks from bubbling to the cell's forwarder below and
+      // to app click listeners on the grid (the grid's own body handler runs
+      // in the capture phase and ignores this target).
       event.stopPropagation();
-      if (event.shiftKey && this.state.selection.mode === 'multiple') {
-        event.preventDefault();
-        void this.state.selection.rangeToggle(this.data);
-        return;
-      }
-      if ((event.ctrlKey || event.metaKey) && this.state.selection.mode === 'multiple') {
-        event.preventDefault();
-        void this.state.selection.additiveToggle(this.data);
-        return;
-      }
-      // Plain click: let the default checkbox toggle proceed; `change` will
-      // commit the new state via `toggleRow`.
+      // A modifier click is handled here, so cancel the native toggle.
+      if (modifierToggle(event)) event.preventDefault();
     };
     // The checkbox itself is 14x14, well under the 24x24 WCAG 2.2 AA minimum
     // (2.5.8), and growing it would make a chunky box out of a deliberately
     // small mark. Instead the whole cell is the target: a click anywhere in it
-    // forwards to the checkbox, which is both compliant and what people expect
-    // of a selection column. Clicks that land on the checkbox are left alone,
-    // or the forward would toggle twice and cancel out.
+    // acts like a click on the checkbox, modifiers included, which is both
+    // compliant and what people expect of a selection column. Clicks that land
+    // on the checkbox are left alone, or the forward would toggle twice and
+    // cancel out.
     const forwardToCheckbox = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (target instanceof HTMLInputElement) return;
-      event.currentTarget instanceof HTMLElement &&
-        event.currentTarget.querySelector<HTMLInputElement>('input[type="checkbox"]')?.click();
+      if (event.target instanceof HTMLInputElement || modifierToggle(event)) return;
+      (event.currentTarget as HTMLElement)
+        .querySelector<HTMLInputElement>('input[type="checkbox"]')
+        ?.click();
     };
     return html`<div
       part="selection-cell"
@@ -452,7 +450,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
         type="checkbox"
         part="selection-checkbox"
         aria-label=${this.state.localize('row.select')}
-        .checked=${selected}
+        .checked=${this.selected}
         @click=${handleClick}
         @change=${handleChange}
       />
