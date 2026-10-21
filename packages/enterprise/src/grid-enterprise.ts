@@ -1507,7 +1507,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       // Pivot and row grouping are mutually exclusive — pivot wins.
       const grouping = this.#groupingController();
       if (grouping) grouping.groupBy = [];
-      this.groupBy = [];
+      // A fresh empty array would still count as a groupBy change and request the pipeline again.
+      if (this.groupBy.length > 0) this.groupBy = [];
       // Carry width / pin state across a re-pivot for keys that survive; the flat
       // view's columns only lend their header text and format.
       this.columns = pivot.computeColumns(
@@ -1516,7 +1517,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
         this.#savedColumns ?? undefined
       );
       this.columnGroups = pivot.computeColumnGroups();
-      this.requestUpdate(PIPELINE);
+      // A data change alone already runs the pipeline from the core data watcher.
+      if (configChanged || relabel || !this.hasUpdated) this.requestUpdate(PIPELINE);
     } else if (this.#pivotActive) {
       this.#deactivatePivot();
     }

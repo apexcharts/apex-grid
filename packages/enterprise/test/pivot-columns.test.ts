@@ -1,5 +1,6 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame, waitUntil } from '@open-wc/testing';
 import { type ColumnConfiguration, esLocale } from 'apex-grid';
+import { PIPELINE } from 'apex-grid/internal';
 import {
   type AggregationConfig,
   ApexGridChart,
@@ -416,6 +417,53 @@ describe('pivot columns (B38)', () => {
       await settle(grid);
       expect(grid.columns[0].width).to.equal('222px');
       expect(grid.columns[0].hidden).to.equal(true);
+    });
+  });
+
+  describe('sweep-data-at-scale-7: data assignment while pivoting', () => {
+    it('builds the pivot no more often than a flat module transform does', async () => {
+      const make = () => [
+        { region: 'EMEA', product: 'A', amount: 1 },
+        { region: 'AMER', product: 'B', amount: 2 },
+      ];
+      const grid = await mount({
+        data: make(),
+        on: 'product',
+        rows: ['region'],
+        values: { amount: ['sum'] },
+      });
+      const pivot = pivotOf(grid);
+      const original = pivot.processRows.bind(pivot);
+      let runs = 0;
+      pivot.processRows = (rows: Rec[]) => {
+        runs++;
+        return original(rows);
+      };
+      grid.data = make();
+      await settle(grid);
+      await settle(grid);
+      // One run in the core data watcher and one in the pipeline it requests.
+      expect(runs).to.be.at.most(2);
+      expect(rowsOf(grid).length).to.equal(2);
+    });
+
+    it('leaves the pipeline request of a data assignment to the core data watcher', async () => {
+      const grid = await mount({
+        data: [{ region: 'EMEA', product: 'A', amount: 1 }],
+        on: 'product',
+        rows: ['region'],
+        values: { amount: ['sum'] },
+      });
+      const original = grid.requestUpdate.bind(grid);
+      let requests = 0;
+      grid.requestUpdate = ((...args: Parameters<typeof grid.requestUpdate>) => {
+        if (args[0] === PIPELINE) requests++;
+        return original(...args);
+      }) as typeof grid.requestUpdate;
+      grid.data = [{ region: 'AMER', product: 'B', amount: 2 }];
+      await settle(grid);
+      expect(requests).to.equal(1);
+      expect(rowsOf(grid).map((row) => row.region)).to.eql(['AMER']);
     });
   });
 
