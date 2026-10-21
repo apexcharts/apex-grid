@@ -372,6 +372,12 @@ grid.masterDetail = {
 grid.refreshDetail(row); // drop a row's cached detail grid to force a reload
 ```
 
+Set `masterDetail` back to `null` to turn it off; the grid restores the
+`expansion` config it had before. When `getDetailData` rejects or throws, the
+detail shows empty and the data is requested again the next time that detail
+is shown. Style the panel with `apex-grid-enterprise::part(master-detail)` and
+the nested grid with `::part(detail-grid)`.
+
 ## Integrated charts
 
 Render the grid's current data as an ApexCharts chart. ApexCharts is dynamically
