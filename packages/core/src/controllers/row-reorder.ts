@@ -2,6 +2,7 @@ import type { ReactiveController } from 'lit';
 import { PIPELINE } from '../internal/constants.js';
 import { awaitChildUpdates, type KeyedFlipEntry, playKeyedFlip } from '../internal/flip.js';
 import type { GridHost } from '../internal/types.js';
+import SortDataOperation from '../operations/sort.js';
 
 /** Where a moved row lands relative to its target. */
 export type RowDropPosition = 'before' | 'after';
@@ -56,8 +57,10 @@ export interface RowGhostState {
  * Row order is normally derived (filter → sort). This controller adds a
  * **manual order**: an explicit sequence of row references applied as a
  * pipeline step after sort. While a manual order is active, sorting is mutually
- * exclusive (applying a sort clears the manual order). State is reference-based,
- * so it survives the in-place pipeline.
+ * exclusive (applying a sort clears the manual order). The order spans every
+ * row, hidden by a filter or not, so a move made under a filter leaves the
+ * hidden rows in place. State is reference-based, so it survives the in-place
+ * pipeline.
  *
  * Reordering happens through {@link moveRow} (pointer live-swap during a drag,
  * the keyboard grab/move flow, or the public API). Each move goes through the
@@ -416,6 +419,33 @@ export class RowReorderController<T extends object> implements ReactiveControlle
   // --- internals ----------------------------------------------------------
 
   /**
+   * The order every row is in, hidden by a filter or not: the manual order,
+   * else `data` under the active sort, with rows it lacks following in data
+   * order. The rows the view shows are laid into their own slots in view order,
+   * so the move applies to exactly what the user sees and hidden rows stay put.
+   */
+  #fullOrder(): T[] {
+    const data = this.host.data;
+    const sort = this.host.sortExpressions;
+    let base: T[];
+    if (this.#order) {
+      const rest = new Set(data);
+      base = this.#order.filter((row) => rest.delete(row));
+      base.push(...rest);
+    } else if (sort.length && !this.host.dataPipelineConfiguration?.sort) {
+      const state = new Map(sort.map((expr) => [expr.key, expr] as const));
+      base = new SortDataOperation<T>().apply([...data], state);
+    } else {
+      base = [...data];
+    }
+    const listed = new Set(base);
+    const shown = this.host.dataView.filter((row) => listed.has(row));
+    const inView = new Set(shown);
+    let k = 0;
+    return base.map((row) => (inView.has(row) ? shown[k++] : row));
+  }
+
+  /**
    * The core order mutation: validates, emits `rowMoving` (cancellable),
    * updates the manual order (or splices data when `applyToData`), re-runs the
    * pipeline, and emits `rowMoved`. Does not animate.
@@ -437,12 +467,11 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     });
     if (!proceed) return false;
 
-    const baseline = this.#order ?? [...(this.host.dataView as ReadonlyArray<T>)];
-    const next = baseline.filter((row) => row !== source);
-    let index = next.indexOf(target);
-    if (index === -1) return false;
-    if (position === 'after') index += 1;
-    next.splice(index, 0, source);
+    // A row outside the order (a tree child, a module's row) cannot move.
+    const next = this.#fullOrder();
+    if (!next.includes(source) || !next.includes(target)) return false;
+    next.splice(next.indexOf(source), 1);
+    next.splice(next.indexOf(target) + (position === 'after' ? 1 : 0), 0, source);
 
     if (this.applyToData) {
       this.#spliceData(next);

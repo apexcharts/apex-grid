@@ -5,6 +5,7 @@ import type {
   GridRowPinningConfiguration,
   GridRowReorderingConfiguration,
 } from '../src/internal/types.js';
+import type { FilterExpression } from '../src/operations/filter/types.js';
 import GridTestFixture from './utils/grid-fixture.js';
 import data, { type TestData } from './utils/test-data.js';
 
@@ -334,5 +335,51 @@ describe('Row reorder — coexists with pinned rows', () => {
 
     expect(fx.ids()).to.deep.equal([2, 1, 3, 4, 5, 6, 7]);
     expect(fx.grid.pinnedRows.bottom).to.deep.equal([pinned]);
+  });
+});
+
+const lowImportance = [
+  { key: 'importance', condition: 'equals', searchTerm: 'low' },
+] as unknown as FilterExpression<TestData>[];
+
+describe('Row reorder: a move under a filter keeps hidden rows in place', () => {
+  afterEach(() => TDD.tearDown());
+
+  it('manual order: hidden rows keep their slots after the filter clears', async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+    TDD.grid.filter(lowImportance);
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([2, 4, 7]);
+
+    expect(TDD.grid.moveRow(2, 0, 'before')).to.be.true;
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([7, 2, 4]);
+
+    TDD.grid.clearFilter();
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([1, 7, 2, 3, 4, 5, 6, 8]);
+  });
+
+  it('applyToData: only the moved row changes slot in grid.data', async () => {
+    TDD.rowReordering = { enabled: true, applyToData: true };
+    await TDD.setUp();
+    TDD.grid.filter(lowImportance);
+    await TDD.waitForUpdate();
+    expect(TDD.grid.moveRow(0, 2, 'after')).to.be.true;
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([4, 7, 2]);
+    expect(TDD.grid.data.map((row) => row.id)).to.deep.equal([1, 3, 4, 5, 6, 7, 2, 8]);
+  });
+
+  it('applyToData under a quick filter keeps the hidden rows in place', async () => {
+    TDD.rowReordering = { enabled: true, applyToData: true };
+    await TDD.setUp();
+    TDD.grid.quickFilter = 'high';
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([5, 8]);
+    expect(TDD.grid.moveRow(1, 0, 'before')).to.be.true;
+    await TDD.waitForUpdate();
+    expect(TDD.grid.data.map((row) => row.id)).to.deep.equal([1, 2, 3, 4, 8, 5, 6, 7]);
   });
 });
