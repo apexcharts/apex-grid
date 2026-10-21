@@ -19,6 +19,8 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   (default 200, `Infinity` turns it off). A pivot on a high-cardinality field
   shows the first columns, announces the cut and logs one console warning,
   where it used to render every column and freeze the grid.
+- `GridApi.getDirection()` (optional), a `direction` field on the AI
+  `GridContext` and a `direction` seed for `createFakeGridApi`.
 
 ### Changed
 - **Copy neutralises spreadsheet formulas.** Range copy (Ctrl/Cmd+C,
@@ -267,6 +269,39 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   row scrolls out, for example) and come back when it is attached again,
   instead of closing for good. The Ask AI dialog follows the same rule; a
   request it had in flight is cancelled without an error.
+- **`getState` saves the advanced filter, `pivotOptions` and the pivot
+  tree's collapsed nodes**, and `setState` restores them. Changing any of them
+  fires `stateChanged`, so apps that persist on that event write more often.
+  A `maxValueColumns` of `Infinity` is saved as `null`.
+- **The enterprise `setState` follows the core defensive contract.** A
+  malformed field under `modules.enterprise` (`groupBy: null`, for example)
+  is skipped with a message in `result.warnings` instead of throwing; with
+  `strict` it throws before anything is applied. Accepted fields are listed
+  in `result.applied` as `modules.enterprise.<field>`, and unrestorable
+  formula entries are counted in two warnings like the core row slices.
+- `getSchema` advertises grouping, pivot and aggregation, and marks columns
+  groupable, pivotable or aggregatable, only when those modules are
+  registered, so the AI toolkit stops offering actions a smaller grid cannot
+  show.
+- The chart panel and the Create chart dialog take their surface, borders and
+  text from the grid theme: beside a dark grid they are drawn dark with
+  readable chart text. A forced `'dark'` chart theme gets a dark panel and a
+  forced `'light'` one keeps a light panel.
+- The context menu follows the grid's direction even when only the grid sets
+  `dir`: under RTL it aligns right, submenus open to the left, ArrowLeft
+  opens and ArrowRight closes a submenu. A left to right grid on a right to
+  left page gets a left to right menu.
+- AI Toolkit: when every entry of a request is refused (sorting by a column
+  that is not sortable, grouping by an unknown column), that part of the view
+  stays as it is and the turn warns "no valid entries, left unchanged".
+  Before, the refused request cleared it and was reported as applied. An
+  explicitly empty list still clears.
+- AI Toolkit: `sanitizePatch` keeps only typed fields: column layout entries
+  keep `hidden` (boolean), `pinned` and `width`, selection items keep
+  `{ id }` or `{ index }`, and fields outside the advertised schema
+  (`groupExpand`, `ranges` and the rest) are dropped with a warning each.
+  `toJSONSchema` and `sanitizePatch` agree on each column's aggregation
+  functions.
 
 ### Fixed
 - **The context menu, the charted-range outline and the chart dialog follow
@@ -405,6 +440,14 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   row dimension.
 - Pivot subtotals no longer fail with a RangeError when one row group holds
   more than about 120,000 rows.
+- A chart following the grid theme picks dark mode for any dark surface,
+  including hex values such as the built in dark theme's `#0f172a`.
+- Group, pivot and server-side group chevrons honour reduced motion and the
+  `--ag-dur-med` token like the core chevrons.
+- AI Toolkit: in a right to left grid, "pin X to the left" pins to the side
+  the user named. A model sending `groupExpand: null` no longer makes the
+  turn throw.
+- The AI panel names applied enterprise fields (`Applied: groupBy`).
 
 ### Performance
 - Range formulas index their precedents instead of one key per cell, so a

@@ -42,6 +42,9 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   for the row to re-export, so `apex-grid::part(name)` can style them.
 - Locale key `pivot.columnsTruncated` for the enterprise pivot column cap, in
   English and Spanish.
+- `rowMoving` and `rowMoved` carry `position` (`'before'` or `'after'`) and
+  `toIndex`, the view index the row lands at, next to `from`, `to` and
+  `data`.
 
 ### Changed
 - **Token defaults moved from the grid host to the document root.** The grid
@@ -184,6 +187,15 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   selection, expansion, detail panel, row number and reorder parts, and the
   parts of rows a module renders. Before, only `cell` was reachable, so
   existing `::part()` rules for these names now take effect.
+- **Moving a row on a sorted grid clears the sort** and keeps the moved order,
+  so the sort indicator goes away on the first move and `getState` never
+  reports a sort and a row order together. Before, an `applyToData` move was
+  undone by the re-sort.
+- A move that leaves the row where it is (`moveRow(0, 1, 'before')`, for
+  example) returns `false` and fires no `rowMoving` or `rowMoved`.
+- Escape after keyboard grab steps restores the original order (and
+  `grid.data` with `applyToData`, and any sort) and fires `rowMoved` for the
+  way back, so a persisted order stays in sync.
 
 ### Fixed
 - **`setup()` host sizing reaches grids inside a shadow root.** The
@@ -308,6 +320,20 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   do the same range or additive selection as on the checkbox itself.
 - When a `rowSelecting` listener cancels the change, the row and select-all
   checkboxes show the real selection state instead of staying checked.
+- Moving a row while a column filter or the quick filter is active keeps every
+  hidden row in its place, in the manual order and in `grid.data` with
+  `applyToData`. Before, hidden rows were pushed to the end.
+- Replacing `grid.data` carries the manual row order and row pins onto the
+  new rows (by `rowId` when set, otherwise rows that left the data are
+  dropped). New rows can be move targets, a reload no longer disables
+  reordering and header sorting, and the pinned band no longer shows a stale
+  copy of a reloaded row.
+- A row drag ends when the pointer is released or cancelled anywhere on the
+  page, or when a move arrives with no button held, and a grid removed
+  mid-drag drops its ghost.
+- With `rowPinning.enabled` set to `false`, `pinnedRows` and the aria row
+  counts no longer report pinned rows and those rows get their reorder grip
+  back. The pins are kept for when pinning is turned back on.
 
 ## [3.5.0] - 2026-09-12
 
