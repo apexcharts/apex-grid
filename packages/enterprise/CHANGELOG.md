@@ -269,6 +269,13 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   request it had in flight is cancelled without an error.
 
 ### Fixed
+- **The context menu, the charted-range outline and the chart dialog follow
+  the grid's theme.** They are mounted on the page body so the grid never
+  clips them, which also put them outside the grid's styles: they painted
+  fixed light colours over a dark grid, and the range outline was always
+  violet. They now take the grid's resolved theme (surface, text, lines,
+  brand) when they open, wherever that theme was set, and the outline uses
+  the brand colour.
 - **Integrated charts show cell text as text.** Categories and series names
   in the legend and tooltip are escaped, so a cell holding markup can no
   longer run script when it is charted. Ordinary labels such as `<18`,

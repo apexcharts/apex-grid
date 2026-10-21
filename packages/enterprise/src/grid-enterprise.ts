@@ -59,6 +59,7 @@ import {
 import type { AIEngine, AIResult, RunPromptOptions } from './features/ai/engine.js';
 import type { Reasoner } from './features/ai/reasoner.js';
 import type { Plan } from './features/ai/types.js';
+import { carryGridTheme } from './features/carry-theme.js';
 import {
   type ChartAggregation,
   type ChartDefinition,
@@ -913,14 +914,15 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
         zIndex: '10900',
         font: '600 12px system-ui, sans-serif',
         padding: '5px 11px',
-        border: '1px solid #1f2328',
-        background: '#1f2328',
-        color: '#fff',
+        border: '1px solid var(--_ag-text, #1f2328)',
+        background: 'var(--_ag-text, #1f2328)',
+        color: 'var(--_ag-surface, #fff)',
         borderRadius: '6px',
         cursor: 'pointer',
         boxShadow: '0 2px 10px rgba(0, 0, 0, 0.22)',
       });
       button.addEventListener('click', () => this.#openChartDialog({ source: 'selection' }));
+      carryGridTheme(this, button);
       document.body.appendChild(button);
       this.#chartAffordance = button;
     }
@@ -2129,6 +2131,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       chart.remove();
       this.#chartDialogs.delete(chart);
     });
+    // On the body so the grid never clips it; carry the grid's theme with it.
+    carryGridTheme(this, chart);
     document.body.appendChild(chart);
     this.#chartDialogs.add(chart);
     chart.show();

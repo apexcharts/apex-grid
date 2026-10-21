@@ -1,5 +1,6 @@
 import { isRTL } from 'apex-commons';
 import type { ApexGridChart } from '../chart-panel.js';
+import { carryGridTheme } from './carry-theme.js';
 import type { ChartDefinition, ChartModel } from './chart.js';
 import type { RangeBounds } from './range-selection.js';
 
@@ -27,7 +28,9 @@ interface ChartLink {
   readonly handle: HTMLButtonElement;
 }
 
-const OUTLINE_COLOR = '#7c3aed';
+// The grid's brand colour (carried onto the overlay, which lives on the body),
+// so a charted range reads as the grid's own selection colour in every theme.
+const OUTLINE_COLOR = 'var(--_ag-brand, #0d6fd3)';
 
 /**
  * Enterprise feature: the **in-grid range handle**. When a chart is opened from a
@@ -66,7 +69,7 @@ export class ChartRangeManager {
       pointerEvents: 'none',
       border: `2px solid ${OUTLINE_COLOR}`,
       borderRadius: '2px',
-      boxShadow: `0 0 0 1px ${OUTLINE_COLOR}33`,
+      boxShadow: `0 0 0 1px color-mix(in srgb, ${OUTLINE_COLOR} 20%, transparent)`,
       display: 'none',
     });
 
@@ -83,7 +86,7 @@ export class ChartRangeManager {
       height: '12px',
       padding: '0',
       boxSizing: 'border-box',
-      border: '2px solid #fff',
+      border: '2px solid var(--_ag-surface, #fff)',
       background: OUTLINE_COLOR,
       borderRadius: '2px',
       cursor: 'nwse-resize',
@@ -96,6 +99,8 @@ export class ChartRangeManager {
     handle.addEventListener('pointerup', this.#onHandleUp);
     handle.addEventListener('pointercancel', this.#onHandleUp);
 
+    carryGridTheme(this.host.gridElement, outline);
+    carryGridTheme(this.host.gridElement, handle);
     document.body.appendChild(outline);
     document.body.appendChild(handle);
     this.#links.set(chart, { bounds, outline, handle });

@@ -79,12 +79,12 @@ const TYPE_GROUPS: ReadonlyArray<ReadonlyArray<ChartType>> = [
 
 // Brand + semantic accent tokens, in palette order, read off the grid for theme="grid".
 const PALETTE_TOKENS = [
-  '--ag-brand',
-  '--ag-brand-strong',
-  '--ag-good-text',
-  '--ag-watch-text',
-  '--ag-risk-text',
-  '--ag-gold-text',
+  '--_ag-brand',
+  '--_ag-brand-strong',
+  '--_ag-good-text',
+  '--_ag-watch-text',
+  '--_ag-risk-text',
+  '--_ag-gold-text',
 ];
 
 /** The deepest focused element across shadow boundaries (so focus restore lands where it was). */
@@ -1150,10 +1150,10 @@ export class ApexGridChart extends LitElement {
     const cs = getComputedStyle(grid);
     const read = (name: string) => cs.getPropertyValue(name).trim();
     const colors = PALETTE_TOKENS.map(read).filter(Boolean);
-    const foreColor = read('--ag-text-body');
+    const foreColor = read('--_ag-text-body');
     return {
       ...(colors.length ? { colors } : {}),
-      theme: { mode: isDark(read('--ag-surface')) ? 'dark' : 'light' },
+      theme: { mode: isDark(read('--_ag-surface')) ? 'dark' : 'light' },
       chart: { background: 'transparent', ...(foreColor ? { foreColor } : {}) },
     };
   }
@@ -1215,7 +1215,7 @@ export class ApexGridChart extends LitElement {
       apex-grid-chart {
         display: block;
         font: 0.8rem/1.4 system-ui, sans-serif;
-        color: #1f2328;
+        color: var(--_ag-text-body, #1f2328);
       }
       apex-grid-chart[mode='dialog'] {
         position: fixed;
@@ -1227,8 +1227,8 @@ export class ApexGridChart extends LitElement {
       }
       apex-grid-chart [part='panel'] {
         box-sizing: border-box;
-        background: #fff;
-        border: 1px solid #d8dade;
+        background: var(--_ag-surface, #fff);
+        border: 1px solid var(--_ag-pin-line, #d8dade);
         border-radius: 8px;
       }
       apex-grid-chart[mode='dialog'] [part='panel'] {
@@ -1263,7 +1263,7 @@ export class ApexGridChart extends LitElement {
         justify-content: space-between;
         gap: 8px;
         padding: 8px 12px;
-        border-block-end: 1px solid #eef0f4;
+        border-block-end: 1px solid var(--_ag-hairline, #eef0f4);
         cursor: move;
         font-weight: 600;
       }
@@ -1274,7 +1274,7 @@ export class ApexGridChart extends LitElement {
         cursor: text;
       }
       apex-grid-chart [part='heading']:hover {
-        background: #f1f3f9;
+        background: var(--_ag-surface-elevated, #f1f3f9);
       }
       apex-grid-chart [part='heading-input'] {
         font: inherit;
@@ -1282,8 +1282,9 @@ export class ApexGridChart extends LitElement {
         flex: 1 1 auto;
         min-inline-size: 0;
         padding: 1px 4px;
-        border: 1px solid #9aa4b2;
+        border: 1px solid var(--_ag-pin-line, #9aa4b2);
         border-radius: 4px;
+        color: var(--_ag-text-body, #1f2328);
       }
       apex-grid-chart [part='close'] {
         cursor: pointer;
@@ -1291,7 +1292,7 @@ export class ApexGridChart extends LitElement {
         background: none;
         font-size: 16px;
         line-height: 1;
-        color: #6b7280;
+        color: var(--_ag-text-muted, #6b7280);
       }
       apex-grid-chart [part='toolbar'] {
         display: flex;
@@ -1299,7 +1300,7 @@ export class ApexGridChart extends LitElement {
         align-items: center;
         gap: 6px;
         padding: 8px 12px;
-        border-block-end: 1px solid #eef0f4;
+        border-block-end: 1px solid var(--_ag-hairline, #eef0f4);
       }
       apex-grid-chart [part='type-button'] {
         display: inline-flex;
@@ -1308,28 +1309,28 @@ export class ApexGridChart extends LitElement {
         font: inherit;
         font-size: 0.75rem;
         padding: 3px 8px;
-        border: 1px solid #d0d5dd;
-        background: #fff;
+        border: 1px solid var(--_ag-pin-line, #d0d5dd);
+        background: var(--_ag-surface, #fff);
         border-radius: 4px;
         cursor: pointer;
-        color: #1f2328;
+        color: var(--_ag-text-body, #1f2328);
       }
       apex-grid-chart [part='type-button'] svg {
-        color: #5b6472;
+        color: var(--_ag-text-muted, #5b6472);
       }
       apex-grid-chart [part='type-button'][aria-pressed='true'] {
-        background: #1f2328;
-        color: #fff;
-        border-color: #1f2328;
+        background: var(--_ag-text, #1f2328);
+        color: var(--_ag-surface, #fff);
+        border-color: var(--_ag-text, #1f2328);
       }
       apex-grid-chart [part='type-button'][aria-pressed='true'] svg {
-        color: #fff;
+        color: var(--_ag-surface, #fff);
       }
       apex-grid-chart [part='type-divider'] {
         inline-size: 1px;
         align-self: stretch;
         min-block-size: 18px;
-        background: #e3e6eb;
+        background: var(--_ag-row-hover, #e3e6eb);
         margin-inline: 2px;
       }
       apex-grid-chart [part='suggest-button'] {
@@ -1339,16 +1340,16 @@ export class ApexGridChart extends LitElement {
         font: inherit;
         font-size: 0.75rem;
         padding: 3px 8px;
-        border: 1px dashed #c0c6d0;
-        background: #fff;
+        border: 1px dashed var(--_ag-pin-line, #c0c6d0);
+        background: var(--_ag-surface, #fff);
         border-radius: 4px;
         cursor: pointer;
-        color: #5b6472;
+        color: var(--_ag-text-muted, #5b6472);
       }
       apex-grid-chart [part='suggest-button'][aria-pressed='true'] {
         border-style: solid;
-        border-color: #1f2328;
-        color: #1f2328;
+        border-color: var(--_ag-text, #1f2328);
+        color: var(--_ag-text-body, #1f2328);
       }
       apex-grid-chart [part='export'] {
         position: relative;
@@ -1358,13 +1359,14 @@ export class ApexGridChart extends LitElement {
         font: inherit;
         font-size: 0.75rem;
         padding: 3px 9px;
-        border: 1px solid #d0d5dd;
-        background: #fff;
+        border: 1px solid var(--_ag-pin-line, #d0d5dd);
+        background: var(--_ag-surface, #fff);
         border-radius: 4px;
         cursor: pointer;
+        color: var(--_ag-text-body, #1f2328);
       }
       apex-grid-chart [part='export-button']:hover {
-        background: #f7f9fc;
+        background: var(--_ag-surface-elevated, #f7f9fc);
       }
       apex-grid-chart [part='export-menu'] {
         position: absolute;
@@ -1374,8 +1376,8 @@ export class ApexGridChart extends LitElement {
         display: flex;
         flex-direction: column;
         min-inline-size: 150px;
-        background: #fff;
-        border: 1px solid #d8dade;
+        background: var(--_ag-surface, #fff);
+        border: 1px solid var(--_ag-pin-line, #d8dade);
         border-radius: 6px;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
         padding: 4px;
@@ -1392,10 +1394,10 @@ export class ApexGridChart extends LitElement {
         background: none;
         border-radius: 4px;
         cursor: pointer;
-        color: #1f2328;
+        color: var(--_ag-text-body, #1f2328);
       }
       apex-grid-chart [part='export-item']:hover {
-        background: #f1f3f9;
+        background: var(--_ag-surface-elevated, #f1f3f9);
       }
       apex-grid-chart [part='format'] {
         position: relative;
@@ -1404,13 +1406,14 @@ export class ApexGridChart extends LitElement {
         font: inherit;
         font-size: 0.75rem;
         padding: 3px 9px;
-        border: 1px solid #d0d5dd;
-        background: #fff;
+        border: 1px solid var(--_ag-pin-line, #d0d5dd);
+        background: var(--_ag-surface, #fff);
         border-radius: 4px;
         cursor: pointer;
+        color: var(--_ag-text-body, #1f2328);
       }
       apex-grid-chart [part='format-button']:hover {
-        background: #f7f9fc;
+        background: var(--_ag-surface-elevated, #f7f9fc);
       }
       apex-grid-chart [part='format-menu'] {
         position: absolute;
@@ -1421,8 +1424,8 @@ export class ApexGridChart extends LitElement {
         flex-direction: column;
         gap: 8px;
         min-inline-size: 200px;
-        background: #fff;
-        border: 1px solid #d8dade;
+        background: var(--_ag-surface, #fff);
+        border: 1px solid var(--_ag-pin-line, #d8dade);
         border-radius: 6px;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
         padding: 10px 12px;
@@ -1436,7 +1439,7 @@ export class ApexGridChart extends LitElement {
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        color: #6b7280;
+        color: var(--_ag-text-muted, #6b7280);
         margin-block-end: 4px;
       }
       apex-grid-chart [part='format-group'] {
@@ -1444,7 +1447,7 @@ export class ApexGridChart extends LitElement {
         flex-direction: column;
         gap: 4px;
         padding-block-end: 8px;
-        border-block-end: 1px solid #eef0f4;
+        border-block-end: 1px solid var(--_ag-hairline, #eef0f4);
       }
       apex-grid-chart [part='format-swatch'] {
         display: flex;
@@ -1456,7 +1459,7 @@ export class ApexGridChart extends LitElement {
         inline-size: 26px;
         block-size: 20px;
         padding: 0;
-        border: 1px solid #d0d5dd;
+        border: 1px solid var(--_ag-pin-line, #d0d5dd);
         border-radius: 4px;
         cursor: pointer;
       }
@@ -1476,9 +1479,10 @@ export class ApexGridChart extends LitElement {
         font: inherit;
         font-size: 0.8rem;
         padding: 2px 6px;
-        border: 1px solid #d0d5dd;
+        border: 1px solid var(--_ag-pin-line, #d0d5dd);
         border-radius: 4px;
-        background: #fff;
+        background: var(--_ag-surface, #fff);
+        color: var(--_ag-text-body, #1f2328);
       }
       apex-grid-chart [part='format-number'] {
         inline-size: 90px;
@@ -1500,13 +1504,14 @@ export class ApexGridChart extends LitElement {
         font: inherit;
         font-size: 0.75rem;
         padding: 3px 9px;
-        border: 1px solid #d0d5dd;
-        background: #fff;
+        border: 1px solid var(--_ag-pin-line, #d0d5dd);
+        background: var(--_ag-surface, #fff);
         border-radius: 4px;
         cursor: pointer;
+        color: var(--_ag-text-body, #1f2328);
       }
       apex-grid-chart [part='data-button']:hover {
-        background: #f7f9fc;
+        background: var(--_ag-surface-elevated, #f7f9fc);
       }
       apex-grid-chart [part='data-menu'] {
         position: absolute;
@@ -1517,8 +1522,8 @@ export class ApexGridChart extends LitElement {
         flex-direction: column;
         gap: 8px;
         min-inline-size: 220px;
-        background: #fff;
-        border: 1px solid #d8dade;
+        background: var(--_ag-surface, #fff);
+        border: 1px solid var(--_ag-pin-line, #d8dade);
         border-radius: 6px;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
         padding: 10px 12px;
@@ -1531,7 +1536,7 @@ export class ApexGridChart extends LitElement {
         flex-direction: column;
         gap: 4px;
         padding-block: 4px 8px;
-        border-block: 1px solid #eef0f4;
+        border-block: 1px solid var(--_ag-hairline, #eef0f4);
       }
       apex-grid-chart [part='data-measure'] {
         display: flex;
@@ -1550,7 +1555,7 @@ export class ApexGridChart extends LitElement {
         align-items: center;
         gap: 4px;
         font-size: 0.7rem;
-        color: #6b7280;
+        color: var(--_ag-text-muted, #6b7280);
       }
       apex-grid-chart [part='data-axis'][hidden] {
         display: none;
@@ -1559,16 +1564,17 @@ export class ApexGridChart extends LitElement {
         font: inherit;
         font-size: 0.8rem;
         padding: 2px 6px;
-        border: 1px solid #d0d5dd;
+        border: 1px solid var(--_ag-pin-line, #d0d5dd);
         border-radius: 4px;
-        background: #fff;
+        background: var(--_ag-surface, #fff);
+        color: var(--_ag-text-body, #1f2328);
       }
       apex-grid-chart [part='calc-group'] {
         display: flex;
         flex-direction: column;
         gap: 5px;
         padding-block-start: 8px;
-        border-block-start: 1px solid #eef0f4;
+        border-block-start: 1px solid var(--_ag-hairline, #eef0f4);
       }
       apex-grid-chart [part='calc-item'] {
         display: flex;
@@ -1586,8 +1592,8 @@ export class ApexGridChart extends LitElement {
         text-overflow: ellipsis;
         white-space: nowrap;
         font-size: 0.72rem;
-        color: #6b7280;
-        background: #f1f3f9;
+        color: var(--_ag-text-muted, #6b7280);
+        background: var(--_ag-surface-elevated, #f1f3f9);
         padding: 0 4px;
         border-radius: 3px;
       }
@@ -1595,7 +1601,7 @@ export class ApexGridChart extends LitElement {
         border: none;
         background: none;
         cursor: pointer;
-        color: #9aa4b2;
+        color: var(--_ag-text-subtle, #9aa4b2);
         font-size: 0.8rem;
         line-height: 1;
         padding: 2px;
@@ -1605,16 +1611,17 @@ export class ApexGridChart extends LitElement {
         font: inherit;
         font-size: 0.8rem;
         padding: 3px 6px;
-        border: 1px solid #d0d5dd;
+        border: 1px solid var(--_ag-pin-line, #d0d5dd);
         border-radius: 4px;
-        background: #fff;
+        background: var(--_ag-surface, #fff);
+        color: var(--_ag-text-body, #1f2328);
       }
       apex-grid-chart [part='calc-formula'] {
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 0.75rem;
       }
       apex-grid-chart [part='calc-formula'][aria-invalid='true'] {
-        border-color: #e11d48;
+        border-color: var(--_ag-risk, #e11d48);
       }
       apex-grid-chart [part='calc-legend'] {
         display: flex;
@@ -1625,22 +1632,22 @@ export class ApexGridChart extends LitElement {
         font: inherit;
         font-size: 0.68rem;
         padding: 1px 6px;
-        border: 1px solid #d0d5dd;
+        border: 1px solid var(--_ag-pin-line, #d0d5dd);
         border-radius: 10px;
-        background: #f7f9fc;
+        background: var(--_ag-surface-elevated, #f7f9fc);
         cursor: pointer;
-        color: #4b5563;
+        color: var(--_ag-text-muted, #4b5563);
       }
       apex-grid-chart [part='calc-chip']:hover {
-        background: #eef2f8;
+        background: var(--_ag-surface-elevated, #eef2f8);
       }
       apex-grid-chart [part='calc-add'] {
         font: inherit;
         font-size: 0.75rem;
         padding: 3px 9px;
-        border: 1px solid #1f2328;
-        background: #1f2328;
-        color: #fff;
+        border: 1px solid var(--_ag-text, #1f2328);
+        background: var(--_ag-text, #1f2328);
+        color: var(--_ag-surface, #fff);
         border-radius: 4px;
         cursor: pointer;
         align-self: flex-start;
@@ -1655,7 +1662,7 @@ export class ApexGridChart extends LitElement {
         align-items: center;
         gap: 8px;
         padding: 28px 16px;
-        color: #6b7280;
+        color: var(--_ag-text-muted, #6b7280);
         text-align: center;
       }
       /* Author display rules outrank the UA [hidden] rule: restore it. */
@@ -1666,11 +1673,11 @@ export class ApexGridChart extends LitElement {
         display: none;
       }
       apex-grid-chart [part='empty-icon'] {
-        color: #c0c6d0;
+        color: var(--_ag-text-subtle, #c0c6d0);
       }
       apex-grid-chart [part='empty-title'] {
         font-weight: 600;
-        color: #4b5563;
+        color: var(--_ag-text-muted, #4b5563);
       }
       apex-grid-chart [part='empty-paths'] {
         margin: 0;

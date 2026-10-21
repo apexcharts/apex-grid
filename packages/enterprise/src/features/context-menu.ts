@@ -9,6 +9,7 @@ import {
 } from 'apex-grid/internal';
 import type { ReactiveController } from 'lit';
 import { html, nothing, render } from 'lit';
+import { carryGridTheme } from './carry-theme.js';
 import { RANGE_SELECTION_MODULE_ID, type RangeSelectionController } from './range-selection.js';
 
 export const CONTEXT_MENU_MODULE_ID = 'context-menu';
@@ -62,12 +63,12 @@ const MENU_CSS = `
   z-index: 12000;
   min-inline-size: 180px;
   padding: 4px;
-  background: #fff;
-  border: 1px solid #d8dade;
+  background: var(--_ag-surface, #fff);
+  border: 1px solid var(--_ag-pin-line, #d8dade);
   border-radius: 6px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
   font: 0.8rem/1.4 system-ui, sans-serif;
-  color: #1f2328;
+  color: var(--_ag-text-body, #1f2328);
 }
 .apex-grid-context-menu .agcm-item {
   display: block;
@@ -78,11 +79,12 @@ const MENU_CSS = `
   border: none;
   background: none;
   border-radius: 4px;
+  color: inherit;
   cursor: pointer;
 }
 .apex-grid-context-menu .agcm-item:hover:not([disabled]),
 .apex-grid-context-menu .agcm-item:focus-visible {
-  background: #f1f3f5;
+  background: var(--_ag-row-hover, #f1f3f5);
   outline: none;
 }
 .apex-grid-context-menu .agcm-item[disabled] {
@@ -92,7 +94,7 @@ const MENU_CSS = `
 .apex-grid-context-menu .agcm-sep {
   block-size: 1px;
   margin: 4px 2px;
-  background: #eef0f4;
+  background: var(--_ag-hairline, #eef0f4);
 }`;
 
 function ensureStyle(): void {
@@ -383,6 +385,8 @@ export class ContextMenuController<T extends object>
     menu.className = 'apex-grid-context-menu';
     menu.setAttribute('role', 'menu');
     menu.__items = items;
+    // On the body so the grid never clips it; carry the grid's theme with it.
+    carryGridTheme(this.host, menu);
     document.body.appendChild(menu);
     this.#menus.push(menu);
     render(
