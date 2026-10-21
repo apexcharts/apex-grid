@@ -56,11 +56,11 @@ export interface RowGhostState {
  * @remarks
  * Row order is normally derived (filter → sort). This controller adds a
  * **manual order**: an explicit sequence of row references applied as a
- * pipeline step after sort. While a manual order is active, sorting is mutually
- * exclusive (applying a sort clears the manual order). The order spans every
- * row, hidden by a filter or not, so a move made under a filter leaves the
- * hidden rows in place. State is reference-based, so it survives the in-place
- * pipeline.
+ * pipeline step after sort. A manual order and a sort are mutually exclusive:
+ * applying a sort clears the manual order, and a move clears the sort. The
+ * order spans every row, hidden by a filter or not, so a move made under a
+ * filter leaves the hidden rows in place. State is reference-based, so it
+ * survives the in-place pipeline.
  *
  * Reordering happens through {@link moveRow} (pointer live-swap during a drag,
  * the keyboard grab/move flow, or the public API). Each move goes through the
@@ -447,8 +447,9 @@ export class RowReorderController<T extends object> implements ReactiveControlle
 
   /**
    * The core order mutation: validates, emits `rowMoving` (cancellable),
-   * updates the manual order (or splices data when `applyToData`), re-runs the
-   * pipeline, and emits `rowMoved`. Does not animate.
+   * updates the manual order (or splices data when `applyToData`), clears any
+   * sort (a move establishes a manual order, which a sort would undo), re-runs
+   * the pipeline, and emits `rowMoved`. Does not animate.
    */
   #commit(
     source: T | undefined,
@@ -472,6 +473,7 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     if (!next.includes(source) || !next.includes(target)) return false;
     next.splice(next.indexOf(source), 1);
     next.splice(next.indexOf(target) + (position === 'after' ? 1 : 0), 0, source);
+    if (this.host.sortExpressions.length) this.host.sortExpressions = [];
 
     if (this.applyToData) {
       this.#spliceData(next);

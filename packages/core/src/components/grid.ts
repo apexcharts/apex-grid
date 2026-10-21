@@ -2935,9 +2935,10 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * {@link ApexGrid.pageItems}.
    *
    * @remarks
-   * Requires `rowReordering.enabled`. Establishes a manual order (mutually
-   * exclusive with column sorting), goes through the cancellable `rowMoving`
-   * event, emits `rowMoved`, and animates the affected rows.
+   * Requires `rowReordering.enabled`. Establishes a manual order and clears
+   * any column sort (the two are mutually exclusive), goes through the
+   * cancellable `rowMoving` event, emits `rowMoved`, and animates the affected
+   * rows. Rows hidden by a filter keep their place in the order.
    *
    * @returns `true` when applied, `false` when disabled, out of range, or
    * cancelled.

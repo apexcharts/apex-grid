@@ -382,4 +382,72 @@ describe('Row reorder: a move under a filter keeps hidden rows in place', () => 
     await TDD.waitForUpdate();
     expect(TDD.grid.data.map((row) => row.id)).to.deep.equal([1, 2, 3, 4, 8, 5, 6, 7]);
   });
+
+  it('a filtered move on a sorted grid keeps the sorted slots of hidden rows', async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+    TDD.grid.sortExpressions = [{ key: 'id', direction: 'descending' }];
+    TDD.grid.filter(lowImportance);
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([7, 4, 2]);
+    expect(TDD.grid.moveRow(2, 0, 'before')).to.be.true;
+    await TDD.waitForUpdate();
+    TDD.grid.clearFilter();
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([8, 2, 7, 6, 5, 4, 3, 1]);
+  });
+});
+
+describe('Row reorder: a move on a sorted grid replaces the sort', () => {
+  afterEach(() => TDD.tearDown());
+
+  it('applyToData: the move is visible and the sort is cleared', async () => {
+    TDD.rowReordering = { enabled: true, applyToData: true };
+    await TDD.setUp();
+    TDD.grid.sortExpressions = [{ key: 'id', direction: 'descending' }];
+    await TDD.waitForUpdate();
+    expect(TDD.grid.moveRow(0, 2, 'after')).to.be.true;
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([7, 6, 8, 5, 4, 3, 2, 1]);
+    expect(TDD.grid.data.map((row) => row.id)).to.deep.equal([7, 6, 8, 5, 4, 3, 2, 1]);
+    expect(TDD.grid.sortExpressions).to.deep.equal([]);
+  });
+
+  it('manual order: getState carries the order alone and round trips', async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+    TDD.grid.sortExpressions = [{ key: 'id', direction: 'descending' }];
+    await TDD.waitForUpdate();
+    expect(TDD.grid.moveRow(0, 2, 'after')).to.be.true;
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([7, 6, 8, 5, 4, 3, 2, 1]);
+
+    const snapshot = TDD.grid.getState();
+    expect(snapshot.sort).to.deep.equal([]);
+    expect(snapshot.rowOrder).to.not.equal(null);
+    TDD.grid.setState(JSON.parse(JSON.stringify(snapshot)));
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([7, 6, 8, 5, 4, 3, 2, 1]);
+  });
+
+  it('a pointer drag on a sorted grid keeps the swapped order', async () => {
+    TDD.rowReordering = { enabled: true, applyToData: true };
+    await TDD.setUp();
+    TDD.grid.sortExpressions = [{ key: 'id', direction: 'descending' }];
+    await TDD.waitForUpdate();
+    const row0 = rowEl(TDD, 0);
+    const handle = row0.shadowRoot?.querySelector('[part="reorder-handle"]') as HTMLElement;
+    const r0 = row0.getBoundingClientRect();
+    const r1 = rowEl(TDD, 1).getBoundingClientRect();
+    handle.dispatchEvent(
+      pointerEvent('pointerdown', { clientX: r0.left + 8, clientY: r0.top + 8 })
+    );
+    row0.dispatchEvent(
+      pointerEvent('pointermove', { clientX: r0.left + 8, clientY: r1.top + r1.height * 0.75 })
+    );
+    await TDD.waitForUpdate();
+    document.body.dispatchEvent(pointerEvent('pointerup', { clientX: 0, clientY: 0 }));
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([7, 8, 6, 5, 4, 3, 2, 1]);
+  });
 });
