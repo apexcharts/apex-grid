@@ -2,6 +2,7 @@ import type { ReactiveController } from 'lit';
 import { PIPELINE } from '../internal/constants.js';
 import { awaitChildUpdates, type KeyedFlipEntry, playKeyedFlip } from '../internal/flip.js';
 import type { GridHost } from '../internal/types.js';
+import type { SortExpression } from '../operations/sort/types.js';
 import SortDataOperation from '../operations/sort.js';
 
 /** Where a moved row lands relative to its target. */
@@ -77,8 +78,17 @@ export class RowReorderController<T extends object> implements ReactiveControlle
   /** Manual order of row references, or `null` for the natural (sorted) order. */
   #order: T[] | null = null;
 
-  /** Order snapshot captured at keyboard-grab time, for Escape-to-cancel. */
-  #preGrab: T[] | null = null;
+  /**
+   * What a keyboard grab may change, captured when it starts, for
+   * Escape-to-cancel: the manual order, the data order (with `applyToData`),
+   * the sort and the grabbed row's view index.
+   */
+  #preGrab: {
+    order: T[] | null;
+    data: T[] | null;
+    sort: SortExpression<T>[];
+    index: number;
+  } | null = null;
 
   /** The row currently being pointer-dragged, or `null`. */
   public dragging: T | null = null;
@@ -119,6 +129,11 @@ export class RowReorderController<T extends object> implements ReactiveControlle
   }
 
   public hostConnected() {}
+
+  /** A grid detached mid-drag ends the gesture, so no frozen ghost stays behind. */
+  public hostDisconnected() {
+    this.#endPointer();
+  }
 
   /** Whether row reordering is enabled at the grid level. */
   public get enabled(): boolean {
@@ -290,11 +305,13 @@ export class RowReorderController<T extends object> implements ReactiveControlle
 
   /**
    * Arms a pointer drag from a row press. Called by the row on `pointerdown`
-   * (from the grip in handle mode, or anywhere in whole-row mode). The move /
-   * up / cancel listeners are bound to the **grid host**, so the gesture is
-   * immune to the source row's DOM being recycled by a live-swap. `getGhost` is
-   * a thunk the controller invokes once, the instant the drag engages, to
-   * snapshot the row's cells (the row is still in place then).
+   * (from the grip in handle mode, or anywhere in whole-row mode). The move
+   * listener is bound to the **grid host**, so the gesture is immune to the
+   * source row's DOM being recycled by a live-swap; the up / cancel listeners
+   * are bound to the document, so a release outside the grid ends it too, as
+   * does a move with the primary button no longer held. `getGhost` is a thunk
+   * the controller invokes once, the instant the drag engages, to snapshot the
+   * row's cells (the row is still in place then).
    */
   public armPointerDrag(data: T, getGhost: () => RowGhostInit, event: PointerEvent): void {
     const pinned = this.host.pinnedRows;
@@ -308,13 +325,18 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     };
     const host = this.#hostElement;
     host.addEventListener('pointermove', this.#onHostPointerMove);
-    host.addEventListener('pointerup', this.#onHostPointerUp);
-    host.addEventListener('pointercancel', this.#onHostPointerUp);
+    host.ownerDocument.addEventListener('pointerup', this.#onPointerUp, true);
+    host.ownerDocument.addEventListener('pointercancel', this.#onPointerUp, true);
   }
 
   #onHostPointerMove = (event: PointerEvent): void => {
     const pending = this.#pending;
     if (!pending || event.pointerId !== pending.pointerId) return;
+    // The release was missed (e.g. outside the window): a hover is not a drag.
+    if (!(event.buttons & 1)) {
+      this.#endPointer();
+      return;
+    }
     if (!this.dragging) {
       const dx = event.clientX - pending.startX;
       const dy = event.clientY - pending.startY;
@@ -332,21 +354,29 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     this.dragOver(event.clientY);
   };
 
-  #onHostPointerUp = (event: PointerEvent): void => {
-    const pending = this.#pending;
-    if (!pending || event.pointerId !== pending.pointerId) return;
-    const host = this.#hostElement;
-    host.removeEventListener('pointermove', this.#onHostPointerMove);
-    host.removeEventListener('pointerup', this.#onHostPointerUp);
-    host.removeEventListener('pointercancel', this.#onHostPointerUp);
-    try {
-      if (host.hasPointerCapture(pending.pointerId)) host.releasePointerCapture(pending.pointerId);
-    } catch {
-      /* capture was never taken or already released */
-    }
-    this.#pending = null;
-    this.endDrag();
+  #onPointerUp = (event: PointerEvent): void => {
+    if (event.pointerId === this.#pending?.pointerId) this.#endPointer();
   };
+
+  /** Tears down an armed or engaged pointer gesture. */
+  #endPointer(): void {
+    const pending = this.#pending;
+    if (pending) {
+      const host = this.#hostElement;
+      host.removeEventListener('pointermove', this.#onHostPointerMove);
+      host.ownerDocument.removeEventListener('pointerup', this.#onPointerUp, true);
+      host.ownerDocument.removeEventListener('pointercancel', this.#onPointerUp, true);
+      try {
+        if (host.hasPointerCapture(pending.pointerId)) {
+          host.releasePointerCapture(pending.pointerId);
+        }
+      } catch {
+        /* capture was never taken or already released */
+      }
+      this.#pending = null;
+    }
+    this.endDrag();
+  }
 
   async #dragSwap(target: T, position: RowDropPosition): Promise<void> {
     if (this.#swapping) return;
@@ -371,7 +401,12 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     const row = this.host.pageItems[rowIndex] as T | undefined;
     if (!row) return false;
     this.grabbed = row;
-    this.#preGrab = this.#order ? [...this.#order] : null;
+    this.#preGrab = {
+      order: this.#order,
+      data: this.applyToData ? [...this.host.data] : null,
+      sort: this.host.sortExpressions,
+      index: rowIndex,
+    };
     this.host.requestUpdate();
     this.host.announce(this.host.localize('announce.rowGrabbed'));
     return true;
@@ -406,14 +441,28 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     this.host.announce(this.host.localize('announce.rowDropped'));
   }
 
-  /** Cancels the grab, reverting to the order captured when it was grabbed. */
+  /**
+   * Cancels the grab, reverting the order, the data order (with
+   * `applyToData`) and the sort to what they were when the row was grabbed.
+   * Emits `rowMoved` for the way back when the row had moved, so an app
+   * persisting each step sees the revert too.
+   */
   public cancelGrab(): void {
-    if (!this.grabbed) return;
-    this.grabbed = null;
-    this.#order = this.#preGrab;
-    this.#preGrab = null;
+    const row = this.grabbed;
+    const pre = this.#preGrab;
+    if (!row || !pre) return;
+    const from = this.host.pageItems.indexOf(row);
+    this.grabbed = this.#preGrab = null;
+    this.#order = pre.order;
+    if (pre.data) this.#spliceData(pre.data);
+    if (pre.sort.length) this.host.sortExpressions = pre.sort;
     this.host.requestUpdate(PIPELINE);
     this.host.announce(this.host.localize('announce.reorderCancelled'));
+    const to = pre.index;
+    if (from !== to) {
+      const position: RowDropPosition = from > to ? 'before' : 'after';
+      this.host.emitEvent('rowMoved', { detail: { from, to, position, toIndex: to, data: row } });
+    }
   }
 
   // --- internals ----------------------------------------------------------

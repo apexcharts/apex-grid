@@ -171,14 +171,22 @@ describe('Row reorder — applyToData', () => {
 });
 
 function pointerEvent(
-  type: 'pointerdown' | 'pointermove' | 'pointerup',
-  init: { clientX: number; clientY: number; pointerId?: number; button?: number }
+  type: 'pointerdown' | 'pointermove' | 'pointerup' | 'pointercancel',
+  init: {
+    clientX: number;
+    clientY: number;
+    pointerId?: number;
+    button?: number;
+    buttons?: number;
+  }
 ): PointerEvent {
   return new PointerEvent(type, {
     bubbles: true,
     composed: true,
     pointerId: init.pointerId ?? 1,
     button: init.button ?? 0,
+    // A real press reports the primary button as held until the release.
+    buttons: init.buttons ?? (type === 'pointerup' || type === 'pointercancel' ? 0 : 1),
     clientX: init.clientX,
     clientY: init.clientY,
   });
@@ -449,6 +457,145 @@ describe('Row reorder: a move on a sorted grid replaces the sort', () => {
     document.body.dispatchEvent(pointerEvent('pointerup', { clientX: 0, clientY: 0 }));
     await TDD.waitForUpdate();
     expect(TDD.ids()).to.deep.equal([7, 8, 6, 5, 4, 3, 2, 1]);
+  });
+});
+
+describe('Row reorder: Escape undoes the keyboard grab', () => {
+  afterEach(() => TDD.tearDown());
+
+  const grabAndStep = async () => {
+    TDD.stateController.active = { column: 'id' as never, row: 0 };
+    TDD.key(' ');
+    TDD.key('ArrowDown');
+    await TDD.waitForUpdate();
+  };
+
+  it('applyToData: restores grid.data and reports the way back', async () => {
+    TDD.rowReordering = { enabled: true, applyToData: true };
+    await TDD.setUp();
+    const moved: Array<{ from: number; to: number; toIndex: number }> = [];
+    TDD.grid.addEventListener('rowMoved', ({ detail }) => {
+      moved.push({ from: detail.from, to: detail.to, toIndex: detail.toIndex });
+    });
+    await grabAndStep();
+    expect(TDD.grid.data.map((row) => row.id)).to.deep.equal([2, 1, 3, 4, 5, 6, 7, 8]);
+
+    TDD.key('Escape');
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(TDD.grid.data.map((row) => row.id)).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(moved).to.deep.equal([
+      { from: 0, to: 1, toIndex: 1 },
+      { from: 1, to: 0, toIndex: 0 },
+    ]);
+  });
+
+  it('manual order: reports the reverting move with rowMoved', async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+    let moved = 0;
+    TDD.grid.addEventListener('rowMoved', () => moved++);
+    await grabAndStep();
+    TDD.key('Escape');
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(moved).to.equal(2);
+  });
+
+  it('a cancelled grab on a sorted grid brings the sort back', async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+    TDD.grid.sortExpressions = [{ key: 'id', direction: 'descending' }];
+    await TDD.waitForUpdate();
+    await grabAndStep();
+    expect(TDD.ids()).to.deep.equal([7, 8, 6, 5, 4, 3, 2, 1]);
+    TDD.key('Escape');
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([8, 7, 6, 5, 4, 3, 2, 1]);
+    expect(TDD.grid.sortExpressions.map((expr) => expr.key)).to.deep.equal(['id']);
+    expect(TDD.stateController.rowReorder.hasManualOrder).to.be.false;
+  });
+
+  it('Escape without a net move emits nothing', async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+    let moved = 0;
+    TDD.grid.addEventListener('rowMoved', () => moved++);
+    TDD.stateController.active = { column: 'id' as never, row: 0 };
+    TDD.key(' ');
+    TDD.key('Escape');
+    await TDD.waitForUpdate();
+    expect(moved).to.equal(0);
+  });
+});
+
+describe('Row reorder: the pointer gesture ends wherever the button is released', () => {
+  beforeEach(async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+  });
+  afterEach(() => TDD.tearDown());
+
+  const press = () => {
+    const row0 = rowEl(TDD, 0);
+    const handle = row0.shadowRoot?.querySelector('[part="reorder-handle"]') as HTMLElement;
+    const r0 = row0.getBoundingClientRect();
+    handle.dispatchEvent(
+      pointerEvent('pointerdown', { clientX: r0.left + 8, clientY: r0.top + 8 })
+    );
+    return { row0, r0 };
+  };
+
+  it('a release outside the grid disarms the press', async () => {
+    const { row0, r0 } = press();
+    document.body.dispatchEvent(pointerEvent('pointerup', { clientX: 5, clientY: 5 }));
+    row0.dispatchEvent(
+      pointerEvent('pointermove', { clientX: r0.left + 8, clientY: r0.top + 40, buttons: 0 })
+    );
+    await TDD.waitForUpdate();
+    expect(TDD.stateController.rowReorder.dragging).to.be.null;
+    expect(TDD.stateController.rowReorder.ghost).to.be.null;
+  });
+
+  it('a buttonless move ends the gesture without moving rows', async () => {
+    let moved = 0;
+    TDD.grid.addEventListener('rowMoved', () => moved++);
+    const { row0, r0 } = press();
+    const r1 = rowEl(TDD, 1).getBoundingClientRect();
+    row0.dispatchEvent(
+      pointerEvent('pointermove', {
+        clientX: r0.left + 8,
+        clientY: r1.top + r1.height * 0.75,
+        buttons: 0,
+      })
+    );
+    await TDD.waitForUpdate();
+    expect(TDD.stateController.rowReorder.dragging).to.be.null;
+    expect(moved).to.equal(0);
+    expect(TDD.ids()).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it('a pointercancel outside the grid ends an engaged drag', async () => {
+    const { row0, r0 } = press();
+    row0.dispatchEvent(pointerEvent('pointermove', { clientX: r0.left + 8, clientY: r0.top + 20 }));
+    await TDD.waitForUpdate();
+    expect(TDD.stateController.rowReorder.dragging).to.not.be.null;
+    document.body.dispatchEvent(pointerEvent('pointercancel', { clientX: 0, clientY: 0 }));
+    expect(TDD.stateController.rowReorder.dragging).to.be.null;
+    expect(TDD.stateController.rowReorder.ghost).to.be.null;
+  });
+
+  it('a grid detached mid-drag drops its ghost', async () => {
+    const { row0, r0 } = press();
+    row0.dispatchEvent(pointerEvent('pointermove', { clientX: r0.left + 8, clientY: r0.top + 20 }));
+    await TDD.waitForUpdate();
+    const reorder = TDD.stateController.rowReorder;
+    expect(reorder.ghost).to.not.be.null;
+    const parent = TDD.grid.parentElement!;
+    TDD.grid.remove();
+    expect(reorder.dragging).to.be.null;
+    expect(reorder.ghost).to.be.null;
+    parent.append(TDD.grid);
   });
 });
 
