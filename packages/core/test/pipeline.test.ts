@@ -342,4 +342,71 @@ describe('Data pipeline orchestration', () => {
       expect(first).to.equal(4);
     });
   });
+
+  describe('setQuickFilter', () => {
+    it('keeps a value a quickFilterChanging listener substitutes', async () => {
+      const grid = await mount();
+      grid.addEventListener('quickFilterChanging', (event) => {
+        grid.quickFilter = event.detail.nextValue.trim();
+      });
+      let reported: string | undefined;
+      grid.addEventListener('quickFilterChanged', (event) => {
+        reported = event.detail.value;
+      });
+      expect(await grid.setQuickFilter('  x1  ')).to.be.true;
+      expect(grid.quickFilter).to.equal('x1');
+      expect(reported).to.equal('x1');
+      expect(ids(grid)).to.eql([1]);
+    });
+
+    it('keeps a substitute equal to the current value', async () => {
+      const grid = await mount();
+      await grid.setQuickFilter('x1');
+      grid.addEventListener('quickFilterChanging', (event) => {
+        grid.quickFilter = event.detail.nextValue.trim();
+      });
+      let reported: string | undefined;
+      grid.addEventListener('quickFilterChanged', (event) => {
+        reported = event.detail.value;
+      });
+      expect(await grid.setQuickFilter('x1 ')).to.be.true;
+      expect(grid.quickFilter).to.equal('x1');
+      expect(reported).to.equal('x1');
+    });
+
+    it('fires pageChanged and announces when it moves to the first page', async () => {
+      const grid = await mount({ pagination: { enabled: true, pageSize: 2 } });
+      await grid.gotoPage(3);
+      const events: string[] = [];
+      grid.addEventListener('pageChanging', () => events.push('pageChanging'));
+      grid.addEventListener('pageChanged', (event) =>
+        events.push(`pageChanged:${event.detail.page}`)
+      );
+      grid.addEventListener('quickFilterChanged', () => events.push('quickFilterChanged'));
+      await grid.setQuickFilter('y');
+      expect(grid.page).to.equal(0);
+      expect(events).to.eql(['pageChanged:0', 'quickFilterChanged']);
+      await settle(grid);
+      const region = grid.renderRoot.querySelector('[part="live-region"]');
+      expect(region?.textContent?.trim()).to.equal(`Page 1 of ${grid.pageCount}`);
+    });
+
+    it('stays silent about the page when it is already on the first page', async () => {
+      const grid = await mount({ pagination: { enabled: true, pageSize: 2 } });
+      const events: string[] = [];
+      grid.addEventListener('pageChanged', () => events.push('pageChanged'));
+      await grid.setQuickFilter('y');
+      expect(events).to.eql([]);
+    });
+
+    it('keeps the quickFilter property path silent about the page', async () => {
+      const grid = await mount({ pagination: { enabled: true, pageSize: 2 } });
+      await grid.gotoPage(1);
+      const events: string[] = [];
+      grid.addEventListener('pageChanged', () => events.push('pageChanged'));
+      grid.quickFilter = 'x';
+      await settle(grid);
+      expect(events).to.eql([]);
+    });
+  });
 });

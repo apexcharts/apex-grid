@@ -152,6 +152,20 @@ export class PaginationController<T extends object> implements ReactiveControlle
   }
 
   /**
+   * Moves to the first page as part of a change already confirmed (a new
+   * quick filter), so without `pageChanging`; fires `pageChanged` once the
+   * pipeline settled when the page actually moved.
+   */
+  public async resetPage(): Promise<void> {
+    if (this.page === 0) return;
+    this.page = 0;
+    this.host.requestUpdate(PIPELINE);
+    // @ts-expect-error - protected member access
+    await this.host.pipelineSettled();
+    this.#emitChanged();
+  }
+
+  /**
    * Sets the current page size and resets to the first page.
    *
    * @param size - The new page size. Must be a positive integer.

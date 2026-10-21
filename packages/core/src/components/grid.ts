@@ -1040,9 +1040,21 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * {@link DataPipelineConfiguration.quickFilter}.
    *
    * @attr quick-filter
+   * @default ''
    */
   @property({ type: String, attribute: 'quick-filter' })
-  public quickFilter = '';
+  public get quickFilter(): string {
+    return this.#quickFilter;
+  }
+
+  public set quickFilter(value: string) {
+    this.#quickFilter = value;
+    this.#quickFilterWrites++;
+  }
+
+  #quickFilter = '';
+  /** Counts quickFilter writes, so setQuickFilter sees a listener's own write. */
+  #quickFilterWrites = 0;
 
   /**
    * Whether the built-in quick-filter input is rendered in the toolbar.
@@ -2532,7 +2544,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   /**
    * Applies a new quick-filter (global search) value, emitting the cancellable
    * `quickFilterChanging` event first and the `quickFilterChanged` event after the
-   * pipeline has run.
+   * pipeline has run. Moving back to the first page fires `pageChanged` too.
    *
    * @param value - The new quick-filter value. Pass `''` to clear.
    * @returns `true` if the change was applied, `false` if cancelled or a no-op.
@@ -2546,15 +2558,19 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     const next = value ?? '';
     if (next === this.quickFilter) return false;
 
+    const writes = this.#quickFilterWrites;
     const proceed = this.emitEvent('quickFilterChanging', {
       detail: { value: this.quickFilter, nextValue: next },
       cancelable: true,
     });
     if (!proceed) return false;
 
-    this.quickFilter = next;
-    this.stateController.pagination.page = 0;
+    // A listener that assigned quickFilter substituted its own value, even
+    // one equal to the current value.
+    if (this.#quickFilterWrites === writes) this.quickFilter = next;
+    const pageReset = this.stateController.pagination.resetPage();
     await this.pipelineSettled();
+    await pageReset;
     this.emitEvent('quickFilterChanged', { detail: { value: this.quickFilter } });
     return true;
   }
