@@ -300,4 +300,28 @@ describe('Master/detail', () => {
       expect(rowsOf(grid)?.map((item) => item.sku)).to.eql(['A-1', 'A-2']);
     });
   });
+
+  it('logs no [apex-grid] warning when a detail grid renders', async () => {
+    // biome-ignore lint/suspicious/noConsole: spying on the misconfiguration warning
+    const original = console.warn;
+    const warnings: string[] = [];
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map(String).join(' '));
+    };
+    try {
+      const grid = await mount({ columns: detailColumns, getDetailData: (order) => order.items });
+      await grid.expandRow(orders[0]);
+      await settle(grid);
+      await waitFor(() => detailGrids(grid).length > 0);
+      await settle(grid);
+      grid.refreshDetail(orders[0]);
+      await settle(grid);
+      await waitFor(() => detailGrids(grid).length > 0);
+      await settle(grid);
+      expect(detailGrids(grid)[0].style.display).to.equal('');
+    } finally {
+      console.warn = original;
+    }
+    expect(warnings.filter((line) => line.includes('[apex-grid]'))).to.eql([]);
+  });
 });

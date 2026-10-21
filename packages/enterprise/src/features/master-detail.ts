@@ -90,7 +90,7 @@ export class MasterDetailManager<T extends object> {
       columns?: unknown;
     };
     grid.setAttribute('part', 'detail-grid');
-    grid.style.display = 'block';
+    // Only the size: the grid's own host style keeps `display: grid`.
     grid.style.blockSize = toCss(this.config.detailHeight ?? 220);
 
     const columns =
