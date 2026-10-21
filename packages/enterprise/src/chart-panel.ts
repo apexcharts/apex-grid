@@ -3,6 +3,7 @@ import { registerComponent } from 'apex-grid/internal';
 import type ApexCharts from 'apexcharts';
 import { html, LitElement, nothing, svg } from 'lit';
 import { property, state } from 'lit/decorators.js';
+import { carryGridTheme } from './features/carry-theme.js';
 import {
   buildValueAxes,
   type CalculatedField,
@@ -87,6 +88,22 @@ const PALETTE_TOKENS = [
   '--_ag-gold-text',
 ];
 
+// Chrome for a forced theme="dark": the grid's built in dark palette, so the panel matches the
+// ApexCharts dark mode the chart draws in, whatever the bound grid looks like. A forced "light"
+// sets nothing and lets the stylesheet's light literals apply.
+const FORCED_DARK_CHROME: Readonly<Record<string, string>> = {
+  surface: '#0f172a',
+  'surface-elevated': '#1e2532',
+  'row-hover': 'color-mix(in srgb, #fff 7%, #0f172a)',
+  text: '#f1f5f9',
+  'text-body': '#e2e8f0',
+  'text-muted': '#94a3b8',
+  'text-subtle': '#64748b',
+  border: 'rgb(255 255 255 / 12%)',
+  hairline: 'rgb(255 255 255 / 12%)',
+  'pin-line': 'rgb(255 255 255 / 28%)',
+};
+
 /** The deepest focused element across shadow boundaries (so focus restore lands where it was). */
 function deepActiveElement(): HTMLElement | null {
   let el: Element | null = document.activeElement;
@@ -94,11 +111,19 @@ function deepActiveElement(): HTMLElement | null {
   return el instanceof HTMLElement ? el : null;
 }
 
-/** Coarse light/dark decision from a CSS color string (rgb/rgba or hex). */
+/**
+ * Coarse light/dark decision from any CSS color: hex in every length (#rgb, #rgba, #rrggbb,
+ * #rrggbbaa), rgb()/rgba(), or any other syntax the canvas parses. The canvas normalises an
+ * opaque color to `#rrggbb` and a translucent one to `rgba()`; a fully transparent or
+ * unparseable color reads as light.
+ */
 function isDark(color: string): boolean {
-  const rgb = color.match(/\d+(\.\d+)?/g);
-  if (!rgb || rgb.length < 3) return false;
-  const [r, g, b] = rgb.map(Number);
+  const c = color.trim() ? toHex(color) : '';
+  const rgb = c.startsWith('#')
+    ? [1, 3, 5].map((i) => Number.parseInt(c.slice(i, i + 2), 16))
+    : c.match(/\d+(\.\d+)?/g)?.map(Number);
+  if (!rgb || rgb.length < 3 || rgb[3] === 0) return false;
+  const [r, g, b] = rgb;
   // Rec. 601 luma; < 0.5 of 255 reads as a dark surface.
   return 0.299 * r + 0.587 * g + 0.114 * b < 128;
 }
@@ -335,6 +360,9 @@ export class ApexGridChart extends LitElement {
       if (this.#crossFilter?.grid !== this.grid) this.#clearCrossFilter();
       this.#attach();
     }
+    // Theme the chrome now, not only on a draw, so an empty panel (a selection chart before the
+    // first selection) already matches its grid.
+    if (changed.has('grid') || changed.has('theme')) this.#syncChrome();
   }
 
   protected override updated(changed: Map<PropertyKey, unknown>): void {
@@ -1144,8 +1172,10 @@ export class ApexGridChart extends LitElement {
 
   /** Derive ApexCharts theme options from the grid's tokens (or a forced light/dark mode). */
   #themeOptions(): Partial<NonNullable<RenderChartOptions['apexOptions']>> {
-    if (this.theme !== 'grid') return { theme: { mode: this.theme } };
     const grid = this.grid as unknown as HTMLElement | null;
+    // Re-sync on every draw so the chrome follows a grid theme change along with the chart.
+    this.#syncChrome();
+    if (this.theme !== 'grid') return { theme: { mode: this.theme } };
     if (!grid) return {};
     const cs = getComputedStyle(grid);
     const read = (name: string) => cs.getPropertyValue(name).trim();
@@ -1156,6 +1186,28 @@ export class ApexGridChart extends LitElement {
       theme: { mode: isDark(read('--_ag-surface')) ? 'dark' : 'light' },
       chart: { background: 'transparent', ...(foreColor ? { foreColor } : {}) },
     };
+  }
+
+  /**
+   * Point the chrome's var(--_ag-*) tokens at the same theme the chart draws in. The panel often
+   * sits outside the grid's cascade (beside it, or on the body), so for theme="grid" it carries
+   * the grid's resolved tokens onto itself. A forced theme drops whatever was carried before (a
+   * panel switched off "grid", or a dialog the grid themed when it opened) and uses the fixed
+   * chrome for that mode, so a forced light chart never lands on a dark grid's surface.
+   */
+  #syncChrome(): void {
+    const style = this.style;
+    for (let i = style.length - 1; i >= 0; i--) {
+      const name = style.item(i);
+      if (name.startsWith('--_ag-')) style.removeProperty(name);
+    }
+    if (this.theme === 'grid') {
+      if (this.grid) carryGridTheme(this.grid, this);
+    } else if (this.theme === 'dark') {
+      for (const [name, value] of Object.entries(FORCED_DARK_CHROME)) {
+        style.setProperty(`--_ag-${name}`, value);
+      }
+    }
   }
 
   #destroyChart(): void {
