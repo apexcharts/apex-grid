@@ -15,6 +15,10 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   toggle, so aggregations and pivot columns can be set from the keyboard.
 - `advancedFilterModel` on `InfiniteGetRowsParams` and
   `ServerSideGetRowsParams` (the active advanced filter, or `null`).
+- `pivotOptions.maxValueColumns` caps the generated pivot value columns
+  (default 200, `Infinity` turns it off). A pivot on a high-cardinality field
+  shows the first columns, announces the cut and logs one console warning,
+  where it used to render every column and freeze the grid.
 
 ### Changed
 - **Copy neutralises spreadsheet formulas.** Range copy (Ctrl/Cmd+C,
@@ -245,6 +249,24 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   Format and Data popovers are named groups instead of menus; snapshot charts
   ignore selection and view changes, and live charts no longer redraw on
   selection changes.
+- **Pivot columns follow the data.** Pivoting on several fields creates
+  columns only for value combinations that occur, so a hierarchy such as
+  category then subcategory no longer produces mostly empty columns. Columns
+  are ordered by value: numbers and dates in order, then text with numeric
+  collation (item2 before item10), blanks last.
+- **Pivot headers use the source columns.** Row dimension and measure headers
+  take the source column's `headerText`, and the function name is the long
+  localized one, so `salary (avg)` reads `Salary (Average)`. Headers follow
+  `localeText` changes, and a measure from a currency column keeps its
+  currency format. Code or tests that match on pivot header text need
+  updating.
+- An empty pivot intersection shows a blank cell for avg, min and max (count
+  and sum stay 0). Charting the pivot view still plots those cells as 0.
+- Chart dialogs and charted range outlines stay with their grid: they leave
+  the page while the grid is detached (an enterprise detail grid whose master
+  row scrolls out, for example) and come back when it is attached again,
+  instead of closing for good. The Ask AI dialog follows the same rule; a
+  request it had in flight is cancelled without an error.
 
 ### Fixed
 - **Integrated charts show cell text as text.** Categories and series names
@@ -358,6 +380,24 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - A chart panel moved in the page keeps drawing, removing one mid-draw no
   longer reports an error, and drag-selecting or dragging the range handle no
   longer rescans the whole view per cell.
+- Setting `masterDetail` back to `null` turns master-detail off: rows stop
+  being expandable and the `expansion` config the grid had before is restored
+  (one the app set in the meantime is left alone).
+- A `getDetailData` that rejects, throws or returns a thenable is handled: no
+  unhandled rejection, the detail shows empty and the data is requested again
+  the next time that detail is shown.
+- Master-detail no longer logs the `[apex-grid] Host display has been
+  overridden` warning when a row expands.
+- `::part()` rules for the group header (`group-header`, `group-label` and
+  the rest), total row (`total-row-content`, `total-row-label`,
+  `total-row-values`, `total-row-value`) and master-detail (`master-detail`,
+  `detail-grid`) parts now apply.
+- In expandable pivot mode, equal dates and all blank values (null, empty,
+  missing) form one node each, and flat mode shows the localized blank label.
+- A field hidden in the flat view is no longer hidden when it becomes a pivot
+  row dimension.
+- Pivot subtotals no longer fail with a RangeError when one row group holds
+  more than about 120,000 rows.
 
 ### Performance
 - Range formulas index their precedents instead of one key per cell, so a
@@ -370,6 +410,9 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   of one reduction per function.
 - Range selection stats and cell decoration no longer build a string key per
   selected cell or rebuild the display columns per rendered cell.
+- Pivot views read every row once per run instead of once per value column,
+  and a data assignment while pivoting requests one pipeline run instead of
+  three.
 
 ## [0.7.1] - 2026-10-09
 

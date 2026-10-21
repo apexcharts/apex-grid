@@ -24,6 +24,10 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   the enterprise chart panel's Category select.
 - Locale key `setFilter.more` for the enterprise set filter's list cap, in
   English and Spanish.
+- `expansion.exportParts` lists parts inside your `detailTemplate` content
+  for the row to re-export, so `apex-grid::part(name)` can style them.
+- Locale key `pivot.columnsTruncated` for the enterprise pivot column cap, in
+  English and Spanish.
 
 ### Changed
 - **CSV export neutralises spreadsheet formulas.** A text cell or header that
@@ -125,6 +129,20 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `getState()` and `setState()` copy array filter terms, and feature modules
   can register a filter operand by name (`registerFilterOperand` on
   `apex-grid/internal`) so a saved filter that uses it restores.
+- **`sorted`, `filtered`, `pageChanged` and `quickFilterChanged` fire after
+  the pipeline run they caused.** With an asynchronous
+  `dataPipelineConfiguration` hook, listeners now read the new rows and
+  totals. With synchronous hooks they still fire in the same task, after the
+  re-render of the new rows. The server-side and infinite row models fetch
+  outside the pipeline, so with them these events can still fire before the
+  new block arrives.
+- `setQuickFilter` (and the toolbar search box) fires `pageChanged` and
+  announces the page when it moves the grid back to the first page. Setting
+  the `quickFilter` property or calling `setState` stays silent.
+- Every part a row renders can be styled with `apex-grid::part()`:
+  selection, expansion, detail panel, row number and reorder parts, and the
+  parts of rows a module renders. Before, only `cell` was reachable, so
+  existing `::part()` rules for these names now take effect.
 
 ### Fixed
 - **Text filter conditions no longer throw on a cell that is not a string.**
@@ -222,6 +240,24 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   runs off screen when the root font size is not 16px.
 - `setState(getState())` keeps the scroll position when the filter holds an
   array term, and the filter panel chip lists such a term's values.
+- With an asynchronous pipeline hook, a slower earlier run no longer
+  overwrites the rows of a newer quick filter, filter or sort, and a run
+  replaced before it finishes no longer holds back the newer one's calls and
+  events.
+- A `quickFilterChanging` listener that assigns `grid.quickFilter` (to trim
+  the input, for example) keeps its value, and `quickFilterChanged` reports
+  it. A substitute equal to the current filter changes nothing and
+  `setQuickFilter` returns `false`.
+- Changing `grid.tree` after the first render (turning tree mode on or off,
+  or changing `getDataPath` or `defaultExpanded`) rebuilds the rows.
+- `grid.data` set to `null` or `undefined` (a framework prop that is still
+  loading) shows an empty grid and reads back as `[]`, instead of throwing
+  and keeping the previous rows.
+- `moveColumn` no longer fires `columnMoving` for a move that changes nothing.
+- Shift+click and Ctrl or Cmd+click beside the checkbox in the selection cell
+  do the same range or additive selection as on the checkbox itself.
+- When a `rowSelecting` listener cancels the change, the row and select-all
+  checkboxes show the real selection state instead of staying checked.
 
 ## [3.5.0] - 2026-09-12
 
