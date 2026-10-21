@@ -413,8 +413,16 @@ function resolveAggFunc(text: string | undefined): AggregationFn {
   return 'sum';
 }
 
-function resolvePin(text: string | undefined): 'start' | 'end' {
-  return text && /right|end/i.test(text) ? 'end' : 'start';
+/**
+ * The logical pin side a phrase names. "start" / "end" are logical already; "left" /
+ * "right" are physical, so they swap in an rtl grid, where the start side is the right.
+ */
+function resolvePin(text: string | undefined, ctx: GridContext): 'start' | 'end' {
+  const side = text?.match(/right|end|left|start/i)?.[0].toLowerCase();
+  if (side === 'left' || side === 'right') {
+    return (side === 'right') !== (ctx.direction === 'rtl') ? 'end' : 'start';
+  }
+  return side === 'end' ? 'end' : 'start';
 }
 
 function normalizeFormat(text: string | undefined): string | undefined {
@@ -771,7 +779,7 @@ class DefaultEntityResolver implements EntityResolver {
           const column = resolveColumn(intent.slots.pinColumn.text, ctx);
           if (column) {
             result.columns = [column];
-            result.pin = resolvePin(intent.slots.pinSide?.text);
+            result.pin = resolvePin(intent.slots.pinSide?.text, ctx);
           } else {
             errors.push(`No column matches "${intent.slots.pinColumn.text}".`);
           }

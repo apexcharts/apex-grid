@@ -1,3 +1,4 @@
+import { isRTL } from 'apex-commons';
 import type { ColumnConfiguration } from 'apex-grid';
 import {
   ApexGrid,
@@ -132,6 +133,11 @@ export class ContextMenuController<T extends object>
   #restoreFocus: HTMLElement | null = null;
   /** The header kebab the open menu was opened from, so a second press closes it. */
   #anchor: HTMLElement | null = null;
+  /**
+   * The grid's direction, resolved when the root menu opens. The menus live on the
+   * body, so they take it explicitly rather than inheriting the page's.
+   */
+  #rtl = false;
 
   constructor(
     private host: GridHost<T>,
@@ -371,6 +377,7 @@ export class ContextMenuController<T extends object>
     while (focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement;
     this.#restoreFocus = focused instanceof HTMLElement ? focused : null;
 
+    this.#rtl = isRTL('auto', this.host as unknown as Element);
     const menu = this.#spawnMenu(detail.items);
     const rect = menu.getBoundingClientRect();
     menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - rect.width - 4))}px`;
@@ -384,6 +391,8 @@ export class ContextMenuController<T extends object>
     const menu = document.createElement('div') as MenuEl<T>;
     menu.className = 'apex-grid-context-menu';
     menu.setAttribute('role', 'menu');
+    // The grid's direction, which also mirrors the submenu caret (a bidi-mirrored glyph).
+    menu.dir = this.#rtl ? 'rtl' : 'ltr';
     menu.__items = items;
     // On the body so the grid never clips it; carry the grid's theme with it.
     carryGridTheme(this.host, menu);
@@ -422,15 +431,16 @@ export class ContextMenuController<T extends object>
   }
 
   #openSubmenu(item: ContextMenuItem<T>, parentMenu: MenuEl<T>, button: HTMLElement): void {
-    // Collapse anything stacked above the parent, then flyout to the button's side.
+    // Collapse anything stacked above the parent, then flyout to the button's inline end
+    // side (the left under rtl), or the other side when that one has no room.
     this.#closeFrom(this.#menus.indexOf(parentMenu) + 1);
     const child = this.#spawnMenu(item.submenu ?? []);
     child.__parentButton = button;
     const rect = button.getBoundingClientRect();
-    const left =
-      rect.right + child.offsetWidth > window.innerWidth - 4
-        ? rect.left - child.offsetWidth
-        : rect.right;
+    const before = rect.left - child.offsetWidth;
+    const after = rect.right;
+    const fitsAfter = after + child.offsetWidth <= window.innerWidth - 4;
+    const left = (this.#rtl ? before >= 4 || !fitsAfter : !fitsAfter) ? before : after;
     const top = Math.min(rect.top, window.innerHeight - child.offsetHeight - 4);
     child.style.left = `${Math.max(4, left)}px`;
     child.style.top = `${Math.max(4, top)}px`;
@@ -455,7 +465,11 @@ export class ContextMenuController<T extends object>
       const i = (((current + delta) % buttons.length) + buttons.length) % buttons.length;
       buttons[i]?.focus();
     };
-    switch (event.key) {
+    // The inline end arrow opens a submenu and the inline start arrow closes it,
+    // so the keys mirror with the flyout side under rtl.
+    const [open, close] = this.#rtl ? ['ArrowLeft', 'ArrowRight'] : ['ArrowRight', 'ArrowLeft'];
+    const key = event.key === open ? 'open' : event.key === close ? 'close' : event.key;
+    switch (key) {
       case 'ArrowDown':
         move(1);
         break;
@@ -470,7 +484,7 @@ export class ContextMenuController<T extends object>
         event.preventDefault();
         buttons[buttons.length - 1]?.focus();
         break;
-      case 'ArrowRight': {
+      case 'open': {
         const item = menu.__items?.[Number(active?.dataset.index)];
         if (item?.submenu?.length) {
           event.preventDefault();
@@ -478,7 +492,7 @@ export class ContextMenuController<T extends object>
         }
         break;
       }
-      case 'ArrowLeft':
+      case 'close':
       case 'Escape': {
         event.preventDefault();
         const index = this.#menus.indexOf(menu);

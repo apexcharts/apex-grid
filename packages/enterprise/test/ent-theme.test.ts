@@ -8,7 +8,14 @@ import {
   waitUntil,
 } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
+import {
+  ConversationMemory,
+  createAIEngine,
+  createContextBuilder,
+  createFakeGridApi,
+} from '../src/features/ai/index.js';
 import { ApexGridChart, ApexGridEnterprise, enterpriseModules } from '../src/index.js';
+import { rows as aiRows, enterpriseSchema } from './ai-fixtures.js';
 
 // Enterprise chrome follows the grid: chart panel and dialog surfaces, the
 // body-portaled context menu (colours and direction), the group chevrons'
@@ -248,6 +255,157 @@ describe('ent-theme: enterprise chrome follows the grid', () => {
       const style = getComputedStyle(label);
       const fill = label instanceof SVGElement ? style.fill : style.color;
       expect(contrast(fill, surface), `${fill} on ${surface}`).to.be.at.least(4.5);
+    });
+  });
+
+  describe('context menu (ent-context-menu-8, ent-context-menu-7)', () => {
+    function cellOf(grid: ApexGridEnterprise<Row>, rowIndex: number, key: keyof Row) {
+      for (const row of grid.rows) {
+        if (row.index !== rowIndex) continue;
+        return row.cells.find((c) => String(c.column.key) === key) as unknown as HTMLElement;
+      }
+      return undefined as unknown as HTMLElement;
+    }
+    function rightClick(el: HTMLElement, x = 200, y = 60) {
+      el.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          bubbles: true,
+          composed: true,
+          cancelable: true,
+          clientX: x,
+          clientY: y,
+        })
+      );
+    }
+    const menus = () => [...document.querySelectorAll<HTMLElement>('.apex-grid-context-menu')];
+    const button = (label: string) =>
+      [...document.querySelectorAll<HTMLButtonElement>('.apex-grid-context-menu .agcm-item')].find(
+        (b) => b.textContent?.replace(/[›‹]/g, '').trim() === label
+      )!;
+    const key = (target: HTMLElement, name: string) =>
+      target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }));
+
+    async function withSubmenu(dir: string) {
+      const grid = await mountGrid({ dir });
+      grid.contextMenu = {
+        items: [
+          { id: 'one', label: 'One', run: () => undefined },
+          {
+            id: 'more',
+            label: 'More',
+            submenu: [
+              { id: 'a', label: 'Sub A', run: () => undefined },
+              { id: 'b', label: 'Sub B', run: () => undefined },
+            ],
+          },
+        ],
+      };
+      await grid.updateComplete;
+      rightClick(cellOf(grid, 0, 'q1'));
+      return grid;
+    }
+
+    it('paints the menu from a dark grid theme', async () => {
+      const grid = await mountGrid({ theme: 'dark' });
+      rightClick(cellOf(grid, 0, 'q1'));
+      const [menu] = menus();
+      const bg = getComputedStyle(menu).backgroundColor;
+      expect(bg).to.not.equal('rgb(255, 255, 255)');
+      const item = menu.querySelector<HTMLElement>('.agcm-item')!;
+      expect(contrast(getComputedStyle(item).color, bg)).to.be.at.least(4.5);
+    });
+
+    it('takes the grid direction when only the grid is rtl', async () => {
+      await withSubmenu('rtl');
+      const [menu] = menus();
+      expect(document.documentElement.dir || 'ltr').to.equal('ltr');
+      expect(getComputedStyle(menu).direction).to.equal('rtl');
+    });
+
+    it('flies a submenu out to the inline end side under rtl', async () => {
+      await withSubmenu('rtl');
+      const parent = button('More');
+      parent.focus();
+      key(menus()[0], 'ArrowLeft');
+      expect(menus().length, 'ArrowLeft opens under rtl').to.equal(2);
+      const sub = menus()[1];
+      const parentRect = parent.getBoundingClientRect();
+      const subRect = sub.getBoundingClientRect();
+      expect(subRect.right).to.be.at.most(parentRect.left + 1);
+      key(sub, 'ArrowRight');
+      expect(menus().length, 'ArrowRight closes under rtl').to.equal(1);
+      expect(document.activeElement).to.equal(parent);
+    });
+
+    it('ArrowRight on the root menu closes it under rtl, as ArrowLeft does under ltr', async () => {
+      await withSubmenu('rtl');
+      button('More').focus();
+      key(menus()[0], 'ArrowRight');
+      expect(menus().length).to.equal(0);
+    });
+
+    it('opens the submenu to the right when an rtl menu has no room on its left', async () => {
+      await withSubmenu('rtl');
+      const root = menus()[0];
+      root.style.left = '4px';
+      const parent = button('More');
+      parent.focus();
+      key(root, 'ArrowLeft');
+      expect(menus().length).to.equal(2);
+      expect(menus()[1].getBoundingClientRect().left).to.be.at.least(
+        parent.getBoundingClientRect().right - 1
+      );
+    });
+
+    it('keeps ltr keys and the right-hand flyout', async () => {
+      await withSubmenu('ltr');
+      const parent = button('More');
+      parent.focus();
+      key(menus()[0], 'ArrowRight');
+      expect(menus().length).to.equal(2);
+      expect(menus()[1].getBoundingClientRect().left).to.be.at.least(
+        parent.getBoundingClientRect().right - 1
+      );
+      expect(getComputedStyle(menus()[0]).direction).to.equal('ltr');
+      key(menus()[1], 'ArrowLeft');
+      expect(menus().length).to.equal(1);
+    });
+  });
+
+  describe('AI pin side (ent-ai-entities-12)', () => {
+    it('pins "to the left" at the physical left of an rtl grid', async () => {
+      const grid = await mountGrid({ dir: 'rtl' });
+      await grid.runPrompt('pin name to the left');
+      await grid.updateComplete;
+      expect(grid.columns.find((c) => c.key === 'name')?.pinned).to.equal('end');
+      await grid.runPrompt('pin q1 to the right');
+      await grid.updateComplete;
+      expect(grid.columns.find((c) => c.key === 'q1')?.pinned).to.equal('start');
+    });
+
+    it('keeps logical start and end in an rtl grid', async () => {
+      const grid = await mountGrid({ dir: 'rtl' });
+      await grid.runPrompt('pin name to the start');
+      await grid.updateComplete;
+      expect(grid.columns.find((c) => c.key === 'name')?.pinned).to.equal('start');
+    });
+
+    it('lets a fake grid api report rtl to the context and the pin rule', async () => {
+      const api = createFakeGridApi({ schema: enterpriseSchema, data: aiRows, direction: 'rtl' });
+      expect(api.getDirection?.()).to.equal('rtl');
+      const ctx = createContextBuilder().build(api, new ConversationMemory());
+      expect(ctx.direction).to.equal('rtl');
+      await createAIEngine(api).runPrompt('pin region to the left');
+      expect(JSON.stringify(api.calls)).to.contain('"end"');
+      const plain = createFakeGridApi({ schema: enterpriseSchema, data: aiRows });
+      expect(plain.getDirection).to.equal(undefined);
+    });
+
+    it('keeps left as start in an ltr grid', async () => {
+      const grid = await mountGrid();
+      await grid.runPrompt('pin name to the left');
+      await grid.updateComplete;
+      expect(grid.columns.find((c) => c.key === 'name')?.pinned).to.equal('start');
     });
   });
 });

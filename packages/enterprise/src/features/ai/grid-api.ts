@@ -52,6 +52,11 @@ export interface GridApi<T = unknown> {
   getData(): readonly T[];
   /** The locale override map, for building localized summaries / warnings / answers. */
   getLocaleText(): GridLocaleText | undefined;
+  /**
+   * The grid's layout direction, so a physical word ("left", "right") maps to the
+   * logical side it means. Optional: a facade without it reads as `'ltr'`.
+   */
+  getDirection?(): 'ltr' | 'rtl';
 
   /** The one declarative view-state mutation. Defensive: it reports what it dropped. */
   applyState(patch: StatePatch): SetStateResult;
@@ -81,6 +86,9 @@ export function gridApiFor<T extends object>(grid: ApexGridEnterprise<T>): GridA
         ? grid.data.filter((row) => !grid.isRowLoading(row))
         : grid.data,
     getLocaleText: () => grid.localeText,
+    // The computed direction (what the layout follows), read directly: this module is
+    // lazy-loaded, and importing the shared helper would split it into its own chunk.
+    getDirection: () => (getComputedStyle(grid).direction === 'rtl' ? 'rtl' : 'ltr'),
     applyState: (patch) => grid.setState(patch),
     export: (format) => {
       const id = format === 'excel' ? 'xlsx' : format;
@@ -124,6 +132,8 @@ export interface FakeGridApiInit<T> {
   data?: readonly T[];
   /** Locale map returned from `getLocaleText`. */
   localeText?: GridLocaleText;
+  /** Direction reported by `getDirection` (omitted: no `getDirection`, which reads as ltr). */
+  direction?: 'ltr' | 'rtl';
 }
 
 /**
@@ -144,6 +154,7 @@ export function createFakeGridApi<T = unknown>(
     getState: () => state,
     getData: () => init.data ?? [],
     getLocaleText: () => init.localeText,
+    ...(init.direction ? { getDirection: () => init.direction as 'ltr' | 'rtl' } : {}),
     applyState: (patch) => {
       calls.push(patch);
       state = { ...state, ...patch } as GridState;

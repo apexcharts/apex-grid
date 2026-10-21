@@ -35,6 +35,11 @@ export interface GridContext<T = unknown> {
   };
   memory: MemorySnapshot;
   locale?: GridLocaleText;
+  /**
+   * The grid's layout direction (from {@link GridApi.getDirection}). Under `'rtl'`
+   * "left" means the inline end side. Undefined reads as `'ltr'`.
+   */
+  direction?: 'ltr' | 'rtl';
   /** Injected clock (0 by default). The engine passes a real value at call time. */
   now: number;
   /**
@@ -87,6 +92,7 @@ export function createContextBuilder<T = unknown>(): ContextBuilder<T> {
         ),
         memory: memory.snapshot(),
         locale: api.getLocaleText(),
+        direction: api.getDirection?.(),
         now: opts.now ?? 0,
         requestedMode: opts.requestedMode,
         signal: opts.signal,
