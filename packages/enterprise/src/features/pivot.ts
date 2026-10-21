@@ -452,7 +452,8 @@ export class PivotController<T extends object>
         const fk = stringify(entry.values[0]);
         const group = byFirst.get(fk);
         if (group) {
-          group.leaves.push(...entry.leaves);
+          // A loop, not push(...leaves): spreading a large group overflows the call stack.
+          for (const leaf of entry.leaves) group.leaves.push(leaf);
           group.rows.push(entry);
         } else {
           byFirst.set(fk, { value: entry.values[0], leaves: [...entry.leaves], rows: [entry] });

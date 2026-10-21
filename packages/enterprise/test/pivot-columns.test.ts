@@ -419,6 +419,21 @@ describe('pivot columns (B38)', () => {
     });
   });
 
+  it('subtotals a row group of more leaves than a call can take as arguments', async () => {
+    const data: Rec[] = [];
+    for (let i = 0; i < 10; i++) data.push({ product: 'p', region: 'R', sub: 'X', v: 1 });
+    for (let i = 0; i < 249_990; i++) data.push({ product: 'p', region: 'R', sub: 'Y', v: 1 });
+    const grid = await mount({
+      data: data.slice(0, 1),
+      on: 'product',
+      rows: ['region', 'sub'],
+      values: { v: ['sum'] },
+      options: { subtotals: true },
+    });
+    const rows = pivotOf(grid).processRows(data);
+    expect(rows.map((row) => row['pivot::p::v::sum'])).to.eql([10, 249_990, 250_000]);
+  });
+
   describe('sweep-data-at-scale-6: maxValueColumns', () => {
     const many = () => Array.from({ length: 450 }, (_, id) => ({ id, name: `n${id % 3}`, q: id }));
 
