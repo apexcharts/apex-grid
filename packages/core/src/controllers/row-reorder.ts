@@ -207,8 +207,8 @@ export class RowReorderController<T extends object> implements ReactiveControlle
    * Moves the row at view index `from` relative to the row at view index `to`.
    * Indices are into {@link ApexGrid.pageItems}.
    *
-   * @returns `true` when applied, `false` when disabled, out of range, or
-   * cancelled via `rowMoving`.
+   * @returns `true` when applied, `false` when disabled, out of range, a
+   * no-op (the row would land where it is), or cancelled via `rowMoving`.
    */
   public moveRow(from: number, to: number, position: RowDropPosition = 'before'): boolean {
     const view = this.host.pageItems;
@@ -461,18 +461,22 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     const view = this.host.pageItems;
     const from = view.indexOf(source);
     const to = view.indexOf(target);
-
-    const proceed = this.host.emitEvent('rowMoving', {
-      detail: { from, to, data: source },
-      cancelable: true,
-    });
-    if (!proceed) return false;
+    // Where the row lands in the view; a move that leaves it in place is no move.
+    const toIndex = position === 'after' ? (from < to ? to : to + 1) : from < to ? to - 1 : to;
+    if (from === -1 || to === -1 || toIndex === from) return false;
 
     // A row outside the order (a tree child, a module's row) cannot move.
     const next = this.#fullOrder();
-    if (!next.includes(source) || !next.includes(target)) return false;
-    next.splice(next.indexOf(source), 1);
+    const at = next.indexOf(source);
+    if (at === -1 || !next.includes(target)) return false;
+    next.splice(at, 1);
     next.splice(next.indexOf(target) + (position === 'after' ? 1 : 0), 0, source);
+    // Rows outside the order (group rows) can make a view move a no-op too.
+    if (next.indexOf(source) === at) return false;
+
+    const detail = { from, to, position, toIndex, data: source };
+    if (!this.host.emitEvent('rowMoving', { detail, cancelable: true })) return false;
+
     if (this.host.sortExpressions.length) this.host.sortExpressions = [];
 
     if (this.applyToData) {
@@ -484,7 +488,7 @@ export class RowReorderController<T extends object> implements ReactiveControlle
 
     this.host.requestUpdate(PIPELINE);
     if (!options.silent) this.host.announce(this.host.localize('announce.rowMoved'));
-    this.host.emitEvent('rowMoved', { detail: { from, to, data: source } });
+    this.host.emitEvent('rowMoved', { detail });
     return true;
   }
 

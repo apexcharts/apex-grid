@@ -451,3 +451,62 @@ describe('Row reorder: a move on a sorted grid replaces the sort', () => {
     expect(TDD.ids()).to.deep.equal([7, 8, 6, 5, 4, 3, 2, 1]);
   });
 });
+
+describe('Row reorder: rowMoving and rowMoved report where the row lands', () => {
+  beforeEach(async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+  });
+  afterEach(() => TDD.tearDown());
+
+  it('a move that changes nothing returns false and emits nothing', async () => {
+    const events: string[] = [];
+    TDD.grid.addEventListener('rowMoving', () => events.push('moving'));
+    TDD.grid.addEventListener('rowMoved', () => events.push('moved'));
+    expect(TDD.grid.moveRow(0, 1, 'before')).to.be.false;
+    expect(TDD.grid.moveRow(3, 2, 'after')).to.be.false;
+    await TDD.waitForUpdate();
+    expect(events).to.deep.equal([]);
+    expect(TDD.stateController.rowReorder.hasManualOrder).to.be.false;
+  });
+
+  it('a move across a synthesized parent that changes nothing is a no-op', async () => {
+    TDD.grid.tree = {
+      enabled: true,
+      getDataPath: (row) => [row.id <= 4 ? 'A' : 'B', String(row.id)],
+      defaultExpanded: true,
+    };
+    await TDD.waitForUpdate();
+    const view = TDD.grid.pageItems;
+    const from = view.indexOf(TDD.grid.data[3]);
+    const to = view.indexOf(TDD.grid.data[4]);
+    // Row 4 sits right before parent B, which sits right before row 5.
+    expect(to - from).to.equal(2);
+    let events = 0;
+    TDD.grid.addEventListener('rowMoving', () => events++);
+    expect(TDD.grid.moveRow(from, to, 'before')).to.be.false;
+    expect(events).to.equal(0);
+    expect(TDD.stateController.rowReorder.hasManualOrder).to.be.false;
+  });
+
+  it('carries the drop position and the resolved index', async () => {
+    const details: unknown[] = [];
+    const record = ({ detail }: CustomEvent) => {
+      const { from, to, position, toIndex } = detail;
+      details.push({ from, to, position, toIndex, id: detail.data.id });
+    };
+    TDD.grid.addEventListener('rowMoving', record);
+    TDD.grid.addEventListener('rowMoved', record);
+
+    expect(TDD.grid.moveRow(0, 5, 'before')).to.be.true;
+    await TDD.waitForUpdate();
+    expect(TDD.ids().indexOf(1)).to.equal(4);
+    expect(TDD.grid.moveRow(5, 1, 'after')).to.be.true;
+    await TDD.waitForUpdate();
+    expect(TDD.ids().indexOf(6)).to.equal(2);
+
+    const first = { from: 0, to: 5, position: 'before', toIndex: 4, id: 1 };
+    const second = { from: 5, to: 1, position: 'after', toIndex: 2, id: 6 };
+    expect(details).to.deep.equal([first, first, second, second]);
+  });
+});

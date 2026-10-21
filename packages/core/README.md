@@ -458,7 +458,7 @@ grid.rowReordering = { enabled: true };   // add applyToData: true to splice gri
 grid.moveRow(0, 4, 'after');
 ```
 
-By default (`rowReordering.handle`, boolean, default `true`) a six-dot grip handle shows at the start of every reorderable row, and dragging lifts a full-row floating ghost that follows the cursor. Both interaction modes are supported: **handle mode** (only the grip starts a drag, so the rest of the row stays free for selection and editing) and **whole-row mode** (set `handle: false` to drag from anywhere on the row, excluding interactive sub-parts like inputs and buttons). Or use the keyboard: focus a row, **Space** to grab, **Arrow** keys to move, **Space / Enter** to drop, **Esc** to cancel. The grid holds a manual order that is mutually exclusive with sorting (applying a sort clears it, and a move clears the sort). Rows hidden by a filter keep their place when a visible row moves. By default the app persists the order via the `rowMoved` event; set `applyToData: true` to splice `grid.data` directly. Events: `rowMoving` (cancellable), `rowMoved { from, to, data }`.
+By default (`rowReordering.handle`, boolean, default `true`) a six-dot grip handle shows at the start of every reorderable row, and dragging lifts a full-row floating ghost that follows the cursor. Both interaction modes are supported: **handle mode** (only the grip starts a drag, so the rest of the row stays free for selection and editing) and **whole-row mode** (set `handle: false` to drag from anywhere on the row, excluding interactive sub-parts like inputs and buttons). Or use the keyboard: focus a row, **Space** to grab, **Arrow** keys to move, **Space / Enter** to drop, **Esc** to cancel. The grid holds a manual order that is mutually exclusive with sorting (applying a sort clears it, and a move clears the sort). Rows hidden by a filter keep their place when a visible row moves. By default the app persists the order via the `rowMoved` event; set `applyToData: true` to splice `grid.data` directly. Events: `rowMoving` (cancellable), `rowMoved { from, to, position, toIndex, data }`, where `toIndex` is the view index the row lands at.
 
 ### Row expansion (master-detail)
 
@@ -742,7 +742,7 @@ All events bubble and are composed across shadow boundaries. Names ending in `-i
 | `historyChanged` | no | `{ canUndo, canRedo }` |
 | `rowSelecting` / `rowSelected` | yes / no | `{ added, removed }` |
 | `rowPinning` / `rowPinned` | yes / no | `{ row, position }` |
-| `rowMoving` / `rowMoved` | yes / no | `{ from, to, data }` |
+| `rowMoving` / `rowMoved` | yes / no | `{ from, to, position, toIndex, data }` |
 | `rowExpanding` / `rowExpanded` | yes / no | row context |
 | `treeRowExpanding` / `treeRowExpanded` | yes / no | row context |
 | `stateChanged` | no | `{ state }` (debounced; only while listened) |

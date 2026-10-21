@@ -279,6 +279,14 @@ export interface ApexRowMovingEvent<T extends object> {
   from: number;
   /** The target row's view index. */
   to: number;
+  /** Whether the row lands before or after the target row. */
+  position: RowDropPosition;
+  /**
+   * The view index the row lands at, resolved from `to` and `position`
+   * (`moveRow(0, 3)` lands the row at 2). Splice the row out of `from` and in
+   * at `toIndex` to mirror the move.
+   */
+  toIndex: number;
   /** The row being moved (a live reference into {@link ApexGrid.data}). */
   data: T;
 }
@@ -2940,8 +2948,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * cancellable `rowMoving` event, emits `rowMoved`, and animates the affected
    * rows. Rows hidden by a filter keep their place in the order.
    *
-   * @returns `true` when applied, `false` when disabled, out of range, or
-   * cancelled.
+   * @returns `true` when applied, `false` when disabled, out of range, a no-op
+   * (the row would land where it already is), or cancelled.
    */
   public moveRow(from: number, to: number, position: RowDropPosition = 'before'): boolean {
     return this.stateController.rowReorder.moveRow(from, to, position);
