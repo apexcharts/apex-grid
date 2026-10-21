@@ -4,9 +4,9 @@
 // Resolution chain: consumer semantic var
 // (back-compat) → premium `--ag-*` default. Keeps every existing override
 // hook working while making the premium look the out-of-the-box default.
-$content-background: var(--content-background, var(--ag-surface));
-$content-text-color: var(--content-text-color, var(--ag-text-body));
-$grid-resize-line-color: var(--grid-resize-line-color, var(--ag-brand));
+$content-background: var(--content-background, var(--_ag-surface));
+$content-text-color: var(--content-text-color, var(--_ag-text-body));
+$grid-resize-line-color: var(--grid-resize-line-color, var(--_ag-brand));
 
 // REQUIRED for the grid's internal track layout: toolbar, header-row, filter-row,
 // virtualized body, and paginator live in named CSS grid rows below. Consumers must
@@ -22,9 +22,9 @@ $grid-resize-line-color: var(--grid-resize-line-color, var(--ag-brand));
     height: 100%;
     position: relative;
     box-sizing: border-box;
-    font-family: var(--ig-font-family, var(--ag-font));
-    font-size: var(--ag-fs-cell);
-    line-height: var(--ag-leading);
+    font-family: var(--ig-font-family, var(--_ag-font));
+    font-size: var(--_ag-fs-cell);
+    line-height: var(--_ag-leading);
     color: $content-text-color;
 
     // Flat by default: a crisp 1px edge ring (no drop shadow) so the grid reads
@@ -35,12 +35,12 @@ $grid-resize-line-color: var(--grid-resize-line-color, var(--ag-brand));
     // with `--ag-grid-shadow: none`.
     // `overflow: auto` stays — the host is the scroll container; the radius
     // still clips the sticky header/footer corners.
-    border-radius: var(--ag-radius);
+    border-radius: var(--_ag-radius);
 
     // Token-driven so a one-line `--ag-grid-bg` override (or `theme="dark"`)
     // re-skins the card. Default carries the subtle premium light gradient.
-    background: var(--ag-grid-bg);
-    box-shadow: var(--ag-grid-shadow, 0 0 0 1px var(--ag-hairline));
+    background: var(--_ag-grid-bg);
+    box-shadow: var(--ag-grid-shadow, 0 0 0 1px var(--_ag-hairline));
 
     // NOTE: no `backdrop-filter` / `transform` / `filter` / `will-change` here.
     // Any of those would make the host a containing block for `position: fixed`
@@ -86,13 +86,13 @@ $grid-resize-line-color: var(--grid-resize-line-color, var(--ag-brand));
 [part~='pinned-top'] {
     grid-row: pinned-top-row;
     inset-block-start: var(--apex-row-top-pinned, 0);
-    box-shadow: 0 1px 0 0 var(--ag-hairline);
+    box-shadow: 0 1px 0 0 var(--_ag-hairline);
 }
 
 [part~='pinned-bottom'] {
     grid-row: pinned-bottom-row;
     inset-block-end: var(--apex-row-bottom-pinned, 0);
-    box-shadow: 0 -1px 0 0 var(--ag-hairline);
+    box-shadow: 0 -1px 0 0 var(--_ag-hairline);
 }
 
 apex-virtualizer {
@@ -134,12 +134,12 @@ apex-virtualizer {
     overflow: hidden;
     background: $content-background;
     color: $content-text-color;
-    border: 1px solid var(--ag-brand-line);
-    border-radius: var(--ag-radius-sm);
+    border: 1px solid var(--_ag-brand-line);
+    border-radius: var(--_ag-radius-sm);
     box-shadow:
         0 #{rem(2px)} #{rem(6px)} rgb(0 0 0 / 10%),
         0 #{rem(10px)} #{rem(28px)} rgb(0 0 0 / 18%);
-    font-size: var(--ag-fs-cell);
+    font-size: var(--_ag-fs-cell);
     white-space: nowrap;
     pointer-events: none;
     user-select: none;
@@ -154,7 +154,7 @@ apex-virtualizer {
     justify-content: center;
     flex: 0 0 auto;
     inline-size: rem(28px);
-    color: var(--ag-text-subtle);
+    color: var(--_ag-text-subtle);
 
     svg {
         fill: currentcolor;
@@ -163,7 +163,7 @@ apex-virtualizer {
 
 [part~='row-drag-ghost-cell'] {
     flex: 0 0 auto;
-    padding: 0 var(--ag-cell-pad-x);
+    padding: 0 var(--_ag-cell-pad-x);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

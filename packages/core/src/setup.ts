@@ -1,4 +1,5 @@
 import { ApexGrid } from './components/grid.js';
+import { adoptOnce, documentStyleOptions, hostSizingCss } from './internal/document-styles.js';
 
 type ApexGridTheme = 'bootstrap' | 'material' | 'fluent' | 'indigo';
 
@@ -27,26 +28,27 @@ export interface ApexGridSetupOptions {
    * @defaultValue true
    */
   hostStyles?: boolean;
+
+  /**
+   * Whether the grid adopts its `--ag-*` token defaults into the document, on
+   * `:where(:root)` (zero specificity, so any value you set wins). They are what
+   * make `var(--ag-*)` readable from your own CSS. Set to `false` if you manage
+   * your own CSS, and load `apex-grid/tokens.css` (or your own values) instead.
+   * The grid renders the same either way: it carries the same defaults as
+   * fallbacks.
+   *
+   * @defaultValue true
+   */
+  tokenStyles?: boolean;
 }
 
-const HOST_CSS = 'apex-grid { height: 100%; min-height: 240px; }';
-let hostStylesInjected = false;
-
 function adoptHostStyles(): void {
-  if (hostStylesInjected || typeof document === 'undefined') return;
-
-  if ('adoptedStyleSheets' in Document.prototype && 'replaceSync' in CSSStyleSheet.prototype) {
-    const sheet = new CSSStyleSheet();
-    sheet.replaceSync(HOST_CSS);
-    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
-  } else {
-    const style = document.createElement('style');
-    style.setAttribute('data-apex-grid', 'host-styles');
-    style.textContent = HOST_CSS;
-    document.head.appendChild(style);
-  }
-
-  hostStylesInjected = true;
+  if (typeof document === 'undefined') return;
+  // Every grid adopts the sizing into the root it connects in (a page sheet
+  // never reaches a grid inside a shadow root); the page gets it right away so
+  // a grid already parsed into the document is sized before it connects.
+  documentStyleOptions.hostSizing = true;
+  adoptOnce(document, `host:${ApexGrid.tagName}`, hostSizingCss(ApexGrid.tagName));
 }
 
 let themeWarned = false;
@@ -88,13 +90,15 @@ function warnThemeIsInert(): void {
  * ```
  */
 export function setup(options: ApexGridSetupOptions = {}): void {
-  const { theme, hostStyles = true } = options;
+  const { theme, hostStyles = true, tokenStyles = true } = options;
+
+  // Before registering: a grid already in the page connects during register().
+  documentStyleOptions.tokens = tokenStyles;
+  if (hostStyles) {
+    adoptHostStyles();
+  }
 
   ApexGrid.register();
 
   if (theme !== undefined) warnThemeIsInert();
-
-  if (hostStyles) {
-    adoptHostStyles();
-  }
 }

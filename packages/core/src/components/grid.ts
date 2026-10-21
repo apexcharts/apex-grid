@@ -15,6 +15,7 @@ import {
   localize as resolveLocaleText,
 } from '../i18n/index.js';
 import { DEFAULT_COLUMN_CONFIG, PIPELINE, SENTINEL_NODE } from '../internal/constants.js';
+import { adoptGridDocumentStyles } from '../internal/document-styles.js';
 import {
   buildCSV,
   type CSVExportOptions,
@@ -851,7 +852,7 @@ function warnDropped(message: string): void {
  *
  * @cssprop [--ag-brand] - Brand color for selection, focus rings, and accents. Auto-tints from `--ig-primary-500` where an Ignite UI palette is present.
  * @cssprop [--ag-brand-strong] - Brand color for hover / pressed states.
- * @cssprop [--ag-grid-shadow] - Grid edge/shadow override. Default is a flat 1px hairline edge; set to `var(--ag-shadow-card)` for the elevated card look, or `none` to remove it.
+ * @cssprop [--ag-grid-shadow] - Grid edge/shadow override. Default is a flat 1px hairline edge; set to `var(--ag-shadow-card)` (`var(--ag-dark-shadow-card)` on a dark grid) for the elevated card look, or `none` to remove it.
  * @cssprop [--ag-grid-bg] - Host card background. Defaults to a subtle light gradient; override with a flat color (or use `theme="dark"`) for dark themes.
  * @cssprop [--ag-surface] - Grid card background (must be opaque).
  * @cssprop [--ag-surface-alt] - Alternating row tint.
@@ -862,6 +863,17 @@ function warnDropped(message: string): void {
  * @cssprop [--ag-text-body] - Row text color.
  * @cssprop [--ag-text-muted] - Muted text (roles, labels).
  * @cssprop [--ag-row-hover] - Row hover wash.
+ * @cssprop [--ag-dark-grid-bg] - Host card background on `theme="dark"` grids. Dark grids read the `--ag-dark-*` colours instead of the light ones.
+ * @cssprop [--ag-dark-surface] - Grid card background on dark grids (must be opaque).
+ * @cssprop [--ag-dark-surface-alt] - Alternating row tint on dark grids.
+ * @cssprop [--ag-dark-surface-elevated] - Header background on dark grids.
+ * @cssprop [--ag-dark-hairline] - Header / structural gridline color on dark grids.
+ * @cssprop [--ag-dark-border] - Row separator color on dark grids.
+ * @cssprop [--ag-dark-text] - Primary text color on dark grids.
+ * @cssprop [--ag-dark-text-body] - Row text color on dark grids.
+ * @cssprop [--ag-dark-text-muted] - Muted text (roles, labels) on dark grids.
+ * @cssprop [--ag-dark-row-hover] - Row hover wash on dark grids.
+ * @cssprop [--ag-dark-shadow-card] - Elevated card shadow for dark grids (see `--ag-grid-shadow`).
  * @cssprop [--ag-row-h] - Row height.
  * @cssprop [--ag-header-h] - Header height.
  * @cssprop [--ag-radius] - Outer card corner radius.
@@ -2100,6 +2112,13 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     if (this.#lastStateJson === null && this.#stateChangedListeners.size && !this.#shapingPending) {
       this.#lastStateJson = JSON.stringify(this.getState());
     }
+  }
+
+  public override connectedCallback(): void {
+    super.connectedCallback();
+    // The `--ag-*` root defaults (and the `setup()` host sizing) live outside
+    // the shadow root; see internal/document-styles.ts.
+    adoptGridDocumentStyles(this);
   }
 
   protected override firstUpdated(): void {

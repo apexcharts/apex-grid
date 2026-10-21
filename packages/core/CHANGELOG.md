@@ -7,6 +7,20 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **`--ag-*` tokens set on any ancestor now reach the grid**, including the
+  shadow host of a web component the grid renders in, however deep. Set a
+  theme once on your own host element and every grid inside follows it. See
+  "Changed" for how the defaults moved to make this work.
+- **Dark-mode inputs `--ag-dark-*`** (`--ag-dark-surface`, `--ag-dark-text`,
+  `--ag-dark-hairline`, `--ag-dark-shadow-card`, …) for every colour
+  `theme="dark"` changes. Dark grids read these instead of the light inputs,
+  so a light palette set on a shared ancestor never puts a white surface under
+  the dark theme's light text. Sizing, typography, motion, the brand and the
+  base state colours stay shared by both modes.
+- **`apex-grid/tokens.css`**: the token defaults as a plain stylesheet, for
+  server rendering or for apps that opt out of the adopted sheet.
+- **`setup({ tokenStyles: false })`** skips adopting the token defaults into
+  the document.
 - **`applyEdits()` entries can name their row by record**: `{ row, column,
   value }` alongside the positional `{ rowIndex, column, value }`. A record
   reaches rows on other pages, pinned rows and rows under a collapsed tree
@@ -30,6 +44,33 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   English and Spanish.
 
 ### Changed
+- **Token defaults moved from the grid host to the document root.** The grid
+  used to declare every `--ag-*` default on its own host, and a declaration on
+  an element always beats an inherited value, so tokens set on an ancestor
+  never reached it (only `--ig-primary-500` did, through the brand fallback).
+  The defaults now sit on `:where(:root)`, adopted into the document through
+  `adoptedStyleSheets` when the first grid connects (no `<style>` element, so
+  no CSP nonce), and the grid resolves them into private copies on its host.
+  Reading tokens keeps working: `var(--ag-surface)` resolves to the default
+  anywhere on the page, and `apex-grid { --ag-grid-shadow:
+  var(--ag-shadow-card); }` still gives the card shadow. Changes to look for:
+  - `var(--ag-brand)` and `var(--ag-brand-strong)` have no root default, so an
+    Ignite UI palette set on any ancestor keeps tinting the grid. Page CSS
+    reading them needs its own fallback.
+  - Derived tokens (`--ag-brand-soft`, `--ag-brand-softer`, `--ag-brand-line`,
+    `--ag-row-hover`, `--ag-surface-alt`) are mixed on the grid host so they
+    follow a brand set lower down. They still accept an override but have no
+    root default to read.
+  - A value set on an element above a dark grid (`--ag-surface`, …) no longer
+    applies to it; set `--ag-dark-surface` and the other `--ag-dark-*` inputs.
+    A value set on the dark grid element itself is now ignored the same way.
+    On a dark grid, use `--ag-grid-shadow: var(--ag-dark-shadow-card)` for the
+    card shadow recipe.
+  - `theme="tinted"` mixes the brand into the surface, gridline and
+    muted-text values in effect (yours, if you set them) instead of replacing
+    them. Its row separators stay the brand alone, so a tinted grid ignores
+    `--ag-border` and `--ag-dark-border`, including on the grid element itself.
+    The default tinted look is unchanged.
 - **CSV export neutralises spreadsheet formulas.** A text cell or header that
   starts with `=`, `+`, `-`, `@`, a tab or a carriage return is written with a
   leading apostrophe, so a spreadsheet opening the file shows it as text
@@ -145,6 +186,15 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   existing `::part()` rules for these names now take effect.
 
 ### Fixed
+- **`setup()` host sizing reaches grids inside a shadow root.** The
+  `min-height: 240px` default was adopted into the page only, which never
+  styles an element inside a shadow root. Each grid now adopts it into the
+  root it connects in, and for its own tag name, so `<apex-grid-enterprise>`
+  gets it too.
+- **ArrowDown and ArrowUp in the toolbar's export menu move focus again.** The
+  menu looked up the focused item through `document.activeElement`, which is
+  the grid's host because the menu lives in the grid's shadow root, so focus
+  never moved past the first item.
 - **Text filter conditions no longer throw on a cell that is not a string.**
   Contains, Starts with, Equals and the rest read `null` and `undefined` as
   empty text and match numbers, dates and other values on their text. In 3.5.0

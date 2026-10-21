@@ -1,0 +1,118 @@
+// ─────────────────────────────────────────────────────────────────────────
+// Default values of the public `--ag-*` design tokens. Emits no CSS itself.
+// Each value is used twice, so the two can never drift apart:
+//  - `document-tokens.scss` publishes it on `:where(:root)` (the sheet the
+//    grid adopts into the document, also shipped as `apex-grid/tokens.css`).
+//    That makes `var(--ag-*)` readable anywhere on the page and lets any
+//    ancestor override it, because a value declared lower down always wins.
+//  - `_tokens.scss` uses it as the literal fallback of the grid's private
+//    `--_ag-*` copy, so a grid still renders styled without the root sheet.
+// Left out on purpose:
+//  - `--ag-brand` / `--ag-brand-strong`: the grid falls back to an Ignite UI
+//    `--ig-primary-*` palette set on any ancestor. A root default would win
+//    over a palette scoped below `:root`, so the brand stays unset there.
+//  - Derived tokens (brand washes, row hover, alternate surface): they are
+//    mixed from other tokens on the grid host. Resolved on `:root` they would
+//    freeze there and never follow a brand or surface set lower down.
+// ─────────────────────────────────────────────────────────────────────────
+
+// Light palette plus every non-colour token (typography, sizing, motion).
+// Light grids read `--ag-<name>`.
+$light: (
+    // ── Neutral chrome ──
+    'hairline': rgb(15 23 42 / 8%),
+    'border': rgb(15 23 42 / 8%),
+    'pin-line': rgb(15 23 42 / 18%),
+    'header-separator': rgb(15 23 42 / 12%),
+    // ── Surfaces (opaque: sticky regions paint them over scrolled content) ──
+    'grid-bg': #fff,
+    'surface': #fff,
+    'surface-elevated': #f8f9fb,
+    // ── Text ──
+    'text': #111827,
+    'text-body': #1f2937,
+    'text-muted': #6b7280,
+    'text-subtle': #9ca3af,
+    'text-on-brand': #fff,
+    // ── State ──
+    'good': #10b981,
+    'good-text': #047857,
+    'good-soft': rgb(16 185 129 / 10%),
+    'watch': #f59e0b,
+    'watch-text': #b45309,
+    'watch-soft': rgb(245 158 11 / 10%),
+    'risk': #ef4444,
+    'risk-text': #b91c1c,
+    'risk-soft': rgb(239 68 68 / 10%),
+    'gold': #fef3c7,
+    'gold-line': #fde68a,
+    'gold-text': #92400e,
+    'shadow-card': (0 16px 38px rgb(15 23 42 / 12%), 0 0 0 1px rgb(15 23 42 / 6%), 0 1px 0 rgb(255 255 255 / 90%) inset),
+    // ── Typography ──
+    'font': ('Inter', -apple-system, blinkmacsystemfont, sans-serif),
+    'fs-cell': 13px,
+    'fs-cell-secondary': 11.5px,
+    'fs-tiny': 10px,
+    'fw-regular': 500,
+    'fw-semibold': 600,
+    'fw-bold': 700,
+    'tracking-tight': -0.005em,
+    'tracking-header': 0.05em,
+    'leading': 1.4,
+    // ── Spacing & sizing ──
+    'cell-pad-x': 10px,
+    'row-h': 36px,
+    'header-h': 40px,
+    'toolbar-pad': 12px 14px,
+    'footer-pad': 10px 14px,
+    'radius': 8px,
+    'radius-sm': 6px,
+    'radius-xs': 4px,
+    'radius-pill': 20px,
+    // ── Motion ──
+    'ease': cubic-bezier(0.2, 0.8, 0.2, 1),
+    'dur-fast': 120ms,
+    'dur-med': 180ms,
+    'dur-slow': 240ms,
+);
+
+// Dark palette: only the colours `theme="dark"` changes. Dark grids read
+// `--ag-dark-<name>` for these, so a light value set on an ancestor (say a
+// white `--ag-surface`) never lands under the dark grid's light text. Every
+// other token (sizing, type, motion, brand, the base state colours) is shared.
+$dark: (
+    'grid-bg': #0f172a,
+    'surface': #0f172a,
+    'surface-elevated': #1e2532,
+    'hairline': rgb(255 255 255 / 12%),
+    'border': rgb(255 255 255 / 12%),
+    'pin-line': rgb(255 255 255 / 28%),
+    'header-separator': rgb(255 255 255 / 18%),
+    'text': #f1f5f9,
+    'text-body': #e2e8f0,
+    'text-muted': #94a3b8,
+    'text-subtle': #64748b,
+    'good-text': #34d399,
+    'good-soft': rgb(16 185 129 / 18%),
+    'watch-text': #fbbf24,
+    'watch-soft': rgb(245 158 11 / 18%),
+    'risk-text': #f87171,
+    'risk-soft': rgb(239 68 68 / 18%),
+    'gold': rgb(245 158 11 / 16%),
+    'gold-line': rgb(245 158 11 / 35%),
+    'gold-text': #fcd34d,
+    'shadow-card': (0 16px 38px rgb(0 0 0 / 55%), 0 0 0 1px rgb(255 255 255 / 6%), 0 1px 0 rgb(255 255 255 / 4%) inset),
+);
+
+// The public defaults, at zero specificity so any declaration beats them.
+@mixin root-defaults {
+    :where(:root) {
+        @each $name, $value in $light {
+            --ag-#{$name}: #{$value};
+        }
+
+        @each $name, $value in $dark {
+            --ag-dark-#{$name}: #{$value};
+        }
+    }
+}

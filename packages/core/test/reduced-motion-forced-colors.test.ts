@@ -27,9 +27,9 @@ describe('reduced motion', () => {
     expect(css).to.contain('prefers-reduced-motion: reduce');
     // All three, or a transition declared with the missing one keeps animating.
     const block = css.slice(css.indexOf('prefers-reduced-motion'));
-    expect(block).to.contain('--ag-dur-fast: 0ms');
-    expect(block).to.contain('--ag-dur-med: 0ms');
-    expect(block).to.contain('--ag-dur-slow: 0ms');
+    expect(block).to.contain('--_ag-dur-fast: 0ms');
+    expect(block).to.contain('--_ag-dur-med: 0ms');
+    expect(block).to.contain('--_ag-dur-slow: 0ms');
   });
 
   it('declares every transition through a duration token, so the opt-out is total', () => {
@@ -39,8 +39,9 @@ describe('reduced motion', () => {
     for (const component of sheets) {
       const css = sheetText(component.styles);
       for (const match of css.matchAll(/transition:([^;}]+)/g)) {
-        expect(match[1], `${component.name} has a transition without --ag-dur-*`).to.contain(
-          '--ag-dur-'
+        // The private copies (--_ag-dur-*) are what the components read.
+        expect(match[1], `${component.name} has a transition without --_ag-dur-*`).to.contain(
+          '--_ag-dur-'
         );
       }
     }

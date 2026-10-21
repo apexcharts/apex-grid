@@ -10,24 +10,24 @@
     align-items: center;
     block-size: 20px;
     padding: 0 8px;
-    border-radius: var(--ag-radius-sm);
+    border-radius: var(--_ag-radius-sm);
     border: 1px solid transparent;
-    font-size: var(--ag-fs-cell-secondary);
-    font-weight: var(--ag-fw-semibold);
+    font-size: var(--_ag-fs-cell-secondary);
+    font-weight: var(--_ag-fw-semibold);
     line-height: 1;
     white-space: nowrap;
 }
 
 [part~='pill--gold'] {
-    background: linear-gradient(180deg, #fff7e6 0%, var(--ag-gold) 100%);
-    border-color: var(--ag-gold-line);
-    color: var(--ag-gold-text);
+    background: linear-gradient(180deg, #fff7e6 0%, var(--_ag-gold) 100%);
+    border-color: var(--_ag-gold-line);
+    color: var(--_ag-gold-text);
 }
 
 [part~='pill--brand'] {
-    background: var(--ag-brand-soft);
-    border-color: var(--ag-brand-line);
-    color: var(--ag-brand-strong);
+    background: var(--_ag-brand-soft);
+    border-color: var(--_ag-brand-line);
+    color: var(--_ag-brand-strong);
 }
 
 [part~='pill--neutral'] {
@@ -55,8 +55,8 @@
     border-radius: 50%;
     background: hsl(var(--ag-avatar-hue, 210) 60% 48%);
     color: #fff;
-    font-size: var(--ag-fs-cell-secondary);
-    font-weight: var(--ag-fw-bold);
+    font-size: var(--_ag-fs-cell-secondary);
+    font-weight: var(--_ag-fw-bold);
     line-height: 1;
     user-select: none;
     box-shadow:
@@ -87,7 +87,7 @@
     block-size: 100%;
     border-radius: 3px;
     background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
-    transition: width var(--ag-dur-slow) var(--ag-ease);
+    transition: width var(--_ag-dur-slow) var(--_ag-ease);
 }
 
 [part~='progress-fill--good'] {
@@ -106,9 +106,9 @@
     min-inline-size: 18px;
     text-align: end;
     font-size: 11px;
-    font-weight: var(--ag-fw-semibold);
+    font-weight: var(--_ag-fw-semibold);
     font-variant-numeric: tabular-nums;
-    color: var(--ag-text-body);
+    color: var(--_ag-text-body);
 }
 
 // ── Sparkline (inline trend chart) ───────────────────────────────────────
@@ -122,16 +122,16 @@
     display: block;
     inline-size: 64px;
     block-size: 22px;
-    color: var(--ag-text-muted); /* trend color drives both line + area */
+    color: var(--_ag-text-muted); /* trend color drives both line + area */
     overflow: visible;
 }
 
 [part~='sparkline--up'] {
-    color: var(--ag-good);
+    color: var(--_ag-good);
 }
 
 [part~='sparkline--down'] {
-    color: var(--ag-risk);
+    color: var(--_ag-risk);
 }
 
 [part~='spark-line'] {
@@ -150,18 +150,18 @@
 }
 
 [part~='spark-delta'] {
-    font-size: var(--ag-fs-cell-secondary);
-    font-weight: var(--ag-fw-semibold);
+    font-size: var(--_ag-fs-cell-secondary);
+    font-weight: var(--_ag-fw-semibold);
     font-variant-numeric: tabular-nums;
-    color: var(--ag-text-muted);
+    color: var(--_ag-text-muted);
 }
 
 [part~='spark-delta--up'] {
-    color: var(--ag-good-text);
+    color: var(--_ag-good-text);
 }
 
 [part~='spark-delta--down'] {
-    color: var(--ag-risk-text);
+    color: var(--_ag-risk-text);
 }
 
 // ── Status badge (pill with dot) ─────────────────────────────────────────
@@ -171,10 +171,10 @@
     gap: 6px;
     block-size: 20px;
     padding: 0 10px;
-    border-radius: var(--ag-radius-pill);
+    border-radius: var(--_ag-radius-pill);
     border: 1px solid transparent;
-    font-size: var(--ag-fs-cell-secondary);
-    font-weight: var(--ag-fw-semibold);
+    font-size: var(--_ag-fs-cell-secondary);
+    font-weight: var(--_ag-fw-semibold);
     line-height: 1;
     white-space: nowrap;
 }
@@ -188,19 +188,19 @@
 }
 
 [part~='status--active'] {
-    background: var(--ag-good-soft);
+    background: var(--_ag-good-soft);
     border-color: rgb(16 185 129 / 28%);
-    color: var(--ag-good-text);
+    color: var(--_ag-good-text);
 }
 
 [part~='status--trial'] {
-    background: var(--ag-watch-soft);
+    background: var(--_ag-watch-soft);
     border-color: rgb(245 158 11 / 28%);
-    color: var(--ag-watch-text);
+    color: var(--_ag-watch-text);
 }
 
 [part~='status--churn'] {
-    background: var(--ag-risk-soft);
+    background: var(--_ag-risk-soft);
     border-color: rgb(239 68 68 / 30%);
-    color: var(--ag-risk-text);
+    color: var(--_ag-risk-text);
 }

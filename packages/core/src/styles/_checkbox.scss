@@ -13,19 +13,19 @@
     margin: 0;
     flex-shrink: 0;
     box-sizing: border-box;
-    border: 1.4px solid color-mix(in srgb, var(--ag-brand) 30%, transparent);
-    border-radius: var(--ag-radius-xs);
-    background-color: var(--ag-surface);
+    border: 1.4px solid color-mix(in srgb, var(--_ag-brand) 30%, transparent);
+    border-radius: var(--_ag-radius-xs);
+    background-color: var(--_ag-surface);
     background-repeat: no-repeat;
     background-position: center;
     cursor: pointer;
     transition:
-        background-color var(--ag-dur-fast) var(--ag-ease),
-        border-color var(--ag-dur-fast) var(--ag-ease),
-        transform var(--ag-dur-fast) var(--ag-ease);
+        background-color var(--_ag-dur-fast) var(--_ag-ease),
+        border-color var(--_ag-dur-fast) var(--_ag-ease),
+        transform var(--_ag-dur-fast) var(--_ag-ease);
 
     &:hover {
-        border-color: color-mix(in srgb, var(--ag-brand) 55%, transparent);
+        border-color: color-mix(in srgb, var(--_ag-brand) 55%, transparent);
     }
 
     &:active {
@@ -34,8 +34,8 @@
 
     &:checked,
     &:indeterminate {
-        background-color: var(--ag-brand);
-        border-color: var(--ag-brand);
+        background-color: var(--_ag-brand);
+        border-color: var(--_ag-brand);
     }
 
     // White tick, 1.7px stroke.
@@ -49,7 +49,7 @@
     }
 
     &:focus-visible {
-        outline: 2px solid color-mix(in srgb, var(--ag-brand) 50%, transparent);
+        outline: 2px solid color-mix(in srgb, var(--_ag-brand) 50%, transparent);
         outline-offset: 2px;
     }
 }

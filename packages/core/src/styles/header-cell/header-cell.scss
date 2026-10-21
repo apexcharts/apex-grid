@@ -2,20 +2,20 @@
 
 // Resolution chain: consumer semantic var → `--ag-*` premium default.
 $filtering-header-background: var(--filtering-header-background, transparent);
-$header-border-color: var(--header-border-color, var(--ag-hairline));
-$header-text-color: var(--header-text-color, var(--ag-text-body));
-$active-header-icon-color: var(--sorted-header-icon-color, var(--ag-brand));
-$header-hover: color-mix(in srgb, var(--ag-brand) 4%, transparent);
-$header-separator-color: var(--header-separator-color, var(--ag-header-separator));
+$header-border-color: var(--header-border-color, var(--_ag-hairline));
+$header-text-color: var(--header-text-color, var(--_ag-text-body));
+$active-header-icon-color: var(--sorted-header-icon-color, var(--_ag-brand));
+$header-hover: color-mix(in srgb, var(--_ag-brand) 4%, transparent);
+$header-separator-color: var(--header-separator-color, var(--_ag-header-separator));
 
 :host {
     display: flex;
     align-items: center;
     position: relative;
     color: $header-text-color;
-    font-weight: var(--ag-fw-semibold);
-    font-size: var(--ag-fs-cell-secondary);
-    transition: background-color var(--ag-dur-fast) var(--ag-ease);
+    font-weight: var(--_ag-fw-semibold);
+    font-size: var(--_ag-fs-cell-secondary);
+    transition: background-color var(--_ag-dur-fast) var(--_ag-ease);
 }
 
 // The whole header cell reads as "tappable" but not loud.
@@ -55,7 +55,7 @@ $header-separator-color: var(--header-separator-color, var(--ag-header-separator
     position: absolute;
     inset-block: 0;
     inline-size: 1px;
-    background: var(--ag-pin-line);
+    background: var(--_ag-pin-line);
     pointer-events: none;
     z-index: 1;
 }
@@ -94,7 +94,7 @@ $header-separator-color: var(--header-separator-color, var(--ag-header-separator
     justify-content: space-between;
     width: 100%;
     height: 100%;
-    padding: 0 var(--ag-cell-pad-x);
+    padding: 0 var(--_ag-cell-pad-x);
     overflow: hidden;
     user-select: none;
 }
@@ -114,9 +114,9 @@ $header-separator-color: var(--header-separator-color, var(--ag-header-separator
     overflow: hidden;
     min-width: 3ch;
     text-transform: uppercase;
-    font-size: var(--ag-fs-cell-secondary);
-    font-weight: var(--ag-fw-semibold);
-    letter-spacing: var(--ag-tracking-header);
+    font-size: var(--_ag-fs-cell-secondary);
+    font-weight: var(--_ag-fw-semibold);
+    letter-spacing: var(--_ag-tracking-header);
     color: $header-text-color;
 }
 
@@ -126,17 +126,17 @@ $header-separator-color: var(--header-separator-color, var(--ag-header-separator
     display: inline-block;
     margin-inline-end: 0.4em;
     padding: 0 0.3em;
-    border-radius: var(--ag-radius-xs);
-    background: var(--ag-brand-soft);
-    color: var(--ag-brand-strong);
-    font-weight: var(--ag-fw-bold);
+    border-radius: var(--_ag-radius-xs);
+    background: var(--_ag-brand-soft);
+    color: var(--_ag-brand-strong);
+    font-weight: var(--_ag-fw-bold);
     text-transform: none;
 }
 
 // Active sort column: the label lifts to the strong brand color.
 :host([aria-sort='ascending']) [part~='title'],
 :host([aria-sort='descending']) [part~='title'] {
-    color: var(--ag-brand-strong);
+    color: var(--_ag-brand-strong);
 }
 
 [part~='actions'] {
@@ -187,9 +187,9 @@ $header-separator-color: var(--header-separator-color, var(--ag-header-separator
         position: absolute;
         inset: rem(-4px);
         z-index: -1;
-        border-radius: var(--ag-radius-xs);
+        border-radius: var(--_ag-radius-xs);
         background: transparent;
-        transition: background-color var(--ag-dur-fast) var(--ag-ease);
+        transition: background-color var(--_ag-dur-fast) var(--_ag-ease);
     }
 
     // Per-button hover highlight: a soft neutral chip behind just the button
@@ -212,7 +212,7 @@ $header-separator-color: var(--header-separator-color, var(--ag-header-separator
         position: absolute;
         top: -2px;
         inset-inline-end: 0;
-        font-size: var(--ag-fs-tiny);
+        font-size: var(--_ag-fs-tiny);
         line-height: 1;
         font-variant-numeric: tabular-nums;
         color: $active-header-icon-color;
@@ -233,8 +233,8 @@ $header-separator-color: var(--header-separator-color, var(--ag-header-separator
     fill: none;
     opacity: 0.5;
     transition:
-        opacity var(--ag-dur-fast) var(--ag-ease),
-        stroke var(--ag-dur-fast) var(--ag-ease);
+        opacity var(--_ag-dur-fast) var(--_ag-ease),
+        stroke var(--_ag-dur-fast) var(--_ag-ease);
 }
 
 :host(:hover) [part~='sort-up'],
@@ -245,12 +245,12 @@ $header-separator-color: var(--header-separator-color, var(--ag-header-separator
 [part~='action'][data-sort-active='ascending'] [part~='sort-up'],
 [part~='action'][data-sort-active='descending'] [part~='sort-down'] {
     opacity: 1;
-    stroke: var(--ag-brand);
+    stroke: var(--_ag-brand);
 }
 
 [part~='filtered'] {
     background: $filtering-header-background;
-    color: var(--ag-brand-strong);
+    color: var(--_ag-brand-strong);
 }
 
 [part~='action']:empty {
@@ -268,17 +268,17 @@ $header-separator-color: var(--header-separator-color, var(--ag-header-separator
     background: transparent;
     cursor: col-resize;
     z-index: var(--z-index-base);
-    transition: background-color var(--ag-dur-fast) var(--ag-ease);
+    transition: background-color var(--_ag-dur-fast) var(--_ag-ease);
 }
 
 :host(:hover) [part~='resizable'] {
-    background: color-mix(in srgb, var(--ag-brand) 28%, transparent);
+    background: color-mix(in srgb, var(--_ag-brand) 28%, transparent);
 }
 
 // Filter icon button — always visible when the column has filtering enabled.
 [part~='filter-btn'] {
     opacity: 0.55;
-    transition: opacity var(--ag-dur-fast) var(--ag-ease), color var(--ag-dur-fast) var(--ag-ease);
+    transition: opacity var(--_ag-dur-fast) var(--_ag-ease), color var(--_ag-dur-fast) var(--_ag-ease);
     position: relative;
 }
 
@@ -291,7 +291,7 @@ $header-separator-color: var(--header-separator-color, var(--ag-header-separator
 // painted in the brand color.
 [part~='filter-btn'][part~='filter-active'] {
     opacity: 1;
-    color: var(--ag-brand);
+    color: var(--_ag-brand);
 }
 
 // Small count badge overlapping the filter icon for multi-expression columns.
@@ -303,9 +303,9 @@ $header-separator-color: var(--header-separator-color, var(--ag-header-separator
     block-size: rem(14px);
     padding: 0 rem(3px);
     border-radius: rem(7px);
-    background: var(--ag-brand);
+    background: var(--_ag-brand);
     color: white;
-    font-size: var(--ag-fs-tiny);
+    font-size: var(--_ag-fs-tiny);
     font-weight: 600;
     line-height: rem(14px);
     text-align: center;
@@ -327,7 +327,7 @@ $header-separator-color: var(--header-separator-color, var(--ag-header-separator
 // grid's `columnMenu` is set to false (the header then skips rendering it).
 [part~='menu-btn'] {
     opacity: 0.55;
-    transition: opacity var(--ag-dur-fast) var(--ag-ease);
+    transition: opacity var(--_ag-dur-fast) var(--_ag-ease);
 }
 
 :host(:hover) [part~='menu-btn'],
@@ -349,8 +349,8 @@ $header-separator-color: var(--header-separator-color, var(--ag-header-separator
     inset-block-start: 100%;
     inset-inline-end: 0;
     z-index: calc(var(--z-index-base) + 15);
-    background: var(--header-background, var(--ag-surface-elevated));
-    border: rem(1px) solid var(--header-border-color, var(--ag-hairline));
+    background: var(--header-background, var(--_ag-surface-elevated));
+    border: rem(1px) solid var(--header-border-color, var(--_ag-hairline));
     border-radius: rem(6px);
     box-shadow: 0 rem(4px) rem(12px) rgb(0 0 0 / 12%);
     min-inline-size: rem(180px);
@@ -388,7 +388,7 @@ $header-separator-color: var(--header-separator-color, var(--ag-header-separator
     }
 
     &:focus-visible {
-        outline: rem(2px) solid var(--sorted-header-icon-color, var(--ag-brand));
+        outline: rem(2px) solid var(--sorted-header-icon-color, var(--_ag-brand));
         outline-offset: rem(-2px);
     }
 }

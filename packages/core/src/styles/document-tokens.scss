@@ -1,0 +1,5 @@
+// The public `--ag-*` defaults on the document root. The grid adopts this into
+// its document when the first grid connects (`internal/document-styles.ts`),
+// and the build ships the same CSS as `apex-grid/tokens.css`.
+@use 'token-values';
+@include token-values.root-defaults();

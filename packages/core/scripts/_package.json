@@ -22,10 +22,11 @@
       "types": "./internal/index.d.ts",
       "default": "./internal/index.js"
     },
-    "./styles.css": "./styles.css"
+    "./styles.css": "./styles.css",
+    "./tokens.css": "./tokens.css"
   },
   "type": "module",
-  "sideEffects": ["./define.js", "./styles.css"],
+  "sideEffects": ["./define.js", "./styles.css", "./tokens.css"],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/apexcharts/apex-grid.git"

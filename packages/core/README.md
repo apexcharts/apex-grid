@@ -45,7 +45,7 @@ import { setup } from 'apex-grid';
 setup();
 ```
 
-That single call registers `<apex-grid>` and adopts a default host stylesheet (`height: 100%; min-height: 240px`). The grid is styled out-of-the-box; no theme CSS import is required.
+That single call registers `<apex-grid>` and adopts a default host stylesheet (`height: 100%; min-height: 240px`), also inside any shadow root a grid connects in. The grid is styled out-of-the-box; no theme CSS import is required.
 
 ### Render the grid
 
@@ -111,7 +111,7 @@ Without this, `<apex-grid>` is an inert unknown element.
 
 ### 3. (Optional) Customize the look
 
-The grid is styled out-of-the-box; there is no theme to import. Customize it by overriding the `--ag-*` CSS custom properties on `apex-grid` (or any ancestor); a one-line brand override cascades to every tint:
+The grid is styled out-of-the-box; there is no theme to import. Customize it by overriding the `--ag-*` CSS custom properties on `apex-grid` or on any ancestor: `:root`, a dashboard panel, or the shadow host of a web component the grid renders in (custom properties inherit through shadow boundaries, however deep). A one-line brand override cascades to every tint:
 
 ```css
 apex-grid {
@@ -122,16 +122,40 @@ apex-grid {
 }
 ```
 
-See [`src/styles/_tokens.scss`](src/styles/_tokens.scss) for the full token list (brand, surfaces, text, semantic state colors, typography, spacing, motion).
+See [`src/styles/_token-values.scss`](src/styles/_token-values.scss) for the full token list and defaults (surfaces, text, semantic state colors, typography, spacing, motion).
+
+**Where the defaults live.** The first grid to connect adopts the token defaults into its document, on `:where(:root)`, through `adoptedStyleSheets` (no `<style>` element, so no CSP nonce). Zero specificity means any value you set wins, and `var(--ag-*)` reads in your own CSS resolve to the defaults. If you manage your own CSS, opt out with `setup({ tokenStyles: false })` and import the same defaults as a file (also the way to get them into server-rendered HTML):
+
+```ts
+import 'apex-grid/tokens.css';
+```
+
+The grid renders the same without the sheet; it carries the defaults as fallbacks. Three groups have no root default, so page CSS reading them needs its own fallback:
+
+- `--ag-brand` and `--ag-brand-strong`, so an Ignite UI palette set on any ancestor keeps tinting the grid (see below).
+- The derived washes `--ag-brand-soft`, `--ag-brand-softer`, `--ag-brand-line`, `--ag-row-hover` and `--ag-surface-alt`. The grid mixes them from the brand and surface in effect, so they follow a brand set on an ancestor. Set them only to override the mix.
+
+**Dark mode.** `theme="dark"` reads its own colour inputs, `--ag-dark-*` (`--ag-dark-surface`, `--ag-dark-text`, `--ag-dark-hairline`, `--ag-dark-shadow-card`, and so on), so a light palette set on a shared ancestor never puts a white surface under the dark theme's light text. Sizing, typography, motion, the brand and the base state colours are shared by both modes. To theme both from one place, set both palettes:
+
+```css
+.dashboard {
+  --ag-brand: #7c3aed;
+  --ag-surface: #fdfcff;
+  --ag-dark-surface: #140f24;
+}
+```
+
+`theme="tinted"` mixes a little brand into the surface, gridline and muted-text values in effect, including any you set. Its row separators are the brand alone, so a tinted grid ignores `--ag-border` and `--ag-dark-border`.
 
 **Grid edge / shadow.** By default the grid shows a flat 1px hairline edge (no drop shadow). Control it with the `--ag-grid-shadow` hook, an opt-in override that is not one of the `_tokens.scss` defaults:
 
 ```css
-apex-grid { --ag-grid-shadow: var(--ag-shadow-card); } /* elevated floating-card look */
-apex-grid { --ag-grid-shadow: none; }                  /* remove the edge entirely */
+apex-grid { --ag-grid-shadow: var(--ag-shadow-card); }                     /* elevated floating-card look */
+apex-grid[theme~='dark'] { --ag-grid-shadow: var(--ag-dark-shadow-card); } /* the same, for dark grids */
+apex-grid { --ag-grid-shadow: none; }                                      /* remove the edge entirely */
 ```
 
-If you embed the grid in an Ignite UI app, the brand tokens automatically re-tint from its palette: they read `--ig-primary-500` with the grid's own default as the fallback. That is a plain CSS variable lookup, so the grid neither depends on nor bundles Ignite UI.
+If you embed the grid in an Ignite UI app, the brand tokens automatically re-tint from its palette, wherever it is declared: they read `--ig-primary-500` with the grid's own default as the fallback. That is a plain CSS variable lookup, so the grid neither depends on nor bundles Ignite UI.
 
 ### 4. Size the host
 
@@ -522,7 +546,7 @@ Search input has a `debounce` attribute (default `200`ms).
 
 ### Theming
 
-The grid styles itself through `--ag-*` CSS custom properties; override them on `apex-grid` (or any ancestor) to rebrand; see [`src/styles/_tokens.scss`](src/styles/_tokens.scss) for the full list. Where an Ignite UI palette is present, the brand tokens auto-tint from `--ig-primary-500`.
+The grid styles itself through `--ag-*` CSS custom properties; override them on `apex-grid` or any ancestor (shadow hosts included) to rebrand, and use `--ag-dark-*` for dark grids. See [Customize the look](#3-optional-customize-the-look) and [`src/styles/_token-values.scss`](src/styles/_token-values.scss) for the full list. Where an Ignite UI palette is present, the brand tokens auto-tint from `--ig-primary-500`.
 
 Style with CSS parts on the grid, paginator, and toolbar:
 

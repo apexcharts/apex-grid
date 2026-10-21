@@ -3,22 +3,22 @@
 @use 'cell-renderers';
 
 // Resolution chain: consumer semantic var → `--ag-*` premium default.
-$cell-active-border-color: var(--cell-active-border-color, var(--ag-brand));
+$cell-active-border-color: var(--cell-active-border-color, var(--_ag-brand));
 $inset-shadow-width: 1px;
 
 // Anchor the editor accent to the active-cell color so the caret, focus
 // outline, and highlighted option all match the cell's active outline.
-$editor-accent: var(--cell-active-border-color, var(--ag-brand));
-$editor-background: var(--ag-surface);
+$editor-accent: var(--cell-active-border-color, var(--_ag-brand));
+$editor-background: var(--_ag-surface);
 
 :host {
     position: relative;
     display: inline-flex;
     flex: 1 0 0;
     align-items: center;
-    padding: 0 var(--ag-cell-pad-x);
+    padding: 0 var(--_ag-cell-pad-x);
     color: inherit;
-    font-size: var(--ag-fs-cell);
+    font-size: var(--_ag-fs-cell);
     overflow-wrap: anywhere;
 
     // Cells are inline-flex siblings, so the browser's word/paragraph
@@ -33,8 +33,8 @@ $editor-background: var(--ag-surface);
 :host([data-cell-type='number']),
 :host([data-cell-type='currency']) {
     font-variant-numeric: tabular-nums;
-    font-weight: var(--ag-fw-semibold);
-    color: var(--ag-text);
+    font-weight: var(--_ag-fw-semibold);
+    color: var(--_ag-text);
 }
 
 :host([active]) {
@@ -86,7 +86,7 @@ $editor-background: var(--ag-surface);
     position: absolute;
     inset-block: 0;
     inline-size: 1px;
-    background: var(--ag-pin-line);
+    background: var(--_ag-pin-line);
     pointer-events: none;
     z-index: 1;
 }
@@ -108,13 +108,13 @@ input[data-apex-editor] {
     inset: 0;
     width: auto;
     height: auto;
-    padding: 0 var(--ag-cell-pad-x);
+    padding: 0 var(--_ag-cell-pad-x);
     margin: 0;
     border: 0;
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: var(--ag-fs-cell);
+    font-size: var(--_ag-fs-cell);
     outline: none;
     caret-color: $editor-accent;
     user-select: text;
@@ -142,7 +142,7 @@ input[part~='boolean-mark'][aria-readonly='true'] {
 }
 
 // Built-in rating display + editor (column `type: 'rating'`).
-$rating-color: var(--ag-watch, #f5a623);
+$rating-color: var(--_ag-watch, #f5a623);
 $star-size: #{rem(14px)};
 
 [part~='rating'] {
@@ -187,7 +187,7 @@ $star-size: #{rem(14px)};
         cursor: pointer;
         color: currentcolor;
         opacity: 0.35;
-        border-radius: var(--ag-radius-xs);
+        border-radius: var(--_ag-radius-xs);
 
         &:hover {
             opacity: 0.75;
@@ -221,8 +221,8 @@ $star-size: #{rem(14px)};
     padding: #{rem(4px)} 0;
     min-inline-size: 100%;
     background: $editor-background;
-    border: #{rem(1px)} solid var(--ag-brand-line);
-    border-radius: var(--ag-radius-sm);
+    border: #{rem(1px)} solid var(--_ag-brand-line);
+    border-radius: var(--_ag-radius-sm);
     box-shadow:
         0 #{rem(2px)} #{rem(4px)} rgb(0 0 0 / 6%),
         0 #{rem(6px)} #{rem(16px)} rgb(0 0 0 / 12%);
@@ -245,17 +245,17 @@ $star-size: #{rem(14px)};
     text-overflow: ellipsis;
 
     &:hover {
-        background: var(--ag-brand-softer);
+        background: var(--_ag-brand-softer);
     }
 
     &[part~='selected'] {
-        background: var(--ag-brand-soft);
-        color: var(--ag-brand-strong);
-        font-weight: var(--ag-fw-semibold);
+        background: var(--_ag-brand-soft);
+        color: var(--_ag-brand-strong);
+        font-weight: var(--_ag-fw-semibold);
     }
 
     &:focus-visible {
-        background: var(--ag-brand-soft);
+        background: var(--_ag-brand-soft);
         outline: #{rem(2px)} solid $editor-accent;
         outline-offset: #{rem(-2px)};
     }
@@ -268,7 +268,7 @@ $star-size: #{rem(14px)};
     inline-size: auto;
     aspect-ratio: 1 / 1;
     object-fit: cover;
-    border-radius: var(--ag-radius-xs);
+    border-radius: var(--_ag-radius-xs);
     display: block;
     flex-shrink: 0;
 }
@@ -295,29 +295,29 @@ $star-size: #{rem(14px)};
     margin-inline-end: #{rem(4px)};
     padding: 0;
     border: 1px solid transparent;
-    border-radius: var(--ag-radius-xs);
+    border-radius: var(--_ag-radius-xs);
     background: transparent;
-    color: var(--ag-text-muted);
+    color: var(--_ag-text-muted);
     cursor: pointer;
     transition:
-        background-color var(--ag-dur-fast) var(--ag-ease),
-        border-color var(--ag-dur-fast) var(--ag-ease),
-        color var(--ag-dur-fast) var(--ag-ease);
+        background-color var(--_ag-dur-fast) var(--_ag-ease),
+        border-color var(--_ag-dur-fast) var(--_ag-ease),
+        color var(--_ag-dur-fast) var(--_ag-ease);
 
     &:hover {
-        background: var(--ag-brand-soft);
-        border-color: var(--ag-brand-line);
-        color: var(--ag-brand-strong);
+        background: var(--_ag-brand-soft);
+        border-color: var(--_ag-brand-line);
+        color: var(--_ag-brand-strong);
     }
 
     &:focus-visible {
-        outline: #{rem(2px)} solid color-mix(in srgb, var(--ag-brand) 50%, transparent);
+        outline: #{rem(2px)} solid color-mix(in srgb, var(--_ag-brand) 50%, transparent);
         outline-offset: #{rem(1px)};
     }
 }
 
 [part='tree-chevron'] {
-    transition: transform var(--ag-dur-med) var(--ag-ease);
+    transition: transform var(--_ag-dur-med) var(--_ag-ease);
 }
 
 :host([data-tree-expanded]) [part='tree-chevron'] {
@@ -343,7 +343,7 @@ $star-size: #{rem(14px)};
 // Driven by `data-invalid` on the host (set by the cell when its column's
 // validators reject the candidate value). Reuses the `--ag-risk` palette so the
 // look follows the theme. Inert until a value fails validation.
-$invalid-color: var(--ag-risk, #ef4444);
+$invalid-color: var(--_ag-risk, #ef4444);
 
 :host([data-invalid]) {
     box-shadow: inset 0 0 0 1px #{$invalid-color};
@@ -367,12 +367,12 @@ $invalid-color: var(--ag-risk, #ef4444);
     margin-block-start: #{rem(2px)};
     padding: #{rem(2px)} #{rem(6px)};
     max-inline-size: #{rem(220px)};
-    background: var(--ag-surface, #fff);
-    color: var(--ag-risk-text, #b91c1c);
+    background: var(--_ag-surface, #fff);
+    color: var(--_ag-risk-text, #b91c1c);
     border: #{rem(1px)} solid #{$invalid-color};
-    border-radius: var(--ag-radius-xs);
-    font-size: var(--ag-fs-cell-secondary);
-    font-weight: var(--ag-fw-regular);
+    border-radius: var(--_ag-radius-xs);
+    font-size: var(--_ag-fs-cell-secondary);
+    font-weight: var(--_ag-fw-regular);
     line-height: 1.3;
     white-space: normal;
     pointer-events: none;
@@ -388,13 +388,13 @@ $invalid-color: var(--ag-risk, #ef4444);
 // brand-tinted highlight from `--ag-brand` so a selection is visible out of the
 // box (brand reserved for state/accent); a theme can still override any token.
 :host([data-range]) {
-    background: var(--apex-range-fill, color-mix(in srgb, var(--ag-brand) 12%, transparent));
+    background: var(--apex-range-fill, color-mix(in srgb, var(--_ag-brand) 12%, transparent));
 }
 
 :host([data-range~='active']) {
     background: var(
         --apex-range-active-fill,
-        var(--apex-range-fill, color-mix(in srgb, var(--ag-brand) 20%, transparent))
+        var(--apex-range-fill, color-mix(in srgb, var(--_ag-brand) 20%, transparent))
     );
 }
 
@@ -407,7 +407,7 @@ $invalid-color: var(--ag-risk, #ef4444);
     inset: 0;
     pointer-events: none;
     z-index: 1;
-    border: 0 solid var(--apex-range-border, var(--ag-brand));
+    border: 0 solid var(--apex-range-border, var(--_ag-brand));
 }
 
 :host([data-range-edge~='top'])::before {
@@ -437,8 +437,8 @@ $invalid-color: var(--ag-risk, #ef4444);
     inset-block-end: -1px;
     inline-size: 7px;
     block-size: 7px;
-    background: var(--apex-range-border, var(--ag-brand));
-    border: 1px solid var(--ag-surface, #fff);
+    background: var(--apex-range-border, var(--_ag-brand));
+    border: 1px solid var(--_ag-surface, #fff);
     z-index: 4;
     pointer-events: none;
 }
@@ -451,7 +451,7 @@ $invalid-color: var(--ag-risk, #ef4444);
 // drawn with `box-shadow` so it never shifts the content box. Each slot resolves
 // `--apex-formula-ref` (themable via the per-slot `--apex-formula-ref-N` tokens).
 :host([data-formula-ref]) {
-    --apex-formula-ref: var(--ag-brand);
+    --apex-formula-ref: var(--_ag-brand);
 
     background: color-mix(in srgb, var(--apex-formula-ref) 14%, transparent);
     box-shadow: inset 0 0 0 1px var(--apex-formula-ref);
@@ -489,7 +489,7 @@ $invalid-color: var(--ag-risk, #ef4444);
 // dashed border drawn on a `::before` overlay so it never shifts the content box.
 // Themable via `--apex-formula-pointer`.
 :host([data-formula-pointer]) {
-    --apex-formula-pointer: var(--ag-brand);
+    --apex-formula-pointer: var(--_ag-brand);
 
     background: color-mix(in srgb, var(--apex-formula-pointer) 10%, transparent);
 }
@@ -500,7 +500,7 @@ $invalid-color: var(--ag-risk, #ef4444);
     inset: 0;
     pointer-events: none;
     z-index: 2;
-    border: 0 dashed var(--apex-formula-pointer, var(--ag-brand));
+    border: 0 dashed var(--apex-formula-pointer, var(--_ag-brand));
 }
 
 :host([data-formula-pointer-edge~='top'])::before {

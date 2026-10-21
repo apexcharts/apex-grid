@@ -2,23 +2,23 @@
 @use '../checkbox' as *;
 
 // Resolution chain: consumer semantic var → `--ag-*` premium default.
-$row-border-color: var(--row-border-color, var(--ag-border));
-$row-odd-background: var(--row-odd-background, var(--ag-surface));
-$row-odd-text-color: var(--row-odd-text-color, var(--ag-text-body));
-$row-even-background: var(--row-even-background, var(--ag-surface-alt));
-$row-even-text-color: var(--row-even-text-color, var(--ag-text-body));
+$row-border-color: var(--row-border-color, var(--_ag-border));
+$row-odd-background: var(--row-odd-background, var(--_ag-surface));
+$row-odd-text-color: var(--row-odd-text-color, var(--_ag-text-body));
+$row-even-background: var(--row-even-background, var(--_ag-surface-alt));
+$row-even-text-color: var(--row-even-text-color, var(--_ag-text-body));
 
 // Row state washes are OPAQUE (mixed over the surface, not over transparent):
 // the selection/expansion/pinned cells are sticky and paint
 // `background: inherit`, so a translucent row background would let
 // horizontally-scrolled content bleed through the frozen column. Hover is a
 // neutral gray wash (the grid recedes); only selection carries the brand tint.
-$row-hover-background: var(--row-hover-background, var(--ag-row-hover));
-$row-hover-text-color: var(--row-hover-text-color, var(--ag-text-body));
+$row-hover-background: var(--row-hover-background, var(--_ag-row-hover));
+$row-hover-text-color: var(--row-hover-text-color, var(--_ag-text-body));
 
 // The selected/hover accent bar + checkbox accent come from the theme accent
 // token (Material → secondary, others → primary), falling back to brand.
-$accent: var(--cell-active-border-color, var(--ag-brand));
+$accent: var(--cell-active-border-color, var(--_ag-brand));
 
 :host {
     display: grid;
@@ -27,14 +27,14 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     // `min-height` (not fixed `height`) so expandable rows can grow to fit
     // their detail panel; for normal rows content is < 36px so this reads as a
     // fixed 36px row.
-    min-height: var(--ag-row-h);
+    min-height: var(--_ag-row-h);
     border-block-end: 1px solid $row-border-color;
     background: $row-odd-background;
     color: $row-odd-text-color;
     z-index: var(--z-index-base);
     transition:
-        background-color var(--ag-dur-fast) var(--ag-ease),
-        box-shadow var(--ag-dur-fast) var(--ag-ease);
+        background-color var(--_ag-dur-fast) var(--_ag-ease),
+        box-shadow var(--_ag-dur-fast) var(--_ag-ease);
 }
 
 :host(:last-of-type) {
@@ -57,12 +57,12 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
 // Selected: a brand wash with a 2px brand accent bar on the leading edge.
 // Hovering a selected row deepens the wash further.
 :host([selected]) {
-    background: color-mix(in srgb, var(--ag-brand) 10%, var(--ag-surface));
+    background: color-mix(in srgb, var(--_ag-brand) 10%, var(--_ag-surface));
     box-shadow: inset 2px 0 0 0 #{$accent};
 }
 
 :host([selected]:hover) {
-    background: color-mix(in srgb, var(--ag-brand) 14%, var(--ag-surface));
+    background: color-mix(in srgb, var(--_ag-brand) 14%, var(--_ag-surface));
 }
 
 // --- Row reorder (F5) ------------------------------------------------------
@@ -98,8 +98,8 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
 [part='row-number-cell'] {
     inset-inline-start: var(--apex-chrome-offset-row-number, 0);
     border-inline-end: 1px solid $row-border-color;
-    color: var(--ag-text-subtle);
-    font-size: var(--ag-fs-cell-secondary);
+    color: var(--_ag-text-subtle);
+    font-size: var(--_ag-fs-cell-secondary);
     font-variant-numeric: tabular-nums;
 }
 
@@ -117,19 +117,19 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     // Touch target: 24x24 minimum (WCAG 2.5.8); visible grip is 16px.
     inline-size: rem(24px);
     block-size: rem(24px);
-    color: var(--ag-text-subtle);
-    border-radius: var(--ag-radius-xs);
+    color: var(--_ag-text-subtle);
+    border-radius: var(--_ag-radius-xs);
     cursor: grab;
 
     // Claim vertical-drag gestures from the scroller on touch devices.
     touch-action: none;
     transition:
-        color var(--ag-dur-fast) var(--ag-ease),
-        background-color var(--ag-dur-fast) var(--ag-ease);
+        color var(--_ag-dur-fast) var(--_ag-ease),
+        background-color var(--_ag-dur-fast) var(--_ag-ease);
 
     &:hover {
-        color: var(--ag-text-muted);
-        background: var(--ag-brand-soft);
+        color: var(--_ag-text-muted);
+        background: var(--_ag-brand-soft);
     }
 
     &:active {
@@ -170,23 +170,23 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     block-size: rem(24px);
     padding: 0;
     border: 1px solid transparent;
-    border-radius: var(--ag-radius-xs);
+    border-radius: var(--_ag-radius-xs);
     background: transparent;
-    color: var(--ag-text-muted);
+    color: var(--_ag-text-muted);
     cursor: pointer;
     transition:
-        background-color var(--ag-dur-fast) var(--ag-ease),
-        border-color var(--ag-dur-fast) var(--ag-ease),
-        color var(--ag-dur-fast) var(--ag-ease);
+        background-color var(--_ag-dur-fast) var(--_ag-ease),
+        border-color var(--_ag-dur-fast) var(--_ag-ease),
+        color var(--_ag-dur-fast) var(--_ag-ease);
 
     &:hover:not(:disabled) {
-        background: var(--ag-brand-soft);
-        border-color: var(--ag-brand-line);
-        color: var(--ag-brand-strong);
+        background: var(--_ag-brand-soft);
+        border-color: var(--_ag-brand-line);
+        color: var(--_ag-brand-strong);
     }
 
     &:focus-visible {
-        outline: 2px solid color-mix(in srgb, var(--ag-brand) 50%, transparent);
+        outline: 2px solid color-mix(in srgb, var(--_ag-brand) 50%, transparent);
         outline-offset: 2px;
     }
 
@@ -197,7 +197,7 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
 }
 
 [part='expansion-chevron'] {
-    transition: transform var(--ag-dur-med) var(--ag-ease);
+    transition: transform var(--_ag-dur-med) var(--_ag-ease);
 }
 
 :host([expanded]) [part='expansion-chevron'] {
@@ -209,10 +209,10 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
 // start, and stretch to -1 so it covers the full inline extent.
 [part='detail-panel'] {
     grid-column: 1 / -1;
-    padding: #{rem(12px)} var(--ag-cell-pad-x);
+    padding: #{rem(12px)} var(--_ag-cell-pad-x);
 
     // Opaque (sticky inline-start, so it must mask scrolled content).
-    background: var(--ag-surface-alt);
+    background: var(--_ag-surface-alt);
     border-block-start: 1px solid $row-border-color;
     position: sticky;
     inset-inline-start: 0;

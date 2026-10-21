@@ -202,7 +202,10 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
     const items = Array.from(
       this.exportMenuEl?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []
     );
-    const current = items.indexOf(document.activeElement as HTMLElement);
+    // The menu lives in this shadow root, so `document.activeElement` is only
+    // the outermost host; ask the menu's own root for the focused item.
+    const root = this.exportMenuEl?.getRootNode() as Document | ShadowRoot | undefined;
+    const current = items.indexOf(root?.activeElement as HTMLElement);
     if (event.key === 'ArrowDown' || event.key === 'Down') {
       event.preventDefault();
       items[(current + 1) % items.length]?.focus();

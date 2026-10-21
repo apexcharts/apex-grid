@@ -22,7 +22,8 @@
       "types": "./dist/internal/index.d.ts",
       "default": "./dist/internal/index.js"
     },
-    "./styles.css": "./dist/styles.css"
+    "./styles.css": "./dist/styles.css",
+    "./tokens.css": "./dist/tokens.css"
   },
   "type": "module",
   "engines": {

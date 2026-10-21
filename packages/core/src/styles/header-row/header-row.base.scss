@@ -2,16 +2,16 @@
 @use '../checkbox' as *;
 
 // Resolution chain: consumer semantic var → `--ag-*` premium default.
-$header-background: var(--header-background, var(--ag-surface-elevated));
-$header-text-color: var(--header-text-color, var(--ag-text-muted));
-$header-border-color: var(--header-border-color, var(--ag-hairline));
+$header-background: var(--header-background, var(--_ag-surface-elevated));
+$header-text-color: var(--header-text-color, var(--_ag-text-muted));
+$header-border-color: var(--header-border-color, var(--_ag-hairline));
 $filtering-header-background: var(--filtering-header-background, transparent);
-$accent: var(--cell-active-border-color, var(--ag-brand));
+$accent: var(--cell-active-border-color, var(--_ag-brand));
 
 :host {
     display: grid;
     grid-row: header-row;
-    min-height: var(--ag-header-h);
+    min-height: var(--_ag-header-h);
     background: $header-background;
     color: $header-text-color;
     border-block-end: 1px solid $header-border-color;
@@ -50,8 +50,8 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
 [part='row-number-header'] {
     inset-inline-start: var(--apex-chrome-offset-row-number, 0);
     border-inline-end: 1px solid $header-border-color;
-    color: var(--ag-text-subtle);
-    font-size: var(--ag-fs-cell-secondary);
+    color: var(--_ag-text-subtle);
+    font-size: var(--_ag-fs-cell-secondary);
 }
 
 // Empty corner spacer aligning the header with the body's leading grip-handle
@@ -88,51 +88,51 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     block-size: rem(24px);
     padding: 0;
     border: 1px solid transparent;
-    border-radius: var(--ag-radius-xs);
+    border-radius: var(--_ag-radius-xs);
     background: transparent;
-    color: var(--ag-text-muted);
+    color: var(--_ag-text-muted);
     cursor: pointer;
     transition:
-        background-color var(--ag-dur-fast) var(--ag-ease),
-        border-color var(--ag-dur-fast) var(--ag-ease),
-        color var(--ag-dur-fast) var(--ag-ease);
+        background-color var(--_ag-dur-fast) var(--_ag-ease),
+        border-color var(--_ag-dur-fast) var(--_ag-ease),
+        color var(--_ag-dur-fast) var(--_ag-ease);
 
     &:hover {
-        background: var(--ag-brand-softer);
-        border-color: var(--ag-brand-line);
-        color: var(--ag-brand-strong);
+        background: var(--_ag-brand-softer);
+        border-color: var(--_ag-brand-line);
+        color: var(--_ag-brand-strong);
     }
 
     &:focus-visible {
-        outline: 2px solid color-mix(in srgb, var(--ag-brand) 50%, transparent);
+        outline: 2px solid color-mix(in srgb, var(--_ag-brand) 50%, transparent);
         outline-offset: 2px;
     }
 }
 
 [part='expansion-header'] [part='expansion-chevron'] {
-    transition: transform var(--ag-dur-med) var(--ag-ease);
+    transition: transform var(--_ag-dur-med) var(--_ag-ease);
 }
 
 // Floating "ghost" rendered while a column is being dragged. The ghost is
 // `position: fixed` (viewport-relative) so it follows the cursor across
 // the entire grid regardless of the header row's sticky positioning. A
 // subtle tilt gives the user a "lifted" cue.
-$drag-ghost-bg: var(--ag-surface);
+$drag-ghost-bg: var(--_ag-surface);
 
 [part='drag-ghost'] {
     position: fixed;
     display: flex;
     align-items: center;
-    padding: 0 var(--ag-cell-pad-x);
+    padding: 0 var(--_ag-cell-pad-x);
     background: $drag-ghost-bg;
-    color: var(--ag-text-body);
-    border: 1px solid var(--ag-brand-line);
-    border-radius: var(--ag-radius-sm);
+    color: var(--_ag-text-body);
+    border: 1px solid var(--_ag-brand-line);
+    border-radius: var(--_ag-radius-sm);
     box-shadow:
         0 #{rem(2px)} #{rem(6px)} rgb(0 0 0 / 10%),
         0 #{rem(10px)} #{rem(28px)} rgb(0 0 0 / 18%);
-    font-weight: var(--ag-fw-semibold);
-    font-size: var(--ag-fs-cell);
+    font-weight: var(--_ag-fw-semibold);
+    font-size: var(--_ag-fs-cell);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

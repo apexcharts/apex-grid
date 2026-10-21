@@ -1,10 +1,10 @@
 @use '../common' as *;
 
 // Resolution chain: consumer semantic var → `--ag-*` premium default.
-$header-background: var(--header-background, var(--ag-surface-elevated));
-$header-text-color: var(--header-text-color, var(--ag-text-muted));
-$header-border-color: var(--header-border-color, var(--ag-hairline));
-$accent: var(--cell-active-border-color, var(--ag-brand));
+$header-background: var(--header-background, var(--_ag-surface-elevated));
+$header-text-color: var(--header-text-color, var(--_ag-text-muted));
+$header-border-color: var(--header-border-color, var(--_ag-hairline));
+$accent: var(--cell-active-border-color, var(--_ag-brand));
 
 :host {
     --ig-size: 1;
@@ -32,7 +32,7 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     display: flex;
     align-items: center;
     gap: rem(8px);
-    padding: var(--ag-toolbar-pad);
+    padding: var(--_ag-toolbar-pad);
 }
 
 [part='toolbar-search'] {
@@ -49,18 +49,18 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     block-size: rem(30px);
     padding: 0 rem(10px);
     gap: rem(6px);
-    background: var(--ag-surface);
-    color: var(--ag-text-body);
-    border: rem(1px) solid var(--ag-brand-line);
+    background: var(--_ag-surface);
+    color: var(--_ag-text-body);
+    border: rem(1px) solid var(--_ag-brand-line);
     border-radius: 8px;
     transition:
-        border-color var(--ag-dur-fast) var(--ag-ease),
-        box-shadow var(--ag-dur-fast) var(--ag-ease);
+        border-color var(--_ag-dur-fast) var(--_ag-ease),
+        box-shadow var(--_ag-dur-fast) var(--_ag-ease);
     box-sizing: border-box;
 
     &:focus-within {
-        border-color: color-mix(in srgb, var(--ag-brand) 50%, transparent);
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--ag-brand) 14%, transparent);
+        border-color: color-mix(in srgb, var(--_ag-brand) 50%, transparent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--_ag-brand) 14%, transparent);
     }
 }
 
@@ -83,11 +83,11 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     padding: 0;
     margin: 0;
     font: inherit;
-    font-size: var(--ag-fs-cell);
+    font-size: var(--_ag-fs-cell);
     line-height: 1;
 
     &::placeholder {
-        color: var(--ag-text-subtle);
+        color: var(--_ag-text-subtle);
         opacity: 1;
     }
 
@@ -115,61 +115,61 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     align-items: center;
     gap: rem(5px);
     border: rem(1px) solid transparent;
-    border-radius: var(--ag-radius-sm);
+    border-radius: var(--_ag-radius-sm);
     background: transparent;
-    color: var(--ag-text-body);
+    color: var(--_ag-text-body);
     cursor: pointer;
     font: inherit;
-    font-size: var(--ag-fs-cell);
-    font-weight: var(--ag-fw-regular);
+    font-size: var(--_ag-fs-cell);
+    font-weight: var(--_ag-fw-regular);
     line-height: 1;
     min-block-size: rem(28px);
     padding: 0 rem(10px);
     transition:
-        background-color var(--ag-dur-fast) var(--ag-ease),
-        border-color var(--ag-dur-fast) var(--ag-ease),
-        color var(--ag-dur-fast) var(--ag-ease);
+        background-color var(--_ag-dur-fast) var(--_ag-ease),
+        border-color var(--_ag-dur-fast) var(--_ag-ease),
+        color var(--_ag-dur-fast) var(--_ag-ease);
     white-space: nowrap;
 
     &:hover {
-        background: var(--ag-brand-softer);
-        color: var(--ag-brand-strong);
+        background: var(--_ag-brand-softer);
+        color: var(--_ag-brand-strong);
     }
 
     &:focus-visible {
         outline: 0;
-        border-color: color-mix(in srgb, var(--ag-brand) 50%, transparent);
-        box-shadow: 0 0 0 rem(3px) color-mix(in srgb, var(--ag-brand) 14%, transparent);
+        border-color: color-mix(in srgb, var(--_ag-brand) 50%, transparent);
+        box-shadow: 0 0 0 rem(3px) color-mix(in srgb, var(--_ag-brand) 14%, transparent);
     }
 }
 
 // "Create chart" — outlined secondary: visible but not loud.
 [part='toolbar-action'][data-action-id='create-chart'] {
-    border-color: var(--ag-hairline);
-    font-weight: var(--ag-fw-semibold);
+    border-color: var(--_ag-hairline);
+    font-weight: var(--_ag-fw-semibold);
 
     &:hover {
-        border-color: color-mix(in srgb, var(--ag-brand) 40%, transparent);
-        background: var(--ag-brand-softer);
-        color: var(--ag-brand-strong);
+        border-color: color-mix(in srgb, var(--_ag-brand) 40%, transparent);
+        background: var(--_ag-brand-softer);
+        color: var(--_ag-brand-strong);
     }
 }
 
 // "Ask AI" — filled brand: the primary CTA, always stands out.
 [part='toolbar-action'][data-action-id='ask-ai'] {
-    background: var(--ag-brand);
-    border-color: var(--ag-brand);
-    color: var(--ag-text-on-brand);
-    font-weight: var(--ag-fw-semibold);
+    background: var(--_ag-brand);
+    border-color: var(--_ag-brand);
+    color: var(--_ag-text-on-brand);
+    font-weight: var(--_ag-fw-semibold);
 
     &:hover {
-        background: var(--ag-brand-strong);
-        border-color: var(--ag-brand-strong);
-        color: var(--ag-text-on-brand);
+        background: var(--_ag-brand-strong);
+        border-color: var(--_ag-brand-strong);
+        color: var(--_ag-text-on-brand);
     }
 
     &:focus-visible {
-        border-color: var(--ag-brand-strong);
+        border-color: var(--_ag-brand-strong);
     }
 }
 
@@ -193,21 +193,21 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     min-inline-size: rem(28px);
     min-block-size: rem(28px);
     padding: 0 rem(6px);
-    border-radius: var(--ag-radius-sm);
+    border-radius: var(--_ag-radius-sm);
     transition:
-        background-color var(--ag-dur-fast) var(--ag-ease),
-        border-color var(--ag-dur-fast) var(--ag-ease),
-        color var(--ag-dur-fast) var(--ag-ease);
+        background-color var(--_ag-dur-fast) var(--_ag-ease),
+        border-color var(--_ag-dur-fast) var(--_ag-ease),
+        color var(--_ag-dur-fast) var(--_ag-ease);
 
     &:hover {
-        background: var(--ag-brand-softer);
-        color: var(--ag-brand-strong);
+        background: var(--_ag-brand-softer);
+        color: var(--_ag-brand-strong);
     }
 
     &:focus-visible {
         outline: 0;
-        border-color: color-mix(in srgb, var(--ag-brand) 50%, transparent);
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--ag-brand) 14%, transparent);
+        border-color: color-mix(in srgb, var(--_ag-brand) 50%, transparent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--_ag-brand) 14%, transparent);
     }
 }
 
@@ -229,10 +229,10 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     margin: 0;
     padding: rem(4px) 0;
     min-inline-size: rem(180px);
-    background: var(--ag-surface);
-    color: var(--ag-text-body);
-    border: rem(1px) solid var(--ag-brand-line);
-    border-radius: var(--ag-radius-sm);
+    background: var(--_ag-surface);
+    color: var(--_ag-text-body);
+    border: rem(1px) solid var(--_ag-brand-line);
+    border-radius: var(--_ag-radius-sm);
     box-shadow: 0 rem(2px) rem(4px) rgb(0 0 0 / 6%), 0 rem(6px) rem(16px) rgb(0 0 0 / 12%);
     list-style: none;
     z-index: calc(var(--z-index-base) + 10);
@@ -265,14 +265,14 @@ $accent: var(--cell-active-border-color, var(--ag-brand));
     min-block-size: rem(24px);
 
     &:hover {
-        background: var(--ag-brand-softer);
-        color: var(--ag-brand-strong);
+        background: var(--_ag-brand-softer);
+        color: var(--_ag-brand-strong);
     }
 
     &:focus-visible {
         outline: 0;
-        background: var(--ag-brand-soft);
-        box-shadow: inset 0 0 0 rem(2px) var(--ag-brand);
+        background: var(--_ag-brand-soft);
+        box-shadow: inset 0 0 0 rem(2px) var(--_ag-brand);
     }
 }
 

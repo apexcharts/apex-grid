@@ -1,10 +1,10 @@
 @use '../common' as *;
 
 // Resolution chain: consumer semantic var → `--ag-*` premium default.
-$filtering-row-text-color: var(--filtering-row-text-color, var(--ag-text-body));
-$header-background: var(--header-background, var(--ag-surface-elevated));
-$header-border-color: var(--header-border-color, var(--ag-hairline));
-$accent: var(--cell-active-border-color, var(--ag-brand));
+$filtering-row-text-color: var(--filtering-row-text-color, var(--_ag-text-body));
+$header-background: var(--header-background, var(--_ag-surface-elevated));
+$header-border-color: var(--header-border-color, var(--_ag-hairline));
+$accent: var(--cell-active-border-color, var(--_ag-brand));
 
 // Hidden by default; becomes a fixed-position floating panel when [data-active]
 // is set by the component's activeChanged() watcher.
@@ -58,7 +58,7 @@ svg {
     padding: rem(6px) rem(8px);
     gap: rem(6px);
     background: transparent;
-    border: rem(1px) solid var(--ag-brand-line);
+    border: rem(1px) solid var(--_ag-brand-line);
     border-radius: rem(4px);
     cursor: pointer;
     color: inherit;
@@ -67,11 +67,11 @@ svg {
     line-height: 1.2;
     box-sizing: border-box;
     transition:
-        border-color var(--ag-dur-fast) var(--ag-ease),
-        box-shadow var(--ag-dur-fast) var(--ag-ease);
+        border-color var(--_ag-dur-fast) var(--_ag-ease),
+        box-shadow var(--_ag-dur-fast) var(--_ag-ease);
 
     &:hover {
-        border-color: color-mix(in srgb, var(--ag-brand) 50%, transparent);
+        border-color: color-mix(in srgb, var(--_ag-brand) 50%, transparent);
     }
 
     &:focus-visible {
@@ -156,7 +156,7 @@ svg {
     appearance: none;
     background: transparent;
     color: inherit;
-    border: rem(1px) solid var(--ag-brand-line);
+    border: rem(1px) solid var(--_ag-brand-line);
     border-radius: rem(4px);
     outline: 0;
     padding: rem(6px) rem(8px);
@@ -166,8 +166,8 @@ svg {
     line-height: 1.2;
     box-sizing: border-box;
     transition:
-        border-color var(--ag-dur-fast) var(--ag-ease),
-        box-shadow var(--ag-dur-fast) var(--ag-ease);
+        border-color var(--_ag-dur-fast) var(--_ag-ease),
+        box-shadow var(--_ag-dur-fast) var(--_ag-ease);
 
     &::placeholder {
         color: inherit;
@@ -175,8 +175,8 @@ svg {
     }
 
     &:focus {
-        border-color: color-mix(in srgb, var(--ag-brand) 50%, transparent);
-        box-shadow: 0 0 0 rem(3px) color-mix(in srgb, var(--ag-brand) 14%, transparent);
+        border-color: color-mix(in srgb, var(--_ag-brand) 50%, transparent);
+        box-shadow: 0 0 0 rem(3px) color-mix(in srgb, var(--_ag-brand) 14%, transparent);
     }
 }
 
@@ -218,22 +218,22 @@ svg {
 [part='expression-chip'] {
     display: inline-flex;
     align-items: stretch;
-    background: var(--ag-brand-softer);
-    color: var(--ag-brand-strong);
-    border: rem(1px) solid var(--ag-brand-line);
-    border-radius: var(--ag-radius-sm);
+    background: var(--_ag-brand-softer);
+    color: var(--_ag-brand-strong);
+    border: rem(1px) solid var(--_ag-brand-line);
+    border-radius: var(--_ag-radius-sm);
     overflow: hidden;
     transition:
-        background-color var(--ag-dur-fast) var(--ag-ease),
-        box-shadow var(--ag-dur-fast) var(--ag-ease);
+        background-color var(--_ag-dur-fast) var(--_ag-ease),
+        box-shadow var(--_ag-dur-fast) var(--_ag-ease);
 
     &:hover {
-        background: var(--ag-brand-soft);
+        background: var(--_ag-brand-soft);
     }
 
     &[selected] {
-        background: var(--ag-brand-soft);
-        box-shadow: inset 0 0 0 rem(1px) color-mix(in srgb, var(--ag-brand) 50%, transparent);
+        background: var(--_ag-brand-soft);
+        box-shadow: inset 0 0 0 rem(1px) color-mix(in srgb, var(--_ag-brand) 50%, transparent);
     }
 }
 
@@ -278,8 +278,8 @@ svg {
     min-block-size: rem(24px);
     opacity: 0.55;
     transition:
-        opacity var(--ag-dur-fast) var(--ag-ease),
-        background-color var(--ag-dur-fast) var(--ag-ease);
+        opacity var(--_ag-dur-fast) var(--_ag-ease),
+        background-color var(--_ag-dur-fast) var(--_ag-ease);
 
     &:hover {
         opacity: 1;
