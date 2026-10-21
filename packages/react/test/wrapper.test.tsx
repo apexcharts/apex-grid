@@ -82,6 +82,29 @@ describe('react-apex-grid wrapper', () => {
     cleanup(root, container);
   });
 
+  it('shows an empty grid when the data prop goes back to undefined', async () => {
+    const rejections: unknown[] = [];
+    const onRejection = (event: PromiseRejectionEvent) => rejections.push(event.reason);
+    window.addEventListener('unhandledrejection', onRejection);
+    try {
+      const { container, root } = await render(
+        <ApexGrid data={[{ id: 1 }, { id: 2 }]} style={{ height: 300 }} />
+      );
+      root.render(<ApexGrid data={undefined} style={{ height: 300 }} />);
+      await tick();
+      const el = container.querySelector('apex-grid') as unknown as {
+        data: unknown[];
+        dataView: unknown[];
+      };
+      expect(el.data).to.deep.equal([]);
+      expect(el.dataView).to.have.length(0);
+      expect(rejections).to.deep.equal([]);
+      cleanup(root, container);
+    } finally {
+      window.removeEventListener('unhandledrejection', onRejection);
+    }
+  });
+
   it('forwards ref to the underlying custom element', async () => {
     let node: Element | null = null;
     const { container, root } = await render(
