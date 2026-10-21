@@ -11,10 +11,11 @@ import {
 // No render animation: its async callbacks can outlive a removed chart.
 (window as unknown as { Apex?: unknown }).Apex = { chart: { animations: { enabled: false } } };
 
-interface Item {
+// A type alias (not an interface) so it fits the default Record<string, unknown> detail row type.
+type Item = {
   sku: string;
   qty: number;
-}
+};
 interface Order {
   id: number;
   customer: string;
@@ -36,7 +37,7 @@ const columns: ColumnConfiguration<Order>[] = [
   { key: 'id', type: 'number', headerText: 'ID' },
   { key: 'customer', headerText: 'Customer' },
 ];
-const detailColumns: ColumnConfiguration<Item>[] = [
+const detailColumns: ColumnConfiguration<Record<string, unknown>>[] = [
   { key: 'sku', headerText: 'SKU' },
   { key: 'qty', type: 'number', headerText: 'Qty' },
 ];
