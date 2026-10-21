@@ -13,7 +13,12 @@ export type RowPinPosition = 'top' | 'bottom';
  * reference-based: the controller holds a `Set` of row data references per band,
  * so pins survive sort / filter / pagination as long as those preserve row
  * identity (the default in-place pipeline does). Replacing {@link ApexGrid.data}
- * wholesale should be followed by re-pinning or {@link clear}.
+ * carries the pins onto the new array: by `rowId` when set, else a pin whose
+ * row left the data is dropped.
+ *
+ * While `rowPinning.enabled` is false every query reports no pins and the
+ * rows stay in the body; the pins are kept (and `getState` still saves them),
+ * and re-enabling brings them back.
  *
  * Mutations go through the cancellable `rowPinning` event and emit a follow-up
  * `rowPinned` event, mirroring selection / expansion.
@@ -33,26 +38,37 @@ export class RowPinController<T extends object> implements ReactiveController {
     return Boolean(this.host.rowPinning?.enabled);
   }
 
-  /** Whether any row is currently pinned. */
+  /** Whether any row is currently pinned (none while pinning is disabled). */
   public get hasPinnedRows(): boolean {
-    return this.#top.size > 0 || this.#bottom.size > 0;
+    return this.enabled && (this.#top.size > 0 || this.#bottom.size > 0);
   }
 
   /** The band `row` is pinned to, or `null` when it is not pinned. */
   public pinnedPosition(row: T): RowPinPosition | null {
-    if (this.#top.has(row)) return 'top';
-    if (this.#bottom.has(row)) return 'bottom';
-    return null;
+    return this.enabled ? this.#band(row) : null;
   }
 
   /** Whether `row` is pinned to either band. */
   public isPinned(row: T): boolean {
-    return this.#top.has(row) || this.#bottom.has(row);
+    return this.pinnedPosition(row) !== null;
   }
 
   /** Pinned rows per band, in the order they were pinned. */
   public get pinnedRows(): { top: T[]; bottom: T[] } {
+    return this.enabled ? this.pins : { top: [], bottom: [] };
+  }
+
+  /**
+   * Every pin per band, kept while pinning is disabled too, so a `getState`
+   * snapshot taken then still carries them.
+   */
+  public get pins(): { top: T[]; bottom: T[] } {
     return { top: [...this.#top], bottom: [...this.#bottom] };
+  }
+
+  /** The band holding `row`, whether or not pinning is enabled. */
+  #band(row: T): RowPinPosition | null {
+    return this.#top.has(row) ? 'top' : this.#bottom.has(row) ? 'bottom' : null;
   }
 
   /**
@@ -84,7 +100,7 @@ export class RowPinController<T extends object> implements ReactiveController {
    * @returns `true` when applied, `false` when cancelled.
    */
   public unpinRow(row: T): boolean {
-    if (!this.isPinned(row)) return true;
+    if (!this.#band(row)) return true;
     if (!this.#emitPinning(row, null)) return false;
 
     this.#top.delete(row);
@@ -95,7 +111,7 @@ export class RowPinController<T extends object> implements ReactiveController {
 
   /** Clears every pin in both bands. */
   public clear(): void {
-    if (!this.hasPinnedRows) return;
+    if (!this.#top.size && !this.#bottom.size) return;
     this.#top.clear();
     this.#bottom.clear();
     this.host.requestUpdate();
@@ -110,6 +126,16 @@ export class RowPinController<T extends object> implements ReactiveController {
     this.#top = new Set(top);
     this.#bottom = new Set(bottom);
     this.host.requestUpdate();
+  }
+
+  /**
+   * Carries the pins onto a new `data` array through `carry` (by `rowId` when
+   * set, else the rows still present), so the bands never show a stale object.
+   */
+  public resetForDataChange(carry: (rows: T[]) => T[]): void {
+    if (this.#top.size || this.#bottom.size) {
+      this.restore(carry([...this.#top]), carry([...this.#bottom]));
+    }
   }
 
   #emitPinning(row: T, position: RowPinPosition | null): boolean {

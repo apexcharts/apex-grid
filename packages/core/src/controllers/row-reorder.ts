@@ -61,7 +61,8 @@ export interface RowGhostState {
  * applying a sort clears the manual order, and a move clears the sort. The
  * order spans every row, hidden by a filter or not, so a move made under a
  * filter leaves the hidden rows in place. State is reference-based, so it
- * survives the in-place pipeline.
+ * survives the in-place pipeline, and it is carried onto a new `data` array
+ * (by `rowId` when set, else by identity).
  *
  * Reordering happens through {@link moveRow} (pointer live-swap during a drag,
  * the keyboard grab/move flow, or the public API). Each move goes through the
@@ -216,6 +217,36 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     this.#order = null;
     this.host.requestUpdate(PIPELINE);
     if (announce) this.host.announce(this.host.localize('announce.manualOrderCleared'));
+  }
+
+  /**
+   * Carries the manual order onto a new `data` array through `carry` (by
+   * `rowId` when set, else the rows still present), clearing it when no row
+   * survives. A grab or drag follows its row onto the new data, so an app
+   * that re-sets `data` on `rowMoved` keeps the gesture; it ends only when
+   * the row is gone.
+   */
+  public resetForDataChange(carry: (rows: T[]) => T[]): void {
+    const pre = this.#preGrab;
+    if (this.grabbed) {
+      this.grabbed = carry([this.grabbed])[0] ?? null;
+      if (!this.grabbed) this.#preGrab = null;
+      else if (pre) {
+        pre.order = pre.order && carry(pre.order);
+        pre.data = pre.data && carry(pre.data);
+      }
+    }
+    const pending = this.#pending;
+    const held = pending?.data ?? this.dragging;
+    if (held) {
+      const row = carry([held])[0];
+      if (!row) this.#endPointer();
+      else {
+        if (pending) pending.data = row;
+        if (this.dragging) this.dragging = row;
+      }
+    }
+    if (this.#order) this.restoreManualOrder(carry(this.#order));
   }
 
   /**

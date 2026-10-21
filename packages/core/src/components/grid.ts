@@ -1658,10 +1658,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     // exclusion happens before pagination so a pinned row never consumes a body
     // page slot.
     const rowPin = this.stateController.rowPin;
-    const base =
-      rowPin?.enabled && rowPin.hasPinnedRows
-        ? this.dataState.filter((row) => !rowPin.isPinned(row))
-        : this.dataState;
+    const base = rowPin?.hasPinnedRows
+      ? this.dataState.filter((row) => !rowPin.isPinned(row))
+      : this.dataState;
     if (!this.stateController.pagination.enabled) return base;
     if (this.pagination?.mode === 'remote') return base;
     const { page, pageSize } = this.stateController.pagination;
@@ -1764,12 +1763,13 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
-   * The records undo history may still replay onto after {@link ApexGrid.data}
-   * changes; history naming any other record is cleared. Defaults to `data`.
-   * A row model that writes only part of a larger record set into `data` (rows
-   * under a collapsed group leave `data` but stay cached and come back as the
-   * same objects) overrides this to also yield the records it keeps, so a
-   * collapse does not wipe the history. Read only while history has entries.
+   * The records undo history, the manual row order and row pins may still
+   * name after {@link ApexGrid.data} changes; anything naming another record is
+   * dropped. Defaults to `data`. A row model that writes only part of a larger
+   * record set into `data` (rows under a collapsed group leave `data` but stay
+   * cached and come back as the same objects) overrides this to also yield the
+   * records it keeps, so a collapse does not wipe them. Read only while there
+   * is history, a manual order or a pin to reconcile.
    */
   protected historyRecords(): Iterable<T> {
     return this.data;
@@ -1786,6 +1786,11 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     // Tree controller needs to re-apply `defaultExpanded` against the new
     // record set when data is swapped wholesale.
     this.stateController?.tree?.resetForDataChange();
+    // The manual order and the pins hold row references: carry them onto the
+    // new records so they never point at objects the grid no longer shows.
+    const carry = (rows: T[]) => this.#carryRows(rows);
+    this.stateController?.rowReorder.resetForDataChange(carry);
+    this.stateController?.rowPin.resetForDataChange(carry);
     // Tree mode applies its flatten step synchronously here so the first
     // paint shows the right shape. Sort/filter/quickFilter still run via
     // the async pipeline on subsequent updates — they take this dataState
@@ -1800,6 +1805,19 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     this.dataState = this.stateController ? this.stateController.applyModuleTransforms(next) : next;
     // Requested, not called, so every watcher of this update shares one run.
     if (this.hasUpdated) this.requestUpdate(PIPELINE);
+  }
+
+  /**
+   * `rows` matched in the records the grid still holds ({@link historyRecords},
+   * so rows a row model keeps cached survive): by `rowId` when set, else by
+   * identity.
+   */
+  #carryRows(rows: T[]): T[] {
+    const rowId = this.rowId;
+    const records = [...this.historyRecords()];
+    if (rowId) return resolveRowRefs(serializeRowRefs(rows, [], rowId), records, rowId);
+    const present = new Set(records);
+    return rows.filter((row) => present.has(row));
   }
 
   @watch('pagination')
@@ -2202,7 +2220,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   public getState(options?: GetStateOptions<T>): GridState {
     const rowId = options?.rowId ?? this.rowId;
-    const pinned = this.stateController.rowPin.pinnedRows;
+    const pinned = this.stateController.rowPin.pins;
     const manualOrder = this.stateController.rowReorder.getManualOrder();
     return {
       version: 1,
@@ -3268,7 +3286,6 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
   protected renderPinnedTop() {
     const rowPin = this.stateController.rowPin;
-    if (!rowPin.enabled) return nothing;
     const rows = rowPin.pinnedRows.top;
     if (rows.length === 0) return nothing;
     return html`<div part="pinned-rows pinned-top">
@@ -3278,7 +3295,6 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
   protected renderPinnedBottom() {
     const rowPin = this.stateController.rowPin;
-    if (!rowPin.enabled) return nothing;
     const rows = rowPin.pinnedRows.bottom;
     if (rows.length === 0) return nothing;
     // Pinned-bottom rows follow the chrome rows, the pinned-top band, and the

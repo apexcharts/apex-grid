@@ -350,6 +350,8 @@ const lowImportance = [
   { key: 'importance', condition: 'equals', searchTerm: 'low' },
 ] as unknown as FilterExpression<TestData>[];
 
+const freshCopy = () => JSON.parse(JSON.stringify(data)) as TestData[];
+
 describe('Row reorder: a move under a filter keeps hidden rows in place', () => {
   afterEach(() => TDD.tearDown());
 
@@ -403,6 +405,149 @@ describe('Row reorder: a move under a filter keeps hidden rows in place', () => 
     TDD.grid.clearFilter();
     await TDD.waitForUpdate();
     expect(TDD.ids()).to.deep.equal([8, 2, 7, 6, 5, 4, 3, 1]);
+  });
+});
+
+describe('Row reorder: the manual order follows grid.data', () => {
+  afterEach(() => TDD.tearDown());
+
+  it('a row added after a move is a valid move target', async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+    TDD.grid.moveRow(0, 1, 'after');
+    await TDD.waitForUpdate();
+    const added = { id: 9, name: 'z', active: true, importance: 'low' } as TestData;
+    TDD.grid.data = [...TDD.grid.data, added];
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([2, 1, 3, 4, 5, 6, 7, 8, 9]);
+
+    expect(TDD.grid.moveRow(0, 8, 'after')).to.be.true;
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([1, 3, 4, 5, 6, 7, 8, 9, 2]);
+  });
+
+  it('fresh objects without rowId drop the dead order and restore sorting', async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+    TDD.grid.moveRow(0, 2, 'after');
+    await TDD.waitForUpdate();
+    const reorder = TDD.stateController.rowReorder;
+    expect(reorder.hasManualOrder).to.be.true;
+
+    TDD.grid.data = freshCopy();
+    await TDD.waitForUpdate();
+    expect(reorder.hasManualOrder).to.be.false;
+    expect(TDD.stateController.sorting.isSortable(TDD.grid.getColumn('id')!)).to.be.true;
+    expect(TDD.grid.moveRow(0, 2, 'after')).to.be.true;
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([2, 3, 1, 4, 5, 6, 7, 8]);
+  });
+
+  it('fresh objects with rowId keep the order on the new objects', async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+    TDD.grid.rowId = (row) => row.id;
+    TDD.grid.moveRow(0, 2, 'after');
+    await TDD.waitForUpdate();
+
+    const fresh = freshCopy();
+    TDD.grid.data = fresh;
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([2, 3, 1, 4, 5, 6, 7, 8]);
+    expect(TDD.grid.pageItems[0]).to.equal(fresh[1]);
+    expect(TDD.grid.getState().rowOrder).to.deep.equal(
+      [2, 3, 1, 4, 5, 6, 7, 8].map((id) => ({ id }))
+    );
+  });
+
+  it('a partial reload keeps the surviving rows in their manual order', async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+    TDD.grid.moveRow(0, 2, 'after');
+    await TDD.waitForUpdate();
+    const [r1, r2, r3, ...rest] = TDD.grid.data;
+    TDD.grid.data = [r1, r3, ...rest.slice(0, 2)];
+    await TDD.waitForUpdate();
+    expect(r2.id).to.equal(2);
+    expect(TDD.ids()).to.deep.equal([3, 1, 4, 5]);
+  });
+
+  it('replacing the data ends a keyboard grab whose row left', async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+    TDD.stateController.active = { column: 'id' as never, row: 0 };
+    TDD.key(' ');
+    expect(TDD.stateController.rowReorder.isGrabbing).to.be.true;
+    TDD.grid.data = freshCopy();
+    await TDD.waitForUpdate();
+    expect(TDD.stateController.rowReorder.isGrabbing).to.be.false;
+  });
+
+  it('a keyboard grab survives an app that re-sets data on rowMoved', async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+    TDD.grid.addEventListener('rowMoved', () => {
+      TDD.grid.data = [...TDD.grid.pageItems];
+    });
+    TDD.stateController.active = { column: 'id' as never, row: 0 };
+    TDD.key(' ');
+    TDD.key('ArrowDown');
+    await TDD.waitForUpdate();
+    expect(TDD.stateController.rowReorder.isGrabbing).to.be.true;
+    TDD.key('ArrowDown');
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([2, 3, 1, 4, 5, 6, 7, 8]);
+  });
+
+  it('with rowId a grab follows its row onto fresh objects and Escape reverts', async () => {
+    TDD.rowReordering = { enabled: true, applyToData: true };
+    await TDD.setUp();
+    TDD.grid.rowId = (row) => row.id;
+    TDD.stateController.active = { column: 'id' as never, row: 0 };
+    TDD.key(' ');
+    TDD.key('ArrowDown');
+    await TDD.waitForUpdate();
+    const fresh = TDD.grid.data.map((row) => ({ ...row }));
+    const grabbed = fresh[1];
+    TDD.grid.data = fresh;
+    await TDD.waitForUpdate();
+    expect(TDD.stateController.rowReorder.grabbed).to.equal(grabbed);
+    TDD.key('ArrowDown');
+    await TDD.waitForUpdate();
+    expect(TDD.ids()).to.deep.equal([2, 3, 1, 4, 5, 6, 7, 8]);
+    TDD.key('Escape');
+    await TDD.waitForUpdate();
+    expect(TDD.grid.data.map((row) => row.id)).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(TDD.grid.data[0]).to.equal(grabbed);
+  });
+
+  it('a pointer drag survives an app that re-sets data on rowMoved', async () => {
+    TDD.rowReordering = { enabled: true };
+    await TDD.setUp();
+    TDD.grid.addEventListener('rowMoved', () => {
+      TDD.grid.data = [...TDD.grid.pageItems];
+    });
+    const row0 = rowEl(TDD, 0);
+    const handle = row0.shadowRoot?.querySelector('[part="reorder-handle"]') as HTMLElement;
+    const r0 = row0.getBoundingClientRect();
+    const r1 = rowEl(TDD, 1).getBoundingClientRect();
+    const r2 = rowEl(TDD, 2).getBoundingClientRect();
+    const x = r0.left + 8;
+    handle.dispatchEvent(pointerEvent('pointerdown', { clientX: x, clientY: r0.top + 8 }));
+    row0.dispatchEvent(
+      pointerEvent('pointermove', { clientX: x, clientY: r1.top + r1.height * 0.75 })
+    );
+    await TDD.waitForUpdate();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(TDD.stateController.rowReorder.dragging).to.not.be.null;
+    TDD.grid.dispatchEvent(
+      pointerEvent('pointermove', { clientX: x, clientY: r2.top + r2.height * 0.75 })
+    );
+    await TDD.waitForUpdate();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(TDD.ids()).to.deep.equal([2, 3, 1, 4, 5, 6, 7, 8]);
+    document.body.dispatchEvent(pointerEvent('pointerup', { clientX: 0, clientY: 0 }));
+    expect(TDD.stateController.rowReorder.dragging).to.be.null;
   });
 });
 
@@ -655,5 +800,77 @@ describe('Row reorder: rowMoving and rowMoved report where the row lands', () =>
     const first = { from: 0, to: 5, position: 'before', toIndex: 4, id: 1 };
     const second = { from: 5, to: 1, position: 'after', toIndex: 2, id: 6 };
     expect(details).to.deep.equal([first, first, second, second]);
+  });
+});
+
+describe('Row pinning: pins follow grid.data and rowPinning.enabled', () => {
+  afterEach(() => fxPin.tearDown());
+  const fxPin = new PinnedReorderFixture(data);
+
+  it('drops pins whose row left the data (no rowId)', async () => {
+    await fxPin.setUp();
+    fxPin.grid.pinRow(fxPin.grid.data[2], 'top');
+    await fxPin.waitForUpdate();
+    fxPin.grid.data = freshCopy();
+    await fxPin.waitForUpdate();
+    expect(fxPin.grid.pinnedRows.top).to.deep.equal([]);
+    expect(fxPin.ids()).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(fxPin.grid.shadowRoot!.querySelector('[part~="pinned-top"]')).to.be.null;
+  });
+
+  it('remaps pins to the fresh objects by rowId', async () => {
+    await fxPin.setUp();
+    fxPin.grid.rowId = (row) => row.id;
+    fxPin.grid.pinRow(fxPin.grid.data[2], 'top');
+    fxPin.grid.pinRow(fxPin.grid.data[5], 'bottom');
+    await fxPin.waitForUpdate();
+    const fresh = freshCopy();
+    fresh[2].name = 'C-updated';
+    fxPin.grid.data = fresh;
+    await fxPin.waitForUpdate();
+    expect(fxPin.grid.pinnedRows.top).to.deep.equal([fresh[2]]);
+    expect(fxPin.grid.pinnedRows.top[0]).to.equal(fresh[2]);
+    expect(fxPin.grid.pinnedRows.bottom[0]).to.equal(fresh[5]);
+    expect(fxPin.ids()).to.deep.equal([1, 2, 4, 5, 7, 8]);
+    expect(fxPin.grid.getState().rowPinning).to.deep.equal({
+      top: [{ id: 3 }],
+      bottom: [{ id: 6 }],
+    });
+  });
+
+  it('disabling pinning reports no pins and re-enabling restores them', async () => {
+    await fxPin.setUp();
+    const baseline = fxPin.grid.getAttribute('aria-rowcount');
+    const pinned = fxPin.grid.data[0];
+    fxPin.grid.pinRow(pinned, 'top');
+    await fxPin.waitForUpdate();
+    expect(fxPin.grid.getAttribute('aria-rowcount')).to.equal(baseline);
+
+    fxPin.grid.rowPinning = { enabled: false };
+    await fxPin.waitForUpdate();
+    expect(fxPin.grid.pinnedRows).to.deep.equal({ top: [], bottom: [] });
+    expect(fxPin.stateController.rowPin.isPinned(pinned)).to.be.false;
+    expect(fxPin.grid.getAttribute('aria-rowcount')).to.equal(baseline);
+    const row0 = rowEl(fxPin, 0);
+    expect(row0.getAttribute('aria-rowindex')).to.equal('2');
+    expect(row0.shadowRoot?.querySelector('[part="reorder-handle"]')).to.exist;
+
+    fxPin.grid.rowPinning = { enabled: true };
+    await fxPin.waitForUpdate();
+    expect(fxPin.grid.pinnedRows.top).to.deep.equal([pinned]);
+    expect(fxPin.ids()).to.deep.equal([2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it('a snapshot taken while pinning is off keeps the pins', async () => {
+    await fxPin.setUp();
+    const pinned = fxPin.grid.data[2];
+    fxPin.grid.pinRow(pinned, 'bottom');
+    fxPin.grid.rowPinning = { enabled: false };
+    await fxPin.waitForUpdate();
+    const snapshot = fxPin.grid.getState();
+    fxPin.grid.setState(snapshot);
+    fxPin.grid.rowPinning = { enabled: true };
+    await fxPin.waitForUpdate();
+    expect(fxPin.grid.pinnedRows.bottom).to.deep.equal([pinned]);
   });
 });

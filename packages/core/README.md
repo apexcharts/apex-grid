@@ -448,7 +448,7 @@ grid.unpinRow(data[0]);
 grid.pinnedRows;                    // { top: T[], bottom: T[] }
 ```
 
-Pinned rows render in sticky top / bottom bands outside the virtualizer and are lifted out of the scrollable set (no duplication). Selection and styling work by row reference. Events: `rowPinning` (cancellable), `rowPinned`.
+Pinned rows render in sticky top / bottom bands outside the virtualizer and are lifted out of the scrollable set (no duplication). Selection and styling work by row reference. Replacing `grid.data` carries the pins onto the new rows (by `rowId` when set, else a pin whose row left the data is dropped). While `rowPinning.enabled` is false the pinned rows return to the body and `pinnedRows` reports none, but the pins are kept (`getState` still saves them) and re-enabling brings them back. Events: `rowPinning` (cancellable), `rowPinned`.
 
 ### Row drag-reorder
 
@@ -458,7 +458,7 @@ grid.rowReordering = { enabled: true };   // add applyToData: true to splice gri
 grid.moveRow(0, 4, 'after');
 ```
 
-By default (`rowReordering.handle`, boolean, default `true`) a six-dot grip handle shows at the start of every reorderable row, and dragging lifts a full-row floating ghost that follows the cursor. Both interaction modes are supported: **handle mode** (only the grip starts a drag, so the rest of the row stays free for selection and editing) and **whole-row mode** (set `handle: false` to drag from anywhere on the row, excluding interactive sub-parts like inputs and buttons). Or use the keyboard: focus a row, **Space** to grab, **Arrow** keys to move, **Space / Enter** to drop, **Esc** to cancel. The grid holds a manual order that is mutually exclusive with sorting (applying a sort clears it, and a move clears the sort). Rows hidden by a filter keep their place when a visible row moves. By default the app persists the order via the `rowMoved` event; set `applyToData: true` to splice `grid.data` directly. Events: `rowMoving` (cancellable), `rowMoved { from, to, position, toIndex, data }`, where `toIndex` is the view index the row lands at.
+By default (`rowReordering.handle`, boolean, default `true`) a six-dot grip handle shows at the start of every reorderable row, and dragging lifts a full-row floating ghost that follows the cursor. Both interaction modes are supported: **handle mode** (only the grip starts a drag, so the rest of the row stays free for selection and editing) and **whole-row mode** (set `handle: false` to drag from anywhere on the row, excluding interactive sub-parts like inputs and buttons). Or use the keyboard: focus a row, **Space** to grab, **Arrow** keys to move, **Space / Enter** to drop, **Esc** to cancel. The grid holds a manual order that is mutually exclusive with sorting (applying a sort clears it, and a move clears the sort). Rows hidden by a filter keep their place when a visible row moves, and the order follows `grid.data` when it is replaced (by `rowId` when set). By default the app persists the order via the `rowMoved` event; set `applyToData: true` to splice `grid.data` directly. Events: `rowMoving` (cancellable), `rowMoved { from, to, position, toIndex, data }`, where `toIndex` is the view index the row lands at.
 
 ### Row expansion (master-detail)
 
