@@ -306,7 +306,7 @@ export class GroupingController<T extends object>
           width="14"
           height="14"
           aria-hidden="true"
-          style="transform:rotate(${expanded ? 90 : 0}deg);transition:transform .15s"
+          style="transform:rotate(${expanded ? 90 : 0}deg);transition:transform var(--_ag-dur-med) var(--_ag-ease)"
         >
           <path
             d="M9 6l6 6-6 6"

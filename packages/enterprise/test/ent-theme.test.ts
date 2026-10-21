@@ -8,6 +8,7 @@ import {
   waitUntil,
 } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
+import { render } from 'lit';
 import {
   ConversationMemory,
   createAIEngine,
@@ -369,6 +370,44 @@ describe('ent-theme: enterprise chrome follows the grid', () => {
       expect(getComputedStyle(menus()[0]).direction).to.equal('ltr');
       key(menus()[1], 'ArrowLeft');
       expect(menus().length).to.equal(1);
+    });
+  });
+
+  describe('motion tokens (core-styles-body-9)', () => {
+    it('group chevrons take the grid duration tokens', async () => {
+      const grid = await fixture<ApexGridEnterprise<Row>>(
+        html`<apex-grid-enterprise
+          style="--ag-dur-med: 0ms"
+          .data=${data.map((r) => ({ ...r }))}
+          .columns=${columns}
+          .groupBy=${['name']}
+        ></apex-grid-enterprise>`,
+        { parentNode: sizedParent() }
+      );
+      await grid.updateComplete;
+      await nextFrame();
+      const grouping = (
+        grid as unknown as { stateController: { modules: Map<string, unknown> } }
+      ).stateController.modules.get('grouping') as {
+        presentRow(row: unknown, ctx: unknown): { content: unknown } | null;
+      };
+      const header = (grid.pageItems as readonly Row[])[0];
+      const presented = grouping.presentRow(header, { columns, rowIndex: 0 });
+      const host = document.createElement('div');
+      // Inherit the grid's resolved tokens, as the rendered row does.
+      host.style.setProperty(
+        '--_ag-dur-med',
+        getComputedStyle(grid).getPropertyValue('--_ag-dur-med')
+      );
+      document.body.appendChild(host);
+      try {
+        render(presented!.content, host);
+        const svg = host.querySelector<SVGElement>('[part="group-toggle"] svg')!;
+        expect(svg.style.transition).to.contain('var(--_ag-dur-med)');
+        expect(getComputedStyle(svg).transitionDuration).to.equal('0s');
+      } finally {
+        host.remove();
+      }
     });
   });
 
