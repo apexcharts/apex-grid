@@ -64,6 +64,7 @@ export class MasterDetailManager<T extends object> {
       enabled: true,
       isExpandable: this.config.isExpandable,
       detailTemplate: (context) => this.#renderDetail(context.data, context.rowIndex),
+      exportParts: ['master-detail', 'detail-grid'],
     };
   }
 

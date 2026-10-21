@@ -19,6 +19,16 @@ export const GROUPING_MODULE_ID = 'grouping';
 /** Marks a synthesized group-header row and carries its metadata. */
 const GROUP_META = Symbol('apex-grid-enterprise.group');
 
+/** Parts inside a group header row, re-exported so `::part()` can style them. */
+const GROUP_ROW_PARTS = [
+  'group-header',
+  'group-toggle',
+  'group-label',
+  'group-count',
+  'group-aggregates',
+  'group-aggregate',
+];
+
 /** Metadata describing a single synthesized group-header row. */
 export interface GroupRowMeta<T extends object> {
   /**
@@ -262,7 +272,12 @@ export class GroupingController<T extends object>
     const meta = getGroupMeta<T>(row);
     if (!meta) return null;
     const expanded = this.isExpanded(meta.key, meta.depth);
-    return { content: this.#renderHeader(meta, expanded), level: meta.depth + 1, expanded };
+    return {
+      content: this.#renderHeader(meta, expanded),
+      level: meta.depth + 1,
+      expanded,
+      exportParts: GROUP_ROW_PARTS,
+    };
   }
 
   #renderHeader(meta: GroupRowMeta<T>, expanded: boolean) {

@@ -158,6 +158,25 @@ describe('Master/detail', () => {
     expect(childColumns.map((column) => column.key)).to.eql(['sku', 'qty']);
   });
 
+  it('lets ::part() style the detail panel and the detail grid', async () => {
+    const style = document.createElement('style');
+    style.textContent =
+      'apex-grid-enterprise::part(master-detail),apex-grid-enterprise::part(detail-grid){outline:3px solid rgb(1, 2, 3)}';
+    document.head.append(style);
+    try {
+      const grid = await mount({ columns: detailColumns, getDetailData: (order) => order.items });
+      await grid.expandRow(orders[0]);
+      await settle(grid);
+      for (const part of ['master-detail', 'detail-grid']) {
+        const [el] = deepQueryAll(grid.shadowRoot!, `[part="${part}"]`);
+        expect(el, `${part} rendered`).to.exist;
+        expect(getComputedStyle(el as HTMLElement).outlineColor, part).to.equal('rgb(1, 2, 3)');
+      }
+    } finally {
+      style.remove();
+    }
+  });
+
   it('populates the detail grid from async detail data', async () => {
     const grid = await mount({
       columns: detailColumns,

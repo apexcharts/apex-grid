@@ -138,4 +138,28 @@ describe('grand-total row', () => {
     await settle(grid);
     expect(grid.pageItems.length).to.equal(data.length);
   });
+
+  it('lets ::part() style the total row and group header content', async () => {
+    const parts = ['total-row-content', 'total-row-label', 'total-row-value', 'group-label'];
+    const style = document.createElement('style');
+    style.textContent = parts
+      .map((part) => `apex-grid-enterprise::part(${part}){outline:3px solid rgb(1, 2, 3)}`)
+      .join('\n');
+    document.head.append(style);
+    try {
+      const grid = await mount();
+      grid.groupBy = ['region'];
+      grid.totalRow = { aggregations: { amount: ['sum'] } };
+      await settle(grid);
+      for (const part of parts) {
+        const el = grid.rows
+          .map((row) => row.renderRoot.querySelector<HTMLElement>(`[part="${part}"]`))
+          .find(Boolean);
+        expect(el, `${part} renders`).to.exist;
+        expect(getComputedStyle(el!).outlineColor, part).to.equal('rgb(1, 2, 3)');
+      }
+    } finally {
+      style.remove();
+    }
+  });
 });

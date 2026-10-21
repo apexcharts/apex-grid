@@ -17,6 +17,14 @@ export const TOTAL_ROW_MODULE_ID = 'total-row';
 /** Marks the synthesized grand-total row. */
 const TOTAL_ROW = Symbol('apex-grid-enterprise.totalRow');
 
+/** Parts inside the total row, re-exported so `::part()` can style them. */
+const TOTAL_ROW_PARTS = [
+  'total-row-content',
+  'total-row-label',
+  'total-row-values',
+  'total-row-value',
+];
+
 /** Whether a row is the synthesized grand-total row. */
 export function isTotalRow(row: unknown): boolean {
   return typeof row === 'object' && row !== null && TOTAL_ROW in row;
@@ -151,7 +159,7 @@ export class TotalRowController<T extends object>
     if (!isTotalRow(row)) return null;
     const label =
       this.config?.label ?? this.host.localize('pivot.grandTotal', undefined, 'Grand Total');
-    return { content: this.#render(label), part: 'total-row' };
+    return { content: this.#render(label), part: 'total-row', exportParts: TOTAL_ROW_PARTS };
   }
 
   #render(label: string) {
