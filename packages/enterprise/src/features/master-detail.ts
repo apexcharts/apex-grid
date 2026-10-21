@@ -45,10 +45,13 @@ function toCss(height: number | string): string {
  * The child grid is created once per master row (keyed by row identity) and
  * reused across re-renders, so its own state and scroll position survive a
  * collapse/expand. Async `getDetailData` resolves into the cached grid and
- * requests a host update.
+ * requests a host update; a throw or rejection leaves the detail empty and is
+ * retried the next time that detail is shown.
  */
 export class MasterDetailManager<T extends object> {
   #cache = new WeakMap<object, HTMLElement>();
+  /** Detail grids whose last `getDetailData` threw or rejected. */
+  #failed = new WeakSet<HTMLElement>();
 
   constructor(
     private config: MasterDetailConfig<T>,
@@ -76,11 +79,15 @@ export class MasterDetailManager<T extends object> {
 
   #ensureGrid(row: T, rowIndex: number): HTMLElement {
     const cached = this.#cache.get(row as object);
-    if (cached) return cached;
+    if (cached) {
+      // A failed load is retried the next time the detail is shown (expand, or scrolled back in),
+      // not on every re-render of an open detail.
+      if (this.#failed.has(cached) && !cached.isConnected) this.#load(row, cached);
+      return cached;
+    }
 
     const grid = document.createElement(this.config.detailTag ?? 'apex-grid') as HTMLElement & {
       columns?: unknown;
-      data?: unknown;
     };
     grid.setAttribute('part', 'detail-grid');
     grid.style.display = 'block';
@@ -91,18 +98,31 @@ export class MasterDetailManager<T extends object> {
     grid.columns = columns;
     this.config.configureDetail?.(grid, { data: row, rowIndex });
 
-    const result = this.config.getDetailData(row);
-    if (result instanceof Promise) {
+    this.#cache.set(row as object, grid);
+    this.#load(row, grid);
+    return grid;
+  }
+
+  /** Fill `grid` from `getDetailData`; a throw or rejection leaves it empty and marked failed. */
+  #load(row: T, grid: HTMLElement & { data?: unknown }): void {
+    this.#failed.delete(grid);
+    const fail = () => {
       grid.data = [];
-      result.then((rows) => {
+      this.#failed.add(grid);
+    };
+    try {
+      const result = this.config.getDetailData(row);
+      if (typeof (result as PromiseLike<unknown> | null)?.then !== 'function') {
+        grid.data = result;
+        return;
+      }
+      grid.data = [];
+      Promise.resolve(result).then((rows) => {
         grid.data = rows;
         this.requestUpdate();
-      });
-    } else {
-      grid.data = result;
+      }, fail);
+    } catch {
+      fail();
     }
-
-    this.#cache.set(row as object, grid);
-    return grid;
   }
 }

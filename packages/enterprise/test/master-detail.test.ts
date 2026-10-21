@@ -218,4 +218,86 @@ describe('Master/detail', () => {
       expect(grid.expansion === own, 'own config kept').to.be.true;
     });
   });
+
+  describe('failed detail loads', () => {
+    let unhandled: unknown[] = [];
+    const onUnhandled = (event: PromiseRejectionEvent) => {
+      unhandled.push(event.reason);
+      event.preventDefault();
+    };
+    beforeEach(() => {
+      unhandled = [];
+      window.addEventListener('unhandledrejection', onUnhandled);
+    });
+    afterEach(() => window.removeEventListener('unhandledrejection', onUnhandled));
+
+    async function expandAgain(grid: ApexGridEnterprise<Order>, row: Order) {
+      await grid.collapseRow(row);
+      await settle(grid);
+      await grid.expandRow(row);
+      await settle(grid);
+    }
+
+    const rowsOf = (grid: ApexGridEnterprise<Order>) => {
+      const data = (detailGrids(grid)[0] as unknown as { data?: unknown } | undefined)?.data;
+      return Array.isArray(data) ? (data as Item[]) : undefined;
+    };
+
+    it('handles a rejected getDetailData and retries on the next expand', async () => {
+      let calls = 0;
+      const grid = await mount({
+        columns: detailColumns,
+        getDetailData: (order) => {
+          calls += 1;
+          return calls === 1 ? Promise.reject(new Error('offline')) : Promise.resolve(order.items);
+        },
+      });
+      await grid.expandRow(orders[0]);
+      await settle(grid);
+      await waitFor(() => detailGrids(grid).length > 0);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled.length, 'no unhandled rejection').to.equal(0);
+      expect(rowsOf(grid)?.length, 'empty detail after a failure').to.equal(0);
+      await settle(grid);
+      expect(calls, 'a failure is not retried while the detail stays open').to.equal(1);
+
+      await expandAgain(grid, orders[0]);
+      await waitFor(() => rowsOf(grid)?.length === orders[0].items.length);
+      expect(calls).to.equal(2);
+      expect(rowsOf(grid)?.map((item) => item.sku)).to.eql(['A-1', 'A-2']);
+    });
+
+    it('handles a getDetailData that throws, and retries on the next expand', async () => {
+      let calls = 0;
+      const grid = await mount({
+        columns: detailColumns,
+        getDetailData: (order) => {
+          calls += 1;
+          if (calls === 1) throw new Error('bad row');
+          return order.items;
+        },
+      });
+      await grid.expandRow(orders[0]);
+      await settle(grid);
+      await waitFor(() => detailGrids(grid).length > 0);
+      expect(rowsOf(grid)?.length).to.equal(0);
+      await expandAgain(grid, orders[0]);
+      await waitFor(() => rowsOf(grid)?.length === orders[0].items.length);
+      expect(calls).to.equal(2);
+    });
+
+    it('resolves a thenable that is not a native Promise', async () => {
+      const grid = await mount({
+        columns: detailColumns,
+        getDetailData: (order) =>
+          ({
+            // biome-ignore lint/suspicious/noThenProperty: a hand-rolled thenable is the case under test
+            then: (resolve: (rows: Item[]) => void) => resolve(order.items),
+          }) as unknown as Promise<Item[]>,
+      });
+      await grid.expandRow(orders[0]);
+      await waitFor(() => rowsOf(grid)?.length === orders[0].items.length);
+      expect(rowsOf(grid)?.map((item) => item.sku)).to.eql(['A-1', 'A-2']);
+    });
+  });
 });
