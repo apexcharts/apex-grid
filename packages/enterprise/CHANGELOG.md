@@ -4,7 +4,15 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.8.0] - 2026-10-21
+
+A quality release built from a full code-quality audit. It needs apex-grid
+3.6.0, whose internals it uses. No exported symbol was removed or renamed.
+Apps may notice the changes listed under Changed: copy and CSV export
+neutralise spreadsheet formulas, pivot columns and headers follow the data and
+the source columns, `getState` saves more of the view, the chart panel and
+context menu follow the grid theme and direction, and an AI request whose every
+entry is refused leaves the view unchanged.
 
 ### Added
 - `apex-rows-load-failed` (infinite row model: `startRow`, `endRow`, `error`,

@@ -4,7 +4,14 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [3.6.0] - 2026-10-21
+
+A quality release built from a full code-quality audit, plus `--ag-*` tokens
+that reach the grid from any ancestor (shadow roots included). No exported
+symbol was removed or renamed. A few documented contracts now hold where they
+did not: `sorted`, `filtered`, `pageChanged` and `quickFilterChanged` fire after
+the pipeline run they caused, and a row move on a sorted grid clears the sort.
+See Changed for what apps may notice.
 
 ### Added
 - **`--ag-*` tokens set on any ancestor now reach the grid**, including the
