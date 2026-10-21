@@ -1656,12 +1656,12 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * yet. Only set alongside a requested update, which clears it.
    */
   #viewChangePending = false;
-  /** Pipeline runs carrying such a change that have not settled yet. */
-  #shapingRuns = 0;
+  /** A run carrying such a change started and the latest run has not settled. */
+  #shapingPending = false;
 
   /** Whether the row count may still change, so a page cannot be clamped yet. */
   get #viewStale(): boolean {
-    return !this.hasUpdated || this.#viewChangePending || this.#shapingRuns > 0;
+    return !this.hasUpdated || this.#viewChangePending || this.#shapingPending;
   }
 
   /** Mark the row count as about to change and request the pipeline that settles it. */
@@ -1776,23 +1776,68 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     if (this.hasUpdated || this.quickFilter) this.requestUpdate(PIPELINE);
   }
 
+  /** The latest pipeline run; an older one that settles later is dropped. */
+  #pipelineRun = 0;
+  /**
+   * Settles (never rejects) once the latest pipeline run settles. Overlapping
+   * runs share it and only the latest one settles it, so a superseded run
+   * that is slow, or never settles, does not hold back its waiters.
+   */
+  #pipelineSettled: Promise<void> = Promise.resolve();
+  #settlePipeline: (() => void) | null = null;
+
   // Declared after every watcher that requests it, so each request made while
   // this update's watchers run is seen here and the pipeline runs once.
   @watch(PIPELINE)
-  protected async pipeline() {
-    this.#flushPendingExpressions();
-    // The first run, or one carrying a row count change, leaves the page
-    // unsettled until its reclamp.
-    const shaping = this.#viewChangePending || !this.hasUpdated;
-    this.#viewChangePending = false;
-    if (shaping) this.#shapingRuns++;
+  protected pipeline(): Promise<void> {
+    if (!this.#settlePipeline) {
+      this.#pipelineSettled = new Promise((settle) => {
+        this.#settlePipeline = settle;
+      });
+    }
+    return this.#runPipeline(++this.#pipelineRun);
+  }
+
+  async #runPipeline(run: number): Promise<void> {
     try {
-      this.dataState = await this.dataController.apply([...this.data], this.stateController);
+      this.#flushPendingExpressions();
+      // The first run, or one carrying a row count change, leaves the page
+      // unsettled until the latest run reclamps it, so a run that supersedes
+      // an unsettled one carries its change too.
+      if (this.#viewChangePending || !this.hasUpdated) this.#shapingPending = true;
+      this.#viewChangePending = false;
+      const next = await this.dataController.apply([...this.data], this.stateController);
+      if (run !== this.#pipelineRun) return;
+      this.dataState = next;
       this.stateController.dataVersion++;
       this.stateController.pagination.reclamp();
     } finally {
-      if (shaping && !--this.#shapingRuns) this.#baselineStateIfUnset();
+      // Only the latest run settles; a superseded one leaves the state alone.
+      if (run === this.#pipelineRun) {
+        this.#settlePipeline?.();
+        this.#settlePipeline = null;
+        if (this.#shapingPending) {
+          this.#shapingPending = false;
+          this.#baselineStateIfUnset();
+        }
+      }
     }
+  }
+
+  /**
+   * Resolves once the pending update, the pipeline runs it started and the
+   * render of their result have settled. Events that report the new view
+   * (`sorted`, `filtered`, `pageChanged`, `quickFilterChanged`) await this,
+   * so with an async pipeline hook they fire after the rows changed.
+   */
+  protected async pipelineSettled(): Promise<void> {
+    await this.updateComplete;
+    let settled: Promise<void>;
+    do {
+      settled = this.#pipelineSettled;
+      await settled;
+      await this.updateComplete;
+    } while (settled !== this.#pipelineSettled);
   }
 
   /** Apply the expressions assigned through the setters, now that columns settled. */
@@ -1844,7 +1889,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     // willUpdate via decorator wrapping — reading `pageItems` earlier would
     // see a stale (empty) `dataState`.
     // This update's watchers consumed every change requested before it; a
-    // pipeline still running is counted in #shapingRuns.
+    // pipeline still running is tracked by #shapingPending.
     this.#viewChangePending = false;
     this.setAttribute('role', this.stateController.tree.enabled ? 'treegrid' : 'grid');
     const pinned = this.stateController.rowPin.pinnedRows;
@@ -2017,7 +2062,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * once the first view settles (its reclamp may still move the page).
    */
   #baselineStateIfUnset(): void {
-    if (this.#lastStateJson === null && this.#stateChangedListeners.size && !this.#shapingRuns) {
+    if (this.#lastStateJson === null && this.#stateChangedListeners.size && !this.#shapingPending) {
       this.#lastStateJson = JSON.stringify(this.getState());
     }
   }
@@ -2509,7 +2554,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
     this.quickFilter = next;
     this.stateController.pagination.page = 0;
-    await this.updateComplete;
+    await this.pipelineSettled();
     this.emitEvent('quickFilterChanged', { detail: { value: this.quickFilter } });
     return true;
   }

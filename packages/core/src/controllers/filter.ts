@@ -131,7 +131,8 @@ export class FilterController<T extends object> implements ReactiveController {
     this.reset(key);
     this.#filter([]);
 
-    await this.host.updateComplete;
+    // @ts-expect-error - protected member access
+    await this.host.pipelineSettled();
     this.#announce(key, 'cleared');
     this.#emitFilteredEvent({ key, state: this.get(key)?.all ?? [] });
   }
@@ -154,7 +155,8 @@ export class FilterController<T extends object> implements ReactiveController {
 
     this.#filter([]);
 
-    await this.host.updateComplete;
+    // @ts-expect-error - protected member access
+    await this.host.pipelineSettled();
     this.#announce(expression.key, 'cleared');
     this.#emitFilteredEvent({ key: expression.key, state: state.all });
     return true;
@@ -178,7 +180,8 @@ export class FilterController<T extends object> implements ReactiveController {
 
     this.#filter(Object.assign(target, expression));
 
-    await this.host.updateComplete;
+    // @ts-expect-error - protected member access
+    await this.host.pipelineSettled();
     // Announce only on `add`: `modify` fires per keystroke while typing a
     // filter value and would flood the live region.
     if (type === 'add') this.#announce(target.key, 'applied');

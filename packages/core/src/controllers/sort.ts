@@ -117,7 +117,8 @@ export class SortController<T extends object> implements ReactiveController {
 
     this._sort(expression);
 
-    await this.host.updateComplete;
+    // @ts-expect-error - protected member access
+    await this.host.pipelineSettled();
     // Wait for body row updates so the new data is committed to each row
     // element before measuring the "Last" rect — otherwise the captured-
     // before and measured-after rects match and the animation no-ops.

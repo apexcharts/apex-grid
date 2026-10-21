@@ -145,7 +145,8 @@ export class PaginationController<T extends object> implements ReactiveControlle
 
     this.page = next;
     this.host.requestUpdate(PIPELINE);
-    await this.host.updateComplete;
+    // @ts-expect-error - protected member access
+    await this.host.pipelineSettled();
     this.#emitChanged();
     return true;
   }
@@ -167,7 +168,8 @@ export class PaginationController<T extends object> implements ReactiveControlle
     this.pageSize = next;
     this.page = 0;
     this.host.requestUpdate(PIPELINE);
-    await this.host.updateComplete;
+    // @ts-expect-error - protected member access
+    await this.host.pipelineSettled();
     this.#emitChanged();
     return true;
   }
