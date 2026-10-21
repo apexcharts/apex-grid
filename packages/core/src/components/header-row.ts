@@ -124,11 +124,6 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
   }
 
   /**
-   * Header cell for the built-in selection (checkbox) column. Renders a
-   * "select all on this page" checkbox in multi-select mode; nothing in
-   * single-select mode (selecting all rows isn't meaningful there).
-   */
-  /**
    * Corner spacer aligning the header with the body's leading row-number gutter
    * (formula coordinate hints). Shows a small "#" glyph.
    */
@@ -146,6 +141,13 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
     return html`<div part="reorder-handle-header" data-pinned="start" aria-hidden="true"></div>`;
   }
 
+  /**
+   * Header cell for the built-in selection (checkbox) column. In multi-select
+   * mode it renders a "select all" checkbox that selects every row in the
+   * current filtered view (all pages, collapsed group leaves included), not
+   * just the visible page; in single-select mode only an empty spacer, since
+   * selecting all rows isn't meaningful there.
+   */
   protected renderSelectionHeader() {
     const selection = this.state?.selection;
     if (!selection?.showCheckboxColumn) return nothing;
