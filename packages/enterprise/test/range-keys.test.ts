@@ -657,17 +657,14 @@ describe('range selection keys and pointer', () => {
       adds += 1;
       return add.call(this, value);
     };
-    let elapsed: number;
     try {
-      const start = performance.now();
       grid.selectRange({ row: 0, column: 'c0' }, { row: 99_998, column: 'c19' });
-      elapsed = performance.now() - start;
     } finally {
       Set.prototype.add = add;
     }
+    // The keyed scan made one Set.add per cell (2M). The count is the guard: a
+    // wall-clock budget failed on shared CI runners at many times local speed.
     expect(adds, 'Set.add calls in one commit').to.be.below(1000);
-    // Generous: the scan itself takes a few tens of ms; the keyed one took 500+.
-    expect(elapsed, 'one commit over 2M cells (ms)').to.be.below(300);
     const stats = grid.getSelectionStats();
     expect(stats.count).to.equal(99_999 * 20);
   });
