@@ -155,7 +155,8 @@ describe('AI Toolkit — schema (toJSONSchema) + sanitizePatch', () => {
       },
       schema
     );
-    expect(patch.filter).to.be.empty;
+    // Every entry was refused, so the slice is left out rather than sent as a clear.
+    expect(patch.filter).to.be.undefined;
     expect(warnings.some((w) => w.includes('operand "not-an-operand"'))).to.be.true;
     expect(warnings.some((w) => w.includes('"note" is not filterable'))).to.be.true;
   });
@@ -208,5 +209,116 @@ describe('AI Toolkit — schema (toJSONSchema) + sanitizePatch', () => {
     );
     expect(patch).to.not.have.property('rowOrder');
     expect(warnings.some((w) => w.includes('rowOrder'))).to.be.true;
+  });
+
+  // --- trust boundary: refusals never clear the view ---------------------
+
+  type Blob = Record<string, unknown>;
+
+  const enterpriseOf = (patch: { modules?: Blob }) => patch.modules?.enterprise as Blob | undefined;
+
+  it('leaves a sort untouched when "sort by" names a non-sortable column', async () => {
+    const grid = await mount();
+    grid.setState({ sort: [{ key: 'amount', direction: 'descending' }] });
+    await grid.updateComplete;
+
+    const result = await grid.runPrompt('sort by note');
+    await grid.updateComplete;
+    expect(grid.getState().sort.map((s) => s.key)).to.deep.equal(['amount']);
+    expect(result.mode).to.equal('control');
+    if (result.mode !== 'control') return;
+    expect(result.applied).to.not.include('sort');
+    expect(result.skipped).to.include('sort');
+  });
+
+  it('omits every slice whose entries were all refused, with a warning each', async () => {
+    const schema = (await mount()).getSchema();
+    const { patch, warnings } = sanitizePatch(
+      {
+        sort: [{ key: 'note', direction: 'ascending' }],
+        filter: [{ key: 'ghost', operand: 'equals', searchTerm: 1 }],
+        columns: [{ key: 'ghost', hidden: true }],
+        selection: [{ index: -1 }] as never,
+        modules: {
+          enterprise: {
+            groupBy: ['ghost'],
+            pivotOn: ['ghost'],
+            pivotRows: ['ghost'],
+            aggregations: { region: ['sum'] },
+            pivotValues: { amount: ['bogus'] },
+          },
+        },
+      },
+      schema
+    );
+    expect(patch).to.deep.equal({});
+    for (const slice of [
+      'sort',
+      'filter',
+      'columns',
+      'groupBy',
+      'pivotOn',
+      'pivotRows',
+      'aggregations',
+      'pivotValues',
+    ]) {
+      expect(warnings, slice).to.include(`${slice}: no valid entries, left unchanged`);
+    }
+  });
+
+  it('keeps an all-refused grouping on the grid instead of clearing it', async () => {
+    const grid = await mount();
+    grid.setState({ modules: { enterprise: { groupBy: ['region'] } } });
+    await grid.updateComplete;
+    const { patch } = sanitizePatch(
+      { modules: { enterprise: { groupBy: ['ghost'] } } },
+      grid.getSchema()
+    );
+    const result = grid.setState(patch);
+    await grid.updateComplete;
+    expect(grid.groupBy).to.deep.equal(['region']);
+    expect(result.applied).to.not.include('modules');
+  });
+
+  it('passes an explicitly empty slice through as the deliberate clear', async () => {
+    const schema = (await mount()).getSchema();
+    const { patch, warnings } = sanitizePatch(
+      {
+        sort: [],
+        filter: [],
+        modules: {
+          enterprise: {
+            groupBy: [],
+            pivotOn: '',
+            pivotRows: [],
+            aggregations: {},
+            pivotValues: {},
+          },
+        },
+      },
+      schema
+    );
+    expect(patch.sort).to.deep.equal([]);
+    expect(patch.filter).to.deep.equal([]);
+    expect(enterpriseOf(patch)).to.deep.equal({
+      groupBy: [],
+      pivotOn: '',
+      pivotRows: [],
+      aggregations: {},
+      pivotValues: {},
+    });
+    expect(warnings).to.be.empty;
+  });
+
+  it('treats a known column with no functions as removing its aggregation', async () => {
+    const schema = (await mount()).getSchema();
+    for (const field of ['aggregations', 'pivotValues']) {
+      const { patch, warnings } = sanitizePatch(
+        { modules: { enterprise: { [field]: { amount: [] } } } },
+        schema
+      );
+      expect(enterpriseOf(patch)).to.deep.equal({ [field]: {} });
+      expect(warnings).to.be.empty;
+    }
   });
 });
