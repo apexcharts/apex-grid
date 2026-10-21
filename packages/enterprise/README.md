@@ -167,6 +167,9 @@ currency format (a count is always a plain number). Where no row matches an
 intersection, `avg`, `min` and `max` are blank while `count` and `sum` show 0,
 so totals still add up across the row. A pivot chart plots a blank cell as 0.
 
+Value columns are ordered by value: numbers and dates in order, text with
+numeric collation (`item2` before `item10`), blanks last.
+
 Columns are not virtualized, so `pivotOptions.maxValueColumns` (default `200`)
 caps the generated value columns. Whole combinations are kept in sorted order;
 when some are left out the grid announces it and logs one console warning.

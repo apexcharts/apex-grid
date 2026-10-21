@@ -128,6 +128,29 @@ function childKey(parentKey: string, value: unknown): string {
   return `${parentKey}/${escaped(value, /[\\/]/g)}`;
 }
 
+let collator: Intl.Collator | undefined;
+
+/**
+ * Column order: numbers and Dates by value, text with numeric collation, blanks
+ * last. Values the collation ranks equal ('1' and '01') but whose identities
+ * differ are ordered by identity, so the order is total and the columns of one
+ * outer value stay together under its spanning header.
+ */
+function compareDimension(a: unknown, b: unknown): number {
+  const x = stringify(a);
+  const y = stringify(b);
+  if (x === y) return 0;
+  if (x === BLANK || y === BLANK) return x === BLANK ? 1 : -1;
+  const p = a instanceof Date ? a.getTime() : a;
+  const q = b instanceof Date ? b.getTime() : b;
+  collator ??= new Intl.Collator(undefined, { numeric: true });
+  const order =
+    typeof p === 'number' && typeof q === 'number' && !Number.isNaN(p - q)
+      ? p - q
+      : collator.compare(x, y);
+  return order || (x < y ? -1 : 1);
+}
+
 /**
  * A currency measure's cell: blank for an empty intersection (the currency
  * renderer would show null as 0), the column's currency format otherwise.
@@ -252,8 +275,8 @@ export class PivotController<T extends object>
   /**
    * Build the pivot column set from `data`: one leading column per row-dimension
    * field, then one column per (column-dimension combination that occurs in the
-   * data × measure × fn), combinations sorted field by field by their text and
-   * capped by {@link PivotOptions.maxValueColumns}.
+   * data × measure × fn), combinations sorted field by field (see
+   * {@link compareDimension}) and capped by {@link PivotOptions.maxValueColumns}.
    * A single measure over a single `on` field stays flat (the value is the
    * header); otherwise columns group under a spanning header. Stores the specs
    * and column groups for {@link processRows} / {@link computeColumnGroups}.
@@ -284,9 +307,8 @@ export class PivotController<T extends object>
     }
     const sorted = [...observed].sort(([, a], [, b]) => {
       for (let i = 0; i < a.length; i++) {
-        const x = stringify(a[i]);
-        const y = stringify(b[i]);
-        if (x !== y) return x < y ? -1 : 1;
+        const order = compareDimension(a[i], b[i]);
+        if (order) return order;
       }
       return 0;
     });

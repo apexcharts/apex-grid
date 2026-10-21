@@ -82,6 +82,59 @@ describe('pivot columns (B38)', () => {
     });
   });
 
+  describe('ent-pivot-3: column order by value', () => {
+    it('orders numeric column values numerically', async () => {
+      const data = Array.from({ length: 12 }, (_, i) => ({ r: 'x', month: 12 - i, v: 1 }));
+      const grid = await mount({ data, on: 'month', rows: ['r'], values: { v: ['sum'] } });
+      expect(valueColumns(grid).map((c) => c.headerText)).to.eql(
+        Array.from({ length: 12 }, (_, i) => String(i + 1))
+      );
+    });
+
+    it('orders Dates by time, text with numeric collation, blanks last', async () => {
+      const days = [new Date(2026, 0, 9), new Date(2026, 0, 2), new Date(2026, 0, 5)];
+      const dates = await mount({
+        data: days.map((day) => ({ r: 'x', day, v: 1 })),
+        on: 'day',
+        rows: ['r'],
+        values: { v: ['sum'] },
+      });
+      expect(valueColumns(dates).map((c) => c.headerText)).to.eql(
+        [days[1], days[2], days[0]].map(String)
+      );
+
+      const text = await mount({
+        data: ['item10', null, 'item2', 'Beta', 'alpha'].map((k) => ({ r: 'x', k, v: 1 })),
+        on: 'k',
+        rows: ['r'],
+        values: { v: ['sum'] },
+      });
+      expect(valueColumns(text).map((c) => c.headerText)).to.eql([
+        'alpha',
+        'Beta',
+        'item2',
+        'item10',
+        '(blank)',
+      ]);
+    });
+
+    it('keeps values the collation ranks equal under one spanning header each', async () => {
+      const grid = await mount({
+        data: [
+          { code: '1', sub: 'a', r: 'x', v: 1 },
+          { code: '01', sub: 'b', r: 'x', v: 2 },
+          { code: '1', sub: 'c', r: 'x', v: 3 },
+        ],
+        on: ['code', 'sub'],
+        rows: ['r'],
+        values: { v: ['sum'] },
+      });
+      const groups = valueColumns(grid).map((c) => c.group);
+      expect(groups).to.eql(['pv::01', 'pv::1', 'pv::1']);
+      expect(grid.getPivotColumnGroups().map((g) => g.id)).to.eql(['pv::01', 'pv::1']);
+    });
+  });
+
   describe('ent-pivot-4: one blank and one Date bucket in tree mode', () => {
     it('folds null, empty and missing into one blank node', async () => {
       const grid = await mount({
@@ -345,6 +398,8 @@ describe('pivot columns (B38)', () => {
           values: { q: ['sum'] },
         });
         expect(valueColumns(grid).length).to.equal(200);
+        // The first 200 in sorted order.
+        expect(valueColumns(grid)[199].headerText).to.equal('199');
         expect(spy.warnings.length).to.equal(1);
         expect(String((spy.warnings[0] as unknown[])[0])).to.contain('maxValueColumns');
       } finally {
