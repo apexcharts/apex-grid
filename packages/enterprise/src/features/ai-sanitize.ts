@@ -1,5 +1,12 @@
-import type { GridSchema, GridState } from 'apex-grid';
-import { aggregatableColumns, groupableKeys, pivotableKeys, type StatePatch } from './ai-schema.js';
+import type { ColumnLayoutState, GridSchema, GridState, RowRef } from 'apex-grid';
+import {
+  aggFuncsFor,
+  aggregatableColumns,
+  ENTERPRISE_PATCH_FIELDS,
+  groupableKeys,
+  pivotableKeys,
+  type StatePatch,
+} from './ai-schema.js';
 
 /** Slices an AI patch may carry; anything else is dropped with a warning. */
 const PATCH_SLICES = new Set<string>([
@@ -10,6 +17,13 @@ const PATCH_SLICES = new Set<string>([
   'selection',
   'pagination',
   'modules',
+]);
+
+/** The typed fields a column-layout entry may carry, each with its check. */
+const COLUMN_FIELDS = new Map<string, (value: unknown) => boolean>([
+  ['hidden', (value) => typeof value === 'boolean'],
+  ['pinned', (value) => value === 'start' || value === 'end' || value === null],
+  ['width', (value) => typeof value === 'string'],
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -32,6 +46,43 @@ function keptOrUnchanged<T>(
   return undefined;
 }
 
+/** `entry` without a `caseSensitive` that is not a boolean, with a warning. */
+function withValidCase<E extends { key: string; caseSensitive?: boolean }>(
+  entry: E,
+  slice: string,
+  warnings: string[]
+): E {
+  if (entry.caseSensitive === undefined || typeof entry.caseSensitive === 'boolean') return entry;
+  warnings.push(`${slice}: caseSensitive on "${entry.key}" must be a boolean, dropped`);
+  const copy = { ...entry };
+  delete copy.caseSensitive;
+  return copy;
+}
+
+/** A column-layout entry rebuilt from its typed fields, with a warning per dropped field. */
+function columnEntry(entry: Record<string, unknown>, warnings: string[]): ColumnLayoutState {
+  const clean: Record<string, unknown> = { key: entry.key };
+  for (const [field, value] of Object.entries(entry)) {
+    if (field === 'key' || value === undefined) continue;
+    const valid = COLUMN_FIELDS.get(field);
+    if (valid?.(value)) clean[field] = value;
+    else {
+      const why = valid ? 'has an invalid value' : 'is not a layout field';
+      warnings.push(`columns: "${field}" on "${String(entry.key)}" ${why}, dropped`);
+    }
+  }
+  return clean as unknown as ColumnLayoutState;
+}
+
+/** A selection item as `{ id }` or `{ index }`, or undefined when it is neither. */
+function rowRef(item: unknown): RowRef | undefined {
+  if (!isRecord(item)) return undefined;
+  const { id, index } = item;
+  if (typeof id === 'string' || typeof id === 'number') return { id };
+  if (typeof index === 'number' && Number.isInteger(index) && index >= 0) return { index };
+  return undefined;
+}
+
 /** Validate an aggregation-config blob (`{ key: fn[] }`) against the schema. */
 function sanitizeAggregationConfig(
   value: unknown,
@@ -44,9 +95,8 @@ function sanitizeAggregationConfig(
     return undefined;
   }
   const allowed = new Map(
-    aggregatableColumns(schema).map((column) => [column.key, new Set(column.aggFuncs ?? [])])
+    aggregatableColumns(schema).map((column) => [column.key, new Set(aggFuncsFor(column, schema))])
   );
-  const globalFuncs = new Set(schema.capabilities.aggregation?.funcs ?? []);
   const out: Record<string, string[]> = {};
   // A known key sent with no functions asks for that column to have none:
   // a deliberate removal, so it counts as an entry even though it adds none.
@@ -66,7 +116,7 @@ function sanitizeAggregationConfig(
       continue;
     }
     const kept = fns.filter((fn): fn is string => {
-      const ok = typeof fn === 'string' && (validFns.has(fn) || globalFuncs.has(fn));
+      const ok = typeof fn === 'string' && validFns.has(fn);
       if (!ok) warnings.push(`${field}: function "${String(fn)}" invalid for "${key}", dropped`);
       return ok;
     });
@@ -155,10 +205,14 @@ function sanitizeEnterpriseModule(
     clean[field] = sanitizeAggregationConfig(blob[field], schema, field, warnings);
   }
 
-  // Group-collapse overrides (dynamic keys) and ranges (view coordinates) can't be
-  // validated against the schema; pass them through.
-  if (blob.groupExpand !== undefined) clean.groupExpand = blob.groupExpand;
-  if (blob.ranges !== undefined) clean.ranges = blob.ranges;
+  // Group-collapse overrides, ranges and anything else are outside the advertised
+  // schema (enterpriseModuleSchema emits the same field list).
+  const fields = new Set<string>(ENTERPRISE_PATCH_FIELDS);
+  for (const key of Object.keys(blob)) {
+    if (!fields.has(key)) {
+      warnings.push(`modules.enterprise.${key}: not part of the AI patch surface, dropped`);
+    }
+  }
 
   for (const key of Object.keys(clean)) if (clean[key] === undefined) delete clean[key];
   // Nothing survived a non-empty blob: leave the module out rather than report it applied.
@@ -173,10 +227,12 @@ function sanitizeEnterpriseModule(
  * patch is a faithful, predictable record and the UI can report exactly what was
  * refused. Drops, with a warning each: sort on unknown / non-sortable columns or
  * invalid directions (and extra entries on a single-sort grid); filters on unknown
- * columns or with operands invalid for the column; column-layout entries on unknown
- * keys; selection / pagination when the grid disables them; out-of-vocabulary
- * grouping / pivot / aggregation fields; and any slice outside the documented
- * {@link StatePatch} surface. A slice whose every entry was refused is
+ * columns or with operands invalid for the column; a non-boolean `caseSensitive`;
+ * column-layout entries on unknown keys and layout fields of the wrong type;
+ * selection items that are not `{ id }` or `{ index }`; selection / pagination
+ * when the grid disables them; out-of-vocabulary grouping / pivot / aggregation
+ * values and any other `modules.enterprise` field; and any slice outside the
+ * documented {@link StatePatch} surface. A slice whose every entry was refused is
  * left out (and warned about), so a refused request never clears the view; an
  * explicitly empty slice still clears it. Used by the view-state tools before
  * `applyState`.
@@ -195,7 +251,7 @@ export function sanitizePatch(
       warnings.push('sort: expected an array, ignored');
     } else {
       const directions = new Set<string>(caps.sort.directions);
-      let kept = patch.sort.filter((entry) => {
+      const valid = patch.sort.filter((entry) => {
         const column = columns.get(entry?.key);
         if (!column) {
           warnings.push(`sort: unknown column "${entry?.key}", dropped`);
@@ -211,6 +267,7 @@ export function sanitizePatch(
         }
         return true;
       });
+      let kept = valid.map((entry) => withValidCase(entry, 'sort', warnings));
       if (!caps.sort.multi && kept.length > 1) {
         warnings.push(`sort: grid is single-sort, kept only "${kept[0].key}"`);
         kept = kept.slice(0, 1);
@@ -239,7 +296,8 @@ export function sanitizePatch(
         }
         return true;
       });
-      out.filter = keptOrUnchanged('filter', patch.filter, valid, warnings);
+      const kept = valid.map((entry) => withValidCase(entry, 'filter', warnings));
+      out.filter = keptOrUnchanged('filter', patch.filter, kept, warnings);
     }
   }
 
@@ -252,11 +310,12 @@ export function sanitizePatch(
     if (!Array.isArray(patch.columns)) {
       warnings.push('columns: expected an array, ignored');
     } else {
-      const kept = patch.columns.filter((entry) => {
-        if (columns.has(entry?.key)) return true;
-        warnings.push(`columns: unknown column "${entry?.key}", dropped`);
-        return false;
-      });
+      const kept: ColumnLayoutState[] = [];
+      for (const entry of patch.columns) {
+        if (columns.has(entry?.key))
+          kept.push(columnEntry(entry as unknown as Record<string, unknown>, warnings));
+        else warnings.push(`columns: unknown column "${entry?.key}", dropped`);
+      }
       out.columns = keptOrUnchanged('columns', patch.columns, kept, warnings);
     }
   }
@@ -265,7 +324,15 @@ export function sanitizePatch(
     if (caps.selection === false) warnings.push('selection: grid selection is disabled, dropped');
     else if (!Array.isArray(patch.selection))
       warnings.push('selection: expected an array, ignored');
-    else out.selection = patch.selection;
+    else {
+      const kept: RowRef[] = [];
+      for (const item of patch.selection as unknown[]) {
+        const ref = rowRef(item);
+        if (ref) kept.push(ref);
+        else warnings.push('selection: expected { id } or { index }, dropped');
+      }
+      out.selection = keptOrUnchanged('selection', patch.selection, kept, warnings);
+    }
   }
 
   if (patch.pagination !== undefined) {

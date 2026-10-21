@@ -70,19 +70,29 @@ export function aggregatableColumns(schema: GridSchema): ColumnSchema[] {
   return schema.columns.filter((column) => column.aggregatable);
 }
 
+/** Aggregation functions a column accepts: its own `aggFuncs`, else the grid-wide list. */
+export function aggFuncsFor(column: ColumnSchema, schema: GridSchema): string[] {
+  return column.aggFuncs ?? schema.capabilities.aggregation?.funcs ?? [];
+}
+
+/** The fields an AI patch may set inside `modules.enterprise`; anything else is refused. */
+export const ENTERPRISE_PATCH_FIELDS = [
+  'groupBy',
+  'pivotOn',
+  'pivotRows',
+  'aggregations',
+  'pivotValues',
+] as const;
+
 // --- JSON Schema emitter ---------------------------------------------------
 
 /** `{ key: ['sum', ...] }` schema: aggregatable column keys to their valid functions. */
 function aggregationConfigSchema(schema: GridSchema): JSONSchema | null {
   const columns = aggregatableColumns(schema);
   if (columns.length === 0) return null;
-  const fallback = schema.capabilities.aggregation?.funcs ?? [];
   const properties: Record<string, JSONSchema> = {};
   for (const column of columns) {
-    properties[column.key] = {
-      type: 'array',
-      items: { enum: [...(column.aggFuncs ?? fallback)] },
-    };
+    properties[column.key] = { type: 'array', items: { enum: [...aggFuncsFor(column, schema)] } };
   }
   return { type: 'object', additionalProperties: false, properties };
 }
@@ -90,7 +100,8 @@ function aggregationConfigSchema(schema: GridSchema): JSONSchema | null {
 /** The `modules.enterprise` sub-schema (grouping / pivot / aggregation), or null. */
 function enterpriseModuleSchema(schema: GridSchema): JSONSchema | null {
   const caps = schema.capabilities;
-  const properties: Record<string, JSONSchema> = {};
+  // Keyed by the shared field list, so the schema cannot offer a field the guard refuses.
+  const properties: { [field in (typeof ENTERPRISE_PATCH_FIELDS)[number]]?: JSONSchema } = {};
 
   if (caps.grouping) {
     const groupable = groupableKeys(schema);
@@ -119,12 +130,16 @@ function enterpriseModuleSchema(schema: GridSchema): JSONSchema | null {
     const aggSchema = aggregationConfigSchema(schema);
     if (aggSchema) {
       properties.aggregations = aggSchema;
-      if (caps.pivot) properties.pivotValues = aggregationConfigSchema(schema) ?? aggSchema;
+      if (caps.pivot) properties.pivotValues = aggSchema;
     }
   }
 
   if (Object.keys(properties).length === 0) return null;
-  return { type: 'object', additionalProperties: false, properties };
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: properties as Record<string, JSONSchema>,
+  };
 }
 
 /**
