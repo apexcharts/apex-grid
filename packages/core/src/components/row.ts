@@ -414,9 +414,15 @@ export default class ApexGridRow<T extends object> extends LitElement {
       return true;
     };
     // The native `change` carries no modifier keys (they ride on the click
-    // above), so it covers plain clicks and Space on a focused checkbox.
-    const handleChange = () => {
-      void selection.toggleRow(this.data);
+    // above), so it covers plain clicks and Space on a focused checkbox. The
+    // click has already flipped `checked`; a `rowSelecting` listener that
+    // cancels leaves the row as it was without a re-render, so write the
+    // real state back once the selection has decided.
+    const handleChange = (event: Event) => {
+      const input = event.target as HTMLInputElement;
+      void selection.toggleRow(this.data).then(() => {
+        input.checked = selection.isSelected(this.data);
+      });
     };
     const handleClick = (event: MouseEvent) => {
       // Keeps checkbox clicks from bubbling to the cell's forwarder below and

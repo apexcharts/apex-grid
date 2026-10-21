@@ -1,6 +1,7 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame, waitUntil } from '@open-wc/testing';
 import { resetMouse, sendKeys, sendMouse } from '@web/test-runner-commands';
 import { ApexGrid } from '../src/components/grid.js';
+import ApexGridHeaderRow from '../src/components/header-row.js';
 import type { ColumnConfiguration } from '../src/internal/types.js';
 
 interface Row {
@@ -136,5 +137,64 @@ describe('Row selection cell: modifier clicks', () => {
     await clickCellPadding(grid, 0);
     await clickCellPadding(grid, 3, 'Shift');
     expect(grid.selectedRows).to.deep.equal([data[3]]);
+  });
+});
+
+describe('Row selection cell: cancelled rowSelecting', () => {
+  afterEach(async () => {
+    await resetMouse();
+    fixtureCleanup();
+  });
+
+  it('clicking the row checkbox leaves it unchecked', async () => {
+    const grid = await mount();
+    grid.addEventListener('rowSelecting', (event) => event.preventDefault());
+    await clickBox(grid, 0);
+    await nextFrame();
+    expect(grid.selectedRows.length, 'nothing selected').to.equal(0);
+    expect(rowBox(grid, 0).checked, 'the box shows the real state').to.be.false;
+  });
+
+  it('clicking the selection cell padding leaves the box unchecked', async () => {
+    const grid = await mount();
+    grid.addEventListener('rowSelecting', (event) => event.preventDefault());
+    await clickCellPadding(grid, 1);
+    await nextFrame();
+    expect(grid.selectedRows.length).to.equal(0);
+    expect(rowBox(grid, 1).checked).to.be.false;
+  });
+
+  it('a refused deselect leaves the box checked', async () => {
+    const grid = await mount();
+    await clickBox(grid, 0);
+    grid.addEventListener('rowSelecting', (event) => event.preventDefault());
+    await clickBox(grid, 0);
+    await nextFrame();
+    expect(grid.selectedRows).to.deep.equal([data[0]]);
+    expect(rowBox(grid, 0).checked).to.be.true;
+  });
+
+  it('the header select-all box keeps its unchecked and mixed state', async () => {
+    const grid = await mount();
+    await clickBox(grid, 0);
+    grid.addEventListener('rowSelecting', (event) => event.preventDefault());
+    const headerRow = grid.renderRoot.querySelector<ApexGridHeaderRow<Row>>(
+      ApexGridHeaderRow.tagName
+    )!;
+    const box = headerRow.renderRoot.querySelector<HTMLInputElement>(
+      '[part="selection-header"] input'
+    )!;
+    expect(box.indeterminate, 'mixed before the click').to.be.true;
+    const rect = box.getBoundingClientRect();
+    await sendMouse({
+      type: 'click',
+      position: [Math.round(rect.left + rect.width / 2), Math.round(rect.top + rect.height / 2)],
+    });
+    await grid.updateComplete;
+    await headerRow.updateComplete;
+    await nextFrame();
+    expect(grid.selectedRows.length).to.equal(1);
+    expect(box.checked, 'select all was refused').to.be.false;
+    expect(box.indeterminate, 'still mixed').to.be.true;
   });
 });
