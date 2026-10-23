@@ -4,6 +4,48 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Changed
+- **The grid role and its row counts moved from the `<apex-grid>` host to an
+  inner element** exposed as part `table`: `role` (`grid` or `treegrid`),
+  `aria-rowcount`, `aria-colcount`, `aria-multiselectable` and the accessible
+  name. It holds only the header rows and the body, so the toolbar, paginator,
+  filter panel and live region are no longer read as table content, and every
+  default grid passes the axe `aria-required-children` rule. Code or tests
+  that read these from the host should query
+  `grid.shadowRoot.querySelector('[part~="table"]')`. The layout is unchanged.
+- An `aria-label` or `aria-labelledby` on the host still names the grid, and
+  `aria-describedby` becomes its description. References are resolved when the
+  grid renders: if the referenced element is added later, set the attribute
+  again.
+- The grid uses the `treegrid` role whenever rows carry levels or expand: tree
+  data, master-detail with a detail template, and the enterprise row grouping,
+  expandable pivot and server-side grouping.
+- `pageItems` keeps the same array between updates while nothing that shapes
+  it changes. Apps that compared it by identity now see a new array only when
+  the body rows change.
+- The column header row is no longer a Tab stop.
+
+### Fixed
+- `aria-rowcount` no longer counts the floating filter panel as a row, and a
+  pinned top row no longer shares its `aria-rowindex` with the first body row.
+- The master-detail panel sits in a full-width gridcell, and `aria-expanded` is
+  set only on rows and toggle buttons that can expand. Turning expansion off or
+  removing the detail template no longer leaves it on rows.
+- Announcing the same message twice in a row (two identical `grid.announce()`
+  calls, for example) is read out again by screen readers.
+- Invalid cells no longer set an `aria-errormessage` that pointed at an
+  unreachable id. The inline alert message is unchanged.
+
+### Performance
+- Scrolling no longer re-renders the rows that stay in view; only the rows that
+  scroll in render.
+- A grid with a pinned row or a page slice no longer rescans the whole view on
+  every key press or click.
+- Grids without feature modules skip the per-cell decoration step, and grids
+  with modules no longer check every module on each row and cell render.
+
 ## [3.6.0] - 2026-10-21
 
 A quality release built from a full code-quality audit, plus `--ag-*` tokens

@@ -4,6 +4,30 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Changed
+- **A bulk write fires one `apex-view-changed`** (`applyEdits`, a range paste,
+  a fill drag, or undo or redo of a batch) instead of one per cell, so a docked
+  view chart and the status bar refresh once. After a single cell edit the
+  event fires when the grid finishes its update (a microtask later) rather
+  than inside the `cellValueChanged` dispatch.
+- Row grouping, an expandable pivot and server-side grouping give the grid the
+  `treegrid` role (see the apex-grid changelog for the role moving to the
+  inner `table` part). Rows of a flat server-side request no longer carry
+  `aria-level="1"`.
+
+### Fixed
+- A view-bound chart redraws after a page change with the same page size,
+  after hiding, showing or reordering columns, after an aggregation change
+  while grouped, and after a pivot value change while pivoted.
+  `apex-view-changed` now fires for those changes.
+
+### Performance
+- Scrolling with a large range selected no longer copies the selected values
+  on every scroll event, and the floating Chart button and charted range
+  outlines reposition once per animation frame.
+
 ## [0.8.0] - 2026-10-21
 
 A quality release built from a full code-quality audit. It needs apex-grid
