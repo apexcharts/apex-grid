@@ -188,6 +188,59 @@ describe('apex-view-changed signal', () => {
     });
   });
 
+  describe('the signature follows what a view chart plots (ent-grid-sync-4)', () => {
+    it('a page change with the same page size signals once', async () => {
+      const grid = await mount(makeData(10), { pagination: { enabled: true, pageSize: 3 } });
+      const signals = countSignals(grid);
+      grid.page = 1;
+      await settle(grid);
+      expect(signals.count).to.equal(1);
+    });
+
+    it('hiding and showing a column each signal once', async () => {
+      const grid = await mount(makeData(10));
+      const signals = countSignals(grid);
+      grid.columns = grid.columns.map((c) => (c.key === 'q1' ? { ...c, hidden: true } : c));
+      await settle(grid);
+      expect(signals.count, 'hide').to.equal(1);
+      grid.columns = grid.columns.map((c) => (c.key === 'q1' ? { ...c, hidden: false } : c));
+      await settle(grid);
+      expect(signals.count, 'show').to.equal(2);
+    });
+
+    it('reordering the columns signals once', async () => {
+      const grid = await mount(makeData(10));
+      const signals = countSignals(grid);
+      grid.columns = [...grid.columns].reverse();
+      await settle(grid);
+      expect(signals.count).to.equal(1);
+    });
+
+    it('an aggregation change while grouped signals once', async () => {
+      const grid = await mount(makeData(10), {
+        groupBy: ['region'],
+        aggregations: { q1: ['sum'] },
+      });
+      const signals = countSignals(grid);
+      grid.aggregations = { q1: ['avg'] };
+      await settle(grid);
+      expect(signals.count).to.equal(1);
+    });
+
+    it('an unchanged view does not signal', async () => {
+      const grid = await mount(makeData(10), { pagination: { enabled: true, pageSize: 3 } });
+      const signals = countSignals(grid);
+      grid.requestUpdate();
+      await settle(grid);
+      grid.columns = grid.columns.map((c) => ({ ...c }));
+      await settle(grid);
+      // Aggregations are not plotted by a flat view.
+      grid.aggregations = { q1: ['avg'] };
+      await settle(grid);
+      expect(signals.count).to.equal(0);
+    });
+  });
+
   describe('chart affordance on scroll (ent-grid-core-4)', () => {
     it('does not read the range matrix, and runs at most once per frame', async () => {
       const grid = await mount(makeData(5000));

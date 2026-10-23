@@ -1516,12 +1516,14 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
   /**
    * Fire {@link VIEW_CHANGED_EVENT} when the rendered view actually changed
-   * (columns, row count, grouping, pivot, sort, or filter), so `<apex-grid-chart>`
-   * (and future dashboards) can live-redraw. A view-bound chart must track sort and
-   * filter too: sorting keeps the row count identical, and a filter can preserve it,
-   * so the signature folds in a compact sort/filter/quick-filter fingerprint rather
-   * than relying on row count alone. Gated on the signature so it does not fire on
-   * every render.
+   * (visible columns and their order, page, row count, grouping and its
+   * aggregations, pivot, sort, or filter), so `<apex-grid-chart>` (and future
+   * dashboards) can live-redraw. A view-bound chart must track sort and filter
+   * too: sorting keeps the row count identical, and a filter can preserve it,
+   * so the signature folds in a compact sort/filter/quick-filter fingerprint
+   * rather than relying on row count alone. Gated on the signature so it does
+   * not fire on every render, and run once per update, so a bulk write signals
+   * once.
    */
   #viewSignature = '';
   /** Bumped on a `data` array swap or a cell edit, so a value change (invisible to the structural
@@ -1529,15 +1531,18 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   #dataEpoch = 0;
 
   #emitViewChanged(): void {
-    const signature = [
-      this.columns.length,
+    const signature = JSON.stringify([
+      this.#visibleColumns().map((column) => column.key),
+      this.page,
       this.pageItems.length,
-      this.groupBy.join(','),
+      this.groupBy,
+      // Only a grouped view plots the aggregations.
+      this.groupBy.length ? this.aggregations : 0,
       this.pivotOn,
-      this.#pivotActive ? '1' : '0',
+      this.#pivotActive,
       serverQueryKey(this),
       this.#dataEpoch,
-    ].join('|');
+    ]);
     if (signature === this.#viewSignature) return;
     this.#viewSignature = signature;
     this.dispatchEvent(new CustomEvent(VIEW_CHANGED_EVENT, { bubbles: true, composed: true }));
@@ -2055,11 +2060,16 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
 
     // Flat grid: chart the full current view. Visible columns in display order, values read from
     // the (sorted/filtered) pageItems, so every grid operation is reflected on the next redraw.
-    const columns = getDisplayColumns(this.columns).filter((column) => !column.hidden);
+    const columns = this.#visibleColumns();
     const items = this.#pageRecords();
     if (columns.length === 0 || items.length === 0) return { categories: [], series: [] };
     const rows = items.map((record) => columns.map((column) => record[String(column.key)]));
     return buildCategoryModel(columns, rows, definition);
+  }
+
+  /** The visible columns in display order: what a view chart plots. */
+  #visibleColumns(): ColumnConfiguration<T>[] {
+    return getDisplayColumns(this.columns).filter((column) => !column.hidden);
   }
 
   /** The current page's data records, without rows a module synthesized (a total row). */
@@ -2076,7 +2086,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    */
   public getChartFields(): ChartField[] {
     if (this.groupBy.length > 0 || this.#pivotActive) return [];
-    const columns = getDisplayColumns(this.columns).filter((column) => !column.hidden);
+    const columns = this.#visibleColumns();
     const items = this.#pageRecords();
     const rows = items.map((record) => columns.map((column) => record[String(column.key)]));
     const numeric = detectNumericColumns(columns, rows);
