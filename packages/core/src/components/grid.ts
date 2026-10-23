@@ -1654,21 +1654,41 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * enabled (`'local'` mode) this is the active page slice.
    */
   public get pageItems(): ReadonlyArray<T> {
-    // Pinned rows are lifted out of the scrollable body and rendered in their
-    // own sticky bands, so they're excluded here to avoid duplication. The
-    // exclusion happens before pagination so a pinned row never consumes a body
-    // page slot.
-    const rowPin = this.stateController.rowPin;
-    const base = rowPin?.hasPinnedRows
-      ? this.dataState.filter((row) => !rowPin.isPinned(row))
-      : this.dataState;
-    if (!this.stateController.pagination.enabled) return base;
-    if (this.pagination?.mode === 'remote') return base;
-    const { page, pageSize } = this.stateController.pagination;
-    if (!pageSize) return base;
-    const start = page * pageSize;
-    return base.slice(start, start + pageSize);
+    // Read several times per update and per key press: recompute only when an
+    // input changed, so a pinned row or a page slice does not rescan the view
+    // and the virtualizer keeps the same items. The data version covers a
+    // pipeline hook that hands back the same array with new contents.
+    const { rowPin, pagination, dataVersion } = this.stateController;
+    const key = [
+      this.dataState,
+      dataVersion,
+      rowPin.version,
+      rowPin.enabled,
+      pagination.enabled,
+      this.pagination?.mode,
+      pagination.page,
+      pagination.pageSize,
+    ];
+    if (key.some((value, i) => value !== this.#pageKey[i])) {
+      this.#pageKey = key;
+      // Pinned rows are lifted out of the scrollable body and rendered in
+      // their own sticky bands, so they're excluded here to avoid
+      // duplication. The exclusion happens before pagination so a pinned row
+      // never consumes a body page slot.
+      const base = rowPin.hasPinnedRows
+        ? this.dataState.filter((row) => !rowPin.isPinned(row))
+        : this.dataState;
+      const { page, pageSize } = pagination;
+      this.#pageItems =
+        !pagination.enabled || this.pagination?.mode === 'remote' || !pageSize
+          ? base
+          : base.slice(page * pageSize, (page + 1) * pageSize);
+    }
+    return this.#pageItems;
   }
+
+  #pageKey: unknown[] = [];
+  #pageItems: ReadonlyArray<T> = [];
 
   /**
    * The current zero-based page index.

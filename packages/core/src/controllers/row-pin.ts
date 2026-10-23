@@ -38,6 +38,13 @@ export class RowPinController<T extends object> implements ReactiveController {
     return Boolean(this.host.rowPinning?.enabled);
   }
 
+  /**
+   * Bumped whenever either band's contents change, so a view derived from the
+   * pins (the body's {@link ApexGrid.pageItems}) knows when to recompute.
+   * Read only.
+   */
+  public version = 0;
+
   /** Whether any row is currently pinned (none while pinning is disabled). */
   public get hasPinnedRows(): boolean {
     return this.enabled && (this.#top.size > 0 || this.#bottom.size > 0);
@@ -114,6 +121,7 @@ export class RowPinController<T extends object> implements ReactiveController {
     if (!this.#top.size && !this.#bottom.size) return;
     this.#top.clear();
     this.#bottom.clear();
+    this.version++;
     this.host.requestUpdate();
   }
 
@@ -125,6 +133,7 @@ export class RowPinController<T extends object> implements ReactiveController {
   public restore(top: ReadonlyArray<T>, bottom: ReadonlyArray<T>): void {
     this.#top = new Set(top);
     this.#bottom = new Set(bottom);
+    this.version++;
     this.host.requestUpdate();
   }
 
@@ -146,6 +155,7 @@ export class RowPinController<T extends object> implements ReactiveController {
   }
 
   #commit(row: T, position: RowPinPosition | null, message: string): void {
+    this.version++;
     this.host.requestUpdate();
     this.host.announce(message);
     this.host.emitEvent('rowPinned', { detail: { row, position } });
