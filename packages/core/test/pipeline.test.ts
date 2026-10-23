@@ -393,7 +393,9 @@ describe('Data pipeline orchestration', () => {
       expect(events).to.eql(['pageChanged:0', 'quickFilterChanged']);
       await settle(grid);
       const region = grid.renderRoot.querySelector('[part="live-region"]');
-      expect(region?.textContent?.trim()).to.equal(`Page 1 of ${grid.pageCount}`);
+      expect(region?.textContent?.replace('\u200B', '').trim()).to.equal(
+        `Page 1 of ${grid.pageCount}`
+      );
     });
 
     it('stays silent about the page when it is already on the first page', async () => {

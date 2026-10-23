@@ -47,7 +47,6 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
 
   public override connectedCallback() {
     super.connectedCallback();
-    this.setAttribute('tabindex', '0');
     this.setAttribute('role', 'row');
     this.setAttribute('aria-rowindex', '1');
   }

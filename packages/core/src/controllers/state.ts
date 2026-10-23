@@ -78,7 +78,9 @@ export class StateController<T extends object> implements ReactiveController {
       return;
     }
     this.#announceToken = (this.#announceToken + 1) % 2;
-    this.announcement = this.#announceToken ? message : `${message} `;
+    // Escaped on purpose: a literal zero-width space is invisible in review
+    // and an ordinary space would be collapsed out of the accessible text.
+    this.announcement = this.#announceToken ? message : `${message}\u200B`;
     this.host.requestUpdate();
   }
 

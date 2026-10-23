@@ -164,7 +164,9 @@ describe('Cell validation — cell mode', () => {
 
     const cell = TDD.cellEl(0, 'name');
     expect(cell.getAttribute('aria-invalid')).to.equal('true');
-    expect(cell.getAttribute('aria-errormessage')).to.equal('apex-cell-error');
+    // The error node lives in the cell's own shadow root, which an IDREF on the
+    // host cannot reach, so no aria-errormessage is set (it would dangle).
+    expect(cell.hasAttribute('aria-errormessage')).to.be.false;
     expect(cell.hasAttribute('data-invalid')).to.be.true;
 
     const error = TDD.errorNode(0, 'name');

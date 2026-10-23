@@ -65,6 +65,11 @@ describe('Accessibility (WCAG 2.2 AA semantics)', () => {
       expect(fx.headerRow.getAttribute('aria-rowindex')).to.equal('1');
     });
 
+    it('the header row is not a tab stop', () => {
+      expect(fx.headerRow.hasAttribute('tabindex')).to.be.false;
+      expect(fx.headerRow.tabIndex).to.equal(-1);
+    });
+
     it('body rows expose role="row" + aria-rowindex starting after the header row', async () => {
       await fx.waitForUpdate();
       const first = fx.grid.rows[0] as unknown as HTMLElement;
@@ -173,6 +178,17 @@ describe('Accessibility (WCAG 2.2 AA semantics)', () => {
       await aTimeout(0);
       await elementUpdated(fx.grid);
       expect(fx.liveRegion()!.textContent?.trim() ?? '').to.equal('Hello AT');
+    });
+
+    it('announces the same message twice with a different accessible text', async () => {
+      fx.grid.announce('Saved');
+      await fx.waitForUpdate();
+      const first = fx.liveRegion()!.innerText;
+      fx.grid.announce('Saved');
+      await fx.waitForUpdate();
+      // innerText collapses whitespace the way the accessible text does.
+      expect(fx.liveRegion()!.innerText).to.not.equal(first);
+      expect(fx.liveRegion()!.innerText.replace('\u200B', '')).to.equal(first);
     });
 
     it('announces filter apply and clear with the column label', async () => {

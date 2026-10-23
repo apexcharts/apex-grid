@@ -24,10 +24,6 @@ $accent: var(--cell-active-border-color, var(--_ag-brand));
     inset-block-start: var(--apex-row-top-header, 0);
 }
 
-:host(:focus) {
-    outline: none;
-}
-
 [part='filtered'] {
     background: $filtering-header-background;
 }
