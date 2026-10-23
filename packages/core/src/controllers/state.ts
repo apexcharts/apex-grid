@@ -188,6 +188,24 @@ export class StateController<T extends object> implements ReactiveController {
   /** The transformers that can synthesize rows. Empty for the community grid. */
   #synthesizers: ReadonlyArray<RowTransformer<T>> = [];
 
+  /** The controllers each hook guard matched, keyed by the guard. */
+  #hooks = new Map<unknown, unknown[]>();
+
+  /**
+   * The module controllers implementing a hook, in registration order. The
+   * module set is fixed once {@link init} returns (modules are passed to the
+   * constructor only), so each hook's list is resolved on first use and the
+   * per-row and per-cell dispatchers walk it instead of guarding every module.
+   */
+  #withHook<C>(guard: (controller: unknown) => controller is C): C[] {
+    let list = this.#hooks.get(guard);
+    if (!list) {
+      list = [...this.modules.values()].filter(guard);
+      this.#hooks.set(guard, list);
+    }
+    return list as C[];
+  }
+
   /**
    * Look up a feature controller contributed by a {@link GridFeatureModule},
    * by its module id. Returns `undefined` when no such module is registered.
@@ -269,11 +287,9 @@ export class StateController<T extends object> implements ReactiveController {
    * the first non-null result, or `null` when no module owns the row.
    */
   public presentRow(row: T, ctx: RowPresenterContext<T>): PresentedRow | null {
-    for (const controller of this.modules.values()) {
-      if (isRowPresenter<T>(controller)) {
-        const presented = controller.presentRow(row, ctx);
-        if (presented) return presented;
-      }
+    for (const controller of this.#withHook(isRowPresenter<T>)) {
+      const presented = controller.presentRow(row, ctx);
+      if (presented) return presented;
     }
     return null;
   }
@@ -314,11 +330,9 @@ export class StateController<T extends object> implements ReactiveController {
    * expandable parent rows. Returns the first non-null result, or `null`.
    */
   public describeRow(row: T, ctx: RowPresenterContext<T>): RowAria | null {
-    for (const controller of this.modules.values()) {
-      if (isRowAriaProvider<T>(controller)) {
-        const aria = controller.describeRow(row, ctx);
-        if (aria) return aria;
-      }
+    for (const controller of this.#withHook(isRowAriaProvider<T>)) {
+      const aria = controller.describeRow(row, ctx);
+      if (aria) return aria;
     }
     return null;
   }
@@ -329,22 +343,18 @@ export class StateController<T extends object> implements ReactiveController {
    * shows the view position). Only asked while `coordinateHints` is on.
    */
   public rowCoordinate(row: T): string | null | undefined {
-    for (const controller of this.modules.values()) {
-      if (isCoordinateLabeler<T>(controller)) {
-        const label = controller.rowCoordinate(row);
-        if (label !== undefined) return label;
-      }
+    for (const controller of this.#withHook(isCoordinateLabeler<T>)) {
+      const label = controller.rowCoordinate(row);
+      if (label !== undefined) return label;
     }
     return undefined;
   }
 
   /** The coordinate-hint letter a module gives a column; see {@link rowCoordinate}. */
   public columnCoordinate(key: string): string | null | undefined {
-    for (const controller of this.modules.values()) {
-      if (isCoordinateLabeler<T>(controller)) {
-        const label = controller.columnCoordinate(key);
-        if (label !== undefined) return label;
-      }
+    for (const controller of this.#withHook(isCoordinateLabeler<T>)) {
+      const label = controller.columnCoordinate(key);
+      if (label !== undefined) return label;
     }
     return undefined;
   }
@@ -388,12 +398,17 @@ export class StateController<T extends object> implements ReactiveController {
    * for the community grid (no modules).
    */
   public get hasColumnMenu(): boolean {
-    for (const controller of this.modules.values()) {
-      if (isColumnMenuProvider(controller) && controller.providesColumnMenu()) {
-        return true;
-      }
-    }
-    return false;
+    return this.#withHook(isColumnMenuProvider).some((controller) =>
+      controller.providesColumnMenu()
+    );
+  }
+
+  /**
+   * Whether any feature module implements {@link CellDecorator}, so a cell can
+   * skip decoration altogether when none does (the community grid).
+   */
+  public get hasCellDecorators(): boolean {
+    return this.#withHook(isCellDecorator).length > 0;
   }
 
   /**
@@ -404,13 +419,11 @@ export class StateController<T extends object> implements ReactiveController {
    */
   public decorateCell(ctx: CellDecoratorContext<T>): CellDecoration | null {
     let attributes: Record<string, string | null | undefined> | null = null;
-    for (const controller of this.modules.values()) {
-      if (isCellDecorator<T>(controller)) {
-        const decoration = controller.decorateCell(ctx);
-        if (decoration) {
-          attributes ??= {};
-          Object.assign(attributes, decoration.attributes);
-        }
+    for (const controller of this.#withHook(isCellDecorator<T>)) {
+      const decoration = controller.decorateCell(ctx);
+      if (decoration) {
+        attributes ??= {};
+        Object.assign(attributes, decoration.attributes);
       }
     }
     return attributes ? { attributes } : null;
@@ -422,10 +435,8 @@ export class StateController<T extends object> implements ReactiveController {
    * (no modules); the grid only calls this when modules are registered.
    */
   public handleCellInteraction(interaction: CellInteraction<T>): void {
-    for (const controller of this.modules.values()) {
-      if (isCellInteractionHandler<T>(controller)) {
-        controller.handleCellInteraction(interaction);
-      }
+    for (const controller of this.#withHook(isCellInteractionHandler<T>)) {
+      controller.handleCellInteraction(interaction);
     }
   }
 

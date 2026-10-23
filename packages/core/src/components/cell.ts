@@ -411,10 +411,11 @@ export default class ApexGridCell<T extends object> extends LitElement {
   /**
    * Reflects module-contributed decoration attributes (see {@link CellDecorator})
    * onto the cell host, reconciling against the previous update so attributes
-   * that are no longer present are removed. Inert for the community grid:
-   * `state.decorateCell` returns `null` with no modules, so nothing is set.
+   * that are no longer present are removed. Returns at once when no module
+   * decorates cells and nothing is left to clear (the community grid).
    */
   #applyDecoration(): void {
+    if (!this.state?.hasCellDecorators && !this.#decoratedKeys.length) return;
     const decoration =
       this.state && this.row
         ? this.state.decorateCell({
