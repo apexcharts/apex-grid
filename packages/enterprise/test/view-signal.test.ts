@@ -1,6 +1,10 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame, waitUntil } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
 import {
+  RANGE_SELECTION_MODULE_ID,
+  type RangeSelectionController,
+} from '../src/features/range-selection.js';
+import {
   ApexGridChart,
   ApexGridEnterprise,
   enterpriseModules,
@@ -181,6 +185,65 @@ describe('apex-view-changed signal', () => {
       await settle(grid);
       expect(grid.data[5].q1).to.equal(-1);
       expect(signals.count, 'apex-view-changed per redo').to.equal(2);
+    });
+  });
+
+  describe('chart affordance on scroll (ent-grid-core-4)', () => {
+    it('does not read the range matrix, and runs at most once per frame', async () => {
+      const grid = await mount(makeData(5000));
+      const range = (
+        grid as unknown as {
+          stateController: { module(id: string): RangeSelectionController<Row> | undefined };
+        }
+      ).stateController.module(RANGE_SELECTION_MODULE_ID)!;
+      grid.selectRange({ row: 0, column: 'id' }, { row: 4999, column: 'q1' });
+      await settle(grid);
+
+      let matrixReads = 0;
+      const activeGrid = range.getActiveGrid.bind(range);
+      let checks = 0;
+      range.getActiveGrid = () => {
+        matrixReads += 1;
+        checks += 1;
+        return activeGrid();
+      };
+      const forBounds = range.gridForBounds.bind(range);
+      range.gridForBounds = (bounds) => {
+        matrixReads += 1;
+        return forBounds(bounds);
+      };
+      const bounds = range.getSelectionBounds.bind(range);
+      range.getSelectionBounds = () => {
+        checks += 1;
+        return bounds();
+      };
+
+      for (let i = 0; i < 5; i += 1) grid.dispatchEvent(new Event('scroll'));
+      expect(checks, 'nothing runs inside the scroll event').to.equal(0);
+      await nextFrame();
+      expect(checks, 'one check for the frame').to.equal(1);
+
+      grid.scrollTop = 600;
+      await nextFrame();
+      await nextFrame();
+      expect(matrixReads, 'the selected range was never materialised').to.equal(0);
+      const button = [...document.body.querySelectorAll<HTMLButtonElement>(':scope > button')].find(
+        (b) => b.style.position === 'fixed'
+      );
+      expect(button?.style.display, 'the affordance still shows').to.equal('block');
+    });
+
+    it('hides the affordance when the range covers no data row', async () => {
+      const grid = await mount(makeData(10), { groupBy: ['region'] });
+      // Row 0 is the first group header.
+      grid.selectRange({ row: 0, column: 'id' });
+      await settle(grid);
+      grid.dispatchEvent(new Event('scroll'));
+      await nextFrame();
+      const button = [...document.body.querySelectorAll<HTMLButtonElement>(':scope > button')].find(
+        (b) => b.style.position === 'fixed'
+      );
+      expect(button?.style.display ?? 'none').to.equal('none');
     });
   });
 });

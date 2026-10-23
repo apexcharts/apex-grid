@@ -877,10 +877,19 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     return this.#aiDialog ? [...this.#chartDialogs, this.#aiDialog] : [...this.#chartDialogs];
   }
 
+  /** Pending frame for {@link #onChartViewportChange}, so a burst of scroll events costs one. */
+  #viewportFrame = 0;
+
   /** Keep both the selection affordance and any charted-range overlays anchored on scroll/resize. */
   #onChartViewportChange = (): void => {
-    this.#updateChartAffordance();
-    this.#chartRangeManagerInstance?.reposition();
+    if (this.#viewportFrame) return;
+    this.#viewportFrame = requestAnimationFrame(() => {
+      this.#viewportFrame = 0;
+      // Removed before the frame: its affordance is gone and must not come back.
+      if (!this.isConnected) return;
+      this.#updateChartAffordance();
+      this.#chartRangeManagerInstance?.reposition();
+    });
   };
 
   #repositionChartRanges = (): void => {
@@ -931,8 +940,15 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * `<apex-grid-chart>` is registered to chart it.
    */
   #canChartSelection(): boolean {
-    const active = this.#rangeController()?.getActiveGrid();
-    return !!active && active.rows.length > 0 && panelDefined(CHART_PANEL);
+    // Scroll handling asks this every frame: stop at the first data row rather than
+    // read the range's values (a group header or a total row alone is not chartable).
+    const bounds = this.#rangeController()?.getSelectionBounds();
+    if (!bounds || !panelDefined(CHART_PANEL)) return false;
+    const items = this.pageItems;
+    for (let row = Math.max(0, bounds.top); row <= bounds.bottom && row < items.length; row += 1) {
+      if (items[row] && this.stateController.isDataRow(items[row])) return true;
+    }
+    return false;
   }
 
   /** Alt+F1 charts the current selection (a no-op without one, or without the chart panel). */
