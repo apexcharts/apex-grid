@@ -1,4 +1,6 @@
 import { aTimeout, elementUpdated, expect, html } from '@open-wc/testing';
+import 'axe-core';
+import type { ApexGrid } from '../src/components/grid.js';
 import type { ColumnConfiguration } from '../src/internal/types.js';
 import GridTestFixture from './utils/grid-fixture.js';
 import data, { type TestData } from './utils/test-data.js';
@@ -23,6 +25,11 @@ class A11yFixture extends GridTestFixture<TestData> {
         detailTemplate: ({ data }: { data: TestData }) => html`<span>${data.id}</span>`,
       }}
     ></apex-grid>`;
+  }
+
+  /** The element with the grid role (the host carries none). */
+  public table(): HTMLElement {
+    return this.grid.renderRoot.querySelector<HTMLElement>('[part~="table"]')!;
   }
 
   public liveRegion(): HTMLElement | null {
@@ -51,13 +58,17 @@ describe('Accessibility (WCAG 2.2 AA semantics)', () => {
   afterEach(() => fx.tearDown());
 
   describe('grid roles + counts', () => {
-    it('host advertises role="grid" with aria-rowcount + aria-colcount', async () => {
+    it('the table part carries the grid role, aria-rowcount and aria-colcount', async () => {
       await fx.waitForUpdate();
-      expect(fx.grid.getAttribute('role')).to.equal('grid');
-      // 1 header + 1 filter + 8 data = 10 rows.
-      expect(fx.grid.getAttribute('aria-rowcount')).to.equal('10');
+      // Master-detail rows expand, so the role is treegrid (see ARIA structure).
+      expect(fx.table().getAttribute('role')).to.equal('treegrid');
+      // 1 header + 8 data = 9 rows: the filter panel is an overlay, not a row.
+      expect(fx.table().getAttribute('aria-rowcount')).to.equal('9');
       // 4 data columns + selection + expansion = 6.
-      expect(fx.grid.getAttribute('aria-colcount')).to.equal('6');
+      expect(fx.table().getAttribute('aria-colcount')).to.equal('6');
+      for (const attr of ['role', 'aria-rowcount', 'aria-colcount', 'aria-label']) {
+        expect(fx.grid.hasAttribute(attr), `host ${attr}`).to.be.false;
+      }
     });
 
     it('header row exposes role="row" + aria-rowindex="1"', () => {
@@ -215,19 +226,22 @@ describe('Accessibility (WCAG 2.2 AA semantics)', () => {
     });
   });
 
-  describe('host semantics', () => {
+  describe('table semantics', () => {
     it('exposes aria-multiselectable in multiple selection mode', async () => {
       await fx.waitForUpdate();
-      expect(fx.grid.getAttribute('aria-multiselectable')).to.equal('true');
+      expect(fx.table().getAttribute('aria-multiselectable')).to.equal('true');
     });
 
     it('applies a default accessible name and yields to an author-provided one', async () => {
       await fx.waitForUpdate();
-      expect(fx.grid.getAttribute('aria-label')).to.equal('Data grid');
+      expect(fx.table().getAttribute('aria-label')).to.equal('Data grid');
+      // An attribute change on the host is picked up without a render request.
       fx.grid.setAttribute('aria-label', 'People');
-      fx.grid.requestUpdate();
-      await elementUpdated(fx.grid);
-      expect(fx.grid.getAttribute('aria-label')).to.equal('People');
+      await fx.waitForUpdate();
+      expect(fx.table().getAttribute('aria-label')).to.equal('People');
+      fx.grid.removeAttribute('aria-label');
+      await fx.waitForUpdate();
+      expect(fx.table().getAttribute('aria-label')).to.equal('Data grid');
     });
   });
 
@@ -438,6 +452,278 @@ describe('Accessibility (WCAG 2.2 AA semantics)', () => {
       await frames();
       expect(header.renderRoot.querySelector('[part="col-menu"]')).to.be.null;
       expect(deepActive()).to.equal(menuBtn);
+    });
+  });
+});
+
+interface AxeResult {
+  violations: { id: string; nodes: { target: string[]; failureSummary: string }[] }[];
+}
+const axe = (window as any).axe as { run(context: Element): Promise<AxeResult> };
+
+/** Every axe violation inside `el`, one line each, so a failure names the rule and node. */
+async function axeViolations(el: Element): Promise<string[]> {
+  const { violations } = await axe.run(el);
+  return violations.flatMap(({ id, nodes }) =>
+    nodes.map((node) => `${id}: ${node.target.join(' ')}: ${node.failureSummary}`)
+  );
+}
+
+/** A grid with the given properties on top of the test data and columns. */
+class StructureFixture extends GridTestFixture<TestData> {
+  constructor(
+    private props: Partial<ApexGrid<TestData>>,
+    columns?: ColumnConfiguration<TestData>[]
+  ) {
+    super(JSON.parse(JSON.stringify(data)));
+    if (columns) this.columnConfig = columns;
+  }
+
+  public override async setUp() {
+    await super.setUp();
+    Object.assign(this.grid, this.props);
+    await this.waitForUpdate();
+  }
+
+  public table(): HTMLElement {
+    return this.grid.renderRoot.querySelector<HTMLElement>('[part~="table"]')!;
+  }
+
+  public row(index: number): HTMLElement {
+    return this.grid.rows[index] as unknown as HTMLElement;
+  }
+
+  public rowPart(index: number, part: string): HTMLElement | null {
+    const row = this.grid.rows[index] as unknown as { renderRoot: ShadowRoot };
+    return row.renderRoot.querySelector<HTMLElement>(`[part~="${part}"]`);
+  }
+}
+
+const detailTemplate = ({ data: row }: { data: TestData }) => html`<p>Details of ${row.name}</p>`;
+
+describe('ARIA structure', () => {
+  let fx: StructureFixture;
+  afterEach(() => fx.tearDown());
+
+  async function mount(
+    props: Partial<ApexGrid<TestData>>,
+    columns?: ColumnConfiguration<TestData>[]
+  ) {
+    fx = new StructureFixture(props, columns);
+    await fx.setUp();
+    return fx;
+  }
+
+  describe('axe', () => {
+    it('a default grid has no violations', async () => {
+      await mount({});
+      expect(fx.table().getAttribute('role')).to.equal('grid');
+      expect(await axeViolations(fx.grid)).to.eql([]);
+    });
+
+    it('a grid with a toolbar, a filter column and pagination has no violations', async () => {
+      await mount(
+        { showQuickFilter: true, showExport: true, pagination: { enabled: true, pageSize: 3 } },
+        [{ key: 'id', filter: true }, { key: 'name' }]
+      );
+      expect(await axeViolations(fx.grid)).to.eql([]);
+    });
+
+    it('a tree grid has no violations', async () => {
+      await mount({
+        tree: {
+          enabled: true,
+          getDataPath: (row: TestData) => (row.id === 1 ? ['1'] : ['1', String(row.id)]),
+        },
+      });
+      expect(fx.table().getAttribute('role')).to.equal('treegrid');
+      expect(await axeViolations(fx.grid)).to.eql([]);
+    });
+
+    it('a master-detail grid with an expanded row has no violations', async () => {
+      await mount({
+        selection: { enabled: true, mode: 'multiple', showCheckboxColumn: true },
+        expansion: { enabled: true, detailTemplate, isExpandable: (row: TestData) => row.id !== 2 },
+      });
+      await fx.grid.expandRow(fx.grid.data[0]);
+      await fx.waitForUpdate();
+      expect(await axeViolations(fx.grid)).to.eql([]);
+    });
+  });
+
+  describe('grid role', () => {
+    it('owns only rows: toolbar, filter panel, paginator and live region sit outside', async () => {
+      await mount({ showQuickFilter: true, pagination: { enabled: true, pageSize: 3 } }, [
+        { key: 'id', filter: true },
+        { key: 'name' },
+      ]);
+      const table = fx.table();
+      const root = fx.grid.renderRoot;
+      for (const selector of [
+        'apex-grid-toolbar',
+        'apex-filter-row',
+        'apex-grid-paginator',
+        '[part="live-region"]',
+      ]) {
+        const el = root.querySelector(selector);
+        expect(el, selector).to.exist;
+        expect(table.contains(el), selector).to.be.false;
+      }
+      expect(table.contains(fx.headerRow)).to.be.true;
+      expect(fx.gridBody.getAttribute('role')).to.equal('rowgroup');
+      expect(fx.grid.hasAttribute('role')).to.be.false;
+    });
+
+    it('is a treegrid only while rows can expand into a detail', async () => {
+      await mount({ expansion: { enabled: true } });
+      expect(fx.table().getAttribute('role')).to.equal('grid');
+      fx.grid.expansion = { enabled: true, detailTemplate };
+      await fx.waitForUpdate();
+      expect(fx.table().getAttribute('role')).to.equal('treegrid');
+    });
+  });
+
+  describe('accessible name', () => {
+    let label: HTMLElement;
+    let hint: HTMLElement;
+
+    beforeEach(() => {
+      label = Object.assign(document.createElement('h2'), { id: 'people', textContent: 'People' });
+      hint = Object.assign(document.createElement('p'), { id: 'hint', textContent: 'Staff list' });
+      document.body.append(label, hint);
+    });
+
+    afterEach(() => {
+      label.remove();
+      hint.remove();
+    });
+
+    it('resolves the host aria-labelledby and aria-describedby by element reflection', async () => {
+      await mount({});
+      fx.grid.setAttribute('aria-labelledby', 'people');
+      fx.grid.setAttribute('aria-describedby', 'hint');
+      await fx.waitForUpdate();
+      const table = fx.table() as HTMLElement & {
+        ariaLabelledByElements: Element[] | null;
+        ariaDescribedByElements: Element[] | null;
+      };
+      expect('ariaLabelledByElements' in Element.prototype, 'reflection in the test browser').to.be
+        .true;
+      expect(table.ariaLabelledByElements).to.eql([label]);
+      expect(table.ariaDescribedByElements).to.eql([hint]);
+
+      fx.grid.removeAttribute('aria-labelledby');
+      await fx.waitForUpdate();
+      expect(table.ariaLabelledByElements).to.equal(null);
+      expect(table.getAttribute('aria-label')).to.equal('Data grid');
+    });
+
+    it('resolves a labelling element added later once the attribute is set again', async () => {
+      await mount({});
+      fx.grid.setAttribute('aria-labelledby', 'late');
+      await fx.waitForUpdate();
+      const table = fx.table() as HTMLElement & { ariaLabelledByElements: Element[] | null };
+      expect(table.ariaLabelledByElements).to.equal(null);
+
+      const late = Object.assign(document.createElement('h2'), { id: 'late', textContent: 'Late' });
+      document.body.append(late);
+      try {
+        // As documented in the README: references resolve at render time.
+        fx.grid.setAttribute('aria-labelledby', 'late');
+        await aTimeout(0);
+        await fx.waitForUpdate();
+        expect(table.ariaLabelledByElements).to.eql([late]);
+      } finally {
+        late.remove();
+      }
+    });
+
+    it('copies the referenced text where the browser has no element reflection', async () => {
+      const proto = Element.prototype as unknown as Record<string, unknown>;
+      const descriptor = Object.getOwnPropertyDescriptor(proto, 'ariaLabelledByElements');
+      delete proto.ariaLabelledByElements;
+      try {
+        await mount({});
+        fx.grid.setAttribute('aria-labelledby', 'people');
+        fx.grid.setAttribute('aria-describedby', 'hint');
+        await fx.waitForUpdate();
+        expect(fx.table().getAttribute('aria-label')).to.equal('People');
+        expect(fx.table().getAttribute('aria-description')).to.equal('Staff list');
+      } finally {
+        if (descriptor) Object.defineProperty(proto, 'ariaLabelledByElements', descriptor);
+      }
+    });
+  });
+
+  describe('row indexes', () => {
+    it('numbers header, pinned and body rows once each, ending at aria-rowcount', async () => {
+      await mount({ rowPinning: { enabled: true } }, [
+        { key: 'id', filter: true },
+        { key: 'name' },
+      ]);
+      fx.grid.pinRow(fx.grid.data[0], 'top');
+      fx.grid.pinRow(fx.grid.data[1], 'bottom');
+      await fx.waitForUpdate();
+      const indexes = [
+        ...fx.grid.renderRoot.querySelectorAll('apex-grid-header-row, apex-grid-row'),
+      ].map((row) => Number(row.getAttribute('aria-rowindex')));
+      indexes.sort((a, b) => a - b);
+      // 1 header row + 1 pinned top + 6 body + 1 pinned bottom.
+      expect(indexes).to.eql([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      expect(fx.table().getAttribute('aria-rowcount')).to.equal('9');
+    });
+  });
+
+  describe('master-detail', () => {
+    beforeEach(async () => {
+      await mount({
+        expansion: { enabled: true, detailTemplate, isExpandable: (row: TestData) => row.id !== 2 },
+      });
+    });
+
+    it('sets aria-expanded only on rows that can expand, and on their toggles', async () => {
+      expect(fx.row(0).getAttribute('aria-expanded')).to.equal('false');
+      expect(fx.rowPart(0, 'expansion-toggle')!.getAttribute('aria-expanded')).to.equal('false');
+      expect(fx.row(1).hasAttribute('aria-expanded')).to.be.false;
+      expect(fx.rowPart(1, 'expansion-toggle')!.hasAttribute('aria-expanded')).to.be.false;
+    });
+
+    it('drops row aria-expanded with the treegrid role when expansion is turned off', async () => {
+      await fx.grid.expandRow(fx.grid.data[0]);
+      await fx.waitForUpdate();
+      expect(fx.row(0).getAttribute('aria-expanded')).to.equal('true');
+
+      fx.grid.expansion = { enabled: false, detailTemplate };
+      await fx.waitForUpdate();
+      expect(fx.table().getAttribute('role')).to.equal('grid');
+      expect(fx.row(0).hasAttribute('aria-expanded')).to.be.false;
+      expect(await axeViolations(fx.grid)).to.eql([]);
+    });
+
+    it('drops row aria-expanded with the treegrid role when the template goes', async () => {
+      await fx.grid.expandRow(fx.grid.data[0]);
+      await fx.waitForUpdate();
+
+      fx.grid.expansion = { enabled: true };
+      await fx.waitForUpdate();
+      expect(fx.table().getAttribute('role')).to.equal('grid');
+      const expanded = Array.from(fx.grid.rows, (row) => row as unknown as HTMLElement).filter(
+        (row) => row.hasAttribute('aria-expanded')
+      );
+      expect(expanded).to.have.length(0);
+      expect(await axeViolations(fx.grid)).to.eql([]);
+    });
+
+    it('renders the detail panel as one cell across the row, holding the region', async () => {
+      await fx.grid.expandRow(fx.grid.data[0]);
+      await fx.waitForUpdate();
+      const panel = fx.rowPart(0, 'detail-panel')!;
+      expect(panel.getAttribute('role')).to.equal('gridcell');
+      expect(panel.getAttribute('aria-colindex')).to.equal('1');
+      expect(panel.getAttribute('aria-colspan')).to.equal(fx.table().getAttribute('aria-colcount'));
+      const region = panel.querySelector('[role="region"]')!;
+      expect(region.getAttribute('aria-label')).to.equal('Row detail');
+      expect(region.textContent).to.contain('Details of A');
     });
   });
 });

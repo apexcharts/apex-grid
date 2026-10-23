@@ -70,6 +70,17 @@ $grid-resize-line-color: var(--grid-resize-line-color, var(--_ag-brand));
     --apex-header-separator-display: block;
 }
 
+// The element with the grid role: the header rows, the pinned bands and the
+// body, stacked in one flex column. It sits in the body track, so the tracks
+// for the header rows and bands it holds stay empty and the layout matches
+// the one with every row in its own track. The rows keep the host as their
+// scroll container, so the sticky header and bands behave as before.
+[part~='table'] {
+    grid-row: virtualized-container;
+    display: flex;
+    flex-direction: column;
+}
+
 // --- Row pinning (sticky top / bottom bands) -------------------------------
 // Pinned rows are lifted out of the virtualized body (see RowPinController) and
 // rendered here. The band is sticky on the block axis only, so it parks below

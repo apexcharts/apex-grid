@@ -856,6 +856,7 @@ function warnDropped(message: string): void {
  * @fires treeRowExpanding - Cancellable. Emitted before a tree-row expansion change (tree mode).
  * @fires treeRowExpanded - Emitted after a tree-row expansion change has been applied.
  *
+ * @csspart table - The element with the `grid` (or `treegrid`) role, `aria-rowcount` and `aria-colcount`: holds the header rows, pinned rows and body.
  * @csspart live-region - Visually-hidden ARIA live region used for screen-reader announcements.
  *
  * @cssprop [--ag-brand] - Brand color for selection, focus rings, and accents. Auto-tints from `--ig-primary-500` where an Ignite UI palette is present.
@@ -1956,53 +1957,12 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   protected override updated(): void {
-    // Expose ARIA grid semantics on the host so screen readers announce the
-    // structure correctly. We do this in `updated()` (post-render) rather
-    // than `willUpdate()` because `@watch('data')` runs *after* the original
-    // willUpdate via decorator wrapping — reading `pageItems` earlier would
-    // see a stale (empty) `dataState`.
     // This update's watchers consumed every change requested before it; a
     // pipeline still running is tracked by #shapingPending.
     this.#viewChangePending = false;
-    this.setAttribute('role', this.stateController.tree.enabled ? 'treegrid' : 'grid');
-    const pinned = this.stateController.rowPin.pinnedRows;
-    this.setAttribute(
-      'aria-rowcount',
-      String(this.headerRowCount + pinned.top.length + this.pageItems.length + pinned.bottom.length)
-    );
-    const visibleColumns = this.columns.filter((column) => !column.hidden).length;
-    const extras =
-      (this.stateController.selection.showCheckboxColumn ? 1 : 0) +
-      (this.stateController.expansion.showToggleColumn ? 1 : 0);
-    this.setAttribute('aria-colcount', String(visibleColumns + extras));
-
-    const selection = this.stateController.selection;
-    if (selection.enabled && selection.mode === 'multiple') {
-      this.setAttribute('aria-multiselectable', 'true');
-    } else {
-      this.removeAttribute('aria-multiselectable');
-    }
-
     this.#syncBodyTabStop();
-
-    // Default accessible name for the host. An author-provided `aria-label`
-    // or `aria-labelledby` always wins; only the value this grid set itself
-    // is kept in sync (e.g. when `localeText` changes).
-    const currentLabel = this.getAttribute('aria-label');
-    const authorLabeled =
-      this.hasAttribute('aria-labelledby') ||
-      (currentLabel !== null && currentLabel !== this.#autoAriaLabel);
-    if (!authorLabeled) {
-      const label = this.localize('grid.label');
-      if (currentLabel !== label) this.setAttribute('aria-label', label);
-      this.#autoAriaLabel = label;
-    }
-
     this.#emitStateChangedIfNeeded();
   }
-
-  /** The `aria-label` value this grid last auto-applied (never an author's). */
-  #autoAriaLabel: string | null = null;
 
   /**
    * The `stateChanged` listeners registered on the grid, keyed by listener and
@@ -2145,7 +2105,13 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     // The `--ag-*` root defaults (and the `setup()` host sizing) live outside
     // the shadow root; see internal/document-styles.ts.
     adoptGridDocumentStyles(this);
+    // The host's labelling names the element with the grid role.
+    this.#labelObserver.observe(this, {
+      attributeFilter: ['aria-label', 'aria-labelledby', 'aria-describedby'],
+    });
   }
+
+  #labelObserver = new MutationObserver(() => this.requestUpdate());
 
   protected override firstUpdated(): void {
     // The component declares `:host { display: grid }` for its internal track
@@ -3266,6 +3232,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   protected renderBody() {
     return html`
       <apex-virtualizer
+        role="rowgroup"
         .items=${this.pageItems as T[]}
         .renderItem=${this.DOM.rowRenderer}
         @click=${this.bodyClickHandler}
@@ -3279,17 +3246,12 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     `;
   }
 
-  /** Number of chrome rows above the body (group header + header + optional filter). */
-  protected get headerRowCount(): number {
-    return this.columnGroupDepth + 1 + (this.columns.some((column) => column.filter) ? 1 : 0);
-  }
-
   protected renderPinnedTop() {
     const rowPin = this.stateController.rowPin;
     const rows = rowPin.pinnedRows.top;
     if (rows.length === 0) return nothing;
     return html`<div part="pinned-rows pinned-top">
-      ${rows.map((data, i) => this.DOM.pinnedRowRenderer(data, i, this.headerRowCount))}
+      ${rows.map((data, i) => this.DOM.pinnedRowRenderer(data, i, this.DOM.headerRowCount))}
     </div>`;
   }
 
@@ -3299,7 +3261,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     if (rows.length === 0) return nothing;
     // Pinned-bottom rows follow the chrome rows, the pinned-top band, and the
     // body in the aria-rowindex sequence.
-    const offset = this.headerRowCount + rowPin.pinnedRows.top.length + this.pageItems.length;
+    const offset = this.DOM.headerRowCount + rowPin.pinnedRows.top.length + this.pageItems.length;
     return html`<div part="pinned-rows pinned-bottom">
       ${rows.map((data, i) => this.DOM.pinnedRowRenderer(data, i, offset))}
     </div>`;
@@ -3396,16 +3358,57 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     </div>`;
   }
 
+  /**
+   * The elements the host's `attr` IDREFs name, looked up in the tree the host
+   * lives in (the references cannot reach the shadow root), or `null`.
+   */
+  #refs(attr: string): Element[] | null {
+    const root = this.getRootNode() as Document;
+    const found = (this.getAttribute(attr) ?? '')
+      .split(/\s+/)
+      .flatMap((id) => (id && root.getElementById?.(id)) || []);
+    return found.length ? found : null;
+  }
+
+  /**
+   * The element with the `grid` (or `treegrid`) role and the table semantics.
+   * It owns only rows: the header rows, the pinned bands and the body. The
+   * toolbar, filter panel, paginator and live region stay outside it. The
+   * host's own `aria-label`, `aria-labelledby` and `aria-describedby` name it:
+   * referenced elements go through element reflection where the browser has
+   * it, and their text is copied where it does not.
+   */
+  protected renderTable() {
+    const state = this.stateController;
+    const { top, bottom } = state.rowPin.pinnedRows;
+    const selection = state.selection;
+    const labelledBy = this.#refs('aria-labelledby');
+    const describedBy = this.#refs('aria-describedby');
+    const copy = (refs: Element[] | null) =>
+      !('ariaLabelledByElements' in Element.prototype) &&
+      refs?.map((el) => el.textContent?.trim()).join(' ');
+    return html`<div
+      part="table"
+      role=${state.hierarchical ? 'treegrid' : 'grid'}
+      aria-rowcount=${this.DOM.headerRowCount + top.length + this.pageItems.length + bottom.length}
+      aria-colcount=${state.colCount}
+      aria-multiselectable=${selection.enabled && selection.mode === 'multiple' ? 'true' : nothing}
+      aria-label=${copy(labelledBy) || this.getAttribute('aria-label') || this.localize('grid.label')}
+      aria-description=${copy(describedBy) || nothing}
+      .ariaLabelledByElements=${labelledBy}
+      .ariaDescribedByElements=${describedBy}
+    >
+      ${this.renderGroupHeaderRow()} ${this.renderHeaderRow()} ${this.renderPinnedTop()}
+      ${this.renderBody()} ${this.renderPinnedBottom()}
+    </div>`;
+  }
+
   protected override render() {
     return html`
       ${this.stateController.resizing.renderIndicator()}
       ${this.renderToolbar()}
-      ${this.renderGroupHeaderRow()}
-      ${this.renderHeaderRow()}
+      ${this.renderTable()}
       ${this.renderFilterRow()}
-      ${this.renderPinnedTop()}
-      ${this.renderBody()}
-      ${this.renderPinnedBottom()}
       ${this.renderPaginator()}
       ${this.renderLiveRegion()}
       ${this.renderRowDragGhost()}

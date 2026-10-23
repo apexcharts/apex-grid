@@ -840,17 +840,19 @@ describe('Row pinning: pins follow grid.data and rowPinning.enabled', () => {
 
   it('disabling pinning reports no pins and re-enabling restores them', async () => {
     await fxPin.setUp();
-    const baseline = fxPin.grid.getAttribute('aria-rowcount');
+    const table = fxPin.grid.renderRoot.querySelector('[part~="table"]')!;
+    const baseline = table.getAttribute('aria-rowcount');
+    expect(baseline).to.equal(String(fxPin.grid.data.length + 1));
     const pinned = fxPin.grid.data[0];
     fxPin.grid.pinRow(pinned, 'top');
     await fxPin.waitForUpdate();
-    expect(fxPin.grid.getAttribute('aria-rowcount')).to.equal(baseline);
+    expect(table.getAttribute('aria-rowcount')).to.equal(baseline);
 
     fxPin.grid.rowPinning = { enabled: false };
     await fxPin.waitForUpdate();
     expect(fxPin.grid.pinnedRows).to.deep.equal({ top: [], bottom: [] });
     expect(fxPin.stateController.rowPin.isPinned(pinned)).to.be.false;
-    expect(fxPin.grid.getAttribute('aria-rowcount')).to.equal(baseline);
+    expect(table.getAttribute('aria-rowcount')).to.equal(baseline);
     const row0 = rowEl(fxPin, 0);
     expect(row0.getAttribute('aria-rowindex')).to.equal('2');
     expect(row0.shadowRoot?.querySelector('[part="reorder-handle"]')).to.exist;

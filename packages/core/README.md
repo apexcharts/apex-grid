@@ -388,9 +388,21 @@ A keyboard-driven commit or cancel returns focus to the cell, so navigation
 continues from where you were. Sorting, filtering, selection, paging, row
 pinning, reorder, expansion, and undo / redo are announced through a polite
 live region, and every announcement and control label is localizable (the
-`announce.*` and `header.*` locale keys). The host gets a localized
-`aria-label` ("Data grid") unless you provide `aria-label` /
-`aria-labelledby` yourself.
+`announce.*` and `header.*` locale keys).
+
+The `grid` role (`treegrid` for tree data, master-detail and other expandable
+rows), `aria-rowcount`, `aria-colcount` and `aria-multiselectable` sit on the
+element exposed as `part="table"` inside the shadow root, not on the
+`<apex-grid>` host. It holds only the header rows and the body, so the toolbar,
+paginator and live region around it are not read as table content. It gets a
+localized `aria-label` ("Data grid") unless you put `aria-label` or
+`aria-labelledby` on the host, which then names it. An `aria-describedby` on
+the host becomes its description. The references are resolved when the grid
+renders, so if you add the referenced element later (a heading shown
+conditionally), set the attribute again afterwards to pick it up.
+
+> Changed after 3.6.0: the role and the row and column counts used to be on the
+> host. Query `grid.shadowRoot.querySelector('[part~="table"]')` instead.
 
 > Changed in 3.4.0: Home / End used to jump to the first / last row; they now
 > stay within the row. Use Ctrl/Cmd+Home / Ctrl/Cmd+End for the grid corners.
@@ -503,7 +515,7 @@ await grid.toggleTreeRow(data[0]);
 await grid.expandAllTreeRows();
 ```
 
-Methods: `toggleTreeRow`, `expandTreeRow`, `collapseTreeRow`, `expandAllTreeRows`, `collapseAllTreeRows`, `isTreeRowExpanded`. Events: `treeRowExpanding` (cancellable), `treeRowExpanded`. When tree mode is active, the host element advertises `role="treegrid"`.
+Methods: `toggleTreeRow`, `expandTreeRow`, `collapseTreeRow`, `expandAllTreeRows`, `collapseAllTreeRows`, `isTreeRowExpanded`. Events: `treeRowExpanding` (cancellable), `treeRowExpanded`. When tree mode is active, the grid's `part="table"` element advertises `role="treegrid"`.
 
 ### CSV export
 

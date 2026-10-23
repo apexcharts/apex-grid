@@ -16,6 +16,7 @@ import {
   isSerializableModule,
   type PresentedRow,
   type RowAria,
+  type RowAriaProvider,
   type RowPresenterContext,
   type RowTransformer,
 } from '../internal/feature-module.js';
@@ -275,6 +276,36 @@ export class StateController<T extends object> implements ReactiveController {
       }
     }
     return null;
+  }
+
+  /**
+   * Columns in the `aria-colindex` sequence: the visible columns plus the
+   * selection and expansion chrome columns. Shared by `aria-colcount` and the
+   * cells that span a whole row.
+   */
+  public get colCount(): number {
+    return (
+      this.host.columns.filter((column) => !column.hidden).length +
+      (this.selection.showCheckboxColumn ? 1 : 0) +
+      (this.expansion.showToggleColumn ? 1 : 0)
+    );
+  }
+
+  /**
+   * Whether rows carry tree semantics (`aria-level` / `aria-expanded`), which
+   * only a `treegrid` supports: the core tree, master-detail, or a feature
+   * module that reports {@link RowPresenter.hierarchical} (row grouping, a
+   * pivot tree, server-side groups). The grid role is read from here.
+   */
+  public get hierarchical(): boolean {
+    // Master-detail rows can expand once there is a detail to show.
+    if (this.tree.enabled || (this.expansion.enabled && this.host.expansion?.detailTemplate)) {
+      return true;
+    }
+    for (const controller of this.modules.values()) {
+      if ((controller as RowAriaProvider<T>).hierarchical) return true;
+    }
+    return false;
   }
 
   /**

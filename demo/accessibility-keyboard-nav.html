@@ -115,15 +115,19 @@
       grid.editing   = { enabled: true, mode: 'cell', trigger: 'doubleClick' };
 
       const readout = document.getElementById('readout');
+      // The grid semantics live on the element exposed as part "table" inside
+      // the grid's shadow root, which owns only the header rows and the body.
+      await customElements.whenDefined('apex-grid');
+      await grid.updateComplete;
+      const table = grid.shadowRoot.querySelector('[part~="table"]');
       const updateReadout = () => {
-        const role  = grid.getAttribute('role')          ?? 'grid';
-        const rows  = grid.getAttribute('aria-rowcount') ?? '?';
-        const cols  = grid.getAttribute('aria-colcount') ?? '?';
+        const role  = table.getAttribute('role')          ?? 'grid';
+        const rows  = table.getAttribute('aria-rowcount') ?? '?';
+        const cols  = table.getAttribute('aria-colcount') ?? '?';
         readout.textContent = `role="${role}"  aria-rowcount="${rows}"  aria-colcount="${cols}"`;
       };
-      await customElements.whenDefined('apex-grid');
       requestAnimationFrame(updateReadout);
-      new MutationObserver(updateReadout).observe(grid, { attributes: true });
+      new MutationObserver(updateReadout).observe(table, { attributes: true });
     </script>
   </body>
 </html>

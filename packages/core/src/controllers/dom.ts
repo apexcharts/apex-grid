@@ -56,9 +56,10 @@ export class GridDOMController<T extends object> implements ReactiveController {
   /**
    * Number of chrome rows above the body for `aria-rowindex`: an optional group
    * header row and the column header (always present). The filter panel is a
-   * floating overlay rather than a table row, so it is not counted here.
+   * floating overlay rather than a table row, so it is not counted here. The
+   * one count behind `aria-rowcount`, the body rows and both pinned bands.
    */
-  protected get headerRowCount(): number {
+  public get headerRowCount(): number {
     return this.host.columnGroupDepth + 1;
   }
 

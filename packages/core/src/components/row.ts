@@ -301,7 +301,13 @@ export default class ApexGridRow<T extends object> extends LitElement {
         }
       } else {
         this.removeAttribute('aria-level');
-        if (this.state?.expansion.enabled) {
+        // Only a row that can open (or is open) is announced as collapsible,
+        // and only under the treegrid role: a grid row may not carry
+        // aria-expanded, so this follows the same rule as the role.
+        if (
+          this.state?.hierarchical &&
+          (this.expanded || this.state.expansion.canExpand(this.data))
+        ) {
           this.setAttribute('aria-expanded', this.expanded ? 'true' : 'false');
         } else {
           this.removeAttribute('aria-expanded');
@@ -389,7 +395,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
         aria-label=${
           expanded ? this.state.localize('row.collapse') : this.state.localize('row.expand')
         }
-        aria-expanded=${expanded ? 'true' : 'false'}
+        aria-expanded=${canExpand ? String(expanded) : nothing}
         ?disabled=${!canExpand}
         @click=${handleClick}
       >
@@ -423,7 +429,15 @@ export default class ApexGridRow<T extends object> extends LitElement {
       rowIndex: this.index,
       parent: this.state.host,
     });
-    return html`<div part="detail-panel" role="region" aria-label=${this.state.localize('row.detail')}>${content}</div>`;
+    // A row owns only cells, so the panel is one cell across the whole row.
+    return html`<div
+      part="detail-panel"
+      role="gridcell"
+      aria-colindex="1"
+      aria-colspan=${this.state.colCount}
+    >
+      <div role="region" aria-label=${this.state.localize('row.detail')}>${content}</div>
+    </div>`;
   }
 
   protected renderSelectionCell(colindex: number) {
@@ -499,15 +513,11 @@ export default class ApexGridRow<T extends object> extends LitElement {
     // content spanning all columns, like the master-detail panel, and skip the
     // normal selection/expansion/cell grid.
     if (this.#presented) {
-      const colspan =
-        this.columns.filter((column) => !column.hidden).length +
-        (this.state?.selection.showCheckboxColumn ? 1 : 0) +
-        (this.state?.expansion.showToggleColumn ? 1 : 0);
       return html`<div
         part=${this.#presented.part ?? 'group-row'}
         role="gridcell"
         aria-colindex="1"
-        aria-colspan=${Math.max(1, colspan)}
+        aria-colspan=${Math.max(1, this.state.colCount)}
         tabindex=${this.activeNode?.row === this.index ? 0 : -1}
         data-presented-cell
         style="grid-column: 1 / -1"

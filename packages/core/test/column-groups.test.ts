@@ -84,7 +84,8 @@ describe('Column groups', () => {
 
   it('counts the group row in aria-rowcount', async () => {
     // 1 group row + 1 header row + 8 body rows.
-    expect(TDD.grid.getAttribute('aria-rowcount')).to.equal('10');
+    const table = TDD.grid.renderRoot.querySelector('[part~="table"]')!;
+    expect(table.getAttribute('aria-rowcount')).to.equal('10');
   });
 
   it('renders no group row when columnGroups is unset', async () => {

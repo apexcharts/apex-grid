@@ -132,6 +132,11 @@ export interface PresentedRow {
  */
 export interface RowPresenter<T extends object = any> {
   presentRow(row: T, ctx: RowPresenterContext<T>): PresentedRow | null;
+  /**
+   * True while the rows this module presents carry `aria-level` or
+   * `aria-expanded`, so the grid takes the `treegrid` role that supports them.
+   */
+  readonly hierarchical?: boolean;
 }
 
 /** Runtime type-guard for {@link RowPresenter}. */
@@ -165,6 +170,8 @@ export interface RowAria {
  */
 export interface RowAriaProvider<T extends object = any> {
   describeRow(row: T, ctx: RowPresenterContext<T>): RowAria | null;
+  /** As {@link RowPresenter.hierarchical}: true while {@link describeRow} gives rows tree ARIA. */
+  readonly hierarchical?: boolean;
 }
 
 /** Runtime type-guard for {@link RowAriaProvider}. */

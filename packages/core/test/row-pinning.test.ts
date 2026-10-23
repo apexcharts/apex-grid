@@ -155,10 +155,12 @@ describe('Row pinning', () => {
   });
 
   it('aria-rowcount counts pinned + body rows (total unchanged by pinning)', async () => {
-    const before = TDD.grid.getAttribute('aria-rowcount');
+    const table = TDD.grid.renderRoot.querySelector('[part~="table"]')!;
+    const before = table.getAttribute('aria-rowcount');
+    expect(before).to.equal(String(TDD.grid.data.length + 1));
     TDD.grid.pinRow(TDD.grid.data[0], 'top');
     await TDD.waitForUpdate();
-    expect(TDD.grid.getAttribute('aria-rowcount')).to.equal(before);
+    expect(table.getAttribute('aria-rowcount')).to.equal(before);
   });
 
   it('pinned band rows expose role="row"', async () => {

@@ -233,8 +233,10 @@ describe('Tree (nested rows)', () => {
   });
 
   describe('ARIA semantics', () => {
-    it('host advertises role="treegrid" when tree is enabled', () => {
-      expect(fx.grid.getAttribute('role')).to.equal('treegrid');
+    it('the table part advertises role="treegrid" when tree is enabled', () => {
+      expect(fx.grid.renderRoot.querySelector('[part~="table"]')!.getAttribute('role')).to.equal(
+        'treegrid'
+      );
     });
 
     it('rows expose aria-level reflecting their depth (1-based)', async () => {
