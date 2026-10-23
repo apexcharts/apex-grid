@@ -39,10 +39,14 @@ export class GridDOMController<T extends object> implements ReactiveController {
   /**
    * Visual render order: `'start'`-pinned columns first, then unpinned, then
    * `'end'`-pinned. The user-supplied `columns` array is never mutated.
+   *
+   * Resolved once per host update, so a virtualizer range change between
+   * updates hands the rows still in range the same array and only the rows
+   * that scrolled in render. A host update resolves a new array on purpose:
+   * rows read selection, expansion and the like from the state, and the new
+   * array is what re-renders them.
    */
-  public get displayColumns(): Array<ColumnConfiguration<T>> {
-    return getDisplayColumns(this.host.columns);
-  }
+  public displayColumns: Array<ColumnConfiguration<T>> = [];
 
   public columnSizes: StyleInfo = {};
 
@@ -183,6 +187,7 @@ export class GridDOMController<T extends object> implements ReactiveController {
   }
 
   protected setGridColumnSizes() {
+    this.displayColumns = getDisplayColumns(this.host.columns);
     const chrome = leadingChromeTracks(this.state);
     this.columnSizes = applyColumnWidths(this.displayColumns, chrome);
     this.#publishChromeOffsets(chrome);

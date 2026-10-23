@@ -1626,7 +1626,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * Use this when you need to iterate the columns in the same order the grid
    * actually displays them (for example to build a column chooser). Public APIs
    * like {@link ApexGrid.getColumn} continue to operate on the user-supplied
-   * {@link ApexGrid.columns} array.
+   * {@link ApexGrid.columns} array. Each read builds a new array, so read it
+   * once and keep the result rather than reading it inside a loop.
    */
   public get displayColumns(): ReadonlyArray<ColumnConfiguration<T>> {
     return getDisplayColumns(this.columns);
