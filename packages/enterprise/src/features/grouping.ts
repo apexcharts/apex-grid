@@ -268,6 +268,11 @@ export class GroupingController<T extends object>
 
   // --- RowPresenter --------------------------------------------------------
 
+  /** Group header rows carry `aria-level` / `aria-expanded`, so the grid is a treegrid. */
+  public get hierarchical(): boolean {
+    return this.groupBy.length > 0;
+  }
+
   public presentRow(row: T, _ctx: RowPresenterContext<T>): PresentedRow | null {
     const meta = getGroupMeta<T>(row);
     if (!meta) return null;

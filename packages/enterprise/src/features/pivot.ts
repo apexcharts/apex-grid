@@ -682,6 +682,11 @@ export class PivotController<T extends object>
 
   // --- RowAriaProvider -----------------------------------------------------
 
+  /** A pivot tree gives its rows `aria-level` / `aria-expanded`, so the grid is a treegrid. */
+  public get hierarchical(): boolean {
+    return this.active && this.#isTree();
+  }
+
   /**
    * Tree nodes render as normal (value-carrying) rows, so their `aria-level` /
    * `aria-expanded` come through this seam rather than {@link RowPresenter}.

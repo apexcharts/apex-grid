@@ -774,8 +774,16 @@ class ServerSideAriaController<T extends object>
   public isSyntheticRow(row: T): boolean {
     return (this.host as { isRowLoading?(row: T): boolean }).isRowLoading?.(row) === true;
   }
+  /**
+   * Server-side groups give rows `aria-level` / `aria-expanded`, so the grid is
+   * a treegrid. A flat request (no `rowGroupCols`) has no levels to report.
+   */
+  public get hierarchical(): boolean {
+    const host = this.host as { serverSideRowModel?: ServerSideRowModelConfig<T> | null };
+    return Boolean(host.serverSideRowModel?.rowGroupCols?.length);
+  }
   public describeRow(row: T): RowAria | null {
-    const meta = getServerRowMeta(row);
+    const meta = this.hierarchical ? getServerRowMeta(row) : undefined;
     if (!meta) return null;
     return { level: meta.depth + 1, expanded: meta.group ? meta.expanded : undefined };
   }
