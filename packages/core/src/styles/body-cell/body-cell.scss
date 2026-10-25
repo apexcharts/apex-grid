@@ -124,16 +124,16 @@ input[type='number'][data-apex-editor] {
     font-variant-numeric: tabular-nums;
 }
 
-input[type='checkbox'][data-apex-editor] {
-    @include apex-checkbox();
-
-    position: relative;
-    inset: auto;
-}
-
-// Built-in boolean display (column `type: 'boolean'`).
+// The checkbox editor and the built-in boolean display (column
+// `type: 'boolean'`) share one copy of the checkbox look.
+input[type='checkbox'][data-apex-editor],
 input[part~='boolean-mark'] {
     @include apex-checkbox();
+}
+
+input[type='checkbox'][data-apex-editor] {
+    position: relative;
+    inset: auto;
 }
 
 input[part~='boolean-mark'][aria-readonly='true'] {
@@ -559,9 +559,35 @@ $invalid-color: var(--_ag-risk, #ef4444);
         outline-offset: #{rem(-2px)};
     }
 
-    // The editing surface reads as an ordinary field rather than a wash.
+    // The editing surface reads as an ordinary field rather than a wash. It
+    // also rejoins the forced palette, which a selected row opts out of, so
+    // the editors inside (rating stars, select options) never keep their
+    // authored colours on Field.
     :host([editing]) {
+        forced-color-adjust: auto;
         background: Field;
         color: FieldText;
+    }
+
+    // A selected row opts out of the forced palette (`body-row.scss`) and that
+    // opt-out inherits, so an authored text colour here would stay as authored
+    // on the system Highlight. Take the row's colour instead: HighlightText in
+    // a selected row, the forced CanvasText everywhere else. The tree toggle's
+    // hover and focus marks follow it too.
+    :host([data-cell-type='number']),
+    :host([data-cell-type='currency']),
+    [part~='rating'],
+    [part='tree-toggle'] {
+        color: inherit;
+    }
+
+    [part='tree-toggle']:hover {
+        color: inherit;
+        background: none;
+        border-color: currentcolor;
+    }
+
+    [part='tree-toggle']:focus-visible {
+        outline-color: currentcolor;
     }
 }

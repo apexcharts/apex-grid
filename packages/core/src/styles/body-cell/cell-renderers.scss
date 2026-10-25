@@ -205,3 +205,24 @@
     border-color: rgb(239 68 68 / 30%);
     color: var(--_ag-risk-text);
 }
+
+// ── Forced colors ────────────────────────────────────────────────────────
+// A selected row opts out of the forced palette (`body-row.scss`) and the
+// opt-out inherits, so these parts would keep their authored hues and washes
+// on the system Highlight. Draw them in the row's own colour instead
+// (HighlightText there, the forced CanvasText elsewhere), as outlined chips.
+@media (forced-colors: active) {
+    [part~='pill'],
+    [part~='status'],
+    [part~='progress-label'],
+    [part~='sparkline'],
+    [part~='spark-delta'] {
+        color: inherit;
+    }
+
+    [part~='pill'],
+    [part~='status'] {
+        background: none;
+        border-color: currentcolor;
+    }
+}

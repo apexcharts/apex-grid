@@ -239,7 +239,11 @@ $accent: var(--cell-active-border-color, var(--_ag-brand));
 // paints — so a selected row would be indistinguishable from an unselected one.
 // Selection is exactly what the system `Highlight` / `HighlightText` pair is
 // for, so use it and opt this rule out of the automatic override, which is the
-// one place `forced-color-adjust: none` is warranted.
+// one place `forced-color-adjust: none` is warranted. The opt-out inherits, so
+// the row chrome here and the cell and renderer styles restate
+// `color: inherit` for the parts that author their own colour, and their hover
+// and focus marks follow that colour instead of brand washes. The
+// keyboard-grabbed ring is a box-shadow too, so it is restated as an outline.
 // ─────────────────────────────────────────────────────────────────────────
 @media (forced-colors: active) {
     :host([selected]),
@@ -247,5 +251,27 @@ $accent: var(--cell-active-border-color, var(--_ag-brand));
         forced-color-adjust: none;
         background: Highlight;
         color: HighlightText;
+    }
+
+    :host([grabbed]) {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+    }
+
+    [part='row-number-cell'],
+    [part='reorder-handle'],
+    [part='expansion-toggle'] {
+        color: inherit;
+    }
+
+    [part='reorder-handle']:hover,
+    [part='expansion-toggle']:hover:not(:disabled) {
+        color: inherit;
+        background: none;
+        border-color: currentcolor;
+    }
+
+    [part='expansion-toggle']:focus-visible {
+        outline-color: currentcolor;
     }
 }

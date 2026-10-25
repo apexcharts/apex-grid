@@ -52,4 +52,12 @@
         outline: 2px solid color-mix(in srgb, var(--_ag-brand) 50%, transparent);
         outline-offset: 2px;
     }
+
+    // Forced colors keeps the white tick image but forces the brand fill
+    // under it to the system background, so checked would read as unchecked.
+    // Hand the box back to the UA, which paints its state in system colours
+    // (a native checkbox ignores author backgrounds, the tick image included).
+    @media (forced-colors: active) {
+        appearance: auto;
+    }
 }

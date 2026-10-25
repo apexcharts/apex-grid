@@ -9,13 +9,15 @@ import ApexGridToolbar from '../src/components/toolbar.js';
  * Media-query coverage for the two environment preferences the a11y audit
  * flagged as absent repo-wide: `prefers-reduced-motion` and `forced-colors`.
  *
- * These assert the compiled stylesheets rather than rendered geometry, because
- * neither media feature can be forced from inside the page: there is no API to
- * emulate them (Playwright can, `@web/test-runner` cannot), and a headless
- * Chromium reports both as off. What that leaves worth testing is that the
- * rules exist, cover the right selectors, and use mechanisms forced colors
- * actually paints — which is exactly what regressed silently before, since a
- * deleted `@media` block breaks nothing any other test can see.
+ * These assert the compiled stylesheets: a cheap guard that the rules exist,
+ * cover the right selectors, and use mechanisms forced colors actually paints,
+ * since a deleted `@media` block breaks nothing any other test can see.
+ * Text matching cannot tell whether the rules render correctly, though: an
+ * inherited `forced-color-adjust: none` or a white image on a forced
+ * background reads fine here and paints wrong. `emulateMedia` from
+ * `@web/test-runner-commands` does emulate both features in this runner, so
+ * the rendered forced-colors checks (computed styles under
+ * `forced-colors: active`) live in `body-styles.test.ts`.
  */
 function sheetText(styles: unknown): string {
   return String(Array.isArray(styles) ? styles.map(String).join('\n') : styles);
