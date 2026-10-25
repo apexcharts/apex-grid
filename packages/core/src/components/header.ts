@@ -290,11 +290,52 @@ export default class ApexGridHeader<T extends object> extends LitElement {
     });
   }
 
+  /**
+   * Shows the open column menu in the top layer (a manual popover), so the
+   * pinned rows, later header cells, the paginator and the grid's own scroll
+   * clip cannot cover it, and places it where the absolute fallback sits:
+   * below this cell, aligned to its inline-end edge. Browsers without the
+   * Popover API keep that fallback. Removing the menu on close hides it.
+   *
+   * It re-places itself every frame while open, because no event covers
+   * every move: a scroll inside an ancestor shadow root never reaches
+   * window, and a layout shift fires nothing. Once the kebab scrolls out
+   * of the grid the menu closes, as the clipped fallback would vanish.
+   */
+  #placeMenu = () => {
+    const menu = this.renderRoot.querySelector<HTMLElement>('[part="col-menu"]');
+    if (typeof menu?.showPopover !== 'function') return;
+    const kebab = this.renderRoot.querySelector('[part~="menu-btn"]')?.getBoundingClientRect();
+    const grid = this.state.host.getBoundingClientRect();
+    if (!kebab || kebab.right <= grid.left || kebab.left >= grid.right) {
+      this.#closeMenu(menu.matches(':focus-within'));
+      return;
+    }
+    if (!menu.matches(':popover-open')) menu.showPopover();
+    const { left, right, bottom } = this.getBoundingClientRect();
+    menu.style.top = `${bottom}px`;
+    menu.style.left = `${isRTL(this) ? left : right - menu.getBoundingClientRect().width}px`;
+    this.#menuFrame = requestAnimationFrame(this.#placeMenu);
+  };
+
+  /** The pending frame that keeps the open menu on this cell. */
+  #menuFrame = 0;
+
+  /** Places the menu now and keeps it on the cell while open. */
+  #trackMenu(open: boolean) {
+    cancelAnimationFrame(this.#menuFrame);
+    if (open) this.#placeMenu();
+  }
+
   #closeMenu(returnFocus = false) {
     this.menuOpen = false;
     if (returnFocus) {
+      // No scroll: the kebab is in view on Escape, and a kebab scrolled out
+      // of the grid must not drag the grid back.
       requestAnimationFrame(() =>
-        this.renderRoot.querySelector<HTMLElement>('[part~="menu-btn"]')?.focus()
+        this.renderRoot
+          .querySelector<HTMLElement>('[part~="menu-btn"]')
+          ?.focus({ preventScroll: true })
       );
     }
   }
@@ -340,6 +381,9 @@ export default class ApexGridHeader<T extends object> extends LitElement {
   };
 
   protected override updated() {
+    // A detached header can still update (its grid removed mid-update): it
+    // must not re-arm the frame its disconnect just cancelled.
+    this.#trackMenu(this.menuOpen && this.isConnected);
     // Mirror the column's data type onto the host so the header label can match
     // the body cell alignment by default (numeric/currency cells right-align,
     // so their headers should too). Kept in sync on every update because the
@@ -381,6 +425,7 @@ export default class ApexGridHeader<T extends object> extends LitElement {
   public override disconnectedCallback(): void {
     this.removeEventListener('pointerdown', this.#handleReorderPointerDown);
     document.removeEventListener('pointerdown', this.#handleMenuOutside, true);
+    this.#trackMenu(false);
     // A live swap moves this header, which disconnects and reconnects it in
     // the same task, so only a header still detached a microtask later (its
     // column hidden mid-drag, or the grid removed) ends the drag.
@@ -471,7 +516,12 @@ export default class ApexGridHeader<T extends object> extends LitElement {
 
   protected renderColumnMenu() {
     if (!this.menuOpen) return nothing;
-    return html`<div part="col-menu" role="menu" @keydown=${this.#handleColMenuKeydown}>
+    return html`<div
+      part="col-menu"
+      role="menu"
+      popover="manual"
+      @keydown=${this.#handleColMenuKeydown}
+    >
       ${
         this.isSortable
           ? html`

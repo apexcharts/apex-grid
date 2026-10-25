@@ -3,7 +3,6 @@ import { html, LitElement, nothing, type PropertyValueMap } from 'lit';
 import { property, queryAll } from 'lit/decorators.js';
 import { ref } from 'lit/directives/ref.js';
 import { repeat } from 'lit/directives/repeat.js';
-import { styleMap } from 'lit/directives/style-map.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
 import { partNameMap } from '../internal/part-map.js';
 import { registerComponent } from '../internal/register.js';
@@ -198,27 +197,6 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
     </div>`;
   }
 
-  /**
-   * Floating "ghost" element that follows the cursor while a header is
-   * being dragged. Positioned via `position: fixed` so it escapes the
-   * header row's sticky containing block and follows the viewport.
-   */
-  protected renderDragGhost() {
-    const state = this.state.reordering.state;
-    if (!state) return nothing;
-    return html`<div
-      part="drag-ghost"
-      style=${styleMap({
-        left: `${state.ghostX}px`,
-        top: `${state.ghostY}px`,
-        width: `${state.ghostWidth}px`,
-        height: `${state.ghostHeight}px`,
-      })}
-    >
-      ${state.label}
-    </div>`;
-  }
-
   protected override render() {
     const reorderState = this.state.reordering.state;
 
@@ -269,7 +247,7 @@ export default class ApexGridHeaderRow<T extends object> extends LitElement {
           .coordinateLetter=${coordinateLetter}
         ></apex-grid-header>`;
       }
-    )}${this.renderDragGhost()}`;
+    )}`;
   }
 }
 

@@ -3342,6 +3342,28 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
+   * Floating "ghost" of the column header being dragged for reorder. Rendered
+   * here, next to the row ghost, rather than in the header row: a fixed
+   * element still paints inside its parent's stacking context, so inside the
+   * header row it slid under the group header row and the pinned-top band.
+   */
+  protected renderColumnDragGhost() {
+    const state = this.stateController.reordering.state;
+    if (!state) return nothing;
+    return html`<div
+      part="drag-ghost"
+      style=${styleMap({
+        left: `${state.ghostX}px`,
+        top: `${state.ghostY}px`,
+        width: `${state.ghostWidth}px`,
+        height: `${state.ghostHeight}px`,
+      })}
+    >
+      ${state.label}
+    </div>`;
+  }
+
+  /**
    * Floating "ghost" of the row being pointer-dragged for reorder. Rendered at
    * the top of the shadow tree (outside the virtualizer) so its `position: fixed`
    * tracks the viewport, and painted from the cell snapshot captured at grab
@@ -3432,6 +3454,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       ${this.renderFilterRow()}
       ${this.renderPaginator()}
       ${this.renderLiveRegion()}
+      ${this.renderColumnDragGhost()}
       ${this.renderRowDragGhost()}
     `;
   }

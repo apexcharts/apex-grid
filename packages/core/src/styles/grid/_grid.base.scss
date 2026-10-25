@@ -132,19 +132,18 @@ apex-virtualizer {
     z-index: calc(var(--z-index-base) + 1);
 }
 
-// Floating "ghost" of the row being pointer-dragged for reorder. Positioned
-// `fixed` (viewport-relative) and rendered at the top of the shadow tree so it
-// rides above every row and escapes the grid's own overflow clip. Painted from
-// a snapshot taken at grab time, so it mirrors the row's cells and widths.
+// Floating "ghosts" of the column header and the row being pointer-dragged for
+// reorder. Positioned `fixed` (viewport-relative) and rendered at the top of
+// the shadow tree so they ride above every header row and pinned band (a fixed
+// element still paints inside its parent's stacking context) and escape the
+// grid's own overflow clip.
+[part~='drag-ghost'],
 [part~='row-drag-ghost'] {
     position: fixed;
     display: flex;
     align-items: center;
     box-sizing: border-box;
-    max-width: 92vw;
     overflow: hidden;
-    background: $content-background;
-    color: $content-text-color;
     border: 1px solid var(--_ag-brand-line);
     border-radius: var(--_ag-radius-sm);
     box-shadow:
@@ -155,8 +154,26 @@ apex-virtualizer {
     pointer-events: none;
     user-select: none;
     cursor: grabbing;
-    opacity: 0.95;
     z-index: 99999;
+}
+
+// Column ghost: the header label on the body surface, tilted as a "lifted" cue.
+[part~='drag-ghost'] {
+    padding: 0 var(--_ag-cell-pad-x);
+    background: var(--_ag-surface);
+    color: var(--_ag-text-body);
+    font-weight: var(--_ag-fw-semibold);
+    text-overflow: ellipsis;
+    transform: rotate(-1deg);
+}
+
+// Row ghost: painted from a snapshot taken at grab time, so it mirrors the
+// row's cells and widths.
+[part~='row-drag-ghost'] {
+    max-width: 92vw;
+    background: $content-background;
+    color: $content-text-color;
+    opacity: 0.95;
 }
 
 [part~='row-drag-ghost-grip'] {

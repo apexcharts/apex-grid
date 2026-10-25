@@ -343,7 +343,10 @@ $header-separator-color: var(--header-separator-color, var(--_ag-header-separato
     flex-shrink: 0;
 }
 
-// Column context menu dropdown — absolutely positioned at host level.
+// Column context menu dropdown. Opened as a manual popover in the top layer,
+// fixed at the coordinates the header writes from its own rect, so no header
+// row, pinned band, paginator or scroll clip can cover it. Browsers without
+// the Popover API keep this absolute placement under the host.
 [part='col-menu'] {
     position: absolute;
     inset-block-start: 100%;
@@ -356,6 +359,14 @@ $header-separator-color: var(--header-separator-color, var(--_ag-header-separato
     min-inline-size: rem(180px);
     padding: rem(4px) 0;
     overflow: hidden;
+}
+
+// Drop the UA popover box (centred, Canvas colours) for the header's placement.
+[part='col-menu']:popover-open {
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    color: inherit;
 }
 
 [part='col-menu-item'] {

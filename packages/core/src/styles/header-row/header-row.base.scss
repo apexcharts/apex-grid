@@ -108,34 +108,3 @@ $accent: var(--cell-active-border-color, var(--_ag-brand));
 [part='expansion-header'] [part='expansion-chevron'] {
     transition: transform var(--_ag-dur-med) var(--_ag-ease);
 }
-
-// Floating "ghost" rendered while a column is being dragged. The ghost is
-// `position: fixed` (viewport-relative) so it follows the cursor across
-// the entire grid regardless of the header row's sticky positioning. A
-// subtle tilt gives the user a "lifted" cue.
-$drag-ghost-bg: var(--_ag-surface);
-
-[part='drag-ghost'] {
-    position: fixed;
-    display: flex;
-    align-items: center;
-    padding: 0 var(--_ag-cell-pad-x);
-    background: $drag-ghost-bg;
-    color: var(--_ag-text-body);
-    border: 1px solid var(--_ag-brand-line);
-    border-radius: var(--_ag-radius-sm);
-    box-shadow:
-        0 #{rem(2px)} #{rem(6px)} rgb(0 0 0 / 10%),
-        0 #{rem(10px)} #{rem(28px)} rgb(0 0 0 / 18%);
-    font-weight: var(--_ag-fw-semibold);
-    font-size: var(--_ag-fs-cell);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    box-sizing: border-box;
-    pointer-events: none;
-    user-select: none;
-    cursor: grabbing;
-    z-index: 99999;
-    transform: rotate(-1deg);
-}
