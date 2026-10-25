@@ -1,11 +1,13 @@
-import { expect } from '@open-wc/testing';
+import { expect, fixtureCleanup } from '@open-wc/testing';
 import {
   type AIResult,
   createAIEngine,
   createRuleBasedReasoner,
   type Reasoner,
 } from '../src/features/ai/index.js';
-import { makeApi, type Row } from './ai-fixtures.js';
+import { makeApi, mountPersonGrid, type Row } from './ai-fixtures.js';
+// Load the grid with the file, not inside the live-grid test's timeout.
+import '../src/index.js';
 
 const control = (result: AIResult) => {
   if (result.mode !== 'control') throw new Error(`expected control, got ${JSON.stringify(result)}`);
@@ -261,5 +263,23 @@ describe('AI engine guards: abstention and grounding', () => {
     const analyzed = await engine.runPrompt('what is the average amount');
     if (analyzed.mode !== 'ask') throw new Error('expected ask');
     expect(analyzed.answer).to.equal('The average Amount is 20.');
+  });
+});
+
+describe('AI engine guards: concurrent first prompts', () => {
+  afterEach(() => fixtureCleanup());
+
+  it('share one engine, so a following undo sees both turns', async () => {
+    const grid = await mountPersonGrid();
+    const [sorted] = await Promise.all([
+      grid.runPrompt('sort by salary descending'),
+      grid.runPrompt('how many rows?'),
+    ]);
+    expect(control(sorted).applied).to.include('sort');
+    expect(grid.getState().sort).to.have.lengthOf(1);
+
+    const undo = control(await grid.runPrompt('undo'));
+    expect(undo.applied).to.include('undo');
+    expect(grid.getState().sort).to.be.empty;
   });
 });

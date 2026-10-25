@@ -696,8 +696,11 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    */
   public aiEngine: AIEngine<T> | null = null;
 
-  #aiEngine: AIEngine<T> | null = null;
-  #aiEngineReasoner: Reasoner | null = null;
+  /**
+   * The default engine build and the reasoner it was built for. A promise, so
+   * prompts sent before the AI chunk loads share one engine and its memory.
+   */
+  #aiEngineBuild: { reasoner: Reasoner | null; engine: Promise<AIEngine<T>> } | null = null;
 
   #infiniteManager: InfiniteRowModelManager<T> | null = null;
   #infiniteNeedsStart = false;
@@ -1282,21 +1285,31 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * The engine's runtime is loaded on demand (dynamic `import`) so a grid that never
    * runs a prompt never bundles the AI layer.
    */
-  async #ensureAIEngine(): Promise<AIEngine<T>> {
-    if (this.aiEngine) return this.aiEngine;
-    if (!this.#aiEngine || this.#aiEngineReasoner !== this.aiReasoner) {
-      const [{ createAIEngine }, { gridApiFor }, { createRuleBasedReasoner }] = await Promise.all([
-        import('./features/ai/engine.js'),
-        import('./features/ai/grid-api.js'),
-        import('./features/ai/reasoner.js'),
-      ]);
-      const reasoners = this.aiReasoner
-        ? [createRuleBasedReasoner(), this.aiReasoner]
-        : [createRuleBasedReasoner()];
-      this.#aiEngine = createAIEngine<T>(gridApiFor(this), { reasoners });
-      this.#aiEngineReasoner = this.aiReasoner;
+  #ensureAIEngine(): Promise<AIEngine<T>> {
+    if (this.aiEngine) return Promise.resolve(this.aiEngine);
+    const reasoner = this.aiReasoner;
+    if (!this.#aiEngineBuild || this.#aiEngineBuild.reasoner !== reasoner) {
+      const build = {
+        reasoner,
+        engine: Promise.all([
+          import('./features/ai/engine.js'),
+          import('./features/ai/grid-api.js'),
+          import('./features/ai/reasoner.js'),
+        ]).then(([{ createAIEngine }, { gridApiFor }, { createRuleBasedReasoner }]) =>
+          createAIEngine<T>(gridApiFor(this), {
+            reasoners: reasoner
+              ? [createRuleBasedReasoner(), reasoner]
+              : [createRuleBasedReasoner()],
+          })
+        ),
+      };
+      // A chunk that failed to load is fetched again on the next prompt.
+      build.engine.catch(() => {
+        if (this.#aiEngineBuild === build) this.#aiEngineBuild = null;
+      });
+      this.#aiEngineBuild = build;
     }
-    return this.#aiEngine;
+    return this.#aiEngineBuild.engine;
   }
 
   protected override willUpdate(changed: PropertyValues): void {
