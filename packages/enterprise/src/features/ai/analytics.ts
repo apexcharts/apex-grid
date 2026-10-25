@@ -10,7 +10,8 @@
  * @see plans/analytics-query-spec.md
  */
 
-import type { GridSchema } from 'apex-grid';
+import type { ColumnSchema, GridSchema } from 'apex-grid';
+import { isNumericColumn } from './entities.js';
 
 /** The statistics the analytics executor can compute. Superset of the grid's agg funcs. */
 export type AnalyticsFunc =
@@ -25,7 +26,11 @@ export type AnalyticsFunc =
   | 'stddev'
   | 'mode';
 
-/** A scope clause, reusing the grid's filter-operand vocabulary. */
+/**
+ * A scope clause, in the grid's filter-operand vocabulary for the column's type
+ * (string, number or boolean operands, as its filter row offers). An operand the
+ * column type does not have refuses the query with a note.
+ */
 export interface QueryFilter {
   key: string;
   operand: string;
@@ -52,6 +57,74 @@ export interface AnalyticsQuery {
   labelColumn?: string;
 }
 
+/**
+ * Every function the analytics engine computes. Keyed by the union, so a new
+ * func cannot be left out of {@link parseAnalyticsQuery} and the tool schema.
+ */
+const ANALYTICS_FUNC_KEYS: Record<AnalyticsFunc, true> = {
+  min: true,
+  max: true,
+  avg: true,
+  median: true,
+  sum: true,
+  count: true,
+  distinct: true,
+  range: true,
+  stddev: true,
+  mode: true,
+};
+export const ANALYTICS_FUNCS: ReadonlySet<AnalyticsFunc> = new Set(
+  Object.keys(ANALYTICS_FUNC_KEYS) as AnalyticsFunc[]
+);
+
+const isText = (value: unknown) => value === undefined || typeof value === 'string';
+
+/**
+ * Check an untrusted {@link AnalyticsQuery} (from a model or a custom reasoner)
+ * before {@link runAnalytics} reads it, listing every field that is wrong.
+ * Missing `metrics` default as the rule engine does: none for `rank`, else a sum
+ * of the column, or a row count without one.
+ */
+export function parseAnalyticsQuery(
+  value: unknown
+): { ok: true; value: AnalyticsQuery } | { ok: false; errors: string[] } {
+  if (!isRecord(value)) return { ok: false, errors: ['analyze: "query" must be an object'] };
+  const { kind, metrics, where, limit, direction } = value;
+  const errors: string[] = [];
+  if (kind !== 'aggregate' && kind !== 'group' && kind !== 'rank') {
+    errors.push('analyze: "kind" must be "aggregate", "group" or "rank"');
+  }
+  if (
+    metrics !== undefined &&
+    !(Array.isArray(metrics) && metrics.every((func) => ANALYTICS_FUNCS.has(func)))
+  ) {
+    errors.push(`analyze: "metrics" must be an array of ${[...ANALYTICS_FUNCS].join(', ')}`);
+  }
+  if (
+    where !== undefined &&
+    !(
+      Array.isArray(where) &&
+      where.every((c) => isRecord(c) && typeof c.key === 'string' && typeof c.operand === 'string')
+    )
+  ) {
+    errors.push('analyze: "where" must be an array of { key, operand, value }');
+  }
+  // The rule planner reads "top 0" as limit 0, which runAnalytics clamps to 1.
+  if (limit !== undefined && !(Number.isInteger(limit) && (limit as number) >= 0)) {
+    errors.push('analyze: "limit" must be an integer of 0 or more');
+  }
+  if (direction !== undefined && direction !== 'top' && direction !== 'bottom') {
+    errors.push('analyze: "direction" must be "top" or "bottom"');
+  }
+  for (const field of ['column', 'groupBy', 'labelColumn']) {
+    if (!isText(value[field])) errors.push(`analyze: "${field}" must be a column key`);
+  }
+  if (errors.length > 0) return { ok: false, errors };
+  const query = value as unknown as AnalyticsQuery;
+  const fallback: AnalyticsFunc[] = kind === 'rank' ? [] : [query.column ? 'sum' : 'count'];
+  return { ok: true, value: { ...query, metrics: query.metrics ?? fallback } };
+}
+
 /** One computed metric. `value` is a string only for `mode` over a non-numeric column. */
 export interface MetricValue {
   func: AnalyticsFunc;
@@ -65,8 +138,8 @@ export interface AnalyticsResult {
   groupBy?: string;
   /** `aggregate`. */
   metrics?: MetricValue[];
-  /** `group`: one row per group. */
-  groups?: Array<{ group: string; value: number | null }>;
+  /** `group`: one row per group. `value` is a string only for `mode` over text. */
+  groups?: Array<{ group: string; value: MetricValue['value'] }>;
   /** `rank`: the ranked rows. */
   rows?: Array<{ label: string; value: number }>;
   direction?: 'top' | 'bottom';
@@ -90,16 +163,21 @@ function labelOf(schema: GridSchema, key: string | undefined): string {
   return schema.columns.find((c) => c.key === key)?.label ?? key;
 }
 
-/** Round to 2 decimals and render raw (no locale separators, for deterministic output). */
+/**
+ * Round to 2 decimals, or to 2 significant digits under 1 so a small rate is not
+ * reported as 0, and render raw (no locale separators, for deterministic output).
+ */
 export function formatNumber(n: number): string {
   if (!Number.isFinite(n)) return String(n);
-  return String(Math.round(n * 100) / 100);
+  return String(Math.abs(n) < 1 ? Number(n.toPrecision(2)) : Math.round(n * 100) / 100);
 }
 
+/** A cell as a number: numeric text ("$60,000") parses, blank text is missing (NaN). */
 function toNumber(value: unknown): number {
   if (typeof value === 'number') return value;
-  if (typeof value === 'string') return Number(value.replace(/[$,]/g, ''));
-  return Number.NaN;
+  if (typeof value !== 'string') return Number.NaN;
+  const digits = value.replace(/[$,]/g, '').trim();
+  return digits === '' ? Number.NaN : Number(digits);
 }
 
 // --- statistics ------------------------------------------------------------
@@ -199,35 +277,91 @@ export function computeMetric(
 
 // --- scope (where) ---------------------------------------------------------
 
-function matchesFilter(row: Row, clause: QueryFilter): boolean {
-  const cell = row[clause.key];
-  const target = clause.value;
-  switch (clause.operand) {
-    case 'equals':
-      return String(cell).toLowerCase() === String(target).toLowerCase();
-    case 'doesNotEqual':
-    case 'notEquals':
-      return String(cell).toLowerCase() !== String(target).toLowerCase();
-    case 'contains':
-      return String(cell).toLowerCase().includes(String(target).toLowerCase());
-    case 'greaterThan':
-      return toNumber(cell) > toNumber(target);
-    case 'lessThan':
-      return toNumber(cell) < toNumber(target);
-    case 'greaterThanOrEqual':
-    case 'greaterThanOrEqualTo':
-      return toNumber(cell) >= toNumber(target);
-    case 'lessThanOrEqual':
-    case 'lessThanOrEqualTo':
-      return toNumber(cell) <= toNumber(target);
-    default:
-      return true;
-  }
-}
+type ScopeTest = (cell: unknown, value: unknown) => boolean;
 
-function applyScope(rows: readonly Row[], where: QueryFilter[] | undefined): readonly Row[] {
-  if (!where || where.length === 0) return rows;
-  return rows.filter((row) => where.every((clause) => matchesFilter(row, clause)));
+/** Text as the grid's string filters compare it: case-folded, missing as ''. */
+const text = (value: unknown): string => (value == null ? '' : String(value)).toLowerCase();
+
+/** A missing number, as the grid's number filters read it: null, NaN or blank text. */
+const isBlankNumber = (value: unknown): boolean => Number.isNaN(toNumber(value ?? Number.NaN));
+
+const compare =
+  (test: (cell: number, value: number) => boolean): ScopeTest =>
+  (cell, value) =>
+    test(toNumber(cell), toNumber(value));
+
+/**
+ * The grid's filter operands per column type (core's String/Number/BooleanOperands),
+ * restated: a runtime import of `apex-grid` from this lazily loaded chunk would
+ * split the core out of the define bundle (see {@link minOf}).
+ */
+const STRING_SCOPE = new Map<string, ScopeTest>([
+  ['equals', (cell, value) => text(cell) === text(value)],
+  ['doesNotEqual', (cell, value) => text(cell) !== text(value)],
+  ['contains', (cell, value) => text(cell).includes(text(value))],
+  ['doesNotContain', (cell, value) => !text(cell).includes(text(value))],
+  ['startsWith', (cell, value) => text(cell).startsWith(text(value))],
+  ['endsWith', (cell, value) => text(cell).endsWith(text(value))],
+  ['empty', (cell) => text(cell) === ''],
+  ['notEmpty', (cell) => text(cell) !== ''],
+]);
+const NUMBER_SCOPE = new Map<string, ScopeTest>([
+  ['equals', compare((cell, value) => cell === value)],
+  ['doesNotEqual', compare((cell, value) => cell !== value)],
+  ['greaterThan', compare((cell, value) => cell > value)],
+  ['lessThan', compare((cell, value) => cell < value)],
+  ['greaterThanOrEqual', compare((cell, value) => cell >= value)],
+  ['lessThanOrEqual', compare((cell, value) => cell <= value)],
+  ['empty', isBlankNumber],
+  ['notEmpty', (cell) => !isBlankNumber(cell)],
+]);
+const BOOLEAN_SCOPE = new Map<string, ScopeTest>([
+  ['all', () => true],
+  ['true', (cell) => cell === true],
+  ['false', (cell) => cell === false],
+  ['empty', (cell) => cell == null],
+  ['notEmpty', (cell) => cell != null],
+]);
+
+/** Spellings a model may use for a grid operand. */
+const OPERAND_ALIASES = new Map([
+  ['notEquals', 'doesNotEqual'],
+  ['greaterThanOrEqualTo', 'greaterThanOrEqual'],
+  ['lessThanOrEqualTo', 'lessThanOrEqual'],
+]);
+
+/** How a scope operand reads in an answer; a unary one (no value) starts with "is". */
+const OPERAND_TEXT = new Map([
+  ['equals', '='],
+  ['doesNotEqual', '!='],
+  ['greaterThan', '>'],
+  ['lessThan', '<'],
+  ['greaterThanOrEqual', '>='],
+  ['lessThanOrEqual', '<='],
+  ['contains', 'contains'],
+  ['doesNotContain', 'does not contain'],
+  ['startsWith', 'starts with'],
+  ['endsWith', 'ends with'],
+  ['empty', 'is empty'],
+  ['notEmpty', 'is not empty'],
+  ['true', 'is true'],
+  ['false', 'is false'],
+  ['all', 'is any value'],
+]);
+
+const operandOf = (clause: QueryFilter): string =>
+  OPERAND_ALIASES.get(clause.operand) ?? clause.operand;
+
+/** The scope test for a clause, by its column's type, or undefined for an unknown operand. */
+function scopeTest(schema: GridSchema, clause: QueryFilter): ScopeTest | undefined {
+  const column: ColumnSchema | undefined = schema.columns.find((c) => c.key === clause.key);
+  const operands =
+    column?.dataType === 'boolean'
+      ? BOOLEAN_SCOPE
+      : column && isNumericColumn(column)
+        ? NUMBER_SCOPE
+        : STRING_SCOPE;
+  return operands.get(operandOf(clause));
 }
 
 // --- executor --------------------------------------------------------------
@@ -236,11 +370,22 @@ function applyScope(rows: readonly Row[], where: QueryFilter[] | undefined): rea
 export function runAnalytics(
   query: AnalyticsQuery,
   data: readonly unknown[],
-  _schema: GridSchema
+  schema: GridSchema
 ): AnalyticsResult {
   const allRows = data.filter(isRecord);
-  const rows = applyScope(allRows, query.where);
   const notes: string[] = [];
+  const tests: Array<(row: Row) => boolean> = [];
+  for (const clause of query.where ?? []) {
+    const test = scopeTest(schema, clause);
+    if (test) tests.push((row) => test(row[clause.key], clause.value));
+    else {
+      // Never drop a clause silently: the answer would cover the wrong rows.
+      notes.push(
+        `I cannot narrow ${labelOf(schema, clause.key)} with "${clause.operand}", so I did not compute this.`
+      );
+    }
+  }
+  const rows = notes.length > 0 ? [] : allRows.filter((row) => tests.every((test) => test(row)));
   const base: AnalyticsResult = {
     kind: query.kind,
     column: query.column,
@@ -252,10 +397,13 @@ export function runAnalytics(
     notes,
   };
 
+  if (notes.length > 0) return base;
   if (allRows.length === 0) {
     notes.push('There is no data to analyze.');
     return base;
   }
+  // An empty scope is reported as such, not as a column with nothing to compute.
+  if (rows.length === 0) notes.push(`No rows match${scopeText(schema, query.where)}.`);
 
   if (query.kind === 'rank') {
     const column = query.column;
@@ -292,13 +440,19 @@ export function runAnalytics(
     }
     let groups = [...buckets.entries()].map(([group, groupRows]) => ({
       group,
-      value: numericOrNull(computeMetric(func, groupRows, query.column).value),
+      value: computeMetric(func, groupRows, query.column).value,
     }));
-    if (query.direction) {
+    // The most common value per group is a label, not a quantity to rank by.
+    if (query.direction && func !== 'mode') {
+      const top = query.direction === 'top';
+      const rank = (value: MetricValue['value']) =>
+        typeof value === 'number'
+          ? value
+          : top
+            ? Number.NEGATIVE_INFINITY
+            : Number.POSITIVE_INFINITY;
       groups = groups.sort((a, b) =>
-        query.direction === 'top'
-          ? (b.value ?? Number.NEGATIVE_INFINITY) - (a.value ?? Number.NEGATIVE_INFINITY)
-          : (a.value ?? Number.POSITIVE_INFINITY) - (b.value ?? Number.POSITIVE_INFINITY)
+        top ? rank(b.value) - rank(a.value) : rank(a.value) - rank(b.value)
       );
       if (query.limit) groups = groups.slice(0, Math.max(1, query.limit));
     }
@@ -315,10 +469,6 @@ export function runAnalytics(
     }
   }
   return base;
-}
-
-function numericOrNull(value: number | string | null): number | null {
-  return typeof value === 'number' ? value : null;
 }
 
 // --- formatting ------------------------------------------------------------
@@ -356,14 +506,9 @@ function renderValue(value: number | string | null): string {
 function scopeText(schema: GridSchema, where: QueryFilter[] | undefined): string {
   if (!where || where.length === 0) return '';
   const parts = where.map((clause) => {
-    const label = labelOf(schema, clause.key);
-    if (clause.operand === 'greaterThan') return `${label} > ${clause.value}`;
-    if (clause.operand === 'lessThan') return `${label} < ${clause.value}`;
-    if (clause.operand === 'greaterThanOrEqual' || clause.operand === 'greaterThanOrEqualTo')
-      return `${label} >= ${clause.value}`;
-    if (clause.operand === 'lessThanOrEqual' || clause.operand === 'lessThanOrEqualTo')
-      return `${label} <= ${clause.value}`;
-    return `${label} = ${clause.value}`;
+    const phrase = OPERAND_TEXT.get(operandOf(clause)) ?? clause.operand;
+    const value = phrase.startsWith('is ') ? '' : ` ${clause.value}`;
+    return `${labelOf(schema, clause.key)} ${phrase}${value}`;
   });
   return ` (${parts.join(', ')})`;
 }
@@ -389,14 +534,17 @@ export function formatAnalyticsAnswer(result: AnalyticsResult, schema: GridSchem
   if (result.kind === 'group' && result.groups) {
     const func = result.metrics?.[0]?.func ?? 'count';
     const dimension = labelOf(schema, result.groupBy);
+    // A plain count has no measure column to name.
+    const measure = column ? `${funcLabel(func)} ${column}` : funcLabel(func);
     if (result.groups.length === 0) return `No ${dimension} groups to report.`;
-    if (result.direction && result.limit === 1 && result.groups.length >= 1) {
+    const list = result.groups.map((g) => `${g.group} ${renderValue(g.value)}`).join('; ');
+    if (func === 'mode') return `${capitalize(measure)} in each ${dimension}${scope}: ${list}.`;
+    if (result.direction && result.limit === 1) {
       const top = result.groups[0];
       const superlative = result.direction === 'bottom' ? 'lowest' : 'highest';
-      return `${top.group} has the ${superlative} ${funcLabel(func)} ${column} (${renderValue(top.value)}).`;
+      return `${top.group} has the ${superlative} ${measure} (${renderValue(top.value)}).`;
     }
-    const list = result.groups.map((g) => `${g.group} ${renderValue(g.value)}`).join('; ');
-    return `${capitalize(funcLabel(func))} ${column} by ${dimension}${scope}: ${list}.`;
+    return `${capitalize(measure)} by ${dimension}${scope}: ${list}.`;
   }
 
   // aggregate

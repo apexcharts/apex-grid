@@ -23,11 +23,13 @@ import type { AggregationConfig } from '../../aggregation.js';
 import { sanitizePatch } from '../../ai-sanitize.js';
 import type { StatePatch } from '../../ai-schema.js';
 import {
+  ANALYTICS_FUNCS,
   type AnalyticsFunc,
   type AnalyticsQuery,
   computeMetric,
   formatAnalyticsAnswer,
   formatNumber,
+  parseAnalyticsQuery,
   runAnalytics,
 } from '../analytics.js';
 import type { GridContext } from '../context.js';
@@ -62,25 +64,6 @@ function fail(...errors: string[]): { ok: false; errors: string[] } {
 const noop = () => undefined;
 
 const always = () => true;
-
-/**
- * Every function the analytics engine computes (validates `analyze` queries).
- * Keyed by the union, so a new func cannot be left out of the validator and
- * the published tool schema.
- */
-const ANALYTICS_FUNC_KEYS: Record<AnalyticsFunc, true> = {
-  min: true,
-  max: true,
-  avg: true,
-  median: true,
-  sum: true,
-  count: true,
-  distinct: true,
-  range: true,
-  stddev: true,
-  mode: true,
-};
-const ANALYTICS_FUNCS = new Set(Object.keys(ANALYTICS_FUNC_KEYS) as AnalyticsFunc[]);
 
 function normalizeDirection(direction: string | undefined): SortingDirection {
   if (direction && /^desc/i.test(direction)) return 'descending';
@@ -743,25 +726,8 @@ const analyzeTool: Tool<AnalyzeArgs> = {
   available: always,
   validate(args) {
     // The shape runAnalytics dereferences; a malformed query is refused, not thrown on.
-    const query = isRecord(args) ? args.query : undefined;
-    if (
-      !isRecord(query) ||
-      !['aggregate', 'group', 'rank'].includes(query.kind as string) ||
-      !asArray(query.metrics)?.every((func) => ANALYTICS_FUNCS.has(func as AnalyticsFunc)) ||
-      (query.where !== undefined &&
-        !asArray(query.where)?.every(
-          (clause) =>
-            isRecord(clause) && typeof clause.key === 'string' && typeof clause.operand === 'string'
-        )) ||
-      // The rule planner reads "top 0" as limit 0, which analytics clamps to 1.
-      (query.limit !== undefined &&
-        !(Number.isInteger(query.limit) && (query.limit as number) >= 0))
-    ) {
-      return fail(
-        'analyze: "query" must be { kind, metrics: [], where?: [{ key, operand, value }], limit?: integer >= 0 } as in the tool schema'
-      );
-    }
-    return ok({ query: query as unknown as AnalyticsQuery });
+    const parsed = parseAnalyticsQuery(isRecord(args) ? args.query : undefined);
+    return parsed.ok ? ok({ query: parsed.value }) : parsed;
   },
   execute(args, tc) {
     const result = runAnalytics(args.query, tc.api.getData(), tc.ctx.schema);

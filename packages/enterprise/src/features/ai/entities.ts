@@ -642,11 +642,21 @@ function buildAnalyticsQuery(
     if (!measure && NUMERIC_METRICS.has(func)) {
       return { errors: [`Tell me which numeric column to measure.${columnList(ctx)}`] };
     }
+    // The most common and distinct values are read from any column, numeric or not;
+    // with no column to read, every group would answer "n/a".
+    const valueCol =
+      func === 'count'
+        ? undefined
+        : (measure ??
+          (NUMERIC_METRICS.has(func) ? undefined : mentioned.find((c) => c !== groupCol)));
+    if (func !== 'count' && !valueCol) {
+      return { errors: [`Tell me which column to measure.${columnList(ctx)}`] };
+    }
     return {
       query: {
         kind: 'group',
         metrics: [func],
-        column: func === 'count' ? undefined : measure?.key,
+        column: valueCol?.key,
         groupBy: groupCol.key,
         direction: ranked ? (superBottom && !superTop ? 'bottom' : 'top') : undefined,
         limit: ranked ? 1 : undefined,
