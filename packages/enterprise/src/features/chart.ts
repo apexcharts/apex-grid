@@ -88,6 +88,16 @@ export interface ChartFormat {
   readonly gridlines?: boolean;
   /** Number format applied to value labels + tooltips. `'none'` (default) leaves ApexCharts' own. */
   readonly numberFormat?: 'none' | 'currency' | 'percent' | 'thousands';
+  /**
+   * ISO 4217 code for the `'currency'` number format (e.g. `'EUR'`). Defaults to USD;
+   * `<apex-grid-chart>` defaults it to the first measure column's `currency`.
+   */
+  readonly currency?: string;
+  /**
+   * BCP 47 locale for the number formats (e.g. `'de-DE'`). Defaults to the runtime locale;
+   * `<apex-grid-chart>` defaults it to the first measure column's `locale`.
+   */
+  readonly locale?: string;
   /** Draw a dashed target/threshold line at this value on the measure axis. */
   readonly referenceLine?: number;
   /** Shade a target/tolerance region between two values on the measure axis. */
@@ -149,11 +159,17 @@ export function linearForecast(values: readonly number[], periods: number): numb
   return Array.from({ length: periods }, (_, k) => intercept + slope * (n + k));
 }
 
+/** Two-sided 95% Student-t quantiles for 1 to 9 degrees of freedom. */
+const T_975 = [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262];
+
 /**
  * Prediction band around {@link linearForecast}: `{ upper, lower }`, one entry per future period.
- * The half-width is a ~95% prediction interval derived from the fit's residual standard error,
- * widening the further out the period is. Collapses to the point forecast (zero width) when there
- * are too few points to estimate spread. Empty in, empty out.
+ * Each is the 95% prediction interval of the least-squares line at that period:
+ * `t * se * sqrt(1 + 1/n + (x0 - mean x)^2 / Sxx)`, where `se` is the residual standard error and
+ * `t` the two-sided 97.5% Student-t quantile for `n - 2` degrees of freedom (a table below 10, the
+ * Cornish-Fisher series from 10 on, within 0.003). The band widens the further out the period is.
+ * Collapses to the point forecast (zero width) below 3 points, where spread cannot be estimated.
+ * Empty in, empty out.
  */
 export function linearForecastBand(
   values: readonly number[],
@@ -165,31 +181,56 @@ export function linearForecastBand(
   // Residual standard error (n - 2 dof for a line fit); undefined below 3 points → no band.
   let sse = 0;
   for (let i = 0; i < n; i += 1) sse += (values[i] - (intercept + slope * i)) ** 2;
-  const se = n > 2 ? Math.sqrt(sse / (n - 2)) : 0;
+  const dof = n - 2;
+  const se = dof > 0 ? Math.sqrt(sse / dof) : 0;
   const z = 1.96;
-  const halfWidth = (k: number) => z * se * Math.sqrt(1 + (k + 1) / n);
+  const t =
+    T_975[dof - 1] ??
+    z + (z ** 3 + z) / (4 * dof) + (5 * z ** 5 + 16 * z ** 3 + 3 * z) / (96 * dof * dof);
+  const mean = (n - 1) / 2;
+  const sxx = (n * (n * n - 1)) / 12;
+  const halfWidth = (k: number) => t * se * Math.sqrt(1 + 1 / n + (n + k - mean) ** 2 / sxx);
   return {
     upper: forecast.map((v, k) => v + halfWidth(k)),
     lower: forecast.map((v, k) => v - halfWidth(k)),
   };
 }
 
-const CIRCULAR_TYPES: ReadonlySet<ChartType | 'auto'> = new Set(['pie', 'donut']);
-
-/** Build a value formatter for a {@link ChartFormat.numberFormat}, or `null` for `'none'`/unset. */
-function makeNumberFormatter(
-  kind: ChartFormat['numberFormat']
-): ((value: number) => string) | null {
-  switch (kind) {
-    case 'currency':
-      return (v) => `$${Math.round(Number(v)).toLocaleString('en-US')}`;
-    case 'percent':
-      return (v) => `${Number(v).toLocaleString('en-US')}%`;
-    case 'thousands':
-      return (v) => Number(v).toLocaleString('en-US');
-    default:
+/**
+ * Build a value formatter for a {@link ChartFormat.numberFormat}, or `null` for `'none'`/unset.
+ * Currency is whole units of `currency` (USD by default); every format groups digits for `locale`
+ * (the runtime locale by default). A malformed currency falls back to USD and a malformed locale
+ * to the runtime one, each keeping the other, instead of throwing on every label.
+ */
+function makeNumberFormatter({
+  numberFormat,
+  currency = 'USD',
+  locale,
+}: ChartFormat): ((value: number) => string) | null {
+  if (!numberFormat || numberFormat === 'none') return null;
+  const make = (tag: string | undefined, code: string): Intl.NumberFormat | null => {
+    try {
+      return new Intl.NumberFormat(
+        tag,
+        numberFormat === 'currency'
+          ? {
+              style: 'currency',
+              currency: code,
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }
+          : {}
+      );
+    } catch {
       return null;
-  }
+    }
+  };
+  const format = (make(locale, currency) ??
+    make(locale, 'USD') ??
+    make(undefined, currency) ??
+    make(undefined, 'USD')) as Intl.NumberFormat;
+  const suffix = numberFormat === 'percent' ? '%' : '';
+  return (v) => `${format.format(Number(v))}${suffix}`;
 }
 
 /**
@@ -197,7 +238,8 @@ function makeNumberFormatter(
  * caller actually set are emitted, so an empty format is a no-op and merging it never clobbers the
  * author's own options. Number formatting is applied to **data labels and tooltips** (not axes), so
  * it can't collide with a caller's multi-axis `yaxis` array. Circular charts (pie/donut) keep their
- * percentage labels. `type` decides only the circular-vs-cartesian branch.
+ * percentage labels. `type` decides only the circular-vs-cartesian branch: pass the resolved type
+ * (see {@link recommendChartType}), since `'auto'` may draw a pie and is never treated as cartesian.
  */
 export function formatToApexOptions(
   format: ChartFormat,
@@ -208,8 +250,8 @@ export function formatToApexOptions(
   if (format.legend !== undefined) out.legend = { show: format.legend };
   if (format.gridlines !== undefined) out.grid = { show: format.gridlines };
 
-  const formatter = makeNumberFormatter(format.numberFormat);
-  const cartesian = !CIRCULAR_TYPES.has(type);
+  const formatter = makeNumberFormatter(format);
+  const cartesian = type !== 'auto' && !CIRCULAR.has(type);
   if (format.dataLabels !== undefined || (formatter && cartesian)) {
     const dataLabels: Record<string, unknown> = {};
     if (format.dataLabels !== undefined) dataLabels.enabled = format.dataLabels;
@@ -271,8 +313,7 @@ export function formatToApexOptions(
 export function buildValueAxes(
   seriesNames: readonly string[],
   secondaryNames: readonly string[],
-  opts: {
-    numberFormat?: ChartFormat['numberFormat'];
+  opts: Pick<ChartFormat, 'numberFormat' | 'currency' | 'locale'> & {
     primaryTitle?: string;
     secondaryTitle?: string;
   } = {}
@@ -281,7 +322,7 @@ export function buildValueAxes(
   const primary = seriesNames.filter((name) => !secondarySet.has(name));
   const secondary = seriesNames.filter((name) => secondarySet.has(name));
   if (secondary.length === 0) return [];
-  const formatter = makeNumberFormatter(opts.numberFormat);
+  const formatter = makeNumberFormatter(opts);
   const labels = formatter ? { labels: { formatter } } : {};
   const axis = (names: string[], title: string | undefined, opposite: boolean) => ({
     // Only bind by name when there is a subset to bind; an empty array would orphan the axis.
@@ -344,11 +385,19 @@ function toApexType(type: ChartType): NonNullable<ApexOptions['chart']>['type'] 
 
 /**
  * Excel-style "Recommended Charts" lite: pick a sensible default type from the model shape.
- * One series over a handful of categories reads best as a pie; a long category axis as a line;
- * otherwise a column chart.
+ * One series of parts of a whole (no negative value, a positive total) over a handful of categories
+ * reads best as a pie; a long category axis as a line; otherwise a column chart.
  */
 export function recommendChartType(model: ChartModel): ChartType {
-  if (model.series.length === 1 && model.categories.length <= 6) return 'pie';
+  const data = model.series[0]?.data ?? [];
+  if (
+    model.series.length === 1 &&
+    model.categories.length <= 6 &&
+    data.every((v) => v >= 0) &&
+    data.reduce((a, b) => a + b, 0) > 0
+  ) {
+    return 'pie';
+  }
   if (model.categories.length > 12) return 'line';
   return 'column';
 }

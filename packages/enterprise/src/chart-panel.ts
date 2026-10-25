@@ -811,15 +811,16 @@ export class ApexGridChart extends LitElement {
       this.#destroyChart();
       return;
     }
+    // Resolve `'auto'` to a concrete type first: the format overlay differs for a pie, and the
+    // overlays below only suit some types.
+    const type = this.type === 'auto' ? recommendChartType(model) : this.type;
+    if (this.type === 'auto') this.#autoType = type;
     // Trend/forecast overlays augment the series set + force combo rendering, so fold them in first.
-    const { model: renderModel, options } = this.#withOverlays(model, this.#options());
-    // Resolve the concrete type so switching type (including `'auto'` and any cartesian↔circular
-    // move) tears down and rebuilds rather than mutating in place — ApexCharts' updateOptions is
-    // unreliable across those transitions, another source of the "sometimes blank" chart.
-    const resolvedType =
-      options.type === 'auto' || options.type == null
-        ? recommendChartType(renderModel)
-        : options.type;
+    const { model: renderModel, options } = this.#withOverlays(model, this.#options(type));
+    // A type switch (including any cartesian↔circular move) tears down and rebuilds rather than
+    // mutating in place: ApexCharts' updateOptions is unreliable across those transitions,
+    // another source of the "sometimes blank" chart.
+    const resolvedType = options.type as ChartType;
     // A type switch OR a format edit rebuilds from scratch (see updated() for why format does).
     if (this.#chart && (resolvedType !== this.#renderedType || this.#formatDirty))
       this.#destroyChart();
@@ -969,9 +970,7 @@ export class ApexGridChart extends LitElement {
     model: ChartModel,
     options: RenderChartOptions
   ): { model: ChartModel; options: RenderChartOptions } {
-    const base =
-      options.type === 'auto' || options.type == null ? recommendChartType(model) : options.type;
-    if (options.type === 'auto' || options.type == null) this.#autoType = base;
+    const base = options.type as ChartType;
     // The one place a forecast is normalised (popover input, `format`, restore()): whole periods,
     // never negative, capped, so a fractional or huge value cannot break the padded arrays below.
     const periods = forecastPeriods(this.format.forecast);
@@ -1044,12 +1043,28 @@ export class ApexGridChart extends LitElement {
     return { model: augmented, options: { ...options, type: 'combo', comboTypes, apexOptions } };
   }
 
-  #options(): RenderChartOptions {
+  /**
+   * The format with its currency and locale defaulted from the first measure column, so the
+   * chart's currency labels match the grid's cells.
+   */
+  #numberFormat(): ChartFormat {
+    const key = this.#measureKeys()[0];
+    const column = this.grid?.columns.find((c) => String(c.key) === key);
+    return {
+      ...this.format,
+      currency: this.format.currency ?? column?.currency,
+      locale: this.format.locale ?? column?.locale,
+    };
+  }
+
+  /** Render options for the resolved (never `'auto'`) chart `type`. */
+  #options(type: ChartType): RenderChartOptions {
     const theme = this.#themeOptions();
     const user = this.apexOptions ?? {};
+    const format = this.#numberFormat();
     // Format popover overlay, layered last so the user's interactive choices win over author
     // `apexOptions` — but only for the keys they actually set (see formatToApexOptions).
-    const overlay = formatToApexOptions(this.format, this.type) as Record<string, unknown>;
+    const overlay = formatToApexOptions(format, type) as Record<string, unknown>;
     // A saved config may hold blank color slots (ApexCharts draws them white): fill them.
     if (overlay.colors) overlay.colors = this.#seriesColors();
     const userRec = user as Record<string, unknown>;
@@ -1106,8 +1121,8 @@ export class ApexGridChart extends LitElement {
     const secondaryNames = this.#secondaryNames();
     if (secondaryNames.length > 0 && this.seriesNames.length > 0) {
       merged.yaxis = buildValueAxes(this.seriesNames, secondaryNames, {
-        numberFormat: this.format.numberFormat,
-        primaryTitle: this.format.axisTitles?.y,
+        ...format,
+        primaryTitle: format.axisTitles?.y,
       });
     }
     // Data labels default OFF and the popover toggle is authoritative: ApexCharts turns labels ON
@@ -1118,7 +1133,7 @@ export class ApexGridChart extends LitElement {
       enabled: this.format.dataLabels ?? false,
     };
     return {
-      type: this.type,
+      type,
       height: this.#resolveHeight(),
       apexOptions: merged,
     };
@@ -1339,6 +1354,7 @@ export class ApexGridChart extends LitElement {
         padding: 8px 12px;
         border-block-end: 1px solid var(--_ag-hairline, #eef0f4);
         cursor: move;
+        touch-action: none;
         font-weight: 600;
       }
       apex-grid-chart [part='heading'] {
@@ -2078,6 +2094,8 @@ export class ApexGridChart extends LitElement {
                 @pointerdown=${this.#onHeaderPointerDown}
                 @pointermove=${this.#onHeaderPointerMove}
                 @pointerup=${this.#onHeaderPointerUp}
+                @pointercancel=${this.#onHeaderPointerUp}
+                @lostpointercapture=${this.#onHeaderPointerUp}
               >
                 ${
                   this.headingEditing

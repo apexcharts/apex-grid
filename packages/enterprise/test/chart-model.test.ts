@@ -8,6 +8,10 @@ import {
   ChartRangeManager,
   computeCalculatedSeries,
   enterpriseModules,
+  formatToApexOptions,
+  linearForecast,
+  linearForecastBand,
+  recommendChartType,
 } from '../src/index.js';
 
 type Rec = Record<string, unknown>;
@@ -498,6 +502,188 @@ describe('chart model', () => {
         long.format(new Date(2024, 2, 1)),
         long.format(new Date(2024, 2, 2)),
       ]);
+    });
+  });
+
+  describe('forecast band (ent-chart-model-2)', () => {
+    it('is a 95% prediction interval: Student-t and the leverage of each period', () => {
+      const values = [1, 3, 2, 5, 4, 7];
+      const n = values.length;
+      const { upper, lower } = linearForecastBand(values, 3);
+      const forecast = linearForecast(values, 3);
+      // Textbook interval: t(0.975, n - 2) * se * sqrt(1 + 1/n + (x0 - xbar)^2 / Sxx).
+      const xbar = (n - 1) / 2;
+      const sxx = (n * (n * n - 1)) / 12;
+      const trend = values.map((_, i) => forecast[0] + (i - n) * (forecast[1] - forecast[0]));
+      const se = Math.sqrt(values.reduce((acc, v, i) => acc + (v - trend[i]) ** 2, 0) / (n - 2));
+      const t4 = 2.776;
+      forecast.forEach((point, k) => {
+        const half = t4 * se * Math.sqrt(1 + 1 / n + (n + k - xbar) ** 2 / sxx);
+        expect(upper[k] - point, `upper ${k}`).to.be.closeTo(half, 0.01);
+        expect(point - lower[k], `lower ${k}`).to.be.closeTo(half, 0.01);
+      });
+      expect(upper[0] - forecast[0]).to.be.closeTo(4.16, 0.01);
+    });
+
+    it('uses a quantile near 1.96 for a long series', () => {
+      const values = Array.from({ length: 200 }, (_, i) => i + (i % 2 ? 1 : -1));
+      const [point] = linearForecast(values, 1);
+      const [upper] = linearForecastBand(values, 1).upper;
+      // Residuals are +-1, so se is about 1 and the leverage term about 1.
+      expect(upper - point).to.be.within(1.95, 2.05);
+    });
+  });
+
+  describe("the 'auto' chart type (ent-chart-model-3, ent-chart-model-9)", () => {
+    it("never formats 'auto' as a cartesian chart", () => {
+      const out = formatToApexOptions({ numberFormat: 'currency', dataLabels: true }, 'auto');
+      expect(out.dataLabels).to.eql({ enabled: true });
+      expect(out.tooltip).to.equal(undefined);
+      expect(out.yaxis).to.equal(undefined);
+    });
+
+    it('keeps the percentage labels of an auto chart that resolves to a pie', async () => {
+      const grid = await mount(
+        [
+          { region: 'N', sales: 25.3333 },
+          { region: 'S', sales: 74.6667 },
+        ],
+        [{ key: 'region' }, { key: 'sales', type: 'number' }]
+      );
+      const panel = await fixture<ApexGridChart>(
+        html`<apex-grid-chart mode="inline" source="view" .grid=${grid as never} .format=${{
+          numberFormat: 'currency',
+          dataLabels: true,
+        }}></apex-grid-chart>`
+      );
+      await until(() => panel.getChart() != null);
+      const config = (panel.getChart() as unknown as { w: { config: Rec } }).w.config as {
+        chart: { type: string };
+        dataLabels: { formatter: (v: number, o?: unknown) => string };
+      };
+      expect(config.chart.type).to.equal('pie');
+      expect(
+        config.dataLabels.formatter(25.3333, { seriesIndex: 0, w: { config: {} } })
+      ).to.not.equal('$25');
+    });
+
+    it('recommends a pie only for non-negative values with a positive sum', () => {
+      const one = (data: number[]): ChartModel => ({
+        categories: data.map((_, i) => `c${i}`),
+        series: [{ name: 'Profit', data }],
+      });
+      expect(recommendChartType(one([120, 40, 80]))).to.equal('pie');
+      expect(recommendChartType(one([120, -40, 80]))).to.equal('column');
+      expect(recommendChartType(one([0, 0, 0]))).to.equal('column');
+      expect(recommendChartType(one([1, Number.NaN]))).to.equal('column');
+    });
+  });
+
+  describe('number formats (ent-chart-model-8)', () => {
+    type Formatted = { dataLabels: { formatter: (v: number) => string } };
+    it('formats currency with the given currency and locale', () => {
+      const out = formatToApexOptions(
+        { numberFormat: 'currency', currency: 'EUR', locale: 'de-DE' },
+        'column'
+      ) as unknown as Formatted;
+      const expected = new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'EUR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(1234.5);
+      expect(out.dataLabels.formatter(1234.5)).to.equal(expected);
+    });
+
+    it('groups thousands in the given locale', () => {
+      const out = formatToApexOptions(
+        { numberFormat: 'thousands', locale: 'de-DE' },
+        'column'
+      ) as unknown as Formatted;
+      expect(out.dataLabels.formatter(1234.5)).to.equal('1.234,5');
+    });
+
+    it('falls back instead of throwing on a malformed currency or locale', () => {
+      const out = formatToApexOptions(
+        { numberFormat: 'currency', currency: 'not a code', locale: '???' },
+        'column'
+      ) as unknown as Formatted;
+      expect(out.dataLabels.formatter(10)).to.be.a('string').and.include('10');
+      // A bad currency alone keeps the locale.
+      const badCurrency = formatToApexOptions(
+        { numberFormat: 'currency', currency: 'XX!', locale: 'de-DE' },
+        'column'
+      ) as unknown as Formatted;
+      const usdInGerman = new Intl.NumberFormat('de-DE', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(1234.5);
+      expect(badCurrency.dataLabels.formatter(1234.5)).to.equal(usdInGerman);
+    });
+
+    it("defaults the chart's currency to the first measure column's", async () => {
+      const grid = await mount(
+        [
+          { region: 'N', price: 1000 },
+          { region: 'S', price: 2000 },
+          { region: 'E', price: 3000 },
+        ],
+        [
+          { key: 'region' },
+          { key: 'price', type: 'currency', currency: 'EUR', locale: 'de-DE' },
+        ] as ColumnConfiguration<Rec>[]
+      );
+      const panel = await fixture<ApexGridChart>(
+        html`<apex-grid-chart mode="inline" source="view" type="column" .grid=${grid as never} .format=${{
+          numberFormat: 'currency',
+        }}></apex-grid-chart>`
+      );
+      await until(() => panel.getChart() != null);
+      const config = (panel.getChart() as unknown as { w: { config: Rec } }).w.config as {
+        tooltip: { y: { formatter: (v: number) => string } };
+      };
+      expect(config.tooltip.y.formatter(1000)).to.include('€');
+    });
+  });
+
+  describe('chart dialog header drag', () => {
+    it('ends the drag on pointercancel and stops touch panning', async () => {
+      const grid = await mount(
+        [{ region: 'N', q1: 1 }],
+        [
+          { key: 'region' },
+          {
+            key: 'q1',
+            type: 'number',
+          },
+        ]
+      );
+      const panel = document.createElement('apex-grid-chart') as ApexGridChart;
+      panel.grid = grid as never;
+      document.body.appendChild(panel);
+      panel.show();
+      await panel.updateComplete;
+      const header = panel.querySelector<HTMLElement>('[part="header"]')!;
+      // Synthetic pointers have no capture to take.
+      header.setPointerCapture = () => {};
+      const box = panel.querySelector<HTMLElement>('[part="panel"]')!;
+      expect(getComputedStyle(header).touchAction).to.equal('none');
+      const rect = box.getBoundingClientRect();
+      const at = (type: string, x: number, y: number) =>
+        header.dispatchEvent(
+          new PointerEvent(type, { pointerId: 7, clientX: x, clientY: y, bubbles: true })
+        );
+      at('pointerdown', rect.left + 10, rect.top + 10);
+      at('pointercancel', rect.left + 10, rect.top + 10);
+      at('pointermove', rect.left + 110, rect.top + 60);
+      expect(box.getBoundingClientRect().left).to.be.closeTo(rect.left, 1);
+      at('pointerdown', rect.left + 10, rect.top + 10);
+      header.dispatchEvent(new PointerEvent('lostpointercapture', { pointerId: 7, bubbles: true }));
+      at('pointermove', rect.left + 110, rect.top + 60);
+      expect(box.getBoundingClientRect().left).to.be.closeTo(rect.left, 1);
+      panel.remove();
     });
   });
 });
