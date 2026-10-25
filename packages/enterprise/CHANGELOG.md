@@ -10,6 +10,16 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `LLMRequest.rowCount`, the number of rows loaded in the grid, also sent in
   the proxy body.
 - `ConversationTurn.reverts`, set on turns that only undid an earlier change.
+- `CalculatedField.refs`, recording which column each letter of a calculated
+  field meant, so the formula keeps reading the same columns when the source
+  or the columns change. Fields without it keep working by position.
+- `ChartFormat.currency` and `ChartFormat.locale`; the chart panel defaults
+  them from the first measure column.
+- `getChartFields` takes an optional source and definition and returns that
+  source's columns.
+- The charted range handle resizes from the keyboard: the arrow keys grow or
+  shrink the range by one row or column (mirrored in right to left layouts)
+  and the new size is announced.
 
 ### Changed
 - **A bulk write fires one `apex-view-changed`** (`applyEdits`, a range paste,
@@ -55,6 +65,21 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Ask AI panel: Send turns into Cancel in place, Preview stays visible but
   disabled while busy, and Undo keeps its label after use. Errors show a
   localized "Something went wrong." headline above the original message.
+- **Charts skip blank and non-numeric cells when they aggregate**, so avg, min,
+  max, median and count match the grid's own group totals for the same rows.
+  A blank used to count as 0.
+- The forecast band is a true 95% prediction interval, so it is wider than
+  before (about twice as wide on short series).
+- Thousands and percent formats group digits for the runtime locale, and
+  negative currency labels put the sign first and round halves away from zero
+  (`-$1,235` where they read `$-1,234`).
+- Auto picks a pie only when every value is zero or more and the total is
+  positive; otherwise it draws a column chart.
+- A column declared as date, select, boolean or another non-numeric type is
+  never charted as a measure, and category labels show the text the grid shows
+  (date style, select option labels, a localized blank label).
+- A chart linked to a cell range follows its range when the grid is sorted,
+  filtered, edited or its columns move, one frame after the change.
 
 ### Fixed
 - A view-bound chart redraws after a page change with the same page size,
@@ -75,6 +100,18 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   yourself).
 - Calling `show()` on an open Ask AI or chart dialog no longer loses the
   element focus returns to on close.
+- The calculated-field letter legend lists the columns the chart actually
+  reads, so a formula no longer reads a different column when a range is
+  selected.
+- A chart left on Auto that draws a pie keeps its percentage labels when a
+  number format is chosen.
+- A calculated field over a very large range no longer slows every redraw.
+- The charted range outline is clipped to the grid on both sides.
+- Bundling the package without `apexcharts` or `@anthropic-ai/sdk` installed
+  no longer fails; using the missing feature throws an error naming the
+  package to install.
+- The chart dialog can be dragged by touch, and the drag ends when the pointer
+  is cancelled.
 
 ### Performance
 - Scrolling with a large range selected no longer copies the selected values

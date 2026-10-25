@@ -9,6 +9,8 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 - The `ai.cancelled` locale key (English and Spanish), used by the enterprise
   Ask AI panel.
+- The `chart.rangeResized` locale key (English and Spanish), announced when an
+  enterprise charted range is resized from the keyboard.
 
 ### Changed
 - **The grid role and its row counts moved from the `<apex-grid>` host to an
@@ -30,6 +32,24 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   it changes. Apps that compared it by identity now see a new array only when
   the body rows change.
 - The column header row is no longer a Tab stop.
+- **The built-in column menu opens in the top layer** where the browser supports
+  the Popover API: pinned rows, the paginator and the grid's edge no longer
+  cover or clip it, it stays on its header cell through any scroll or layout
+  change, and it closes when its column scrolls out of the grid. It can now
+  extend outside the grid's box.
+- The column drag ghost renders at the grid root, so it stays above the column
+  group header and pinned top rows, and `apex-grid::part(drag-ghost)` now
+  reaches it.
+- `--filtering-header-background` applies to every filtered header, pinned and
+  dragged ones included, as a layer over the header's own background, and
+  filtered headers get the same hover highlight as other headers.
+- The paginator follows `--header-background` and group header labels follow
+  `--header-text-color`, like the rest of the header area. The paginator text
+  size follows `--ag-fs-cell-secondary`, and the filter count badge uses
+  `--ag-text-on-brand` and `--ag-fw-semibold`. Default rendering is unchanged.
+- Forced colors (Windows High Contrast): checkboxes are drawn by the browser in
+  system colours, so apps that styled them through parts see the native
+  checkbox in that mode only.
 
 ### Fixed
 - `aria-rowcount` no longer counts the floating filter panel as a row, and a
@@ -41,6 +61,18 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   calls, for example) is read out again by screen readers.
 - Invalid cells no longer set an `aria-errormessage` that pointed at an
   unreachable id. The inline alert message is unchanged.
+- Range and formula reference highlights on a pinned column no longer let
+  scrolled cells show through it.
+- Alternating row stripes follow the row index, so they no longer flip or
+  flicker while you scroll.
+- In the dark theme the default, muted and gold badges are readable and the
+  progress bar track is visible. The light theme is unchanged.
+- The selected row accent bar sits on the leading edge in right to left
+  layouts, including a left to right grid nested in a right to left one.
+- Forced colors: checked and indeterminate checkboxes no longer look unchecked;
+  in a selected row the cell text, row number, reorder grip and chevrons take
+  the selection text colour; an editor opened in a selected row uses the
+  system field colours; a keyboard-grabbed row shows an outline.
 
 ### Performance
 - Scrolling no longer re-renders the rows that stay in view; only the rows that
