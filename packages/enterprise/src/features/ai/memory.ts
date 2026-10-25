@@ -24,6 +24,13 @@ export interface ConversationTurn {
   stateBefore?: GridState;
   /** State just after a control turn. */
   stateAfter?: GridState;
+  /**
+   * The turn took back an earlier change (an "undo" prompt, or a result's
+   * `undo()`). Each such turn cancels the newest applied turn not already
+   * cancelled, so repeated undos step back through history instead of
+   * restoring what the previous undo removed.
+   */
+  reverts?: boolean;
   /** Entities resolved this turn, carried forward for anaphora. */
   entities?: ResolvedEntities;
   /** The injected clock value at record time (never `Date.now()` inside the engine). */
@@ -36,7 +43,10 @@ export interface MemorySnapshot {
   turns: readonly ConversationTurn[];
   /** The most recent turn's resolved entities, for "it" / "that" / "those". */
   lastEntities?: ResolvedEntities;
-  /** The `stateBefore` of the most recent applied control turn: the "undo" baseline. */
+  /**
+   * The `stateBefore` of the newest applied control turn that changed the view
+   * and that no later turn reverted: the "undo" baseline.
+   */
   lastControlBefore?: GridState;
 }
 
@@ -45,6 +55,58 @@ export interface Memory {
   snapshot(): MemorySnapshot;
   record(turn: ConversationTurn): void;
   clear(): void;
+}
+
+type Blob = Record<string, unknown>;
+
+const isBlob = (value: unknown): value is Blob => typeof value === 'object' && value !== null;
+
+/**
+ * The slices that differ between two snapshots, as a shape of `true` leaves:
+ * `modules` is compared per module, and each module blob per field.
+ */
+export function changedShape(before: Blob, after: Blob, level = 0): Blob {
+  const out: Blob = {};
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    const x = before[key];
+    const y = after[key];
+    if ((level === 1 || (level === 0 && key === 'modules')) && isBlob(x) && isBlob(y)) {
+      const inner = changedShape(x, y, level + 1);
+      if (Object.keys(inner).length > 0) out[key] = inner;
+    } else if (JSON.stringify(x) !== JSON.stringify(y)) {
+      out[key] = true;
+    }
+  }
+  return out;
+}
+
+/**
+ * Whether a turn changed the view. A turn that kept no after state (a custom
+ * Memory) is assumed to have changed it.
+ */
+function changedView({ stateBefore, stateAfter }: ConversationTurn): boolean {
+  if (!stateBefore || !stateAfter) return true;
+  return Object.keys(changedShape(stateBefore as never, stateAfter as never)).length > 0;
+}
+
+/**
+ * The turn the next "undo" takes back: walking newest to oldest, each applied
+ * turn marked {@link ConversationTurn.reverts} cancels the next older candidate,
+ * so repeated undos step back through history. A turn that changed nothing (an
+ * export) is passed over, so it never absorbs an undo.
+ */
+export function undoTarget(turns: readonly ConversationTurn[]): ConversationTurn | undefined {
+  let pending = 0;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const turn = turns[i];
+    if (turn.outcome !== 'applied') continue;
+    if (turn.reverts) pending++;
+    else if (turn.stateBefore && changedView(turn)) {
+      if (pending === 0) return turn;
+      pending--;
+    }
+  }
+  return undefined;
 }
 
 /** Options for {@link ConversationMemory}. */
@@ -68,17 +130,14 @@ export class ConversationMemory implements Memory {
 
   snapshot(): MemorySnapshot {
     let lastEntities: ResolvedEntities | undefined;
-    let lastControlBefore: GridState | undefined;
-    // Walk newest to oldest, taking the first of each we find.
-    for (let i = this.#turns.length - 1; i >= 0; i--) {
-      const turn = this.#turns[i];
-      if (!lastEntities && turn.entities) lastEntities = turn.entities;
-      if (!lastControlBefore && turn.outcome === 'applied' && turn.stateBefore) {
-        lastControlBefore = turn.stateBefore;
-      }
-      if (lastEntities && lastControlBefore) break;
+    for (let i = this.#turns.length - 1; i >= 0 && !lastEntities; i--) {
+      lastEntities = this.#turns[i].entities;
     }
-    return { turns: [...this.#turns], lastEntities, lastControlBefore };
+    return {
+      turns: [...this.#turns],
+      lastEntities,
+      lastControlBefore: undoTarget(this.#turns)?.stateBefore,
+    };
   }
 
   record(turn: ConversationTurn): void {

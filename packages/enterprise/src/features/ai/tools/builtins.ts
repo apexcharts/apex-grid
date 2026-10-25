@@ -26,7 +26,7 @@ import {
 } from '../analytics.js';
 import type { GridContext } from '../context.js';
 import { isNumericColumn, mentionsColumn } from '../entities.js';
-import type { MemorySnapshot } from '../memory.js';
+import { changedShape, type MemorySnapshot, undoTarget } from '../memory.js';
 import {
   createToolRegistry,
   type Tool,
@@ -222,25 +222,6 @@ function withoutCells(state: GridState): GridState {
   if (!isRecord(blob)) return state;
   const { formulas: _formulas, ranges: _ranges, ...view } = blob;
   return { ...state, modules: { ...state.modules, enterprise: view } };
-}
-
-/**
- * The slices that differ between two snapshots, as a shape for {@link sliceOf}:
- * `modules` is compared per module, and each module blob per field.
- */
-function changedShape(before: Blob, after: Blob, level = 0): Blob {
-  const out: Blob = {};
-  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-    const x = before[key];
-    const y = after[key];
-    if ((level === 1 || (level === 0 && key === 'modules')) && isRecord(x) && isRecord(y)) {
-      const inner = changedShape(x, y, level + 1);
-      if (Object.keys(inner).length > 0) out[key] = inner;
-    } else if (JSON.stringify(x) !== JSON.stringify(y)) {
-      out[key] = true;
-    }
-  }
-  return out;
 }
 
 /**
@@ -791,22 +772,24 @@ const exportTool: Tool<ExportArgs> = {
 };
 
 /**
- * What the "undo" prompt puts back: the slices the latest applied turn that
- * changed the view had before it. Turns that changed nothing (an export) are
- * passed over, and later edits (a formula typed after the turn, a sort the
- * user picked) are not the turn's to take back. `null` when there is nothing.
+ * What the "undo" prompt puts back: the slices the newest applied turn that
+ * changed the view, and that no later undo took back, had before it. Turns that
+ * changed nothing (an export) are passed over, and later edits (a formula typed
+ * after the turn, a sort the user picked) are not the turn's to take back.
+ * `null` when there is nothing.
  */
 function undoRestore(memory: MemorySnapshot, live: GridState): StatePatch | null {
   const { turns, lastControlBefore } = memory;
-  for (let i = turns.length - 1; i >= 0; i--) {
-    const { outcome, stateBefore: before, stateAfter: after } = turns[i];
-    if (outcome !== 'applied' || !before) continue;
-    // A custom Memory may keep no after state: fall back to the view slices.
-    if (!after) return sliceOf(before, withoutCells(before));
-    const shape = changedShape(before as unknown as Blob, after as unknown as Blob);
-    if (Object.keys(shape).length > 0) {
-      return narrowColumns(sliceOf(before, shape as Partial<GridState>), after.columns, live);
-    }
+  const turn = undoTarget(turns);
+  if (turn?.stateBefore) {
+    const before = turn.stateBefore;
+    // A custom Memory may keep no after state: undo then takes back the view slices.
+    const shape = turn.stateAfter
+      ? changedShape(before as unknown as Blob, turn.stateAfter as unknown as Blob)
+      : null;
+    return shape
+      ? narrowColumns(sliceOf(before, shape as Partial<GridState>), turn.stateAfter?.columns, live)
+      : sliceOf(before, withoutCells(before));
   }
   // A custom Memory that reports a baseline but keeps no turns.
   if (turns.length === 0 && lastControlBefore) {

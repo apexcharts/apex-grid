@@ -15,7 +15,7 @@
 import type { ContextBuilder } from './context.js';
 import { createContextBuilder } from './context.js';
 import type { GridApi } from './grid-api.js';
-import type { Memory } from './memory.js';
+import type { ConversationTurn, Memory } from './memory.js';
 import { ConversationMemory } from './memory.js';
 import type { Reasoner } from './reasoner.js';
 import { createRuleBasedReasoner } from './reasoner.js';
@@ -48,7 +48,11 @@ export type AIResult =
       skipped: string[];
       /** Reasoner notes plus per-tool warnings, merged. */
       warnings: string[];
-      /** Restore the pre-prompt snapshot. Idempotent. */
+      /**
+       * Restore the pre-prompt snapshot. Idempotent. Taking back the newest change
+       * is recorded in memory like an "undo" prompt, so a following "undo" steps
+       * further back.
+       */
       undo: () => void;
     }
   | {
@@ -216,22 +220,53 @@ export function createAIEngine<T = unknown>(
       const before = api.getState();
       const exec = executor.run(plan, tc);
       const warnings = [...(plan.notes ?? []), ...exec.warnings];
-      memory.record({
+      const applied = exec.applied.length > 0;
+      // A turn that only undid is a revert, so the next "undo" steps further back. A
+      // turn that also changed something ("undo and group by region") is an ordinary
+      // change, so the next "undo" takes the whole turn back.
+      const reverts = exec.applied.length > 0 && exec.applied.every((step) => step === 'undo');
+      const turn: ConversationTurn = {
         utterance: prompt,
         plan,
-        outcome: exec.applied.length > 0 ? 'applied' : 'no-op',
+        outcome: applied ? 'applied' : 'no-op',
         stateBefore: before,
         stateAfter: api.getState(),
         entities: entitiesFromPlan(plan),
         at: ctx.now,
-      });
+        reverts: reverts || undefined,
+      };
+      memory.record(turn);
+      let undone = false;
       return {
         mode: 'control',
         plan,
         applied: exec.applied,
         skipped: exec.skipped,
         warnings,
-        undo: exec.undo,
+        undo: () => {
+          if (undone) return;
+          undone = true;
+          const stateBefore = api.getState();
+          exec.undo();
+          // Undoing the newest change is recorded like an "undo" prompt, and undoing
+          // an undo as a redo the next "undo" takes back. An older turn's undo only
+          // restores its slices: the next "undo" still takes back the newest change.
+          const { turns } = memory.snapshot();
+          let newest: ConversationTurn | undefined;
+          for (let i = turns.length - 1; i >= 0 && !newest; i--) {
+            if (turns[i].outcome === 'applied') newest = turns[i];
+          }
+          if (applied && newest === turn) {
+            memory.record({
+              utterance: prompt,
+              outcome: 'applied',
+              stateBefore,
+              stateAfter: api.getState(),
+              at: now(),
+              reverts: !reverts || undefined,
+            });
+          }
+        },
       };
     },
 
