@@ -30,7 +30,11 @@ import type { AIMode, Plan, ResolvedEntities } from './types.js';
 export interface RunPromptOptions {
   /** Force ask (read-only) mode even if the reasoner planned a control action. */
   mode?: AIMode;
-  /** Cooperative cancellation (forwarded to any LLM reasoner). */
+  /**
+   * Cooperative cancellation, forwarded to any LLM reasoner. Once aborted the
+   * call rejects with the signal's reason (an `AbortError` by default) before it
+   * runs a plan or records a turn, even when a reasoner ignored the signal.
+   */
   signal?: AbortSignal;
   /** Override the rows sampled into context for this call. */
   maxDataRows?: number;
@@ -152,6 +156,24 @@ export function createAIEngine<T = unknown>(
   const now = options.now ?? (() => Date.now());
   const defaultMaxRows = options.maxDataRows;
 
+  /**
+   * Build the context and route the prompt. A cancelled call rejects on entry and
+   * again once routing settles, so a reasoner that ignored the signal still never
+   * gets its plan run or recorded.
+   */
+  async function route(prompt: string, opts: RunPromptOptions) {
+    opts.signal?.throwIfAborted();
+    const ctx = contextBuilder.build(api, memory, {
+      now: now(),
+      maxDataRows: opts.maxDataRows ?? defaultMaxRows,
+      requestedMode: opts.mode,
+      signal: opts.signal,
+    });
+    const plan = await router.route(prompt, ctx, reasoners);
+    opts.signal?.throwIfAborted();
+    return { ctx, plan };
+  }
+
   return {
     api,
     contextBuilder,
@@ -162,13 +184,7 @@ export function createAIEngine<T = unknown>(
     router,
 
     async runPrompt(prompt, opts = {}): Promise<AIResult> {
-      const ctx = contextBuilder.build(api, memory, {
-        now: now(),
-        maxDataRows: opts.maxDataRows ?? defaultMaxRows,
-        requestedMode: opts.mode,
-        signal: opts.signal,
-      });
-      const plan = await router.route(prompt, ctx, reasoners);
+      const { ctx, plan } = await route(prompt, opts);
       const tc = { api, ctx };
 
       if (opts.mode === 'ask' || plan.mode === 'ask') {
@@ -270,14 +286,8 @@ export function createAIEngine<T = unknown>(
       };
     },
 
-    previewPrompt(prompt, opts = {}): Promise<Plan> {
-      const ctx = contextBuilder.build(api, memory, {
-        now: now(),
-        maxDataRows: opts.maxDataRows ?? defaultMaxRows,
-        requestedMode: opts.mode,
-        signal: opts.signal,
-      });
-      return router.route(prompt, ctx, reasoners);
+    async previewPrompt(prompt, opts = {}): Promise<Plan> {
+      return (await route(prompt, opts)).plan;
     },
   };
 }

@@ -1,5 +1,10 @@
 import { expect } from '@open-wc/testing';
-import { type AIResult, createAIEngine } from '../src/features/ai/index.js';
+import {
+  type AIResult,
+  createAIEngine,
+  createRuleBasedReasoner,
+  type Reasoner,
+} from '../src/features/ai/index.js';
 import { makeApi, type Row } from './ai-fixtures.js';
 
 const control = (result: AIResult) => {
@@ -9,6 +14,27 @@ const control = (result: AIResult) => {
 
 const groupBy = (state: { modules: Record<string, unknown> }) =>
   (state.modules.enterprise as { groupBy?: string[] } | undefined)?.groupBy ?? [];
+
+/** A model-backed reasoner that ignores the abort signal and answers late. */
+function slowReasoner(calls: string[] = []): Reasoner {
+  return {
+    name: 'llm:slow',
+    score: () => 0.9,
+    reason: async (utterance) => {
+      calls.push(utterance);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return {
+        mode: 'control',
+        steps: [{ tool: 'quickFilter', args: { text: 'from-llm' } }],
+        confidence: 0.9,
+        source: 'llm:slow',
+      };
+    },
+  };
+}
+
+/** A prompt the rule engine cannot map, so the router escalates. */
+const UNMAPPED = 'delete who have amount less than 15';
 
 describe('AI engine guards: repeated undo steps back', () => {
   it('undo, undo, undo takes back three changes in turn, then has nothing left', async () => {
@@ -115,5 +141,55 @@ describe('AI engine guards: repeated undo steps back', () => {
     expect(api.getState().sort).to.have.lengthOf(1);
     await engine.runPrompt('undo');
     expect(api.getState().sort).to.be.empty;
+  });
+});
+
+describe('AI engine guards: cancellation', () => {
+  it('an already aborted signal rejects before any plan runs or is recorded', async () => {
+    const api = makeApi();
+    const engine = createAIEngine<Row>(api);
+    const controller = new AbortController();
+    controller.abort();
+    const run = await engine
+      .runPrompt('sort by amount descending', { signal: controller.signal })
+      .catch((error: unknown) => error);
+    expect((run as Error).name).to.equal('AbortError');
+    const preview = await engine
+      .previewPrompt('sort by amount descending', { signal: controller.signal })
+      .catch((error: unknown) => error);
+    expect((preview as Error).name).to.equal('AbortError');
+    expect(api.calls).to.be.empty;
+    expect(engine.memory.snapshot().turns).to.be.empty;
+  });
+
+  it('a cancel while a model ignores the signal never applies its late plan', async () => {
+    const api = makeApi();
+    const engine = createAIEngine<Row>(api, {
+      reasoners: [createRuleBasedReasoner(), slowReasoner()],
+      policy: 'llm-first',
+    });
+    const controller = new AbortController();
+    const pending = engine.runPrompt(UNMAPPED, { signal: controller.signal });
+    setTimeout(() => controller.abort(), 5);
+    const error = await pending.catch((e: unknown) => e);
+    expect((error as Error).name).to.equal('AbortError');
+    expect(api.getState().quickFilter).to.equal('');
+    expect(api.calls).to.be.empty;
+    expect(engine.memory.snapshot().turns).to.be.empty;
+  });
+
+  it('the router does not escalate to a model once the prompt is cancelled', async () => {
+    const api = makeApi();
+    const calls: string[] = [];
+    const engine = createAIEngine<Row>(api, {
+      reasoners: [createRuleBasedReasoner(), slowReasoner(calls)],
+    });
+    const controller = new AbortController();
+    const pending = engine.runPrompt(UNMAPPED, { signal: controller.signal });
+    controller.abort();
+    const error = await pending.catch((e: unknown) => e);
+    expect((error as Error).name).to.equal('AbortError');
+    expect(calls, 'no model call after the cancel').to.be.empty;
+    expect(api.calls).to.be.empty;
   });
 });

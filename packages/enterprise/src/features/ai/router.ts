@@ -96,6 +96,8 @@ class DefaultRouter implements Router {
         }
         const plan = await rule.reason(utterance, ctx);
         if (plan.confidence >= this.#threshold || others.length === 0) return plan;
+        // A cancelled prompt never escalates to a (possibly paid, slow) model call.
+        ctx.signal?.throwIfAborted();
         const llm = bestByScore(others, utterance, ctx);
         return llm ? llm.reason(utterance, ctx) : plan;
       }
