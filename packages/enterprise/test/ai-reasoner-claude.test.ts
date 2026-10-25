@@ -104,7 +104,14 @@ describe('AI reasoning layer — createClaudeReasoner (proxy transport)', () => 
     expect(api.getState().quickFilter).to.equal('proxied');
 
     const sent = JSON.parse(bodies[0] ?? '{}');
-    expect(Object.keys(sent).sort()).to.deep.equal(['data', 'mode', 'prompt', 'schema']);
+    expect(Object.keys(sent).sort()).to.deep.equal([
+      'data',
+      'mode',
+      'prompt',
+      'rowCount',
+      'schema',
+    ]);
+    expect(sent.rowCount).to.equal(3);
     expect(sent.mode).to.equal('control');
     expect(sent.data).to.have.lengthOf(3);
   });
@@ -125,7 +132,7 @@ describe('AI reasoning layer — createClaudeReasoner (proxy transport)', () => 
 });
 
 describe('AI reasoning layer — Claude request building and extraction', () => {
-  it('buildControlRequest uses the grid JSON schema as input_schema and forces the tool', () => {
+  it('buildControlRequest uses the grid JSON schema as input_schema, tool choice auto', () => {
     const request = buildControlRequest(
       { prompt: 'x', mode: 'control', schema: enterpriseSchema },
       {}
@@ -135,7 +142,7 @@ describe('AI reasoning layer — Claude request building and extraction', () => 
       input_schema: { properties?: Record<string, unknown> };
     };
     expect(tool.name).to.equal('apply_grid_state');
-    expect(request.tool_choice).to.deep.equal({ type: 'tool', name: 'apply_grid_state' });
+    expect(request.tool_choice).to.deep.equal({ type: 'auto' });
     expect(tool.input_schema.properties).to.have.property('sort');
     expect(tool.input_schema.properties).to.have.property('quickFilter');
   });
