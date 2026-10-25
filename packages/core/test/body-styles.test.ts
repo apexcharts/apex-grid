@@ -419,6 +419,34 @@ describe('Body styles', () => {
       expect(cs(editor).color).to.equal(cs(cell).color);
     });
 
+    for (const type of ['number', 'currency'] as const) {
+      it(`a ${type} editor in a selected row keeps field text on the field`, async () => {
+        ApexGrid.register();
+        const grid = await fixture<ApexGrid<Row>>(
+          html`<apex-grid
+            style=${STILL}
+            .data=${data.slice(0, 20)}
+            .columns=${[{ key: 'amount', type, editable: true }, { key: 'name' }]}
+            .editing=${{ enabled: true, mode: 'cell' }}
+            .selection=${{ enabled: true, mode: 'multiple' }}
+          ></apex-grid>`,
+          { parentNode: Object.assign(document.createElement('div'), { style: 'height:500px' }) }
+        );
+        await grid.updateComplete;
+        await waitUntil(() => grid.rows.length > 0, 'rows never rendered');
+        await grid.selectRow(data[0]);
+        await forcedColors(true);
+        expect(await grid.editCell(0, 'amount')).to.be.true;
+        const cell = cellOf(rowAt(grid, 0), 'amount');
+        await cell.updateComplete;
+        const input = cell.renderRoot.querySelector('input');
+        if (!input) throw new Error('no editor input');
+        // The editing rule (FieldText on Field) must win over the selected
+        // row's inherited HighlightText.
+        expect(cs(input).color).to.not.equal(cs(cell).backgroundColor);
+      });
+    }
+
     it('a keyboard-grabbed row shows an outline', async () => {
       const grid = await mount([{ key: 'id', type: 'number' }, { key: 'name' }]);
       await forcedColors(true);

@@ -573,9 +573,10 @@ $invalid-color: var(--_ag-risk, #ef4444);
     // opt-out inherits, so an authored text colour here would stay as authored
     // on the system Highlight. Take the row's colour instead: HighlightText in
     // a selected row, the forced CanvasText everywhere else. The tree toggle's
-    // hover and focus marks follow it too.
-    :host([data-cell-type='number']),
-    :host([data-cell-type='currency']),
+    // hover and focus marks follow it too. An editing cell keeps FieldText
+    // from the rule above.
+    :host([data-cell-type='number']:not([editing])),
+    :host([data-cell-type='currency']:not([editing])),
     [part~='rating'],
     [part='tree-toggle'] {
         color: inherit;
