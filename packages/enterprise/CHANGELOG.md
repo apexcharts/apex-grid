@@ -6,6 +6,11 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- `LLMRequest.rowCount`, the number of rows loaded in the grid, also sent in
+  the proxy body.
+- `ConversationTurn.reverts`, set on turns that only undid an earlier change.
+
 ### Changed
 - **A bulk write fires one `apex-view-changed`** (`applyEdits`, a range paste,
   a fill drag, or undo or redo of a batch) instead of one per cell, so a docked
@@ -16,12 +21,60 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   `treegrid` role (see the apex-grid changelog for the role moving to the
   inner `table` part). Rows of a flat server-side request no longer carry
   `aria-level="1"`.
+- **Only the visible columns' values reach a model or proxy.** Row fields that
+  are not columns, and hidden columns, are no longer sent; while pivoting, the
+  pivot's source fields are kept. The model is told how many rows are loaded
+  and that it sees a sample. `maxDataRows` on `createClaudeReasoner` now also
+  bounds the proxy transport, and the direct transport no longer cuts a larger
+  `runPrompt` sample down to 50 rows.
+- **Claude control requests work on current models.** They no longer force the
+  tool call, which current models reject while thinking; a reply without a
+  change is reported as "The model proposed no change." The default
+  `max_tokens` is 16000, and a reply cut off by `max_tokens` is an error
+  instead of a partial answer.
+- Row data goes to the model in the user turn inside a `<grid_rows>` block,
+  and the system prompt tells the model that row contents are data, never
+  instructions.
+- Without a `mode`, only "how many", "number of", "what is", "what are" or a
+  trailing "?" make a model request a question. "Show me", "list", "can you"
+  and questions without a question mark go out as control requests; pass
+  `mode: 'ask'` to get a text answer for them.
+- The proxy response is checked: `answer` must be a string and `patch` an
+  object, and any other shape rejects with a clear error.
+- An AI question the engine cannot answer from the data abstains
+  (`abstained: true`, with a hint of what it can answer) instead of replying
+  with a summary of the view.
+- Repeated "undo" steps further back through the AI history instead of
+  re-applying what the previous undo removed, and the panel's Undo button
+  counts as an undo step.
+- AI analytics: blank cells are missing values, not zeros; a scope uses the
+  grid's filter operands for the column's type, and an operand it cannot apply
+  is reported instead of ignored; "most common X per Y" works for text columns;
+  a scope that matches nothing says "No rows match"; numbers under 0.1 keep two
+  significant digits. `AnalyticsResult.groups[].value` can be a string.
+- Ask AI panel: Send turns into Cancel in place, Preview stays visible but
+  disabled while busy, and Undo keeps its label after use. Errors show a
+  localized "Something went wrong." headline above the original message.
 
 ### Fixed
 - A view-bound chart redraws after a page change with the same page size,
   after hiding, showing or reordering columns, after an aggregation change
   while grouped, and after a pivot value change while pivoted.
   `apex-view-changed` now fires for those changes.
+- **Cancel stops an AI prompt.** `runPrompt` and `previewPrompt` reject with an
+  `AbortError` once the signal aborts, before anything changes in the grid,
+  even when the reasoner ignores the signal. The Claude transports pass the
+  signal to the request, and the Ask AI panel shows "Cancelled." instead of a
+  red abort message and drops the cancelled turn.
+- Two prompts started before the AI runtime loaded share one engine, so the
+  first prompt's change can still be undone.
+- Ask AI panel: keyboard Send, Preview and Undo keep focus inside the dialog;
+  binding the panel to another grid clears the previous grid's result, Undo
+  and history; the dialog header can be dragged by touch; the toolbar dialog
+  follows a `localeText` change (call `requestUpdate()` on a panel you mount
+  yourself).
+- Calling `show()` on an open Ask AI or chart dialog no longer loses the
+  element focus returns to on close.
 
 ### Performance
 - Scrolling with a large range selected no longer copies the selected values

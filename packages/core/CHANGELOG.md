@@ -6,6 +6,10 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- The `ai.cancelled` locale key (English and Spanish), used by the enterprise
+  Ask AI panel.
+
 ### Changed
 - **The grid role and its row counts moved from the `<apex-grid>` host to an
   inner element** exposed as part `table`: `role` (`grid` or `treegrid`),
