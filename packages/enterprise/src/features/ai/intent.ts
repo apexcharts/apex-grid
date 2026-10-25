@@ -66,6 +66,10 @@ const NAMES = "[\\p{L}\\p{N}\\p{M}_ ,'’#%./&()-]";
  * so the clause reaches the filter rule instead of being read as part of a column name.
  */
 const SPAN_NAME = `(?:(?!\\s+(?:where|with|whose|having)\\b)${NAME})`;
+/** Question words that open a read-only ask (see {@link isQuestion}). */
+const ASK_WORDS = /\b(?:how many|number of|what'?s|what is|what are)\b/di;
+/** A trailing question mark (see {@link isQuestion}). */
+const ASK_MARK = /\?\s*$/d;
 /** A sort direction word; a range ("high to low") is read by its first endpoint. */
 const DIRECTION =
   '(?:asc(?:ending)?|desc(?:ending)?|a-z|z-a|a to z|z to a|high(?:est)?|low(?:est)?|large(?:st)?|small(?:est)?|biggest|most|least|newest|latest|oldest|earliest)';
@@ -277,14 +281,18 @@ const RULES: IntentRule[] = [
   // routes to `analyze` above; a trailing "?" still lands here. The final confidence is
   // set by grounding in the planner, not by this constant: an ask that could only echo
   // the current view is lowered so it can escalate to an LLM or abstain honestly.
-  {
-    kind: 'ask',
-    confidence: 0.8,
-    pattern: /\b(?:how many|number of|what'?s|what is|what are)\b/di,
-    fallback: true,
-  },
-  { kind: 'ask', confidence: 0.6, pattern: /\?\s*$/d, fallback: true },
+  { kind: 'ask', confidence: 0.8, pattern: ASK_WORDS, fallback: true },
+  { kind: 'ask', confidence: 0.6, pattern: ASK_MARK, fallback: true },
 ];
+
+/**
+ * Whether an utterance reads as a read-only question, by the same signals the `ask`
+ * rules above use. Shared with the LLM bridge's auto mode so "show me ...", "list ..."
+ * or "can you ..." stay commands there too.
+ */
+export function isQuestion(utterance: string): boolean {
+  return ASK_WORDS.test(utterance) || ASK_MARK.test(utterance);
+}
 
 /**
  * Where a match ranks: lower wins. A fallback ranks after every other match, and a

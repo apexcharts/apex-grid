@@ -22,10 +22,19 @@ export interface GridContext<T = unknown> {
   /** Convenience alias of `schema.columns`. */
   columns: ColumnSchema[];
   /**
-   * A bounded sample of the current rows, plus the true total and whether it was cut.
+   * A bounded sample of the current rows, plus the row count and whether it was cut.
    * `rows` is every current row, for grounding a value the sample may miss (the rule
-   * resolver reads it). It is not enumerable, so serializing `data` (as an LLM
-   * reasoner does with the sample) never sends it.
+   * resolver reads it). It is not enumerable, so serializing `data` never sends it.
+   * `rowCount` counts the rows loaded in the grid: under a server-backed row model
+   * (infinite or server-side) that is the loaded rows only, and the server may hold
+   * more.
+   *
+   * The sample holds the bound row objects as they are, every field included, for the
+   * rule engine's grounding. What reaches a model is narrower: the LLM bridge
+   * (`createLLMReasoner`, which `createClaudeReasoner` builds on) copies
+   * each sampled row onto the visible schema columns only (under an active pivot, the
+   * source fields the pivot displays), so fields that are not grid columns and hidden
+   * columns never leave the page, and sends `rowCount` with it.
    */
   data: {
     sample: readonly T[];
@@ -68,7 +77,10 @@ export interface ContextBuilder<T = unknown> {
   build(api: GridApi<T>, memory: Memory, opts?: ContextBuildOptions): GridContext<T>;
 }
 
-/** Rows of current data sampled into context by default (mirrors the shipped Claude adapter bound). */
+/**
+ * Rows of current data sampled into context by default. This is also the ceiling of
+ * what an LLM reasoner can send unless `runPrompt` passes a larger `maxDataRows`.
+ */
 export const DEFAULT_MAX_DATA_ROWS = 50;
 
 /**
