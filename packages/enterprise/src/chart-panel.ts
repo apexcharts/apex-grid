@@ -400,7 +400,7 @@ export class ApexGridChart extends LitElement {
   public show(): void {
     this.open = true;
     // Remember where focus came from so close() can put it back (dialog a11y).
-    this.#restoreFocus = deepActiveElement();
+    if (!this.matches(':focus-within')) this.#restoreFocus = deepActiveElement();
     this.#scheduleRefresh();
     void this.updateComplete.then(() => {
       this.renderRoot.querySelector<HTMLElement>('[part="close"]')?.focus();

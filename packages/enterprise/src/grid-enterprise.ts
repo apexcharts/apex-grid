@@ -1338,6 +1338,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     // bump the epoch so a view-bound chart redraws on it. In-place cell edits are covered by the
     // `cellValueChanged` listener wired in connectedCallback.
     if (changed.has('data')) this.#dataEpoch += 1;
+    if (changed.has('localeText')) this.#aiDialog?.requestUpdate();
     super.willUpdate(changed);
   }
 

@@ -1,6 +1,12 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
-import { ApexGridAI, ApexGridEnterprise, enterpriseModules, type Reasoner } from '../src/index.js';
+import {
+  ApexGridAI,
+  ApexGridChart,
+  ApexGridEnterprise,
+  enterpriseModules,
+  type Reasoner,
+} from '../src/index.js';
 
 interface Row {
   region: string;
@@ -243,6 +249,7 @@ describe('AI Toolkit: <apex-grid-ai> turn lifecycle and focus', () => {
     ApexGridEnterprise.use(...enterpriseModules);
     ApexGridEnterprise.register();
     ApexGridAI.register();
+    ApexGridChart.register();
   });
   afterEach(() => {
     fixtureCleanup();
@@ -414,6 +421,84 @@ describe('AI Toolkit: <apex-grid-ai> turn lifecycle and focus', () => {
     });
   }
 
+  it('keyboard Send keeps focus on the same button, which becomes Cancel', async () => {
+    const { grid, panel } = await mount('dialog');
+    const { reasoner, release } = deafReasoner();
+    grid.aiReasoner = reasoner;
+    await type(panel, 'xyzzy plugh frobnicate A');
+    const send = part<HTMLButtonElement>(panel, 'send')!;
+    send.focus();
+    send.click();
+    await frames();
+    expect(part(panel, 'send'), 'the same node').to.equal(send);
+    expect(active(panel), 'focus stays in the dialog').to.equal(send);
+    expect(send.textContent?.trim()).to.equal('Cancel');
+    expect(part<HTMLButtonElement>(panel, 'preview-button')?.disabled, 'preview stays, disabled').to
+      .be.true;
+    release[0]();
+    await waitForResult(panel);
+    expect(active(panel)).to.equal(send);
+    expect(send.textContent?.trim()).to.equal('Send');
+  });
+
+  it('keyboard Preview moves focus to Send instead of dropping it', async () => {
+    const { panel } = await mount('dialog');
+    await type(panel, 'sort by amount descending');
+    const preview = part<HTMLButtonElement>(panel, 'preview-button')!;
+    preview.focus();
+    preview.click();
+    await frames(10);
+    expect(part(panel, 'preview'), 'preview region').to.exist;
+    expect(active(panel)).to.equal(part(panel, 'send'));
+  });
+
+  it('keyboard Undo moves focus to the prompt and keeps its label', async () => {
+    const { grid, panel } = await mount('dialog');
+    await type(panel, 'sort by amount descending');
+    part<HTMLButtonElement>(panel, 'send')!.click();
+    await waitForResult(panel);
+    const undo = part<HTMLButtonElement>(panel, 'undo')!;
+    undo.focus();
+    undo.click();
+    await frames();
+    expect(grid.getState().sort).to.be.empty;
+    expect(undo.disabled).to.be.true;
+    expect(undo.textContent?.trim()).to.equal('Undo');
+    expect(active(panel)).to.equal(part(panel, 'input'));
+  });
+
+  it('show() on an open dialog keeps the original focus restore target', async () => {
+    const grid = await mountGrid();
+    const launcher = await fixture<HTMLButtonElement>(html`<button>launcher</button>`);
+    const panel = await fixture<ApexGridAI>(
+      html`<apex-grid-ai .grid=${grid} mode="dialog"></apex-grid-ai>`
+    );
+    launcher.focus();
+    panel.show();
+    await frames(2);
+    expect(active(panel)).to.equal(part(panel, 'input'));
+    panel.show();
+    await frames(2);
+    panel.close();
+    expect(document.activeElement).to.equal(launcher);
+  });
+
+  it('chart dialog: show() on an open panel keeps the original focus restore target', async () => {
+    const grid = await mountGrid();
+    const launcher = await fixture<HTMLButtonElement>(html`<button>launcher</button>`);
+    const chart = await fixture<ApexGridChart>(
+      html`<apex-grid-chart mode="dialog" .grid=${grid as never}></apex-grid-chart>`
+    );
+    launcher.focus();
+    chart.show();
+    await frames(2);
+    expect(chart.contains(document.activeElement), 'focus moved into the chart').to.be.true;
+    chart.show();
+    await frames(2);
+    chart.close();
+    expect(document.activeElement).to.equal(launcher);
+  });
+
   it('re-binding to another grid retires the turn and clears the old grid state', async () => {
     const { grid, panel } = await mount();
     await type(panel, 'sort by amount descending');
@@ -441,5 +526,40 @@ describe('AI Toolkit: <apex-grid-ai> turn lifecycle and focus', () => {
     expect(part(panel, 'result'), 'the old grid turn does not land').to.not.exist;
     expect(part(panel, 'history')).to.not.exist;
     expect(other.getState().sort, 'the new grid is untouched').to.be.empty;
+  });
+
+  it('the header drag survives touch: no browser pan, and pointercancel ends the drag', async () => {
+    const { panel } = await mount('dialog');
+    const header = part(panel, 'header')!;
+    const box = part(panel, 'panel')!;
+    expect(getComputedStyle(header).touchAction).to.equal('none');
+    const at = (type: string, x: number, y: number) =>
+      header.dispatchEvent(
+        new PointerEvent(type, { pointerId: 1, clientX: x, clientY: y, bubbles: true })
+      );
+    const start = box.getBoundingClientRect();
+    at('pointerdown', start.left + 10, start.top + 10);
+    at('pointermove', start.left + 30, start.top + 30);
+    const moved = box.getBoundingClientRect();
+    expect(moved.left).to.be.closeTo(start.left + 20, 1);
+    at('pointercancel', start.left + 30, start.top + 30);
+    at('pointermove', start.left + 80, start.top + 80);
+    expect(box.getBoundingClientRect().left, 'no drag after pointercancel').to.be.closeTo(
+      moved.left,
+      1
+    );
+  });
+
+  it('a toolbar-launched dialog follows a localeText change on the grid', async () => {
+    const grid = await mountGrid();
+    grid.toolbarActions.find((action) => action.id === 'ask-ai')!.run();
+    const dialog = document.querySelector<ApexGridAI>('apex-grid-ai')!;
+    await dialog.updateComplete;
+    expect(label(dialog, 'send')).to.equal('Send');
+    grid.localeText = { 'ai.send': 'Enviar' };
+    await grid.updateComplete;
+    await dialog.updateComplete;
+    expect(label(dialog, 'send')).to.equal('Enviar');
+    dialog.close();
   });
 });

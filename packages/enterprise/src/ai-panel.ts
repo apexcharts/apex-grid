@@ -122,6 +122,7 @@ export class ApexGridAI extends LitElement {
       padding: 8px 12px;
       border-block-end: 1px solid #eef0f4;
       cursor: move;
+      touch-action: none;
       font-weight: 600;
     }
     [part='close'] {
@@ -291,7 +292,9 @@ export class ApexGridAI extends LitElement {
 
   /**
    * The enterprise grid to drive. Setting it binds the panel; binding another grid retires the
-   * in-flight turn and clears the result, Undo and transcript of the old one.
+   * in-flight turn and clears the result, Undo and transcript of the old one. Labels follow the
+   * grid's `localeText`: the toolbar's Ask AI dialog re-renders on a change, while a panel the
+   * app mounts itself needs `requestUpdate()` after the app changes `localeText`.
    */
   @property({ attribute: false })
   public grid: ApexGridEnterprise<Record<string, unknown>> | null = null;
@@ -349,11 +352,10 @@ export class ApexGridAI extends LitElement {
   /** Open the dialog panel and move focus into the prompt. */
   public show(): void {
     this.open = true;
-    // Remember where focus came from so close() can put it back (dialog a11y).
-    this.#restoreFocus = deepActiveElement();
-    void this.updateComplete.then(() => {
-      this.renderRoot.querySelector<HTMLElement>('[part="input"]')?.focus();
-    });
+    // Remember where focus came from so close() can put it back (dialog a11y). A second show()
+    // while focus is already inside keeps the original target.
+    if (!this.matches(':focus-within')) this.#restoreFocus = deepActiveElement();
+    void this.updateComplete.then(() => this.#focus('input'));
   }
 
   /** Close the dialog panel and notify (so a launcher can remove it). */
@@ -408,6 +410,10 @@ export class ApexGridAI extends LitElement {
       void this.#send();
     }
   };
+
+  #focus(name: string): void {
+    this.renderRoot.querySelector<HTMLElement>(`[part="${name}"]`)?.focus();
+  }
 
   /** Forget the last outcome: its error, cancel notice, result and preview. */
   #clear(): void {
@@ -477,6 +483,10 @@ export class ApexGridAI extends LitElement {
   async #preview(): Promise<void> {
     const grid = this.grid;
     if (!grid || this.busy || !this.prompt.trim()) return;
+    // Preview disables while busy, which drops its focus out of the dialog: hand it to Send.
+    if (this.shadowRoot?.activeElement?.getAttribute('part') === 'preview-button') {
+      void this.updateComplete.then(() => this.#focus('send'));
+    }
     const controller = this.#begin();
     try {
       const plan = await grid.previewPrompt(this.prompt, {
@@ -511,6 +521,8 @@ export class ApexGridAI extends LitElement {
     if (this.result?.mode === 'control' && !this.undone) {
       this.result.undo();
       this.undone = true;
+      // The button disables, which drops its focus out of the dialog: return to the prompt.
+      void this.updateComplete.then(() => this.#focus('input'));
     }
   }
 
@@ -626,7 +638,7 @@ export class ApexGridAI extends LitElement {
               ?disabled=${this.undone}
               @click=${() => this.#undo()}
             >
-              ${this.undone ? '✓' : this.#t('ai.undo')}
+              ${this.#t('ai.undo')}
             </button>`
           : nothing
       }
@@ -698,6 +710,8 @@ export class ApexGridAI extends LitElement {
               @pointerdown=${this.#onHeaderPointerDown}
               @pointermove=${this.#onHeaderPointerMove}
               @pointerup=${this.#onHeaderPointerUp}
+              @pointercancel=${this.#onHeaderPointerUp}
+              @lostpointercapture=${this.#onHeaderPointerUp}
             >
               <span>${this.#t('ai.title')}</span>
               <button
@@ -741,28 +755,22 @@ export class ApexGridAI extends LitElement {
           @keydown=${this.#onInputKeydown}
         ></textarea>
         <div class="actions">
-          ${
-            this.busy
-              ? html`<button part="send" type="button" @click=${() => this.#cancel()}>
-                  ${this.#t('ai.cancel')}
-                </button>`
-              : html`<button
-                    part="send"
-                    type="button"
-                    ?disabled=${!canSend}
-                    @click=${() => this.#send()}
-                  >
-                    ${this.#t('ai.send')}
-                  </button>
-                  <button
-                    part="preview-button"
-                    type="button"
-                    ?disabled=${!canSend}
-                    @click=${() => this.#preview()}
-                  >
-                    ${this.#t('ai.preview')}
-                  </button>`
-          }
+          <button
+            part="send"
+            type="button"
+            ?disabled=${!this.busy && !canSend}
+            @click=${() => (this.busy ? this.#cancel() : this.#send())}
+          >
+            ${this.#t(this.busy ? 'ai.cancel' : 'ai.send')}
+          </button>
+          <button
+            part="preview-button"
+            type="button"
+            ?disabled=${!canSend}
+            @click=${() => this.#preview()}
+          >
+            ${this.#t('ai.preview')}
+          </button>
         </div>
         <div role="status" aria-live="polite">${this.#renderStatus()}</div>
         ${this.#renderTranscript()}
