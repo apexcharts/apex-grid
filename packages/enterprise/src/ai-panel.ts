@@ -1,6 +1,6 @@
 import { type GridLocaleKey, localize } from 'apex-grid';
 import { registerComponent } from 'apex-grid/internal';
-import { css, html, LitElement, nothing } from 'lit';
+import { css, html, LitElement, nothing, type PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { AIMode, AIResult, Plan } from './features/ai/index.js';
 import type { ApexGridEnterprise } from './grid-enterprise.js';
@@ -289,7 +289,10 @@ export class ApexGridAI extends LitElement {
     }
   `;
 
-  /** The enterprise grid to drive. Setting it binds the panel. */
+  /**
+   * The enterprise grid to drive. Setting it binds the panel; binding another grid retires the
+   * in-flight turn and clears the result, Undo and transcript of the old one.
+   */
   @property({ attribute: false })
   public grid: ApexGridEnterprise<Record<string, unknown>> | null = null;
 
@@ -309,10 +312,13 @@ export class ApexGridAI extends LitElement {
   @state() private undone = false;
   @state() private previewPlan: Plan | null = null;
   @state() private transcript: TranscriptEntry[] = [];
+  /** The last turn was cancelled by the user (Cancel, Escape or close while thinking). */
+  @state() private cancelled = false;
 
+  /** The in-flight turn; a turn whose controller is no longer this one has been retired. */
   #controller: AbortController | null = null;
-  /** The request aborted because the dialog left the page (its grid parked it), not by the user. */
-  #parkedRun: AbortController | null = null;
+  /** The grid the in-flight turn was started for. */
+  #turnGrid: ApexGridAI['grid'] = null;
   #drag: { pointerId: number; offsetX: number; offsetY: number } | null = null;
   /** What had focus before {@link show}, so a dialog close can put focus back. */
   #restoreFocus: HTMLElement | null = null;
@@ -322,10 +328,22 @@ export class ApexGridAI extends LitElement {
     localize(this.grid?.localeText, key, undefined, fallback);
 
   public override disconnectedCallback(): void {
-    this.#parkedRun = this.#controller;
-    this.#controller?.abort();
-    this.#controller = null;
+    // Leaving the page (its grid parked the dialog) retires the turn quietly, with no notice.
+    this.#retire();
     super.disconnectedCallback();
+  }
+
+  protected override willUpdate(changed: PropertyValues<this>): void {
+    // Re-bound to another grid: nothing from the old one may land here (its Undo reverts it).
+    if (changed.get('grid')) {
+      this.transcript = [];
+      // A turn already started on the new grid (a send in the same task) is kept: #begin
+      // cleared the old outcome when it started.
+      if (this.#controller && this.#turnGrid === this.grid) return;
+      this.#retire();
+      this.#clear();
+      this.undone = false;
+    }
   }
 
   /** Open the dialog panel and move focus into the prompt. */
@@ -341,7 +359,7 @@ export class ApexGridAI extends LitElement {
   /** Close the dialog panel and notify (so a launcher can remove it). */
   public close(): void {
     this.open = false;
-    this.#controller?.abort();
+    this.#cancel();
     this.dispatchEvent(new CustomEvent('apex-ai-closed', { bubbles: true, composed: true }));
     const previous = this.#restoreFocus;
     this.#restoreFocus = null;
@@ -391,22 +409,50 @@ export class ApexGridAI extends LitElement {
     }
   };
 
+  /** Forget the last outcome: its error, cancel notice, result and preview. */
+  #clear(): void {
+    this.error = '';
+    this.cancelled = false;
+    this.result = null;
+    this.previewPlan = null;
+  }
+
+  /** Start a turn: clear the last outcome, show it as busy, and return its controller. */
+  #begin(): AbortController {
+    this.#clear();
+    this.busy = true;
+    this.#turnGrid = this.grid;
+    this.#controller = new AbortController();
+    return this.#controller;
+  }
+
+  /** End a turn that is still current (a retired one already reset the panel). */
+  #end(controller: AbortController): void {
+    if (controller !== this.#controller) return;
+    this.#controller = null;
+    this.busy = false;
+  }
+
+  /** Abort the in-flight turn and stop waiting on it: its late result or error is dropped. */
+  #retire(): void {
+    this.#controller?.abort();
+    this.#controller = null;
+    this.#turnGrid = null;
+    this.busy = false;
+  }
+
   async #send(): Promise<void> {
     const grid = this.grid;
     const prompt = this.prompt.trim();
     if (!grid || this.busy || !prompt) return;
-    this.error = '';
-    this.result = null;
-    this.previewPlan = null;
     this.undone = false;
-    this.busy = true;
-    const controller = new AbortController();
-    this.#controller = controller;
+    const controller = this.#begin();
     try {
       const result = await grid.runPrompt(this.prompt, {
         mode: this.currentMode,
         signal: controller.signal,
       });
+      if (controller !== this.#controller) return;
       this.result = result;
       this.transcript = [
         ...this.transcript,
@@ -423,8 +469,7 @@ export class ApexGridAI extends LitElement {
     } catch (error) {
       this.#fail(controller, error);
     } finally {
-      this.busy = false;
-      this.#controller = null;
+      this.#end(controller);
     }
   }
 
@@ -432,40 +477,34 @@ export class ApexGridAI extends LitElement {
   async #preview(): Promise<void> {
     const grid = this.grid;
     if (!grid || this.busy || !this.prompt.trim()) return;
-    this.error = '';
-    this.result = null;
-    this.previewPlan = null;
-    this.busy = true;
-    const controller = new AbortController();
-    this.#controller = controller;
+    const controller = this.#begin();
     try {
-      this.previewPlan = await grid.previewPrompt(this.prompt, {
+      const plan = await grid.previewPrompt(this.prompt, {
         mode: this.currentMode,
         signal: controller.signal,
       });
+      if (controller === this.#controller) this.previewPlan = plan;
     } catch (error) {
       this.#fail(controller, error);
     } finally {
-      this.busy = false;
-      this.#controller = null;
+      this.#end(controller);
     }
   }
 
   /**
-   * Show a failed request's error, unless the dialog's own disconnect aborted it: a parked dialog
-   * that comes back with its grid should not greet the user with an abort message.
+   * Show a failed turn's error. A retired turn (Cancel, close, a disconnect or a re-bind) shows
+   * nothing: its abort is not a failure, and the panel already says what happened.
    */
   #fail(controller: AbortController, error: unknown): void {
-    if (controller === this.#parkedRun) {
-      this.#parkedRun = null;
-      return;
+    if (controller === this.#controller) {
+      this.error = error instanceof Error ? error.message : String(error);
     }
-    this.error = error instanceof Error ? error.message : String(error);
   }
 
   #cancel(): void {
-    this.#controller?.abort();
-    this.busy = false;
+    if (!this.#controller) return;
+    this.#retire();
+    this.cancelled = true;
   }
 
   #undo(): void {
@@ -533,8 +572,11 @@ export class ApexGridAI extends LitElement {
 
   /** The live status region: error, thinking, a preview, or the last result. */
   #renderStatus() {
-    if (this.error) return html`<div part="error">${this.error}</div>`;
+    if (this.error) {
+      return html`<div part="error">${this.#t('ai.error')} <br /><small>${this.error}</small></div>`;
+    }
     if (this.busy) return html`<div part="notice">${this.#t('ai.thinking')}</div>`;
+    if (this.cancelled) return html`<div part="notice">${this.#t('ai.cancelled')}</div>`;
     if (this.previewPlan) return this.#renderPreview(this.previewPlan);
     if (this.result) return this.#renderResult(this.result);
     return nothing;

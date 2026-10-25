@@ -266,6 +266,7 @@ export const esLocale: GridLocaleText = {
   'ai.modeAsk': 'Hacer una pregunta',
   'ai.send': 'Enviar',
   'ai.cancel': 'Cancelar',
+  'ai.cancelled': 'Cancelado.',
   'ai.thinking': 'Pensando…',
   'ai.undo': 'Deshacer',
   'ai.applied': 'Aplicado',

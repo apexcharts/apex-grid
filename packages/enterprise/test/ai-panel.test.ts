@@ -146,6 +146,8 @@ describe('AI Toolkit — <apex-grid-ai>', () => {
     await type(panel, 'do something the rules cannot map xyzzy');
     part<HTMLButtonElement>(panel, 'send')?.click();
     await waitForResult(panel);
+    // The localized headline, with the reasoner's own message as secondary detail.
+    expect(part(panel, 'error')?.textContent).to.contain('Something went wrong. ');
     expect(part(panel, 'error')?.textContent).to.contain('boom from reasoner');
   });
 
@@ -198,5 +200,246 @@ describe('AI Toolkit — <apex-grid-ai>', () => {
     const container = part(panel, 'panel')!;
     expect(container.getAttribute('role')).to.equal('dialog');
     expect(container.getAttribute('aria-modal')).to.equal('true');
+  });
+});
+
+describe('AI Toolkit: <apex-grid-ai> turn lifecycle and focus', () => {
+  const PLAN = {
+    mode: 'control' as const,
+    steps: [
+      {
+        tool: 'applyState',
+        args: { patch: { sort: [{ key: 'amount', direction: 'descending' }] } },
+      },
+    ],
+    confidence: 0.9,
+    source: 'llm:slow',
+  };
+
+  /** A reasoner that never looks at the abort signal: each call parks until released. */
+  function deafReasoner(): { reasoner: Reasoner; release: Array<() => void> } {
+    const release: Array<() => void> = [];
+    const reasoner: Reasoner = {
+      name: 'llm:slow',
+      score: () => 1,
+      reason: () => new Promise((resolve) => release.push(() => resolve(PLAN))),
+    };
+    return { reasoner, release };
+  }
+
+  /** A reasoner that rejects with an AbortError when its signal fires, as fetch does. */
+  const listeningReasoner: Reasoner = {
+    name: 'llm:slow',
+    score: () => 1,
+    reason: (_utterance, ctx) =>
+      new Promise((_resolve, reject) => {
+        ctx.signal?.addEventListener('abort', () =>
+          reject(new DOMException('signal is aborted without reason', 'AbortError'))
+        );
+      }),
+  };
+
+  before(() => {
+    ApexGridEnterprise.use(...enterpriseModules);
+    ApexGridEnterprise.register();
+    ApexGridAI.register();
+  });
+  afterEach(() => {
+    fixtureCleanup();
+    for (const el of document.querySelectorAll('apex-grid-ai')) el.remove();
+  });
+
+  async function frames(n = 5): Promise<void> {
+    for (let i = 0; i < n; i++) await nextFrame();
+  }
+
+  async function mountGrid(): Promise<ApexGridEnterprise<Row>> {
+    const grid = await fixture<ApexGridEnterprise<Row>>(html`<apex-grid-enterprise
+      .data=${data}
+      .columns=${columns}
+    ></apex-grid-enterprise>`);
+    await grid.updateComplete;
+    return grid;
+  }
+
+  async function mount(
+    mode: 'inline' | 'dialog' = 'inline'
+  ): Promise<{ grid: ApexGridEnterprise<Row>; panel: ApexGridAI }> {
+    const grid = await mountGrid();
+    const panel = await fixture<ApexGridAI>(
+      html`<apex-grid-ai .grid=${grid} mode=${mode}></apex-grid-ai>`
+    );
+    await panel.updateComplete;
+    if (mode === 'dialog') {
+      panel.show();
+      await panel.updateComplete;
+      await frames(2);
+    }
+    return { grid, panel };
+  }
+
+  const active = (panel: ApexGridAI) => panel.shadowRoot?.activeElement ?? null;
+  const label = (panel: ApexGridAI, name: string) => part(panel, name)?.textContent?.trim();
+
+  function keydown(target: HTMLElement, key: string, init: KeyboardEventInit = {}): void {
+    target.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key,
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+        ...init,
+      })
+    );
+  }
+
+  it('Cancel retires the turn: a late result is dropped and the next turn stays cancellable', async () => {
+    const { grid, panel } = await mount();
+    const { reasoner, release } = deafReasoner();
+    grid.aiReasoner = reasoner;
+    const results: unknown[] = [];
+    panel.addEventListener('apex-ai-result', (event) => results.push(event));
+
+    await type(panel, 'xyzzy plugh frobnicate A');
+    part<HTMLButtonElement>(panel, 'send')!.click();
+    await frames();
+    expect(release, 'turn A in flight').to.have.lengthOf(1);
+    expect(label(panel, 'send')).to.equal('Cancel');
+    part<HTMLButtonElement>(panel, 'send')!.click();
+    await panel.updateComplete;
+    expect(label(panel, 'notice'), 'a cancel reads as cancelled').to.equal('Cancelled.');
+    expect(part(panel, 'error'), 'a cancel is not an error').to.not.exist;
+
+    await type(panel, 'xyzzy plugh frobnicate B');
+    part<HTMLButtonElement>(panel, 'send')!.click();
+    await frames();
+    expect(release, 'turn B in flight').to.have.lengthOf(2);
+
+    release[0]();
+    await frames();
+    expect(label(panel, 'send'), 'B can still be cancelled').to.equal('Cancel');
+    expect(part(panel, 'result'), 'the cancelled turn is not shown').to.not.exist;
+    expect(results, 'no event for the cancelled turn').to.be.empty;
+    expect(panel.renderRoot.querySelectorAll('[part="history-item"]')).to.have.lengthOf(0);
+
+    release[1]();
+    await waitForResult(panel);
+    expect(label(panel, 'send')).to.equal('Send');
+    expect(part(panel, 'result'), 'turn B lands').to.exist;
+    expect(results).to.have.lengthOf(1);
+    const items = panel.renderRoot.querySelectorAll('[part="history-item"]');
+    expect(items).to.have.lengthOf(1);
+    expect(items[0].textContent).to.contain('frobnicate B');
+  });
+
+  it('a cancel with a signal-honouring reasoner shows cancelled, not the abort message', async () => {
+    const { grid, panel } = await mount();
+    grid.aiReasoner = listeningReasoner;
+    await type(panel, 'xyzzy plugh frobnicate A');
+    part<HTMLButtonElement>(panel, 'send')!.click();
+    await frames();
+    part<HTMLButtonElement>(panel, 'send')!.click();
+    await frames();
+    expect(part(panel, 'error'), 'no raw abort error').to.not.exist;
+    expect(label(panel, 'notice')).to.equal('Cancelled.');
+    expect(label(panel, 'send')).to.equal('Send');
+  });
+
+  it('a cancelled preview is dropped too', async () => {
+    const { grid, panel } = await mount();
+    const { reasoner, release } = deafReasoner();
+    grid.aiReasoner = reasoner;
+    await type(panel, 'xyzzy plugh frobnicate A');
+    part<HTMLButtonElement>(panel, 'preview-button')!.click();
+    await frames();
+    part<HTMLButtonElement>(panel, 'send')!.click(); // Cancel
+    release[0]();
+    await frames();
+    expect(part(panel, 'preview'), 'cancelled preview not shown').to.not.exist;
+    expect(label(panel, 'notice')).to.equal('Cancelled.');
+  });
+
+  it('a turn started on the new grid in the same task as the re-bind is kept', async () => {
+    const { panel } = await mount();
+    const other = await mountGrid();
+    await type(panel, 'sort by amount descending');
+    panel.grid = other as unknown as ApexGridAI['grid'];
+    keydown(part(panel, 'input')!, 'Enter', { ctrlKey: true });
+    await waitForResult(panel);
+    expect(other.getState().sort).to.have.lengthOf(1);
+    expect(part(panel, 'result'), 'the new grid turn lands').to.exist;
+    expect(part(panel, 'undo')).to.exist;
+    expect(label(panel, 'send')).to.equal('Send');
+  });
+
+  it('Escape while thinking closes the dialog without an error on reopen', async () => {
+    const { grid, panel } = await mount('dialog');
+    grid.aiReasoner = listeningReasoner;
+    let closed = 0;
+    panel.addEventListener('apex-ai-closed', () => closed++);
+    await type(panel, 'xyzzy plugh frobnicate A');
+    part<HTMLButtonElement>(panel, 'send')!.click();
+    await frames();
+    keydown(part(panel, 'input')!, 'Escape');
+    await frames();
+    expect(panel.open).to.be.false;
+    expect(closed).to.equal(1);
+    panel.show();
+    await frames(2);
+    expect(part(panel, 'error'), 'no abort error on reopen').to.not.exist;
+    expect(label(panel, 'send')).to.equal('Send');
+  });
+
+  it('Tab and Shift+Tab wrap inside the dialog', async () => {
+    const { panel } = await mount('dialog');
+    const close = part<HTMLButtonElement>(panel, 'close')!;
+    const send = part<HTMLButtonElement>(panel, 'send')!;
+    await type(panel, 'sort by amount');
+    const preview = part<HTMLButtonElement>(panel, 'preview-button')!;
+    preview.focus();
+    keydown(preview, 'Tab');
+    expect(active(panel), 'Tab from the last control wraps to the first').to.equal(close);
+    keydown(close, 'Tab', { shiftKey: true });
+    expect(active(panel), 'Shift+Tab from the first wraps to the last').to.equal(preview);
+    expect(send.isConnected).to.be.true;
+  });
+
+  for (const modifier of ['ctrlKey', 'metaKey'] as const) {
+    it(`${modifier === 'ctrlKey' ? 'Ctrl' : 'Cmd'}+Enter in the prompt sends`, async () => {
+      const { grid, panel } = await mount();
+      await type(panel, 'sort by amount descending');
+      keydown(part(panel, 'input')!, 'Enter', { [modifier]: true });
+      await waitForResult(panel);
+      expect(grid.getState().sort).to.have.lengthOf(1);
+    });
+  }
+
+  it('re-binding to another grid retires the turn and clears the old grid state', async () => {
+    const { grid, panel } = await mount();
+    await type(panel, 'sort by amount descending');
+    part<HTMLButtonElement>(panel, 'send')!.click();
+    await waitForResult(panel);
+    expect(part(panel, 'undo')).to.exist;
+
+    const { reasoner, release } = deafReasoner();
+    grid.aiReasoner = reasoner;
+    await type(panel, 'xyzzy plugh frobnicate A');
+    part<HTMLButtonElement>(panel, 'send')!.click();
+    await frames();
+    expect(label(panel, 'send')).to.equal('Cancel');
+
+    const other = await mountGrid();
+    panel.grid = other as unknown as ApexGridAI['grid'];
+    await panel.updateComplete;
+    expect(label(panel, 'send')).to.equal('Send');
+    expect(part(panel, 'result')).to.not.exist;
+    expect(part(panel, 'notice')).to.not.exist;
+    expect(part(panel, 'history'), 'transcript cleared').to.not.exist;
+
+    release[0]();
+    await frames();
+    expect(part(panel, 'result'), 'the old grid turn does not land').to.not.exist;
+    expect(part(panel, 'history')).to.not.exist;
+    expect(other.getState().sort, 'the new grid is untouched').to.be.empty;
   });
 });

@@ -567,7 +567,7 @@ describe('Master/detail', () => {
       fail = new Error('boom');
       await send();
       await dialog.updateComplete;
-      expect(error()?.textContent).to.equal('boom');
+      expect(error()?.textContent).to.contain('boom');
     });
   });
 });

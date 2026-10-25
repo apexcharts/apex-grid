@@ -260,6 +260,7 @@ export const EN_LOCALE = {
   'ai.modeAsk': 'Ask a question',
   'ai.send': 'Send',
   'ai.cancel': 'Cancel',
+  'ai.cancelled': 'Cancelled.',
   'ai.thinking': 'Thinking…',
   'ai.undo': 'Undo',
   'ai.applied': 'Applied',
