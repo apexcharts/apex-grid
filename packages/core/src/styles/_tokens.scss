@@ -60,6 +60,14 @@
     --_ag-brand-line: var(--ag-brand-line, color-mix(in srgb, var(--_ag-brand) 18%, transparent)); /* chip / search borders */
     --_ag-surface-alt: var(--ag-surface-alt, var(--_ag-surface)); /* no zebra stripes; rely on hover + hairline borders */
     --_ag-row-hover: var(--ag-row-hover, color-mix(in srgb, #0f172a 5%, var(--_ag-surface))); /* neutral hover wash (opaque) */
+
+    // ── Built-in renderers ── private only (no public input): the badge text
+    // and the progress track are drawn against the row surface, so the dark
+    // block below gives each its own value.
+    --_ag-pill-neutral-text: #4338ca; /* default badge */
+    --_ag-pill-muted-text: #4b5563;
+    --_ag-gold-start: #fff7e6; /* top stop of the gold badge gradient */
+    --_ag-progress-track: rgb(15 23 42 / 8%);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -86,6 +94,13 @@
     // mixes toward #0f172a, which is invisible here).
     --_ag-surface-alt: var(--ag-dark-surface-alt, var(--_ag-surface)); /* no stripes in dark mode either */
     --_ag-row-hover: var(--ag-dark-row-hover, color-mix(in srgb, #fff 7%, var(--_ag-surface)));
+
+    // ── Built-in renderers ── light text on the dark surface (at least 4.5:1
+    // over the badge wash), a flat gold wash and a track lighter than the row.
+    --_ag-pill-neutral-text: #a5b4fc;
+    --_ag-pill-muted-text: #cbd5e1;
+    --_ag-gold-start: var(--_ag-gold);
+    --_ag-progress-track: rgb(255 255 255 / 12%);
 }
 
 // ─────────────────────────────────────────────────────────────────────────

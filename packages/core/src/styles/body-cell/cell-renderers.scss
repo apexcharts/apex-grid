@@ -1,7 +1,8 @@
 // Styles for the premium built-in cell renderers (column types `currency`,
 // `avatar`, `badge`, `progress`, `sparkline`, `status`). These render into the
 // cell's shadow root, so the parts below are matched with `[part~='…']`.
-// Colors resolve to `--ag-*` state tokens so a rebrand carries through.
+// Colors resolve to `--_ag-*` tokens (`_tokens.scss`), so a rebrand and the
+// dark theme carry through.
 // `@use`d by `body-cell.scss`.
 
 // ── Plan / category pill (text badge) ────────────────────────────────────
@@ -19,7 +20,7 @@
 }
 
 [part~='pill--gold'] {
-    background: linear-gradient(180deg, #fff7e6 0%, var(--_ag-gold) 100%);
+    background: linear-gradient(180deg, var(--_ag-gold-start) 0%, var(--_ag-gold) 100%);
     border-color: var(--_ag-gold-line);
     color: var(--_ag-gold-text);
 }
@@ -33,13 +34,13 @@
 [part~='pill--neutral'] {
     background: rgb(99 102 241 / 8%);
     border-color: rgb(99 102 241 / 22%);
-    color: #4338ca;
+    color: var(--_ag-pill-neutral-text);
 }
 
 [part~='pill--muted'] {
     background: rgb(107 114 128 / 10%);
     border-color: rgb(107 114 128 / 22%);
-    color: #4b5563;
+    color: var(--_ag-pill-muted-text);
 }
 
 // ── Avatar (initial in a tinted circle) ──────────────────────────────────
@@ -78,7 +79,7 @@
     block-size: 5px;
     min-inline-size: 40px;
     border-radius: 3px;
-    background: rgb(15 23 42 / 8%);
+    background: var(--_ag-progress-track);
     overflow: hidden;
 }
 
