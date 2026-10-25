@@ -828,8 +828,12 @@ grid.aiReasoner = createLLMReasoner({ complete: async (req) => ({ patch: /* ... 
 The Claude direct transport dynamically imports `@anthropic-ai/sdk` (an optional
 peer dependency), defaults to `claude-opus-4-8` (configurable), and uses tool use
 so the model returns a state patch shaped by the grid's schema (`toJSONSchema`).
-The proxy transport POSTs `{ prompt, mode, schema, data }` to your endpoint,
-which returns `{ patch?, answer? }`. Prefer the proxy for production. Install the
+The proxy transport POSTs `{ prompt, mode, schema, data, rowCount }` to your
+endpoint, where `data` holds only the visible columns' values for a bounded row
+sample and `rowCount` is the number of rows loaded in the grid. It returns
+`{ patch?, answer? }` (`answer` a string, `patch` an object; any other shape
+rejects). Every provider receives the same projected rows, and the request's
+`signal` aborts when the user cancels. Prefer the proxy for production. Install the
 SDK only when you use the direct transport:
 
 ```bash

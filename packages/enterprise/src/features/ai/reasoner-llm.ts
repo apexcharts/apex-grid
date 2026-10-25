@@ -228,8 +228,9 @@ class LLMReasoner implements Reasoner {
  * ```ts
  * grid.aiReasoner = createLLMReasoner({
  *   name: 'llm:acme',
- *   async complete({ prompt, mode, schema, data }) {
- *     const out = await myModel(prompt, { schema, data, mode });
+ *   async complete({ prompt, mode, schema, data, rowCount, signal }) {
+ *     // Forward the signal so Cancel in <apex-grid-ai> stops the request.
+ *     const out = await myModel(prompt, { schema, data, rowCount, mode, signal });
  *     return mode === 'ask' ? { answer: out.text } : { patch: out.patch };
  *   },
  * });
