@@ -47,6 +47,13 @@ $header-separator-color: var(--header-separator-color, var(--_ag-header-separato
     inset-inline-end: var(--apex-pin-offset, 0);
 }
 
+// Filtered column (`part~='filtered'` set by the header row): the consumer
+// hook paints as a layer over whatever background the cell already has, so a
+// pinned cell keeps its opaque surface and the hover wash still shows.
+:host([part~='filtered']) {
+    background-image: linear-gradient($filtering-header-background, $filtering-header-background);
+}
+
 // Frozen-column edge: a crisp 1px vertical line spanning the full column
 // height, sitting at the boundary between pinned and scrollable content.
 :host([data-pin-edge='start'])::after,
@@ -246,11 +253,6 @@ $header-separator-color: var(--header-separator-color, var(--_ag-header-separato
 [part~='action'][data-sort-active='descending'] [part~='sort-down'] {
     opacity: 1;
     stroke: var(--_ag-brand);
-}
-
-[part~='filtered'] {
-    background: $filtering-header-background;
-    color: var(--_ag-brand-strong);
 }
 
 [part~='action']:empty {

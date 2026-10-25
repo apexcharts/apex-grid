@@ -302,4 +302,82 @@ describe('Chrome styles', () => {
       expect(ghost()).to.be.null;
     });
   });
+
+  describe('filtered header hook (core-styles-chrome-3)', () => {
+    const filtered = [
+      { key: 'id', pinned: 'start', filter: true, type: 'number' },
+      { key: 'name', filter: true },
+      { key: 'active' },
+    ] as ColumnConfiguration<TestData>[];
+
+    it('paints --filtering-header-background on pinned and unpinned filtered headers', async () => {
+      const grid = await mount(
+        { columns: filtered },
+        { style: '--filtering-header-background: rgb(255, 0, 0)' }
+      );
+      grid.filter([
+        { key: 'id', condition: 'greaterThan', searchTerm: 1 },
+        { key: 'name', condition: 'contains', searchTerm: 'a' },
+      ] as never);
+      await settle(grid);
+      for (const key of ['id', 'name'] as const) {
+        const h = header(grid, key);
+        expect(h.getAttribute('part')).to.contain('filtered');
+        expect(getComputedStyle(h).backgroundImage, key).to.contain('rgb(255, 0, 0)');
+      }
+      // The pinned cell keeps its opaque surface under the hook layer.
+      expect(getComputedStyle(header(grid, 'id')).backgroundColor).to.not.equal('rgba(0, 0, 0, 0)');
+      expect(getComputedStyle(header(grid, 'active')).backgroundImage).to.equal('none');
+    });
+
+    it('leaves the hover wash to the header cell on a filtered header', async () => {
+      // Real hover does not register in the background test page, so check the
+      // cascade instead: no header row rule may set a filtered header's
+      // background, or it beats the cell's own :host(:hover) wash.
+      const grid = await mount({ columns: filtered });
+      grid.filter([{ key: 'name', condition: 'contains', searchTerm: 'a' }] as never);
+      await settle(grid);
+      const h = header(grid, 'name');
+      const row = grid.renderRoot.querySelector(ApexGridHeaderRow.tagName)!;
+      const offending = (row.renderRoot as ShadowRoot).adoptedStyleSheets
+        .flatMap((sheet) => Array.from(sheet.cssRules))
+        .filter(
+          (rule): rule is CSSStyleRule =>
+            rule instanceof CSSStyleRule &&
+            h.matches(rule.selectorText) &&
+            Boolean(rule.style.backgroundColor || rule.style.background)
+        )
+        .map((rule) => rule.selectorText);
+      expect(offending).to.deep.equal([]);
+    });
+  });
+
+  describe('paginator and toolbar tokens', () => {
+    it('paginator follows --header-background (core-styles-chrome-4)', async () => {
+      const grid = await mount(
+        { columns, pagination: { enabled: true, pageSize: 4 }, showQuickFilter: true },
+        { style: '--header-background: rgb(11, 30, 63)' }
+      );
+      const pag = grid.renderRoot.querySelector('apex-grid-paginator')!;
+      const toolbar = grid.renderRoot.querySelector('apex-grid-toolbar')!;
+      expect(getComputedStyle(toolbar).backgroundColor).to.equal('rgb(11, 30, 63)');
+      expect(getComputedStyle(pag).backgroundColor).to.equal('rgb(11, 30, 63)');
+    });
+
+    it('group header labels follow --header-text-color (core-styles-chrome-7)', async () => {
+      const grid = await mount(
+        {
+          columnGroups: [{ id: 'g', headerText: 'Group' }],
+          columns: [
+            { key: 'id', group: 'g' },
+            { key: 'name', group: 'g' },
+          ],
+        },
+        { style: '--header-text-color: rgb(255, 0, 0)' }
+      );
+      const row = grid.renderRoot.querySelector('apex-grid-group-header-row')!;
+      const label = row.shadowRoot!.querySelector('[part~="group-header"]')!;
+      expect(getComputedStyle(label).color).to.equal('rgb(255, 0, 0)');
+    });
+  });
 });

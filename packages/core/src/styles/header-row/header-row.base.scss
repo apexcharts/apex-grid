@@ -5,7 +5,6 @@
 $header-background: var(--header-background, var(--_ag-surface-elevated));
 $header-text-color: var(--header-text-color, var(--_ag-text-muted));
 $header-border-color: var(--header-border-color, var(--_ag-hairline));
-$filtering-header-background: var(--filtering-header-background, transparent);
 $accent: var(--cell-active-border-color, var(--_ag-brand));
 
 :host {
@@ -22,10 +21,6 @@ $accent: var(--cell-active-border-color, var(--_ag-brand));
     // of any rows above (e.g. toolbar), maintained by GridDOMController.
     position: sticky;
     inset-block-start: var(--apex-row-top-header, 0);
-}
-
-[part='filtered'] {
-    background: $filtering-header-background;
 }
 
 // Header cells over the leading chrome columns, sticky at the same
