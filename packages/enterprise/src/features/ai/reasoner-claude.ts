@@ -289,8 +289,18 @@ async function callMessages(
 ): Promise<ClaudeMessage> {
   if (config.client) return config.client.messages.create(body, { signal });
   // Dynamic, literal import so a non-AI (or proxy-only) consumer never bundles
-  // the SDK; mirrors how the chart panel lazy-imports apexcharts.
-  const mod = await import('@anthropic-ai/sdk');
+  // the SDK; mirrors how the chart panel lazy-imports apexcharts. Inside try, so
+  // a build without this optional peer still succeeds and the failure surfaces
+  // here, naming the package.
+  let mod: typeof import('@anthropic-ai/sdk');
+  try {
+    mod = await import('@anthropic-ai/sdk');
+  } catch (cause) {
+    throw new Error(
+      'apex-grid-enterprise: the direct Claude transport needs the "@anthropic-ai/sdk" package; install it.',
+      { cause }
+    );
+  }
   const client = new mod.default({ apiKey: config.apiKey, dangerouslyAllowBrowser: true });
   return client.messages.create(body, { signal });
 }

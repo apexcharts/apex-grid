@@ -1,4 +1,4 @@
-import type { ApexOptions } from 'apexcharts';
+import type { default as ApexCharts, ApexOptions } from 'apexcharts';
 
 /** A single chart series (one bar/line group). */
 export interface ChartSeries {
@@ -497,8 +497,17 @@ export async function renderApexChart(
   model: ChartModel,
   options: RenderChartOptions = {}
 ) {
-  const { default: ApexCharts } = await import('apexcharts');
-  const chart = new ApexCharts(container, chartModelToApexOptions(model, options));
+  // A literal specifier inside try: bundlers still include apexcharts when it is installed, and a
+  // build without it (it is an optional peer) defers the failure to here instead of failing.
+  let apexcharts: { default: typeof ApexCharts };
+  try {
+    apexcharts = await import('apexcharts');
+  } catch (cause) {
+    throw new Error('apex-grid-enterprise: charts need the "apexcharts" package; install it.', {
+      cause,
+    });
+  }
+  const chart = new apexcharts.default(container, chartModelToApexOptions(model, options));
   await chart.render();
   return chart;
 }
