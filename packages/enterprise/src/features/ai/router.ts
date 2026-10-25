@@ -29,6 +29,9 @@ export interface RouterOptions {
   threshold?: number;
 }
 
+/** The default escalation threshold, shared with the engine's abstention floor. */
+export const DEFAULT_ROUTING_THRESHOLD = 0.5;
+
 const NO_REASONER: Plan = {
   mode: 'control',
   steps: [],
@@ -57,7 +60,7 @@ class DefaultRouter implements Router {
 
   constructor(options: RouterOptions = {}) {
     this.#policy = options.policy ?? 'rule-first';
-    this.#threshold = options.threshold ?? 0.5;
+    this.#threshold = options.threshold ?? DEFAULT_ROUTING_THRESHOLD;
   }
 
   async route(utterance: string, ctx: GridContext, reasoners: Reasoner[]): Promise<Plan> {

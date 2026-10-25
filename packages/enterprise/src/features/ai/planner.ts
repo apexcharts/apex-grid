@@ -8,7 +8,8 @@
  */
 
 import type { GridContext } from './context.js';
-import { columnLabels, isNumericColumn, mentionsColumn, type ResolveResult } from './entities.js';
+import { columnLabels, type ResolveResult } from './entities.js';
+import { groundQuestion } from './tools/builtins.js';
 import type { Intent, Plan } from './types.js';
 
 /** Turns a resolved intent into a plan. */
@@ -20,24 +21,6 @@ export interface Planner {
 function columnHint(ctx: GridContext): string {
   const labels = columnLabels(ctx);
   return labels.length > 0 ? ` Try one of: ${labels.join(', ')}.` : '';
-}
-
-/**
- * Does an `ask` utterance ground a concrete answer (a row count, or a metric over a
- * numeric column), or could it only echo a generic view summary? Mirrors what the
- * `answer` tool computes. A generic ask must score below the escalation floor so it can
- * escalate to an LLM (when configured) or abstain, instead of masquerading as a
- * confident answer.
- */
-function asksGroundedAnswer(raw: string, ctx: GridContext): boolean {
-  const lower = raw.toLowerCase();
-  if (/\b(?:how many|number of|count)\b/.test(lower)) return true;
-  const hasMetric =
-    /\b(?:highest|lowest|max|min|most|least|top|bottom|smallest|largest|average|mean|avg|sum|total)\b/.test(
-      lower
-    );
-  if (!hasMetric) return false;
-  return ctx.columns.some((c) => isNumericColumn(c) && mentionsColumn(raw, c));
 }
 
 class RulePlanner implements Planner {
@@ -231,14 +214,21 @@ class RulePlanner implements Planner {
       }
 
       case 'ask': {
-        // A grounded question keeps its confidence; a generic one that could only echo
-        // the current view drops below the escalation floor so it escalates or abstains.
-        const grounded = asksGroundedAnswer(intent.raw, ctx);
+        // A grounded question (what the answer tool computes) keeps its confidence; a
+        // generic one that could only echo the current view drops below the escalation
+        // floor so it escalates or abstains.
+        const grounded = groundQuestion(intent.raw, ctx.columns) !== null;
         return {
           mode: 'ask',
           steps: [{ tool: 'answer', args: { question: intent.raw } }],
           confidence: grounded ? confidence : confidence * 0.4,
           source,
+          notes: grounded
+            ? undefined
+            : [
+                'I can count rows, or give the highest, lowest, average or total of a column.' +
+                  columnHint(ctx),
+              ],
         };
       }
 

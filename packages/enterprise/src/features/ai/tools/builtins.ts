@@ -12,7 +12,13 @@
  * @see plans/ai-reasoning-layer-spec.md (section 4.7)
  */
 
-import type { ColumnLayoutState, GridState, RowRef, SortingDirection } from 'apex-grid';
+import type {
+  ColumnLayoutState,
+  ColumnSchema,
+  GridState,
+  RowRef,
+  SortingDirection,
+} from 'apex-grid';
 import type { AggregationConfig } from '../../aggregation.js';
 import { sanitizePatch } from '../../ai-sanitize.js';
 import type { StatePatch } from '../../ai-schema.js';
@@ -279,22 +285,40 @@ const ANSWER_METRICS: ReadonlyArray<[AnalyticsFunc, RegExp, string]> = [
   ['sum', /\b(?:sum|total)\b/, 'total'],
 ];
 
+/** What a free-form question grounds to: a row count, or a metric over a numeric column. */
+export type QuestionGrounding =
+  | { kind: 'count' }
+  | { kind: 'metric'; func: AnalyticsFunc; word: string; column: ColumnSchema };
+
+/**
+ * Ground a free-form question on whole words: "how many" is a row count, and a
+ * metric word with a numeric column it names is that metric. `null` when it
+ * grounds neither, so it could only echo the view. The planner scores a question
+ * by this and the answer tool computes from it, so the two never drift.
+ */
+export function groundQuestion(
+  question: string,
+  columns: readonly ColumnSchema[]
+): QuestionGrounding | null {
+  const lower = question.toLowerCase();
+  if (/\b(?:how many|number of|count)\b/.test(lower)) return { kind: 'count' };
+  const column = columns.filter(isNumericColumn).find((c) => mentionsColumn(question, c));
+  const metric = column && ANSWER_METRICS.find(([, pattern]) => pattern.test(lower));
+  return column && metric ? { kind: 'metric', func: metric[0], word: metric[2], column } : null;
+}
+
 /**
  * Answer a free-form question. Metrics are computed by the analytics engine, so
  * this path and the `analyze` tool count blanks and numeric text the same way.
  */
 function answerQuestion(question: string, tc: ToolContext): string {
   const rows = tc.api.getData() as ReadonlyArray<Record<string, unknown>>;
-  const lower = question.toLowerCase();
-  if (rows.length > 0) {
-    if (/\b(?:how many|number of|count)\b/.test(lower)) return `There are ${rows.length} rows.`;
-    const column = tc.ctx.columns.filter(isNumericColumn).find((c) => mentionsColumn(question, c));
-    const metric = column && ANSWER_METRICS.find(([, pattern]) => pattern.test(lower));
-    if (column && metric) {
-      const { value } = computeMetric(metric[0], rows, column.key);
-      if (typeof value === 'number') {
-        return `The ${metric[2]} ${column.label} is ${formatNumber(value)}.`;
-      }
+  const grounded = rows.length > 0 ? groundQuestion(question, tc.ctx.columns) : null;
+  if (grounded?.kind === 'count') return `There are ${rows.length} rows.`;
+  if (grounded) {
+    const { value } = computeMetric(grounded.func, rows, grounded.column.key);
+    if (typeof value === 'number') {
+      return `The ${grounded.word} ${grounded.column.label} is ${formatNumber(value)}.`;
     }
   }
   return summarizeView(tc.ctx);

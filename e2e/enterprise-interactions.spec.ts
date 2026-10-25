@@ -490,7 +490,14 @@ test.describe('ai-toolkit', () => {
     expect(await ask('highest salary')).toMatch(/highest.*104000/i);
     expect(await ask('lowest salary')).toMatch(/lowest.*64000/i);
     expect(await ask('average salary')).toMatch(/average.*81500/i);
-    expect(await ask('do a backflip')).toMatch(/current view|columns/i); // edge: falls back to a view summary
+    // An unmappable question abstains instead of passing a view summary off as the answer.
+    const abstained = await page.evaluate(async () => {
+      const r = await (document.getElementById('grid') as any).runPrompt('do a backflip', {
+        mode: 'ask',
+      });
+      return r.abstained as boolean;
+    });
+    expect(abstained).toBe(true);
   });
 
   test('answers analytical questions computed over the data (rule engine)', async ({ page }) => {

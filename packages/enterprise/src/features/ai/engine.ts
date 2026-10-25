@@ -20,8 +20,8 @@ import { ConversationMemory } from './memory.js';
 import type { Reasoner } from './reasoner.js';
 import { createRuleBasedReasoner } from './reasoner.js';
 import type { Router, RoutingPolicy } from './router.js';
-import { createRouter } from './router.js';
-import { createDefaultRegistry } from './tools/builtins.js';
+import { createRouter, DEFAULT_ROUTING_THRESHOLD } from './router.js';
+import { createDefaultRegistry, groundQuestion } from './tools/builtins.js';
 import type { ToolExecutor, ToolRegistry } from './tools/registry.js';
 import { createToolExecutor } from './tools/registry.js';
 import type { AIMode, Plan, ResolvedEntities } from './types.js';
@@ -64,9 +64,12 @@ export type AIResult =
       plan: Plan;
       answer: string;
       /**
-       * True when the pipeline could neither map an action nor ground a real answer:
-       * an honest "I could not do that" rather than a silent no-op. The `answer` holds
-       * a plain-text note; the host UI should show a localized abstention message.
+       * True when the pipeline could neither map an action nor ground a real answer
+       * (including a question the rule engine cannot compute, a reasoner answer under
+       * the routing `threshold`, and a read-only step that was refused): an honest
+       * "I could not do that" rather than a silent no-op or a guess. The `answer`
+       * holds a plain-text note; the host UI should show a localized abstention
+       * message.
        */
       abstained?: boolean;
     };
@@ -90,7 +93,11 @@ export interface CreateAIEngineOptions {
   reasoners?: Reasoner[];
   /** Routing policy. Default `'rule-first'`. */
   policy?: RoutingPolicy;
-  /** Escalation threshold for `rule-first` / `llm-first`. Default `0.5`. */
+  /**
+   * Escalation threshold for `rule-first` / `llm-first`, and the floor under which
+   * a reasoner's own text answer abstains. Answers the tools compute are kept
+   * whatever the threshold. Default `0.5`.
+   */
   threshold?: number;
   /** Conversation + grid-state memory. Defaults to a bounded in-memory store. */
   memory?: Memory;
@@ -152,7 +159,8 @@ export function createAIEngine<T = unknown>(
   const registry = options.registry ?? createDefaultRegistry();
   const executor = createToolExecutor(registry);
   const reasoners = options.reasoners ?? [createRuleBasedReasoner()];
-  const router = createRouter({ policy: options.policy, threshold: options.threshold });
+  const threshold = options.threshold ?? DEFAULT_ROUTING_THRESHOLD;
+  const router = createRouter({ policy: options.policy, threshold });
   const now = options.now ?? (() => Date.now());
   const defaultMaxRows = options.maxDataRows;
 
@@ -192,7 +200,36 @@ export function createAIEngine<T = unknown>(
         // the routed plan when every step is a read-only tool (e.g. `analyze`/`answer`);
         // else fall back to the read-only `answer` tool over the prompt. A control plan
         // forced into ask can never run its mutating steps here.
-        if (plan.answer !== undefined && plan.answer !== '') {
+        const answer = plan.answer ?? '';
+        const answered = answer !== '';
+        const readOnly =
+          plan.steps.length > 0 &&
+          plan.steps.every((step) => registry.get(step.tool)?.readOnly === true);
+        const fallback = !answered && !readOnly;
+        // Abstain rather than present a view summary or a hint as the answer. A
+        // reasoner's own answer must clear the threshold and be more than the plan's
+        // note (a measure that did not resolve). Computed steps answer whatever the
+        // threshold, except an `answer` step on a question the answer tool cannot
+        // ground; the fallback grounds the prompt the same way.
+        const grounds = (question: unknown) =>
+          typeof question !== 'string' || groundQuestion(question, ctx.columns) !== null;
+        const grounded = answered
+          ? plan.confidence >= threshold && !plan.notes?.includes(answer)
+          : readOnly
+            ? plan.steps.every((step) => step.tool !== 'answer' || grounds(step.args.question))
+            : grounds(prompt);
+        if (!grounded) {
+          // A control plan forced into ask is reported without its mutating steps.
+          const abstainPlan: Plan = fallback ? { ...plan, mode: 'ask', steps: [] } : plan;
+          memory.record({ utterance: prompt, plan: abstainPlan, outcome: 'no-op', at: ctx.now });
+          return {
+            mode: 'ask',
+            plan: abstainPlan,
+            answer: answer || plan.notes?.[0] || '',
+            abstained: true,
+          };
+        }
+        if (answered) {
           memory.record({
             utterance: prompt,
             plan,
@@ -200,28 +237,29 @@ export function createAIEngine<T = unknown>(
             entities: entitiesFromPlan(plan),
             at: ctx.now,
           });
-          return { mode: 'ask', plan, answer: plan.answer };
+          return { mode: 'ask', plan, answer };
         }
-        const readOnly =
-          plan.steps.length > 0 &&
-          plan.steps.every((step) => registry.get(step.tool)?.readOnly === true);
-        const askPlan: Plan = readOnly
-          ? plan
-          : {
+        const askPlan: Plan = fallback
+          ? {
               mode: 'ask',
               steps: [{ tool: 'answer', args: { question: prompt } }],
               confidence: plan.confidence,
               source: plan.source,
-            };
+            }
+          : plan;
         const exec = executor.run(askPlan, tc);
+        // No answer means every step was refused (a malformed analyze query): say why.
+        const refused = !exec.answer && exec.warnings.length > 0;
         memory.record({
           utterance: prompt,
           plan: askPlan,
-          outcome: 'answered',
+          outcome: refused ? 'no-op' : 'answered',
           entities: entitiesFromPlan(askPlan),
           at: ctx.now,
         });
-        return { mode: 'ask', plan: askPlan, answer: exec.answer ?? '' };
+        return refused
+          ? { mode: 'ask', plan: askPlan, answer: exec.warnings[0], abstained: true }
+          : { mode: 'ask', plan: askPlan, answer: exec.answer ?? '' };
       }
 
       // Abstention: a control-mode plan with no steps means the reasoner (and any LLM

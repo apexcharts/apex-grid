@@ -193,3 +193,73 @@ describe('AI engine guards: cancellation', () => {
     expect(api.calls).to.be.empty;
   });
 });
+
+describe('AI engine guards: abstention and grounding', () => {
+  it('forced ask mode answers what the answer tool grounds and abstains otherwise', async () => {
+    const engine = createAIEngine<Row>(makeApi());
+    const highest = await engine.runPrompt('highest amount', { mode: 'ask' });
+    if (highest.mode !== 'ask') throw new Error('expected ask');
+    expect(highest.answer).to.equal('The highest Amount is 30.');
+    expect(highest.abstained).to.equal(undefined);
+
+    const backflip = await engine.runPrompt('do a backflip', { mode: 'ask' });
+    if (backflip.mode !== 'ask') throw new Error('expected ask');
+    expect(backflip.abstained).to.equal(true);
+
+    const sort = await engine.runPrompt('sort by amount', { mode: 'ask' });
+    if (sort.mode !== 'ask') throw new Error('expected ask');
+    expect(sort.abstained).to.equal(true);
+    expect(sort.plan.mode, 'reported without its mutating steps').to.equal('ask');
+    expect(sort.plan.steps).to.be.empty;
+  });
+
+  it('a generic question abstains instead of answering with the view summary', async () => {
+    const result = await createAIEngine<Row>(makeApi()).runPrompt('what are the regions?');
+    expect(result.mode).to.equal('ask');
+    if (result.mode !== 'ask') return;
+    expect(result.abstained).to.equal(true);
+    expect(result.answer).to.not.contain('Current view');
+    expect(result.answer, 'with a hint').to.contain('I can count rows');
+  });
+
+  it('a measure that does not resolve abstains with its note', async () => {
+    const result = await createAIEngine<Row>(makeApi()).runPrompt('what is the median of salary');
+    if (result.mode !== 'ask') throw new Error('expected ask');
+    expect(result.abstained).to.equal(true);
+    expect(result.answer).to.contain('Tell me which column');
+  });
+
+  it('a raised threshold keeps the answers the rule engine computes', async () => {
+    const engine = createAIEngine<Row>(makeApi(), { threshold: 0.9 });
+    const count = await engine.runPrompt('how many rows?');
+    if (count.mode !== 'ask') throw new Error('expected ask');
+    expect(count.answer).to.equal('There are 3 rows.');
+    expect(count.abstained).to.equal(undefined);
+
+    const average = await engine.runPrompt('what is the average amount');
+    if (average.mode !== 'ask') throw new Error('expected ask');
+    expect(average.answer).to.equal('The average Amount is 20.');
+    expect(average.abstained).to.equal(undefined);
+
+    const generic = await engine.runPrompt('what are the regions?');
+    expect(generic.mode === 'ask' && generic.abstained).to.equal(true);
+  });
+
+  it('grounded questions still answer, and the planner grounds what the answer tool computes', async () => {
+    const engine = createAIEngine<Row>(makeApi());
+    const count = await engine.runPrompt('how many rows?');
+    if (count.mode !== 'ask') throw new Error('expected ask');
+    expect(count.answer).to.equal('There are 3 rows.');
+    expect(count.abstained).to.equal(undefined);
+
+    const maximum = await engine.runPrompt('maximum amount?');
+    if (maximum.mode !== 'ask') throw new Error('expected ask');
+    expect(maximum.answer).to.equal('The highest Amount is 30.');
+    expect(maximum.abstained).to.equal(undefined);
+    expect(maximum.plan.confidence, '"maximum" is grounded').to.be.at.least(0.5);
+
+    const analyzed = await engine.runPrompt('what is the average amount');
+    if (analyzed.mode !== 'ask') throw new Error('expected ask');
+    expect(analyzed.answer).to.equal('The average Amount is 20.');
+  });
+});
