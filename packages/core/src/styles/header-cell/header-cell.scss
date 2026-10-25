@@ -306,9 +306,9 @@ $header-separator-color: var(--header-separator-color, var(--_ag-header-separato
     padding: 0 rem(3px);
     border-radius: rem(7px);
     background: var(--_ag-brand);
-    color: white;
+    color: var(--_ag-text-on-brand);
     font-size: var(--_ag-fs-tiny);
-    font-weight: 600;
+    font-weight: var(--_ag-fw-semibold);
     line-height: rem(14px);
     text-align: center;
     font-variant-numeric: tabular-nums;

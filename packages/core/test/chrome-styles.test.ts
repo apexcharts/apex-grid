@@ -379,5 +379,45 @@ describe('Chrome styles', () => {
       const label = row.shadowRoot!.querySelector('[part~="group-header"]')!;
       expect(getComputedStyle(label).color).to.equal('rgb(255, 0, 0)');
     });
+
+    it('paginator text follows --ag-fs-cell-secondary (core-styles-chrome-8)', async () => {
+      const grid = await mount(
+        { columns, pagination: { enabled: true, pageSize: 4 } },
+        { style: '--ag-fs-cell-secondary: 14px' }
+      );
+      const pag = grid.renderRoot.querySelector('apex-grid-paginator')!;
+      expect(getComputedStyle(pag).fontSize).to.equal('14px');
+      expect(getComputedStyle(pag.shadowRoot!.querySelector('select')!).fontSize).to.equal('14px');
+    });
+
+    it('declares no leftover --ig-size (core-styles-chrome-9)', async () => {
+      const grid = await mount({
+        columns,
+        pagination: { enabled: true, pageSize: 4 },
+        showQuickFilter: true,
+      });
+      for (const tag of ['apex-grid-paginator', 'apex-grid-toolbar']) {
+        const el = grid.renderRoot.querySelector(tag)!;
+        expect(getComputedStyle(el).getPropertyValue('--ig-size'), tag).to.equal('');
+      }
+    });
+
+    it('filter count badge uses the on-brand text and weight tokens (core-styles-chrome-10)', async () => {
+      const grid = await mount(
+        { columns: [{ key: 'name', filter: true }] },
+        { style: '--ag-text-on-brand: rgb(17, 17, 17); --ag-fw-semibold: 700' }
+      );
+      grid.filter([
+        { key: 'name', condition: 'contains', searchTerm: 'a' },
+        { key: 'name', condition: 'contains', searchTerm: 'b' },
+      ] as never);
+      await settle(grid);
+      const h = header(grid, 'name');
+      await elementUpdated(h);
+      const badge = h.renderRoot.querySelector('[part~="filter-count"]')!;
+      expect(badge, 'badge rendered').to.exist;
+      expect(getComputedStyle(badge).color).to.equal('rgb(17, 17, 17)');
+      expect(getComputedStyle(badge).fontWeight).to.equal('700');
+    });
   });
 });

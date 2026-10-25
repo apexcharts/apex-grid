@@ -6,8 +6,6 @@ $header-text-color: var(--header-text-color, var(--_ag-text-muted));
 $header-border-color: var(--header-border-color, var(--_ag-hairline));
 
 :host {
-    --ig-size: 1;
-
     grid-row: paginator-row;
     display: block;
 
@@ -17,7 +15,7 @@ $header-border-color: var(--header-border-color, var(--_ag-hairline));
     background: $header-background;
     color: $header-text-color;
     border-block-start: 1px solid $header-border-color;
-    font-size: 11.5px;
+    font-size: var(--_ag-fs-cell-secondary);
     z-index: calc(var(--z-index-base) + 4);
 
     // Sticky in both axes so the paginator stays anchored to the bottom-left of
@@ -46,7 +44,7 @@ $header-border-color: var(--header-border-color, var(--_ag-hairline));
         appearance: auto;
         padding: rem(2px) rem(6px);
         font: inherit;
-        font-size: 11.5px;
+        font-size: var(--_ag-fs-cell-secondary);
         color: var(--_ag-text-body);
         background: var(--_ag-surface);
         border: 1px solid var(--_ag-hairline);
