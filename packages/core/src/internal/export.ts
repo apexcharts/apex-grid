@@ -216,6 +216,19 @@ export function formatDateForCSV<T extends object>(
   return Number.isNaN(value.getTime()) ? '' : dateFormatter(column.format).format(value);
 }
 
+/**
+ * A cell value as CSV export writes it, before escaping: a date in the
+ * column's date style, a select option's label, a number as a number, and
+ * blank for no value. Chart category labels read the same text.
+ */
+export function formatDisplayText<T extends object>(
+  column: ColumnConfiguration<T>,
+  value: unknown
+): string {
+  const text = defaultExportFormat(column, value);
+  return text instanceof Date ? formatDateForCSV(column, text) : String(text ?? '');
+}
+
 /** Text a spreadsheet would evaluate: a formula trigger first, not a signed decimal. */
 const FORMULA_LEADING = /^(?![+-]\d*\.?\d+$)[=+\-@\t\r]/;
 
