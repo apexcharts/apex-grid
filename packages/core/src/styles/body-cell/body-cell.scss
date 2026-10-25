@@ -387,12 +387,16 @@ $invalid-color: var(--_ag-risk, #ef4444);
 // shadow boundary from the grid host. The fallbacks below derive a subtle,
 // brand-tinted highlight from `--ag-brand` so a selection is visible out of the
 // box (brand reserved for state/accent); a theme can still override any token.
+// Each fill is set as `--_ag-fill` and painted as a background-image layer (see
+// the rule after the formula pointer below), never through the `background`
+// shorthand, so a pinned cell keeps its opaque `background-color: inherit`
+// under the tint and scrolled cells never show through a frozen column.
 :host([data-range]) {
-    background: var(--apex-range-fill, color-mix(in srgb, var(--_ag-brand) 12%, transparent));
+    --_ag-fill: var(--apex-range-fill, color-mix(in srgb, var(--_ag-brand) 12%, transparent));
 }
 
 :host([data-range~='active']) {
-    background: var(
+    --_ag-fill: var(
         --apex-range-active-fill,
         var(--apex-range-fill, color-mix(in srgb, var(--_ag-brand) 20%, transparent))
     );
@@ -452,8 +456,8 @@ $invalid-color: var(--_ag-risk, #ef4444);
 // `--apex-formula-ref` (themable via the per-slot `--apex-formula-ref-N` tokens).
 :host([data-formula-ref]) {
     --apex-formula-ref: var(--_ag-brand);
+    --_ag-fill: color-mix(in srgb, var(--apex-formula-ref) 14%, transparent);
 
-    background: color-mix(in srgb, var(--apex-formula-ref) 14%, transparent);
     box-shadow: inset 0 0 0 1px var(--apex-formula-ref);
 }
 
@@ -490,8 +494,16 @@ $invalid-color: var(--_ag-risk, #ef4444);
 // Themable via `--apex-formula-pointer`.
 :host([data-formula-pointer]) {
     --apex-formula-pointer: var(--_ag-brand);
+    --_ag-fill: color-mix(in srgb, var(--apex-formula-pointer) 10%, transparent);
+}
 
-    background: color-mix(in srgb, var(--apex-formula-pointer) 10%, transparent);
+// The decoration fill over whatever background the cell already has: none for
+// an ordinary cell (the row shows through), the opaque row colour for a
+// pinned one.
+:host([data-range]),
+:host([data-formula-ref]),
+:host([data-formula-pointer]) {
+    background-image: linear-gradient(var(--_ag-fill), var(--_ag-fill));
 }
 
 :host([data-formula-pointer])::before {
