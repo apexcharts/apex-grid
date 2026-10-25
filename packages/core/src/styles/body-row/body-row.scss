@@ -41,8 +41,11 @@ $accent: var(--cell-active-border-color, var(--_ag-brand));
     border-bottom: 0;
 }
 
-// Subtle alternating depth — not zebra-stripe loud.
-:host(:nth-of-type(even)) {
+// Subtle alternating depth, not zebra-stripe loud. Keyed on the row index
+// (`data-alt`, set by the row), not the DOM position: the virtualizer renders
+// a window that can start at any index, so `:nth-of-type` would flip every
+// stripe whenever the window starts at an odd one.
+:host([data-alt]) {
     background: $row-even-background;
     color: $row-even-text-color;
 }

@@ -235,6 +235,8 @@ export default class ApexGridRow<T extends object> extends LitElement {
 
   protected override willUpdate() {
     this.setAttribute('aria-rowindex', String(this.index + this.ariaRowOffset + 1));
+    // Zebra parity from the row index, not the DOM position (body-row.scss).
+    this.toggleAttribute('data-alt', this.index % 2 === 1);
 
     // Ask feature modules whether this row is rendered full-width (e.g. an
     // enterprise group header). When one owns it, the row is not a selectable
