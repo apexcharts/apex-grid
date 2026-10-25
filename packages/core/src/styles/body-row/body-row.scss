@@ -35,6 +35,10 @@ $accent: var(--cell-active-border-color, var(--_ag-brand));
     transition:
         background-color var(--_ag-dur-fast) var(--_ag-ease),
         box-shadow var(--_ag-dur-fast) var(--_ag-ease);
+
+    // Selected-row bar offset (see below). Declared on every row so a nested
+    // grid never inherits an outer RTL row's value.
+    --_ag-bar: 2px;
 }
 
 :host(:last-of-type) {
@@ -58,10 +62,15 @@ $accent: var(--cell-active-border-color, var(--_ag-brand));
 }
 
 // Selected: a brand wash with a 2px brand accent bar on the leading edge.
-// Hovering a selected row deepens the wash further.
+// Hovering a selected row deepens the wash further. Shadow offsets are
+// physical, so `--_ag-bar` flips the bar's side under RTL.
 :host([selected]) {
     background: color-mix(in srgb, var(--_ag-brand) 10%, var(--_ag-surface));
-    box-shadow: inset 2px 0 0 0 #{$accent};
+    box-shadow: inset var(--_ag-bar) 0 0 0 #{$accent};
+}
+
+:host(:dir(rtl)) {
+    --_ag-bar: -2px;
 }
 
 :host([selected]:hover) {
