@@ -71,6 +71,23 @@ function pickAggregate(
 }
 
 /**
+ * Collapse `values` (finite numbers: blanks already skipped) with one
+ * aggregation function, or their median. The chart model reduces each
+ * category with this, so a chart and a group header agree on the same rows.
+ */
+export function aggregateNumbers(values: readonly number[], fn: AggregationFn | 'median'): number {
+  const n = values.length;
+  if (fn === 'median') {
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = n >> 1;
+    return n === 0 ? 0 : n % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  let sum = 0;
+  for (let i = 0; i < n; i += 1) sum += values[i];
+  return pickAggregate(fn, n, sum, minOf(values), maxOf(values));
+}
+
+/**
  * Compute the requested aggregations for a set of rows. Pure and reusable:
  * shared by the {@link AggregationController} and the row-grouping feature,
  * which calls it per group over the (filtered) leaf rows. One pass per column

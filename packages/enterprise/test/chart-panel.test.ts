@@ -322,7 +322,7 @@ describe('ApexGridChart panel', () => {
     panel.querySelector<HTMLButtonElement>('[part="calc-add"]')!.click();
     await panel.updateComplete;
     expect(panel.definition.calculatedFields).to.eql([
-      { name: 'Deal rate', formula: 'B1 / A1 * 100' },
+      { name: 'Deal rate', formula: 'B1 / A1 * 100', refs: { A: 'revenue', B: 'deals' } },
     ]);
 
     // The calculated field renders as an extra series.

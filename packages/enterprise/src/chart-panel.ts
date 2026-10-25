@@ -23,6 +23,7 @@ import {
   renderApexChart,
 } from './features/chart.js';
 import { isValidChartFormula } from './features/chart-calc.js';
+import { indexToColumnLetter } from './features/formula/refs.js';
 import { RANGE_CHANGED_EVENT } from './features/range-selection.js';
 import { type ApexGridEnterprise, VIEW_CHANGED_EVENT } from './grid-enterprise.js';
 
@@ -379,6 +380,8 @@ export class ApexGridChart extends LitElement {
     if (changed.has('staticModel') && changed.get('staticModel') && !this.staticModel) {
       this.#fieldsDirty = true;
     }
+    // The fields follow the source's columns (see #refreshFields).
+    if (changed.has('source') || changed.has('definition')) this.#fieldsDirty = true;
     // Type / source / theme / cross-filter changes (and a fresh grid) all force a redraw.
     if (
       changed.has('type') ||
@@ -664,21 +667,34 @@ export class ApexGridChart extends LitElement {
     this.#patchDefinition({ secondaryMeasures: set.size ? [...set] : undefined });
   }
 
-  /** The numeric columns available to a calculated-field formula, each with its A1 letter (A, B, …). */
-  #calcColumns(): { letter: string; label: string }[] {
+  /**
+   * The numeric columns available to a calculated-field formula, each with its A1 letter (A1, B1,
+   * …): the numeric non-category columns of the source the chart reads, the frame the model
+   * evaluates a field without `refs` in.
+   */
+  #calcColumns(): { letter: string; key: string; label: string }[] {
     const category = this.#categoryKey();
     return this.dataFields
       .filter((f) => f.numeric && f.key !== category)
-      .map((f, i) => ({ letter: `${String.fromCharCode(65 + i)}1`, label: f.label }));
+      .map((f, i) => ({ letter: indexToColumnLetter(i), key: f.key, label: f.label }));
   }
 
-  /** Add the draft calculated field (name + formula) to the definition, then clear the form. */
+  /**
+   * Add the draft calculated field (name + formula) to the definition, then clear the form. The
+   * field records the column each legend letter meant (`refs`), so it keeps reading those columns
+   * when the source's columns change. With no lettered column there is nothing to pin, so the
+   * field stays positional and reads the numeric columns of a later source.
+   */
   #addCalculatedField(): void {
     const name = this.calcName.trim();
     if (name === '' || !isValidChartFormula(this.calcFormula)) return;
+    const columns = this.#calcColumns();
+    const refs = columns.length
+      ? { refs: Object.fromEntries(columns.map((c) => [c.letter, c.key])) }
+      : {};
     const next: CalculatedField[] = [
       ...(this.definition.calculatedFields ?? []),
-      { name, formula: this.calcFormula.trim() },
+      { name, formula: this.calcFormula.trim(), ...refs },
     ];
     this.#patchDefinition({ calculatedFields: next });
     this.calcName = '';
@@ -881,11 +897,14 @@ export class ApexGridChart extends LitElement {
   }
 
   /**
-   * A range change (one per cell crossed in a drag) moves no column or row, so the fields stand.
-   * Only charts fed by the selection redraw: not a snapshot, nor a view chart without cross-filter.
+   * Only charts fed by the selection redraw on a range change: not a snapshot, nor a view chart
+   * without cross-filter. Their fields are the range's columns, so they are re-read too.
    */
   #onRangeChanged = (): void => {
-    if (!this.staticModel && (this.source !== 'view' || this.crossFilter)) this.#scheduleRefresh();
+    if (!this.staticModel && (this.source !== 'view' || this.crossFilter)) {
+      this.#fieldsDirty = true;
+      this.#scheduleRefresh();
+    }
   };
 
   /** A view change can change the fields: re-read them once, on the coalesced render pass. */
@@ -895,9 +914,12 @@ export class ApexGridChart extends LitElement {
     this.#scheduleRefresh();
   };
 
-  /** Re-read the grid's chartable columns (drives the Data popover + the secondary-axis mapping). */
+  /**
+   * Re-read the chartable columns of the source the chart reads (drives the Data popover, the
+   * calculated-field letters and the secondary-axis mapping), so they match the model's columns.
+   */
   #refreshFields(): void {
-    const next = this.grid?.getChartFields() ?? [];
+    const next = this.grid?.getChartFields(this.source, this.definition) ?? [];
     const changed =
       next.length !== this.dataFields.length ||
       next.some(
@@ -2018,9 +2040,9 @@ export class ApexGridChart extends LitElement {
                   part="calc-chip"
                   type="button"
                   title=${c.label}
-                  @click=${() => this.#insertCalcRef(c.letter)}
+                  @click=${() => this.#insertCalcRef(`${c.letter}1`)}
                 >
-                  ${c.letter}=${c.label}
+                  ${c.letter}1=${c.label}
                 </button>`
               )}
             </div>`

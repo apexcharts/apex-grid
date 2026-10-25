@@ -6,6 +6,7 @@ import {
   type ChartModel,
   type ChartRangeHost,
   ChartRangeManager,
+  computeCalculatedSeries,
   enterpriseModules,
 } from '../src/index.js';
 
@@ -228,6 +229,275 @@ describe('chart model', () => {
       expect(chart.staticModel?.categories).to.eql(['East', 'South']);
       chart.close?.();
       chart.remove();
+    });
+  });
+
+  describe('blank measure cells (ent-chart-model-1, ent-grid-helpers-1)', () => {
+    const data = () => [
+      { region: 'East', bonus: 100 },
+      { region: 'East', bonus: null },
+      { region: 'East', bonus: 200 },
+      { region: 'East', bonus: '' },
+    ];
+    const columns: ColumnConfiguration<Rec>[] = [
+      { key: 'region', headerText: 'Region' },
+      { key: 'bonus', type: 'number', headerText: 'Bonus' },
+    ];
+
+    it('skips blanks in every aggregation, as the grid grouping does', async () => {
+      const grouped = await mount(data(), columns, {
+        groupBy: ['region'],
+        aggregations: { bonus: ['avg', 'min', 'count'] },
+      });
+      const byName = Object.fromEntries(
+        grouped.getViewChartModel().series.map((s) => [s.name, s.data[0]])
+      );
+      const flat = await mount(data(), columns);
+      const value = (aggregation: 'avg' | 'min' | 'count' | 'median' | 'max' | 'sum') =>
+        flat.getViewChartModel({ aggregation }).series[0].data[0];
+      expect([byName['bonus avg'], byName['bonus min'], byName['bonus count']]).to.eql([
+        150, 100, 2,
+      ]);
+      expect(value('avg'), 'avg').to.equal(150);
+      expect(value('min'), 'min').to.equal(100);
+      expect(value('count'), 'count').to.equal(2);
+      expect(value('median'), 'median').to.equal(150);
+      expect(value('max'), 'max').to.equal(200);
+      expect(value('sum'), 'sum').to.equal(300);
+    });
+
+    it('skips blanks in the aggregates a calculated field reads', async () => {
+      const grid = await mount(data(), columns);
+      const model = grid.getViewChartModel({
+        aggregation: 'avg',
+        calculatedFields: [{ name: 'Avg', formula: 'A1' }],
+      });
+      expect(model.series.at(-1)?.data).to.eql([150]);
+    });
+
+    it('charts an all-blank category as 0', async () => {
+      const grid = await mount(
+        [
+          { region: 'East', bonus: 10 },
+          { region: 'West', bonus: null },
+        ],
+        columns
+      );
+      expect(grid.getViewChartModel({ aggregation: 'avg' }).series[0].data).to.eql([10, 0]);
+    });
+
+    it('sums under an aggregation it does not know, as before', async () => {
+      const grid = await mount(data(), columns);
+      const sum = (aggregation: unknown) =>
+        grid.getViewChartModel({ aggregation } as never).series[0].data;
+      expect(sum('total')).to.eql([300]);
+      expect(sum({ bonus: 'nope' })).to.eql([300]);
+      expect(sum({ bonus: 'max' })).to.eql([200]);
+    });
+  });
+
+  describe('calculated-field letters (ent-chart-model-4, ent-grid-helpers-4, ent-chart-panel-b-5)', () => {
+    const wide = () => [
+      { id: 1, region: 'N', revenue: 100, cost: 10 },
+      { id: 2, region: 'S', revenue: 200, cost: 20 },
+    ];
+    const wideCols: ColumnConfiguration<Rec>[] = [
+      { key: 'id', type: 'number', headerText: 'Id' },
+      { key: 'region', type: 'string', headerText: 'Region' },
+      { key: 'revenue', type: 'number', headerText: 'Revenue' },
+      { key: 'cost', type: 'number', headerText: 'Cost' },
+    ];
+
+    it('letters the legend over the same columns the chart evaluates', async () => {
+      const grid = await mount(wide(), wideCols);
+      grid.selectRange({ row: 0, column: 'region' }, { row: 1, column: 'cost' });
+      const panel = await fixture<ApexGridChart>(
+        html`<apex-grid-chart mode="inline" type="line" .grid=${grid as never}></apex-grid-chart>`
+      );
+      await until(() => panel.getChart() != null);
+      panel.querySelector<HTMLButtonElement>('[part="data-button"]')!.click();
+      await panel.updateComplete;
+      const chips = [...panel.querySelectorAll('[part="calc-chip"]')].map((c) =>
+        c.textContent?.trim()
+      );
+      expect(chips).to.eql(['A1=Revenue', 'B1=Cost']);
+      const model = grid.getChartModel({ calculatedFields: [{ name: 'X', formula: 'B1' }] });
+      expect(model.series.at(-1)?.data).to.eql([10, 20]);
+    });
+
+    it('lists the selection fields for a selection or auto source', async () => {
+      const grid = await mount(wide(), wideCols);
+      grid.selectRange({ row: 0, column: 'region' }, { row: 1, column: 'revenue' });
+      const keys = (fields: { key: string }[]) => fields.map((f) => f.key);
+      expect(keys(grid.getChartFields('selection'))).to.eql(['region', 'revenue']);
+      expect(keys(grid.getChartFields('auto'))).to.eql(['region', 'revenue']);
+      expect(keys(grid.getChartFields('view'))).to.eql(['id', 'region', 'revenue', 'cost']);
+      expect(keys(grid.getChartFields())).to.eql(['id', 'region', 'revenue', 'cost']);
+    });
+
+    it('records the column each letter meant when the field is added', async () => {
+      const grid = await mount(wide(), wideCols);
+      grid.selectRange({ row: 0, column: 'region' }, { row: 1, column: 'cost' });
+      const panel = await fixture<ApexGridChart>(
+        html`<apex-grid-chart mode="inline" type="line" .grid=${grid as never}></apex-grid-chart>`
+      );
+      await until(() => panel.getChart() != null);
+      panel.querySelector<HTMLButtonElement>('[part="data-button"]')!.click();
+      await panel.updateComplete;
+      const name = panel.querySelector<HTMLInputElement>('[part="calc-name"]')!;
+      const formula = panel.querySelector<HTMLInputElement>('[part="calc-formula"]')!;
+      name.value = 'Margin';
+      name.dispatchEvent(new Event('input'));
+      formula.value = 'B1 / A1';
+      formula.dispatchEvent(new Event('input'));
+      await panel.updateComplete;
+      panel.querySelector<HTMLButtonElement>('[part="calc-add"]')!.click();
+      await panel.updateComplete;
+      expect(panel.definition.calculatedFields).to.eql([
+        { name: 'Margin', formula: 'B1 / A1', refs: { A: 'revenue', B: 'cost' } },
+      ]);
+    });
+
+    it('keeps a field positional when no column was lettered', async () => {
+      const grid = await mount(wide(), wideCols);
+      // A selection with no numeric column: the legend is empty.
+      grid.selectRange({ row: 0, column: 'region' }, { row: 1, column: 'region' });
+      const panel = await fixture<ApexGridChart>(
+        html`<apex-grid-chart mode="inline" type="line" source="selection" .grid=${grid as never}></apex-grid-chart>`
+      );
+      await until(() => panel.querySelector('[part="data-button"]') != null);
+      panel.querySelector<HTMLButtonElement>('[part="data-button"]')!.click();
+      await panel.updateComplete;
+      expect(panel.querySelectorAll('[part="calc-chip"]').length).to.equal(0);
+      const name = panel.querySelector<HTMLInputElement>('[part="calc-name"]')!;
+      const formula = panel.querySelector<HTMLInputElement>('[part="calc-formula"]')!;
+      name.value = 'Double';
+      name.dispatchEvent(new Event('input'));
+      formula.value = 'A1 * 2';
+      formula.dispatchEvent(new Event('input'));
+      await panel.updateComplete;
+      panel.querySelector<HTMLButtonElement>('[part="calc-add"]')!.click();
+      await panel.updateComplete;
+      expect(panel.definition.calculatedFields).to.eql([{ name: 'Double', formula: 'A1 * 2' }]);
+      grid.selectRange({ row: 0, column: 'region' }, { row: 1, column: 'cost' });
+      expect(grid.getRangeChartModel(panel.definition).series.at(-1)?.data).to.eql([200, 400]);
+    });
+
+    it('reads a field with refs by column key, whatever the source frame', async () => {
+      const grid = await mount(wide(), wideCols);
+      const field = { name: 'X', formula: 'B1 / A1', refs: { A: 'revenue', B: 'cost' } };
+      // Positionally the view would read A1 = id, B1 = revenue.
+      expect(grid.getViewChartModel({ calculatedFields: [field] }).series.at(-1)?.data).to.eql([
+        0.1, 0.1,
+      ]);
+      grid.selectRange({ row: 0, column: 'region' }, { row: 1, column: 'cost' });
+      expect(grid.getRangeChartModel({ calculatedFields: [field] }).series.at(-1)?.data).to.eql([
+        0.1, 0.1,
+      ]);
+      // A key the source does not hold reads blank, never another column.
+      const gone = { name: 'Y', formula: 'A1', refs: { A: 'missing' } };
+      expect(grid.getViewChartModel({ calculatedFields: [gone] }).series.at(-1)?.data).to.eql([
+        0, 0,
+      ]);
+      // A saved field without refs keeps its positional letters.
+      const legacy = { name: 'Z', formula: 'A1' };
+      expect(grid.getViewChartModel({ calculatedFields: [legacy] }).series.at(-1)?.data).to.eql([
+        1, 2,
+      ]);
+    });
+  });
+
+  describe('calculated-field ranges (ent-chart-model-5)', () => {
+    it('reads only the cells that can hold a value', () => {
+      const start = performance.now();
+      const out = computeCalculatedSeries(
+        [{ name: 'Total', formula: 'SUM(A1:A3000000)' }],
+        [
+          [10, 20, 30],
+          [5, 0, 1],
+        ],
+        3
+      );
+      const elapsed = performance.now() - start;
+      expect(out[0].data).to.eql([10, 20, 30]);
+      expect(elapsed, `${elapsed}ms`).to.be.below(100);
+      const both = computeCalculatedSeries(
+        [{ name: 'Both', formula: 'SUM(A1:XFD1048576)' }],
+        [
+          [10, 20, 30],
+          [5, 0, 1],
+        ],
+        3
+      );
+      expect(both[0].data).to.eql([15, 20, 31]);
+    });
+  });
+
+  describe('numeric columns and category labels (ent-grid-helpers-2, ent-grid-helpers-3)', () => {
+    it('keeps a declared date column as the category even with epoch values', async () => {
+      const grid = await mount(
+        [
+          { day: new Date(2024, 2, 1).getTime(), revenue: 5 },
+          { day: new Date(2024, 2, 2).getTime(), revenue: 7 },
+        ],
+        [
+          { key: 'day', type: 'date' },
+          { key: 'revenue', type: 'number' },
+        ]
+      );
+      const model = grid.getViewChartModel();
+      expect(model.series.map((s) => s.name)).to.eql(['revenue']);
+      const medium = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
+      expect(model.categories).to.eql([
+        medium.format(new Date(2024, 2, 1)),
+        medium.format(new Date(2024, 2, 2)),
+      ]);
+      expect(grid.getChartFields().map((f) => f.numeric)).to.eql([false, true]);
+    });
+
+    it('labels categories with the text the grid shows', async () => {
+      const grid = await mount(
+        [
+          { status: 1, revenue: 5 },
+          { status: 2, revenue: 7 },
+          { status: null, revenue: 9 },
+        ],
+        [
+          {
+            key: 'status',
+            type: 'select',
+            options: [
+              { value: 1, label: 'Open' },
+              { value: 2, label: 'Closed' },
+            ],
+          },
+          { key: 'revenue', type: 'number' },
+        ] as ColumnConfiguration<Rec>[]
+      );
+      const model = grid.getViewChartModel();
+      expect(model.series.map((s) => s.name)).to.eql(['revenue']);
+      expect(model.categories).to.eql(['Open', 'Closed', grid.localize('grouping.blank')]);
+    });
+
+    it('formats a Date category with the column date style', async () => {
+      const grid = await mount(
+        [
+          { day: new Date(2024, 2, 1), revenue: 5 },
+          { day: new Date(2024, 2, 2), revenue: 7 },
+        ],
+        [
+          { key: 'day', type: 'date', format: 'long' } as ColumnConfiguration<Rec>,
+          {
+            key: 'revenue',
+            type: 'number',
+          },
+        ]
+      );
+      const long = new Intl.DateTimeFormat(undefined, { dateStyle: 'long' });
+      expect(grid.getViewChartModel().categories).to.eql([
+        long.format(new Date(2024, 2, 1)),
+        long.format(new Date(2024, 2, 2)),
+      ]);
     });
   });
 });

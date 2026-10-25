@@ -2,15 +2,16 @@
  * Calculated-field chart series: evaluate a spreadsheet formula per category over the **aggregated**
  * measure values (aggregate-then-evaluate — the ratio-of-totals a user expects; see
  * plans/chart-calculated-fields-spec.md). Pure: it drives the (DOM-free) formula engine, so it is
- * unit-tested directly. References are A1, where the letters map to the numeric columns in display
- * order (`A1` = first numeric column, row is always 1 — one aggregated value per column per category).
+ * unit-tested directly. References are A1, where each letter maps to a column's aggregates (`A1` =
+ * the first, row is always 1: one aggregated value per column per category); the chart model picks
+ * the column behind each letter (see {@link CalculatedField.refs}).
  */
 import type { CalculatedField } from './chart.js';
 import { isFormulaError, toNumber } from './formula/errors.js';
 import { evaluate, type FormulaContext } from './formula/evaluator.js';
 import { createFunctionRegistry } from './formula/functions.js';
 import { type FormulaAst, parseFormula } from './formula/parser.js';
-import { rangeCells } from './formula/refs.js';
+import { clipRange, rangeCells } from './formula/refs.js';
 
 /** Strip a single leading `=` (spreadsheet-style) and trim, so `=A1/B1` and `A1/B1` both parse. */
 function stripEquals(formula: string): string {
@@ -31,7 +32,8 @@ export function isValidChartFormula(formula: string): boolean {
 
 /**
  * Compute each {@link CalculatedField} as a series. `refAggregates[letterColIndex][categorySlot]` is
- * the aggregated value of the numeric column mapped to that letter (A = index 0) for that category.
+ * the aggregated value of the column mapped to that letter (A = index 0) for that category; a missing
+ * entry reads blank.
  * Evaluated once per category (aggregate-then-evaluate). An unparseable formula is skipped entirely;
  * an error or non-finite result for a category becomes `null` (a gap) rather than a misleading zero.
  */
@@ -53,15 +55,18 @@ export function computeCalculatedSeries(
     }
     // Only the aggregated row (row 0 = "row 1") holds values; every other cell reads blank.
     const valueAt = (row: number, col: number, slot: number): number | null =>
-      row === 0 && col >= 0 && col < refAggregates.length
-        ? (refAggregates[col][slot] ?? null)
-        : null;
+      row === 0 ? (refAggregates[col]?.[slot] ?? null) : null;
 
     const data: (number | null)[] = [];
     for (let slot = 0; slot < categoryCount; slot += 1) {
       const ctx: FormulaContext = {
         getRef: ({ row, col }) => valueAt(row, col, slot),
-        getRange: (range) => rangeCells(range).map(({ row, col }) => valueAt(row, col, slot)),
+        // Only row 1 of the lettered columns can hold a value, so a typed range such as
+        // A1:A1048576 reads just those cells instead of walking every blank one.
+        getRange: (range) => {
+          const cells = clipRange(range, 1, refAggregates.length);
+          return cells ? rangeCells(cells).map(({ row, col }) => valueAt(row, col, slot)) : [];
+        },
         functions,
       };
       const result = evaluate(ast, ctx);

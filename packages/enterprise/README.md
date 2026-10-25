@@ -464,8 +464,11 @@ chart.definition = {
 The panel surfaces all of this in a **Data** popover in the toolbar: a category
 picker, a checkbox per numeric column (with a per-series **2nd axis** toggle for
 measures on a different scale, e.g. revenue vs. headcount), and the aggregation. The
-columns it offers come from `grid.getChartFields()` (`{ key, label, numeric }[]`), so a
-custom mapping UI can read the same list. The popover is hidden for snapshot charts
+columns it offers come from `grid.getChartFields(source, definition)` (`{ key, label,
+numeric }[]`), so a custom mapping UI can read the same list. Both arguments are
+optional: `source` (`'view'` by default, or `'selection'` / `'auto'`) picks the columns
+the chart of that source reads, and `definition` decides for `'auto'` whether the range
+or the view wins, as `getChartModel` does. The popover is hidden for snapshot charts
 (`staticModel`) and while grouping/pivot is active (those views carry their own
 aggregation).
 

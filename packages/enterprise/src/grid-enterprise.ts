@@ -19,6 +19,7 @@ import {
   downloadBlob,
   type ExportFormat,
   type ExportOptions,
+  formatDisplayText,
   type GridFeatureModule,
   getColumnLabel,
   getColumnTypeRenderer,
@@ -49,6 +50,8 @@ import {
   type AggregationController,
   type AggregationFn,
   type AggregationResults,
+  aggregateNumbers,
+  toFiniteNumber,
 } from './features/aggregation.js';
 // The AI layer is imported for TYPES ONLY here; its runtime values are pulled in via a
 // dynamic `import()` inside `#ensureAIEngine`, on the first `runPrompt` / `previewPrompt`.
@@ -85,6 +88,7 @@ import {
   type FormulaFn,
   formulaEditorTemplate,
 } from './features/formula/index.js';
+import { columnLetterToIndex } from './features/formula/refs.js';
 import type { FormulaRestoreEntry } from './features/formula/store.js';
 import {
   GROUPING_MODULE_ID,
@@ -148,81 +152,55 @@ const ON_UNLESS_FALSE = {
 /** Aggregation functions advertised by {@link ApexGridEnterprise.getSchema}. */
 const AGGREGATION_FUNCS: AggregationFn[] = ['sum', 'avg', 'min', 'max', 'count'];
 
-/** Coerce a cell value to a finite number, or `null` if it is not numeric. */
-function toNumber(value: unknown): number | null {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-/** Collapse the values collected for one category into a single number, per {@link ChartAggregation}. */
-function aggregateValues(values: ReadonlyArray<number>, fn: ChartAggregation): number {
-  const n = values.length;
-  if (n === 0) return 0;
-  switch (fn) {
-    case 'count':
-      return n;
-    case 'avg':
-      return values.reduce((a, b) => a + b, 0) / n;
-    case 'min':
-      return values.reduce((a, b) => Math.min(a, b), Number.POSITIVE_INFINITY);
-    case 'max':
-      return values.reduce((a, b) => Math.max(a, b), Number.NEGATIVE_INFINITY);
-    case 'median': {
-      const sorted = [...values].sort((a, b) => a - b);
-      const mid = Math.floor(n / 2);
-      return n % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-    }
-    default:
-      return values.reduce((a, b) => a + b, 0); // sum
-  }
-}
-
 /**
- * Build a category/series {@link ChartModel} from a labeled grid: `columns` (in display order) and
- * `rows` of row-major cell values. By default the first non-numeric column is the **category axis**
- * and every numeric column becomes a **series** (named by its header); a {@link ChartDefinition}
- * overrides the category, the measure set, and the aggregation. A column is numeric if declared
- * `type: 'number'` or every non-blank cell parses to a finite number.
- *
- * Rows are grouped by category label (first-seen order) and each measure is aggregated per category
- * — `sum` by default, or `avg`/`count`/`min`/`max`/`median` (one function for all series or a
- * per-measure map). With already-distinct labels each group holds one row, so the default reproduces
- * the row-for-row chart. An all-numeric grid uses row positions (1, 2, 3, …) as categories. Returns
- * an empty model when there is no series to plot.
- *
- * Shared by {@link ApexGridEnterprise.getRangeChartModel} (cell-range selection) and the flat-grid
- * branch of {@link ApexGridEnterprise.getViewChartModel} (the view-bound companion chart).
- */
-/**
- * Per-column numeric test used to orient a chart: a column is numeric when it is declared
- * `type: 'number'`, or every non-blank value in `rows` parses as a number (and at least one value
- * was seen). Column index aligns with `rows`' inner arrays.
+ * Per-column numeric test used to orient a chart: a column declared with a numeric type (`number`,
+ * `currency`, `rating`, `progress`) is numeric and one declared with any other type but `string`
+ * (the default every untyped column gets) is not. A `string` column is numeric when every non-blank
+ * value in `rows` parses as a number (and at least one value was seen), so a date column of epoch
+ * timestamps or a select of numeric option values stays a category. Column index aligns with `rows`.
  */
 function detectNumericColumns<T extends object>(
   columns: ReadonlyArray<ColumnConfiguration<T>>,
   rows: ReadonlyArray<ReadonlyArray<unknown>>
 ): boolean[] {
   return columns.map((column, c) => {
-    if (column.type === 'number') return true;
+    if (isNumericType(column.type)) return true;
+    if (column.type && column.type !== 'string') return false;
     let sawValue = false;
     for (const row of rows) {
       const value = row[c];
       if (value === null || value === undefined || value === '') continue;
       sawValue = true;
-      if (toNumber(value) === null) return false;
+      if (toFiniteNumber(value) === null) return false;
     }
     return sawValue;
   });
 }
 
+/**
+ * Build a category/series {@link ChartModel} from a labeled grid: `columns` (in display order) and
+ * `rows` of row-major cell values. By default the first non-numeric column is the **category axis**
+ * and every numeric column becomes a **series** (named by its header); a {@link ChartDefinition}
+ * overrides the category, the measure set, and the aggregation. Numeric columns are told apart by
+ * {@link detectNumericColumns}.
+ *
+ * Category labels are the text the grid shows for the cell (CSV export's text: a date in the
+ * column's style, a select option's label), and `blank` for an empty cell. Rows are grouped by
+ * label (first-seen order) and each measure is aggregated per category: `sum` by default, or
+ * `avg`/`count`/`min`/`max`/`median` (one function for all series or a per-measure map). Cells that
+ * are not finite numbers are skipped, as the grid's own group aggregates skip them. With
+ * already-distinct labels each group holds one row, so the default reproduces the row-for-row
+ * chart. An all-numeric grid uses row positions (1, 2, 3, ...) as categories. Returns an empty model
+ * when there is no series to plot.
+ *
+ * Shared by {@link ApexGridEnterprise.getRangeChartModel} (cell-range selection) and the flat-grid
+ * branch of {@link ApexGridEnterprise.getViewChartModel} (the view-bound companion chart).
+ */
 function buildCategoryModel<T extends object>(
   columns: ReadonlyArray<ColumnConfiguration<T>>,
   rows: ReadonlyArray<ReadonlyArray<unknown>>,
-  definition: ChartDefinition = {}
+  definition: ChartDefinition = {},
+  blank = ''
 ): ChartModel {
   const numeric = detectNumericColumns(columns, rows);
 
@@ -235,10 +213,13 @@ function buildCategoryModel<T extends object>(
   if (catIndex < 0 && definition.category == null) {
     catIndex = numeric.findIndex((isNumeric) => !isNumeric);
   }
-  const labels =
-    catIndex >= 0
-      ? rows.map((row) => String(row[catIndex] ?? ''))
-      : rows.map((_, i) => String(i + 1));
+  const labels = rows.map((row, i) => {
+    if (catIndex < 0) return String(i + 1);
+    const value = row[catIndex];
+    return value === null || value === undefined || value === ''
+      ? blank
+      : formatDisplayText(columns[catIndex], value);
+  });
 
   // Measures: an explicit list (by key, minus the category) or every numeric non-category column.
   const measureIndices =
@@ -249,66 +230,73 @@ function buildCategoryModel<T extends object>(
       : columns.map((_, c) => c).filter((c) => c !== catIndex && numeric[c]);
   if (measureIndices.length === 0) return { categories: [], series: [] };
 
+  // Anything but a known function (a saved or untyped definition) sums, as it always has.
   const aggregationFor = (key: string): ChartAggregation => {
     const agg = definition.aggregation;
-    if (agg == null) return 'sum';
-    return typeof agg === 'string' ? agg : (agg[key] ?? 'sum');
+    const fn = typeof agg === 'string' ? agg : agg?.[key];
+    return fn === 'median' || AGGREGATION_FUNCS.includes(fn as AggregationFn)
+      ? (fn as ChartAggregation)
+      : 'sum';
   };
 
-  // Group rows by category label (first-seen order), collecting each measure's values per category.
+  // Group rows by category label (first-seen order).
   const categories: string[] = [];
   const slotOf = new Map<string, number>();
-  const buckets: number[][][] = measureIndices.map(() => []);
-  labels.forEach((label, r) => {
+  const slots = labels.map((label) => {
     let slot = slotOf.get(label);
     if (slot === undefined) {
-      slot = categories.length;
+      slot = categories.push(label) - 1;
       slotOf.set(label, slot);
-      categories.push(label);
-      for (const bucket of buckets) bucket[slot] = [];
     }
-    measureIndices.forEach((c, m) => {
-      buckets[m][slot as number].push(toNumber(rows[r][c]) ?? 0);
-    });
+    return slot;
   });
 
-  const series: ChartSeries[] = measureIndices.map((c, m) => {
-    const fn = aggregationFor(String(columns[c].key));
-    return {
-      name: getColumnLabel(columns[c]),
-      data: buckets[m].map((values) => aggregateValues(values, fn)),
-    };
-  });
+  // One column aggregated per category, computed once and shared by the measure series and the
+  // calculated fields that read it.
+  const aggregated = new Map<number, number[]>();
+  const aggregate = (c: number): number[] => {
+    let values = aggregated.get(c);
+    if (!values) {
+      const buckets: number[][] = categories.map(() => []);
+      rows.forEach((row, r) => {
+        const value = toFiniteNumber(row[c]);
+        if (value !== null) buckets[slots[r]].push(value);
+      });
+      const fn = aggregationFor(String(columns[c].key));
+      values = buckets.map((bucket) => aggregateNumbers(bucket, fn));
+      aggregated.set(c, values);
+    }
+    return values;
+  };
 
-  // Calculated-field series: aggregate EVERY numeric non-category column per category (letters A, B,
-  // … in column order — the reference frame the formulas + the popover legend share), then evaluate
-  // each formula once per category over those aggregates (aggregate-then-evaluate). Appended after
-  // the measure series. Guarded so a chart without calculated fields pays nothing.
-  if (!definition.calculatedFields || definition.calculatedFields.length === 0) {
-    return { categories, series };
-  }
-  const numericCols = columns.map((_, c) => c).filter((c) => numeric[c] && c !== catIndex);
-  const refBuckets: number[][][] = numericCols.map(() => categories.map(() => []));
-  labels.forEach((label, r) => {
-    const slot = slotOf.get(label);
-    if (slot === undefined) return;
-    numericCols.forEach((c, letterIndex) => {
-      refBuckets[letterIndex][slot].push(toNumber(rows[r][c]) ?? 0);
-    });
+  const series: ChartSeries[] = measureIndices.map((c) => ({
+    name: getColumnLabel(columns[c]),
+    data: aggregate(c),
+  }));
+
+  // Calculated-field series, appended after the measure series and evaluated once per category
+  // over the aggregates (aggregate-then-evaluate). A field authored in the chart panel carries
+  // `refs`, the column key each letter meant then, and reads those columns by key (blank when the
+  // source no longer holds one). A field without `refs` letters the numeric non-category columns of
+  // this source in order (A, B, ...), the frame the panel's legend shows.
+  const fields = definition.calculatedFields ?? [];
+  const positional = columns.map((_, c) => c).filter((c) => numeric[c] && c !== catIndex);
+  const calculated = fields.flatMap((field) => {
+    let frame: number[][];
+    if (field.refs && typeof field.refs === 'object') {
+      frame = [];
+      for (const [letter, key] of Object.entries(field.refs)) {
+        const c = columns.findIndex((column) => String(column.key) === key);
+        if (/^[A-Z]+$/.test(letter) && c >= 0) frame[columnLetterToIndex(letter)] = aggregate(c);
+      }
+    } else {
+      frame = positional.map(aggregate);
+    }
+    // A calculated series may carry nulls (a category where the formula errored / was
+    // non-finite); ApexCharts renders those as gaps. ChartSeries types data as number[], so cast
+    // (matching how the panel's trend/forecast overlays already introduce null gaps).
+    return computeCalculatedSeries([field], frame, categories.length) as ChartSeries[];
   });
-  const refAggregates = numericCols.map((c, letterIndex) =>
-    refBuckets[letterIndex].map((values) =>
-      aggregateValues(values, aggregationFor(String(columns[c].key)))
-    )
-  );
-  // A calculated series may carry nulls (a category where the formula errored / was non-finite);
-  // ApexCharts renders those as gaps. ChartSeries types data as number[], so cast (matching how the
-  // panel's trend/forecast overlays already introduce null gaps).
-  const calculated = computeCalculatedSeries(
-    definition.calculatedFields,
-    refAggregates,
-    categories.length
-  ) as ChartSeries[];
   return { categories, series: [...series, ...calculated] };
 }
 
@@ -2088,7 +2076,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     const items = this.#pageRecords();
     if (columns.length === 0 || items.length === 0) return { categories: [], series: [] };
     const rows = items.map((record) => columns.map((column) => record[String(column.key)]));
-    return buildCategoryModel(columns, rows, definition);
+    return buildCategoryModel(columns, rows, definition, this.localize('grouping.blank'));
   }
 
   /** The visible columns in display order: what a view chart plots. */
@@ -2102,19 +2090,37 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   }
 
   /**
-   * The chartable columns of the current flat view — key, label, and whether the column is numeric —
-   * for driving a mapping UI (`<apex-grid-chart>`'s Data popover). Category candidates are all
-   * columns; measure candidates are the numeric ones. Reflects the visible columns and the current
-   * (sorted/filtered) rows; empty while grouping/pivot is active (those views carry their own
-   * aggregation and ignore a {@link ChartDefinition}).
+   * The chartable columns of a chart source (key, label, and whether the column is numeric) for
+   * driving a mapping UI (`<apex-grid-chart>`'s Data popover and its calculated-field letters).
+   * Category candidates are all columns; measure candidates are the numeric ones.
+   *
+   * `source` picks the same columns the model of that source reads: `'view'` (the default) the
+   * visible columns over the current (sorted/filtered) rows, empty while grouping/pivot is active
+   * (those views carry their own aggregation and ignore a {@link ChartDefinition}); `'selection'`
+   * the columns of the active cell range; `'auto'` the range's when the range model wins in
+   * {@link getChartModel} for `definition`, else the view's.
    */
-  public getChartFields(): ChartField[] {
-    if (this.groupBy.length > 0 || this.#pivotActive) return [];
-    const columns = this.#visibleColumns();
-    const items = this.#pageRecords();
-    const rows = items.map((record) => columns.map((column) => record[String(column.key)]));
-    const numeric = detectNumericColumns(columns, rows);
-    return columns.map((column, c) => ({
+  public getChartFields(source: ChartSource = 'view', definition?: ChartDefinition): ChartField[] {
+    const range = this.#rangeController()?.getActiveGrid();
+    let grid: { columns: ColumnConfiguration<T>[]; rows: ReadonlyArray<ReadonlyArray<unknown>> };
+    if (source === 'selection') {
+      grid = range ?? { columns: [], rows: [] };
+    } else if (
+      source === 'auto' &&
+      range?.rows.length &&
+      buildCategoryModel(range.columns, range.rows, definition).series.length > 0
+    ) {
+      grid = range;
+    } else {
+      if (this.groupBy.length > 0 || this.#pivotActive) return [];
+      const columns = this.#visibleColumns();
+      const rows = this.#pageRecords().map((record) =>
+        columns.map((column) => record[String(column.key)])
+      );
+      grid = { columns, rows };
+    }
+    const numeric = detectNumericColumns(grid.columns, grid.rows);
+    return grid.columns.map((column, c) => ({
       key: String(column.key),
       label: getColumnLabel(column),
       numeric: numeric[c],
@@ -2143,7 +2149,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     // selection; otherwise chart the active selection exactly as before.
     const grid = bounds ? controller?.gridForBounds(bounds) : controller?.getActiveGrid();
     if (!grid || grid.rows.length === 0) return { categories: [], series: [] };
-    return buildCategoryModel(grid.columns, grid.rows, definition);
+    return buildCategoryModel(grid.columns, grid.rows, definition, this.localize('grouping.blank'));
   }
 
   /**
@@ -2169,7 +2175,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     const totals = new Map<string, number>();
     for (const row of this.data as ReadonlyArray<Record<string, unknown>>) {
       const category = String(row[categoryKey] ?? '');
-      const amount = valueKey ? (toNumber(row[valueKey]) ?? 0) : 1;
+      const amount = valueKey ? (toFiniteNumber(row[valueKey]) ?? 0) : 1;
       totals.set(category, (totals.get(category) ?? 0) + amount);
     }
     const categories = [...totals.keys()];

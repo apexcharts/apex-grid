@@ -46,16 +46,24 @@ export interface ChartDefinition {
 }
 
 /**
- * A chart series computed from a formula rather than a column. The formula uses **A1** references
- * where the letters map to the numeric columns in display order (`A1` = first numeric column, `B1` =
- * second, …; row is always 1 — one aggregated value per column per category). Evaluated once per
- * category over the aggregated values. See {@link ChartDefinition.calculatedFields}.
+ * A chart series computed from a formula rather than a column. The formula uses **A1** references,
+ * one letter per column (row is always 1: one aggregated value per column per category). Evaluated
+ * once per category over the aggregated values. See {@link ChartDefinition.calculatedFields}.
  */
 export interface CalculatedField {
   /** Series name (shown in the legend). */
   readonly name: string;
   /** Formula, e.g. `bonus / salary * 100` written as `B1 / A1 * 100`. A leading `=` is optional. */
   readonly formula: string;
+  /**
+   * The column key each letter reads, e.g. `{ A: 'salary', B: 'bonus' }`, so the field keeps its
+   * meaning when the chart's source columns change (another selection, a hidden or moved column).
+   * A letter whose column the source does not hold reads blank. `<apex-grid-chart>` records the
+   * letters its legend showed when the field is added. Without `refs` the letters map to the
+   * source's numeric non-category columns in display order (`A1` = the first, `B1` = the second, …),
+   * the frame the legend shows.
+   */
+  readonly refs?: Readonly<Record<string, string>>;
 }
 
 /** A chartable grid column, surfaced by `getChartFields()` to drive a mapping UI. */
