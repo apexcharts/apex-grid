@@ -173,6 +173,7 @@ export const EN_LOCALE = {
   'chart.chartView': 'Chart this view',
   'chart.selectionHint': 'Chart the selection (Alt+F1)',
   'chart.rangeHandle': 'Resize chart source range',
+  'chart.rangeResized': 'Chart source range: {rows} × {cols} cells',
   'chart.countSeries': 'Count',
   'chart.export': 'Export',
   'chart.exportPng': 'PNG image',

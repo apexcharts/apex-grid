@@ -862,7 +862,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     this.addEventListener('keydown', this.#onChartShortcut);
     window.addEventListener('scroll', this.#onChartViewportChange, true);
     window.addEventListener('resize', this.#onChartViewportChange);
-    // A charted range's outline tracks the rows under it as the view changes.
+    // A charted range's outline and chart track the rows under it as the view changes.
     (this as EventTarget).addEventListener(VIEW_CHANGED_EVENT, this.#repositionChartRanges);
     this.#watchLicense();
     // `disconnectedCallback` drops the watermark layer and Lit does not re-render on reconnect,
@@ -891,12 +891,22 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       // Removed before the frame: its affordance is gone and must not come back.
       if (!this.isConnected) return;
       this.#updateChartAffordance();
-      this.#chartRangeManagerInstance?.reposition();
+      if (this.#chartRangesStale) this.#chartRangeManagerInstance?.refresh();
+      else this.#chartRangeManagerInstance?.reposition();
+      this.#chartRangesStale = false;
     });
   };
 
+  /** Set by a view change: the next frame re-drives the linked charts, not just their outlines. */
+  #chartRangesStale = false;
+
+  /**
+   * A view change moves other rows under a charted range: re-drive its chart and outline. On the
+   * next frame, as a view-bound chart redraws, since the signal can come before the rows settle.
+   */
   #repositionChartRanges = (): void => {
-    this.#chartRangeManagerInstance?.reposition();
+    this.#chartRangesStale = true;
+    this.#onChartViewportChange();
   };
 
   #onCellValueChanged = (): void => {
@@ -2201,6 +2211,8 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
         boundsClientRect: (bounds) => this.#rangeController()?.boundsClientRect(bounds) ?? null,
         cellAtPoint: (x, y) => this.#rangeController()?.cellAtPoint(x, y) ?? null,
         modelForBounds: (bounds, definition) => this.getRangeChartModel(definition, bounds),
+        extent: () => ({ rows: this.pageItems.length, cols: this.#visibleColumns().length }),
+        announce: (message) => this.announce(message),
       });
     }
     return this.#chartRangeManagerInstance;

@@ -1,4 +1,3 @@
-import { isRTL } from 'apex-commons';
 import {
   type ActiveNode,
   ApexGrid,
@@ -14,6 +13,7 @@ import {
   type GridFeatureModule,
   type GridHost,
   getDisplayColumns,
+  isRTL,
   PIPELINE,
   type StateController,
 } from 'apex-grid/internal';
@@ -1312,7 +1312,7 @@ export class RangeSelectionController<T extends object>
     // The handle is drawn at the cell's `inset-inline-end` corner, so under
     // `dir="rtl"` it sits on the physical left and the grab band has to follow
     // it — otherwise the dot and the thing you can grab are on opposite sides.
-    const withinInlineEnd = isRTL('auto', cell)
+    const withinInlineEnd = isRTL(cell)
       ? interaction.originalEvent.clientX <= rect.left + FILL_HANDLE_HIT
       : interaction.originalEvent.clientX >= rect.right - FILL_HANDLE_HIT;
     return withinInlineEnd && interaction.originalEvent.clientY >= rect.bottom - FILL_HANDLE_HIT;

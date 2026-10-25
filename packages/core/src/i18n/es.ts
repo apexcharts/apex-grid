@@ -179,6 +179,7 @@ export const esLocale: GridLocaleText = {
   'chart.chartView': 'Graficar esta vista',
   'chart.selectionHint': 'Graficar la selección (Alt+F1)',
   'chart.rangeHandle': 'Redimensionar el rango de origen del gráfico',
+  'chart.rangeResized': 'Rango de origen del gráfico: {rows} × {cols} celdas',
   'chart.export': 'Exportar',
   'chart.exportPng': 'Imagen PNG',
   'chart.exportSvg': 'Vector SVG',
