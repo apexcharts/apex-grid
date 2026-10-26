@@ -13,16 +13,26 @@ import { styles } from '../styles/paginator/paginator.css.js';
  *
  * @remarks
  * Drives {@link PaginationController} on the host grid. The component is purely
- * presentational — page transitions go through the controller so they emit the
+ * presentational: page transitions go through the controller so they emit the
  * cancellable `pageChanging` event and the post-update `pageChanged` event.
+ *
+ * It never clips its controls: when the bar is too narrow it drops the page
+ * size selector first, then the first and last buttons, so previous and next
+ * stay reachable. `pagination.paginator: 'compact'` always uses that narrow
+ * layout. The grid re-exports every part, so `apex-grid::part(name)` styles it.
  *
  * @element apex-grid-paginator
  *
  * @csspart paginator - The root container.
  * @csspart paginator-size - The page-size selector wrapper.
- * @csspart paginator-info - The "1–25 of 100" status label.
+ * @csspart paginator-info - The "1-25 of 100" status label.
  * @csspart paginator-controls - The first/prev/next/last button cluster.
- * @csspart paginator-page - The "Page X of N" status label.
+ * @csspart paginator-page - The "page / count" status label.
+ * @csspart paginator-button - Each of the first, previous, next and last buttons.
+ * @csspart paginator-first - The first page button (also `paginator-button`).
+ * @csspart paginator-prev - The previous page button (also `paginator-button`).
+ * @csspart paginator-next - The next page button (also `paginator-button`).
+ * @csspart paginator-last - The last page button (also `paginator-button`).
  */
 export default class ApexGridPaginator<T extends object> extends LitElement {
   public static get tagName() {
@@ -62,6 +72,54 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
   @property({ type: String, attribute: 'page-size-label' })
   public pageSizeLabel?: string;
 
+  #resizeObserver?: ResizeObserver;
+
+  public override connectedCallback(): void {
+    super.connectedCallback();
+    this.#resizeObserver ??= new ResizeObserver(() => this.#fit());
+    this.#resizeObserver.observe(this);
+  }
+
+  public override disconnectedCallback(): void {
+    this.#resizeObserver?.disconnect();
+    super.disconnectedCallback();
+  }
+
+  protected override updated(): void {
+    // Selected here, after the options rendered, so a size just added to the
+    // list is found and a refused pick is undone.
+    const select = this.renderRoot.querySelector('select');
+    if (select) select.value = String(this.controller.pageSize);
+    // The grid re-renders the paginator on each of its updates: measure only
+    // when the text or the layout option changed (the observer covers resizes).
+    const bar = this.renderRoot.querySelector('[part=paginator]');
+    const key = `${this.state?.host.pagination?.paginator}|${bar?.textContent}`;
+    if (key !== this.#fitKey) {
+      this.#fitKey = key;
+      this.#fit();
+    }
+  }
+
+  #fitKey = '';
+
+  /**
+   * Drops what the bar has no room for, least needed first: the page size
+   * selector (step 1), then the first and last buttons (step 2, the compact
+   * layout, where the summary may also shorten), so previous and next always
+   * stay reachable. The steps are CSS rules keyed on `data-fit`. Hiding them
+   * does not change the bar's height, so the resize observer does not loop.
+   */
+  #fit(): void {
+    const bar = this.renderRoot.querySelector<HTMLElement>('[part=paginator]');
+    let step = this.state?.host.pagination?.paginator === 'compact' ? 2 : 0;
+    while (bar) {
+      // Written only on a change, so a render that keeps the layout restyles nothing.
+      if (bar.dataset.fit !== `${step}`) bar.dataset.fit = `${step}`;
+      if (step > 1 || bar.scrollWidth <= bar.clientWidth) break;
+      step++;
+    }
+  }
+
   protected get controller() {
     return this.state.pagination;
   }
@@ -80,13 +138,6 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
     // selector shows the size in force (see updated), not the refused one.
     this.requestUpdate();
   };
-
-  protected override updated(): void {
-    // Selected here, after the options rendered, so a size just added to the
-    // list is found and a refused pick is undone.
-    const select = this.renderRoot.querySelector('select');
-    if (select) select.value = String(this.controller.pageSize);
-  }
 
   protected renderSizeSelect() {
     const current = this.controller.pageSize;
@@ -126,6 +177,7 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
   }
 
   protected renderButton(opts: {
+    /** `first`, `prev`, `next` or `last`; also names the button's own part (`paginator-first`). */
     id: string;
     icon: string;
     label: string;
@@ -133,7 +185,7 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
     onClick: () => void;
   }) {
     return html`<button
-      part="paginator-button"
+      part="paginator-button paginator-${opts.id}"
       id=${opts.id}
       type="button"
       aria-label=${opts.label}
@@ -177,7 +229,7 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
           onClick: () => this.controller.firstPage(),
         })}
         ${this.renderButton({
-          id: 'previous',
+          id: 'prev',
           icon: 'page-previous',
           label: this.state.localize('pagination.previousPage'),
           disabled: onFirst,

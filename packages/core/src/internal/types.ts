@@ -876,6 +876,17 @@ export interface PaginationConfiguration {
    * number. Ignored in `'local'` mode, where the grid counts the rows itself.
    */
   totalItems?: number;
+  /**
+   * The paginator layout. Defaults to `'full'`.
+   *
+   * @remarks
+   * `'full'` shows the page size select, the "start-end of total" summary, first, previous,
+   * "page / count", next and last. When the grid is too narrow for all of them it drops the
+   * page size select first, then first and last, so previous and next always stay reachable.
+   *
+   * `'compact'` always uses the narrow layout: the summary, previous, "page / count" and next.
+   */
+  paginator?: 'compact' | 'full';
 }
 
 /**

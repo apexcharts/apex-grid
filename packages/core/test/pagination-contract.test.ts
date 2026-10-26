@@ -2,7 +2,7 @@ import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testi
 import { ApexGrid } from '../src/components/grid.js';
 import type ApexGridPaginator from '../src/components/paginator.js';
 import type ApexGridToolbar from '../src/components/toolbar.js';
-import type { ColumnConfiguration } from '../src/internal/types.js';
+import type { ColumnConfiguration, PaginationConfiguration } from '../src/internal/types.js';
 
 type Row = { id: number; name: string };
 
@@ -43,6 +43,16 @@ function pagerPart(grid: ApexGrid<Row>, name: string) {
 
 function toolbarOf(grid: ApexGrid<Row>) {
   return grid.renderRoot.querySelector('apex-grid-toolbar') as ApexGridToolbar<Row>;
+}
+
+const visible = (el: HTMLElement | null) =>
+  !!el && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().width > 0;
+
+/** Whether `el` is drawn fully inside the paginator bar (not clipped off its edge). */
+function inside(bar: HTMLElement, el: HTMLElement) {
+  const outer = bar.getBoundingClientRect();
+  const inner = el.getBoundingClientRect();
+  return inner.left >= outer.left - 0.5 && inner.right <= outer.right + 0.5;
 }
 
 describe('Pagination contract', () => {
@@ -161,6 +171,177 @@ describe('Pagination contract', () => {
       await settle(grid);
       expect(grid.totalItems).to.equal(21);
       expect(grid.pageItems.length).to.equal(20);
+    });
+  });
+
+  describe('narrow paginator (gh-36)', () => {
+    for (const width of [480, 320, 240, 200]) {
+      it(`at ${width}px nothing is clipped and previous / next stay reachable`, async () => {
+        const grid = await mount(
+          { pagination: { enabled: true, pageSize: 5 }, data: rows(1200) },
+          `height: 240px; width: ${width}px`
+        );
+        const bar = pagerPart(grid, 'paginator');
+        expect(bar.scrollWidth, 'bar overflows').to.be.at.most(bar.clientWidth);
+        for (const name of ['paginator-prev', 'paginator-next', 'paginator-page']) {
+          const el = pagerPart(grid, name);
+          expect(visible(el), `${name} shown`).to.be.true;
+          expect(inside(bar, el), `${name} inside the bar`).to.be.true;
+        }
+        for (const el of bar.querySelectorAll<HTMLElement>('button, select')) {
+          if (visible(el)) expect(inside(bar, el), `${el.part} inside the bar`).to.be.true;
+        }
+        if (width === 480) {
+          for (const name of ['paginator-size', 'paginator-first', 'paginator-last']) {
+            expect(visible(pagerPart(grid, name)), `${name} shown at 480`).to.be.true;
+          }
+        }
+      });
+    }
+
+    it('drops the page size select before first and last', async () => {
+      const grid = await mount(
+        { pagination: { enabled: true, pageSize: 5 }, data: rows(1200) },
+        'height: 240px; width: 480px'
+      );
+      const seen: string[] = [];
+      for (const width of [480, 400, 360, 320, 280, 240, 200]) {
+        grid.style.width = `${width}px`;
+        await settle(grid);
+        await nextFrame();
+        const size = visible(pagerPart(grid, 'paginator-size'));
+        const ends = visible(pagerPart(grid, 'paginator-first'));
+        seen.push(`${size ? 'S' : '-'}${ends ? 'E' : '-'}`);
+      }
+      // Never ends shown without the select gone first: no "-E" before "SE".
+      expect(seen).to.not.include('S-');
+      expect(seen[0]).to.equal('SE');
+      expect(seen.at(-1)).to.equal('--');
+    });
+
+    it("pagination.paginator 'compact' forces the compact layout", async () => {
+      const grid = await mount({
+        pagination: { enabled: true, pageSize: 5, paginator: 'compact' },
+        data: rows(40),
+      });
+      expect(visible(pagerPart(grid, 'paginator-size'))).to.be.false;
+      expect(visible(pagerPart(grid, 'paginator-first'))).to.be.false;
+      expect(visible(pagerPart(grid, 'paginator-last'))).to.be.false;
+      expect(pagerPart(grid, 'paginator-info').textContent?.trim()).to.equal('1-5 of 40');
+      expect(visible(pagerPart(grid, 'paginator-prev'))).to.be.true;
+      expect(pagerPart(grid, 'paginator-page').textContent?.trim()).to.equal('1 / 8');
+      expect(visible(pagerPart(grid, 'paginator-next'))).to.be.true;
+
+      grid.pagination = { ...grid.pagination, paginator: 'full' } as PaginationConfiguration;
+      await settle(grid);
+      expect(visible(pagerPart(grid, 'paginator-size'))).to.be.true;
+      expect(visible(pagerPart(grid, 'paginator-first'))).to.be.true;
+    });
+
+    it('measures the bar only when its text changed, not on every grid update', async () => {
+      const grid = await mount({ pagination: { enabled: true, pageSize: 5 }, data: rows(40) });
+      const bar = pagerPart(grid, 'paginator');
+      let reads = 0;
+      const own = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollWidth')!;
+      Object.defineProperty(bar, 'scrollWidth', {
+        configurable: true,
+        get() {
+          reads++;
+          return own.get!.call(this);
+        },
+      });
+      for (let i = 0; i < 5; i++) {
+        grid.requestUpdate();
+        await settle(grid);
+      }
+      expect(reads, 'unchanged updates').to.equal(0);
+      await grid.nextPage();
+      await settle(grid);
+      expect(reads, 'after a page change').to.be.greaterThan(0);
+    });
+
+    it('each button keeps paginator-button and gains its own part name', async () => {
+      const grid = await mount({ pagination: { enabled: true, pageSize: 3 } });
+      const parts = Array.from(paginatorOf(grid)!.renderRoot.querySelectorAll('button'), (button) =>
+        button.getAttribute('part')
+      );
+      expect(parts).to.deep.equal([
+        'paginator-button paginator-first',
+        'paginator-button paginator-prev',
+        'paginator-button paginator-next',
+        'paginator-button paginator-last',
+      ]);
+    });
+  });
+
+  describe('parts reachable from page CSS (gh-37)', () => {
+    let sheet: HTMLStyleElement;
+    const PAGER = [
+      'paginator',
+      'paginator-size',
+      'paginator-info',
+      'paginator-controls',
+      'paginator-page',
+      'paginator-button',
+      'paginator-first',
+      'paginator-prev',
+      'paginator-next',
+      'paginator-last',
+    ];
+    const TOOLBAR = [
+      'toolbar',
+      'toolbar-search',
+      'search-field',
+      'search-icon',
+      'search-input',
+      'toolbar-actions',
+      'toolbar-action',
+      'export',
+      'export-trigger',
+      'export-icon',
+      'export-caret',
+      'export-menu',
+      'export-menu-item',
+    ];
+
+    beforeEach(() => {
+      sheet = document.createElement('style');
+      sheet.textContent = [...PAGER, ...TOOLBAR, 'paginator-host', 'toolbar-host']
+        .map((name) => `apex-grid::part(${name}) { scroll-margin-left: 7px; }`)
+        .join('\n');
+      document.head.append(sheet);
+    });
+    afterEach(() => sheet.remove());
+
+    it('every paginator part and the paginator host', async () => {
+      const grid = await mount({ pagination: { enabled: true, pageSize: 3 } });
+      const pager = paginatorOf(grid)!;
+      expect(pager.getAttribute('part')).to.equal('paginator-host');
+      expect(getComputedStyle(pager).scrollMarginLeft).to.equal('7px');
+      for (const name of PAGER) {
+        const el = pager.renderRoot.querySelector(`[part~="${name}"]`)!;
+        expect(getComputedStyle(el).scrollMarginLeft, name).to.equal('7px');
+      }
+    });
+
+    it('every toolbar part and the toolbar host', async () => {
+      const grid = await mount({ showQuickFilter: true, showExport: true });
+      // An action button, as a derived grid contributes through toolbarActions.
+      Object.defineProperty(grid, 'toolbarActions', {
+        get: () => [{ id: 'act', label: 'Act', run() {} }],
+      });
+      grid.requestUpdate();
+      await settle(grid);
+      const toolbar = toolbarOf(grid);
+      toolbar.requestUpdate();
+      await toolbar.updateComplete;
+      expect(toolbar.getAttribute('part')).to.equal('toolbar-host');
+      expect(getComputedStyle(toolbar).scrollMarginLeft).to.equal('7px');
+      for (const name of TOOLBAR) {
+        const el = toolbar.renderRoot.querySelector(`[part~="${name}"]`)!;
+        expect(el, name).to.exist;
+        expect(getComputedStyle(el).scrollMarginLeft, name).to.equal('7px');
+      }
     });
   });
 

@@ -864,6 +864,31 @@ function warnDropped(message: string): void {
  *
  * @csspart table - The element with the `grid` (or `treegrid`) role, `aria-rowcount` and `aria-colcount`: holds the header rows, pinned rows and body.
  * @csspart live-region - Visually-hidden ARIA live region used for screen-reader announcements.
+ * @csspart paginator-host - The `<apex-grid-paginator>` element; the grid re-exports its parts below.
+ * @csspart paginator - The paginator's root container.
+ * @csspart paginator-size - The page-size selector wrapper.
+ * @csspart paginator-info - The "1-25 of 100" summary.
+ * @csspart paginator-controls - The first/prev/next/last button cluster.
+ * @csspart paginator-page - The "page / count" label.
+ * @csspart paginator-button - Each of the first, previous, next and last buttons.
+ * @csspart paginator-first - The first page button.
+ * @csspart paginator-prev - The previous page button.
+ * @csspart paginator-next - The next page button.
+ * @csspart paginator-last - The last page button.
+ * @csspart toolbar-host - The `<apex-grid-toolbar>` element; the grid re-exports its parts below.
+ * @csspart toolbar - The toolbar's container.
+ * @csspart toolbar-search - The quick-filter input wrapper.
+ * @csspart search-field - The bordered field holding the search icon and input.
+ * @csspart search-icon - The leading search icon.
+ * @csspart search-input - The quick-filter input.
+ * @csspart toolbar-actions - The trailing actions area.
+ * @csspart toolbar-action - A host-contributed action button.
+ * @csspart export - The export menu wrapper.
+ * @csspart export-trigger - The export menu trigger button.
+ * @csspart export-icon - The download icon in the trigger.
+ * @csspart export-caret - The caret icon in the trigger.
+ * @csspart export-menu - The export dropdown menu.
+ * @csspart export-menu-item - An item in the export menu.
  *
  * @cssprop [--ag-brand] - Brand color for selection, focus rings, and accents. Auto-tints from `--ig-primary-500` where an Ignite UI palette is present.
  * @cssprop [--ag-brand-strong] - Brand color for hover / pressed states.
@@ -3338,6 +3363,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       return nothing;
     }
     return html`<apex-grid-toolbar
+      part="toolbar-host"
+      exportparts="toolbar,toolbar-search,search-field,search-icon,search-input,toolbar-actions,toolbar-action,export,export-trigger,export-icon,export-caret,export-menu,export-menu-item"
       .value=${this.quickFilter}
       .showQuickFilter=${this.showQuickFilter}
       .showExport=${this.showExport}
@@ -3354,6 +3381,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   protected renderPaginator() {
     if (!this.stateController.pagination.enabled) return nothing;
     return html`<apex-grid-paginator
+      part="paginator-host"
+      exportparts="paginator,paginator-size,paginator-info,paginator-controls,paginator-page,paginator-button,paginator-first,paginator-prev,paginator-next,paginator-last"
       .pageSizeOptions=${this.pagination?.pageSizeOptions ?? DEFAULT_PAGINATION.pageSizeOptions}
     ></apex-grid-paginator>`;
   }

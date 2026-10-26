@@ -9,7 +9,8 @@ import { styles } from '../styles/toolbar/toolbar.css.js';
 
 /**
  * Toolbar shown above the grid's header row. Hosts opt-in toolbar features
- * such as the quick-filter (global search) input and the export menu.
+ * such as the quick-filter (global search) input and the export menu. The grid
+ * re-exports every part, so `apex-grid::part(name)` styles it.
  *
  * @element apex-grid-toolbar
  *
@@ -20,7 +21,10 @@ import { styles } from '../styles/toolbar/toolbar.css.js';
  * @csspart search-input - The text input itself.
  * @csspart toolbar-actions - The trailing actions area (right side).
  * @csspart toolbar-action - A custom host-contributed action button (e.g. "Create chart").
+ * @csspart export - The export menu wrapper (trigger plus dropdown).
  * @csspart export-trigger - The export menu trigger button.
+ * @csspart export-icon - The download icon in the trigger.
+ * @csspart export-caret - The caret icon in the trigger.
  * @csspart export-menu - The dropdown menu containing export options.
  * @csspart export-menu-item - A single menu item inside the export dropdown.
  */

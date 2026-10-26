@@ -100,7 +100,7 @@ describe('target sizes (WCAG 2.2 AA 2.5.8)', () => {
     const grid = await mount(true);
     const paginator = grid.renderRoot.querySelector('apex-grid-paginator');
     const buttons = Array.from(
-      paginator?.renderRoot?.querySelectorAll('[part="paginator-button"]') ?? []
+      paginator?.renderRoot?.querySelectorAll('[part~="paginator-button"]') ?? []
     );
     expect(buttons.length, 'found paginator buttons').to.be.greaterThan(0);
 

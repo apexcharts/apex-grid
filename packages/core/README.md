@@ -255,6 +255,19 @@ await grid.setPageSize(50);
 grid.nextPage(); grid.previousPage(); grid.firstPage(); grid.lastPage();
 ```
 
+The paginator never clips its controls: on a narrow grid it drops the page size select first, then the first and last buttons, so previous and next stay reachable. `paginator: 'compact'` always uses that narrow layout ("start-end of total", previous, "page / count", next), for example in a small dashboard tile:
+
+```ts
+grid.pagination = { enabled: true, pageSize: 5, paginator: 'compact' };
+```
+
+Style it through the grid with `apex-grid::part(...)`: `paginator-host` (the element), `paginator`, `paginator-size`, `paginator-info`, `paginator-controls`, `paginator-page`, and `paginator-button` on each button, which also carries `paginator-first`, `paginator-prev`, `paginator-next` or `paginator-last`:
+
+```css
+apex-grid::part(paginator-first),
+apex-grid::part(paginator-last) { display: none; }
+```
+
 Remote mode: the grid does not slice `data`, it renders whatever `data` holds as the current page. Fetch the page on `pageChanged`, and keep `pagination.totalItems` at the number of rows the server holds for the current filter (update it when a server side filter changes that number), so the paginator can count the pages:
 
 ```ts
@@ -541,16 +554,19 @@ Renders a download icon in the toolbar's trailing actions area; the menu has an 
 
 ### Toolbar
 
-Rendered automatically above the header row when at least one of `show-quick-filter` or `show-export` is on. CSS parts:
+Rendered automatically above the header row when at least one of `show-quick-filter` or `show-export` is on. The grid re-exports its CSS parts, so `apex-grid::part(name)` reaches them:
 
 | Part | What |
 |---|---|
+| `toolbar-host` | The `<apex-grid-toolbar>` element |
 | `toolbar` | Root container |
 | `toolbar-search` | Quick-filter input wrapper |
 | `search-field` | The bordered input field |
 | `search-icon`, `search-input` | Leading icon, input element |
 | `toolbar-actions` | Trailing actions area |
-| `export-trigger` | Export menu button |
+| `toolbar-action` | A host-contributed action button |
+| `export` | Export menu wrapper |
+| `export-trigger`, `export-icon`, `export-caret` | Export menu button and its icons |
 | `export-menu` | Dropdown panel |
 | `export-menu-item` | Menu item |
 
@@ -564,7 +580,7 @@ Style with CSS parts on the grid, paginator, and toolbar:
 
 ```css
 apex-grid::part(paginator) { background: var(--surface-2); }
-apex-grid-toolbar::part(search-input) { font-family: var(--font-mono); }
+apex-grid::part(search-input) { font-family: var(--font-mono); }
 ```
 
 Body rows re-export these parts, so `apex-grid::part(name)` reaches them:
@@ -769,8 +785,8 @@ Programmatic `sort()` / `filter()` calls are silent; only UI-initiated changes e
 
 | Component | Parts |
 |---|---|
-| `<apex-grid-toolbar>` | `toolbar`, `toolbar-search`, `search-field`, `search-icon`, `search-input`, `toolbar-actions`, `export-trigger`, `export-menu`, `export-menu-item` |
-| `<apex-grid-paginator>` | `paginator`, `paginator-size`, `paginator-info`, `paginator-controls`, `paginator-page` |
+| `<apex-grid-toolbar>` | `toolbar`, `toolbar-search`, `search-field`, `search-icon`, `search-input`, `toolbar-actions`, `toolbar-action`, `export`, `export-trigger`, `export-icon`, `export-caret`, `export-menu`, `export-menu-item` (re-exported by the grid, which names the element `toolbar-host`) |
+| `<apex-grid-paginator>` | `paginator`, `paginator-size`, `paginator-info`, `paginator-controls`, `paginator-page`, `paginator-button`, `paginator-first`, `paginator-prev`, `paginator-next`, `paginator-last` (re-exported by the grid, which names the element `paginator-host`) |
 | `<apex-grid-cell>` | `cell`, `editor` |
 
 ---
