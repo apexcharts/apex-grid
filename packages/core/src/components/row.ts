@@ -472,8 +472,20 @@ export default class ApexGridRow<T extends object> extends LitElement {
     // real state back once the selection has decided.
     const handleChange = (event: Event) => {
       const input = event.target as HTMLInputElement;
-      void selection.toggleRow(this.data).then(() => {
+      const cell = input.parentElement;
+      const focused =
+        this.renderRoot instanceof ShadowRoot && this.renderRoot.activeElement === input;
+      void selection.toggleRow(this.data).then(async () => {
         input.checked = selection.isSelected(this.data);
+        // A rejected row that was still selected loses its checkbox once
+        // deselected. Keep focus in its cell rather than letting it fall to
+        // the body, where the grid's keys no longer reach.
+        if (!focused || !cell) return;
+        await this.updateComplete;
+        if (input.isConnected) return;
+        cell.tabIndex = -1;
+        cell.addEventListener('blur', () => cell.removeAttribute('tabindex'), { once: true });
+        cell.focus({ preventScroll: true });
       });
     };
     const handleClick = (event: MouseEvent) => {

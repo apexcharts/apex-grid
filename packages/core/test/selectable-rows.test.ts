@@ -1,4 +1,5 @@
-import { expect, html } from '@open-wc/testing';
+import { expect, html, nextFrame } from '@open-wc/testing';
+import { sendKeys } from '@web/test-runner-commands';
 import type ApexGridRow from '../src/components/row.js';
 import type { StateController } from '../src/controllers/state.js';
 import type {
@@ -370,6 +371,20 @@ describe('Selectable rows (isRowSelectable)', () => {
       );
       await TDD.waitForUpdate();
       expect(TDD.grid.selectedRows).to.deep.equal([]);
+    });
+
+    it('Space on its focused checkbox deselects it and keeps focus in the row', async () => {
+      const box = TDD.checkbox(row)!;
+      box.focus();
+      await sendKeys({ press: 'Space' });
+      await TDD.waitForUpdate();
+      await nextFrame();
+      expect(TDD.grid.selectedRows).to.deep.equal([]);
+      // The checkbox is gone; focus must not fall to the body, or Escape,
+      // Tab and the arrow keys stop reaching the grid.
+      expect(document.activeElement, 'focus stays in the grid').to.equal(TDD.grid);
+      const rowRoot = TDD.rowFor(row).renderRoot as ShadowRoot;
+      expect(rowRoot.activeElement).to.equal(TDD.selectionCell(row));
     });
   });
 });
