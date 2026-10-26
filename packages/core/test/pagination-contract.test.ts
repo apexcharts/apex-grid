@@ -1,6 +1,7 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import { ApexGrid } from '../src/components/grid.js';
 import type ApexGridPaginator from '../src/components/paginator.js';
+import type ApexGridToolbar from '../src/components/toolbar.js';
 import type { ColumnConfiguration } from '../src/internal/types.js';
 
 type Row = { id: number; name: string };
@@ -38,6 +39,10 @@ function paginatorOf(grid: ApexGrid<Row>) {
 
 function pagerPart(grid: ApexGrid<Row>, name: string) {
   return paginatorOf(grid)!.renderRoot.querySelector<HTMLElement>(`[part~="${name}"]`)!;
+}
+
+function toolbarOf(grid: ApexGrid<Row>) {
+  return grid.renderRoot.querySelector('apex-grid-toolbar') as ApexGridToolbar<Row>;
 }
 
 describe('Pagination contract', () => {
@@ -160,6 +165,45 @@ describe('Pagination contract', () => {
   });
 
   describe('paginator and toolbar behaviour', () => {
+    it('core-toolbar-paginator-1: ArrowDown and ArrowUp walk the export menu', async () => {
+      class TwoFormats extends ApexGrid<Row> {
+        public override get exportFormats() {
+          return [
+            { id: 'csv', label: 'CSV' },
+            { id: 'xlsx', label: 'XLSX' },
+          ];
+        }
+      }
+      if (!customElements.get('pagination-contract-two-formats')) {
+        customElements.define('pagination-contract-two-formats', TwoFormats);
+      }
+      const grid = await fixture<TwoFormats>(
+        html`<pagination-contract-two-formats
+          show-export
+          .columns=${columns}
+          .data=${rows(2)}
+        ></pagination-contract-two-formats>`
+      );
+      await grid.updateComplete;
+      const toolbar = toolbarOf(grid);
+      await toolbar.updateComplete;
+      toolbar.renderRoot.querySelector<HTMLElement>('[part="export-trigger"]')!.click();
+      await toolbar.updateComplete;
+      const items = Array.from(
+        toolbar.renderRoot.querySelectorAll<HTMLElement>('[part="export-menu-item"]')
+      );
+      items[0].focus();
+      const root = toolbar.renderRoot as ShadowRoot;
+      const key = (k: string) =>
+        root.activeElement!.dispatchEvent(
+          new KeyboardEvent('keydown', { key: k, bubbles: true, composed: true })
+        );
+      key('ArrowDown');
+      expect(root.activeElement).to.equal(items[1]);
+      key('ArrowUp');
+      expect(root.activeElement).to.equal(items[0]);
+    });
+
     it('core-toolbar-paginator-2: page changes do not rerun the data pipeline', async () => {
       let sorts = 0;
       let filters = 0;
@@ -186,6 +230,92 @@ describe('Pagination contract', () => {
       expect(filters, 'filter hook').to.equal(0);
       expect(grid.pageItems.map((row) => row.id)).to.deep.equal([7, 8]);
       expect(grid.rows.map((row) => row.data.id)).to.deep.equal([7, 8]);
+    });
+
+    it('core-toolbar-paginator-4: a pageSize missing from pageSizeOptions is listed and selected', async () => {
+      const grid = await mount({ pagination: { enabled: true, pageSize: 20 } });
+      const select = pagerPart(grid, 'paginator-size').querySelector('select')!;
+      expect(select.value).to.equal('20');
+      expect(Array.from(select.options, (o) => o.value)).to.deep.equal([
+        '10',
+        '20',
+        '25',
+        '50',
+        '100',
+      ]);
+      // Picked through the option, as a user does, so the option turns dirty
+      // and its selected attribute no longer moves the selection.
+      Array.from(select.options).find((option) => option.value === '10')!.selected = true;
+      select.dispatchEvent(new Event('change'));
+      await settle(grid);
+      expect(grid.pageSize).to.equal(10);
+      expect(select.value).to.equal('10');
+
+      await grid.setPageSize(30);
+      await settle(grid);
+      expect(select.value, 'a later size outside the list').to.equal('30');
+    });
+
+    it('a missing pageSize keeps a custom pageSizeOptions order', async () => {
+      const grid = await mount({
+        pagination: { enabled: true, pageSize: 20, pageSizeOptions: [50, 5, 100] },
+      });
+      const select = pagerPart(grid, 'paginator-size').querySelector('select')!;
+      expect(Array.from(select.options, (o) => o.value)).to.deep.equal(['20', '50', '5', '100']);
+      expect(select.value).to.equal('20');
+    });
+
+    it('core-toolbar-paginator-7: a cancelled page size change resets the select', async () => {
+      const grid = await mount({
+        pagination: { enabled: true, pageSize: 2, pageSizeOptions: [2, 4] },
+      });
+      grid.addEventListener('pageChanging', (e) => e.preventDefault());
+      const select = pagerPart(grid, 'paginator-size').querySelector('select')!;
+      select.value = '4';
+      select.dispatchEvent(new Event('change'));
+      await settle(grid);
+      expect(grid.pageSize).to.equal(2);
+      expect(select.value).to.equal('2');
+    });
+
+    it('core-toolbar-paginator-8: a cancelled quick filter resets the search box', async () => {
+      const grid = await mount({ showQuickFilter: true });
+      const toolbar = toolbarOf(grid);
+      toolbar.debounce = 0;
+      await toolbar.updateComplete;
+      let refuse = true;
+      grid.addEventListener('quickFilterChanging', (e) => {
+        if (refuse) e.preventDefault();
+      });
+      const input = toolbar.renderRoot.querySelector('input')!;
+      input.value = 'Row 1';
+      input.dispatchEvent(new Event('input'));
+      await settle(grid);
+      expect(grid.quickFilter).to.equal('');
+      expect(input.value).to.equal('');
+
+      refuse = false;
+      input.value = 'Row 1';
+      input.dispatchEvent(new Event('input'));
+      await settle(grid);
+      expect(grid.quickFilter).to.equal('Row 1');
+      expect(input.value).to.equal('Row 1');
+    });
+
+    it('core-toolbar-paginator-8: a substituted quick filter shows the substitute', async () => {
+      const grid = await mount({ showQuickFilter: true });
+      const toolbar = toolbarOf(grid);
+      toolbar.debounce = 0;
+      await toolbar.updateComplete;
+      grid.addEventListener('quickFilterChanging', () => {
+        grid.quickFilter = 'Row 2';
+      });
+      const input = toolbar.renderRoot.querySelector('input')!;
+      input.value = 'Row 1';
+      input.dispatchEvent(new Event('input'));
+      await settle(grid);
+      expect(grid.quickFilter).to.equal('Row 2');
+      expect(input.value).to.equal('Row 2');
     });
 
     it('core-toolbar-paginator-9: pageChanged reports each applied change', async () => {

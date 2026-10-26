@@ -1,6 +1,7 @@
 import { consume } from '@lit/context';
 import { html, LitElement, nothing } from 'lit';
 import { property } from 'lit/decorators.js';
+import { DEFAULT_PAGINATION } from '../controllers/pagination.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
 import { renderIcon } from '../internal/icons.js';
 import { registerComponent } from '../internal/register.js';
@@ -45,10 +46,11 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
    * The page-size choices rendered in the rows-per-page selector.
    *
    * @remarks
-   * Defaults to `[10, 25, 50, 100]`.
+   * Defaults to `[10, 25, 50, 100]`, also when empty. A current page size missing
+   * from the list is listed too, so the selector always shows the size in force.
    */
   @property({ attribute: false })
-  public pageSizeOptions: number[] = [10, 25, 50, 100];
+  public pageSizeOptions: readonly number[] = DEFAULT_PAGINATION.pageSizeOptions;
 
   /**
    * Accessible label for the rows-per-page selector.
@@ -74,22 +76,35 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
     if (Number.isFinite(next)) {
       this.controller.setPageSize(next);
     }
+    // A cancelled change leaves the page size as it was: render again so the
+    // selector shows the size in force (see updated), not the refused one.
+    this.requestUpdate();
   };
+
+  protected override updated(): void {
+    // Selected here, after the options rendered, so a size just added to the
+    // list is found and a refused pick is undone.
+    const select = this.renderRoot.querySelector('select');
+    if (select) select.value = String(this.controller.pageSize);
+  }
 
   protected renderSizeSelect() {
     const current = this.controller.pageSize;
+    const listed = this.pageSizeOptions.length
+      ? this.pageSizeOptions
+      : DEFAULT_PAGINATION.pageSizeOptions;
+    const options = [...listed];
+    if (!listed.includes(current)) {
+      // Before the first larger size: an ascending list stays ascending and a
+      // custom order is kept.
+      const at = listed.findIndex((size) => size > current);
+      options.splice(at < 0 ? options.length : at, 0, current);
+    }
     return html`
       <label part="paginator-size">
         <span class="visually-hidden">${this.sizeLabel}</span>
-        <select
-          aria-label=${this.sizeLabel}
-          .value=${String(current)}
-          @change=${this.#handleSizeChange}
-        >
-          ${this.pageSizeOptions.map(
-            (size) =>
-              html`<option .value=${String(size)} ?selected=${size === current}>${size}</option>`
-          )}
+        <select aria-label=${this.sizeLabel} @change=${this.#handleSizeChange}>
+          ${options.map((size) => html`<option .value=${String(size)}>${size}</option>`)}
         </select>
       </label>
     `;

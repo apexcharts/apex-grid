@@ -111,13 +111,18 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
   }
 
   #emit(value: string) {
-    this.dispatchEvent(
+    const applied = this.dispatchEvent(
       new CustomEvent<string>('apex-quick-filter', {
         detail: value,
         bubbles: true,
         composed: true,
+        cancelable: true,
       })
     );
+    // The grid did not apply this value (a cancelled quickFilterChanging, or a
+    // listener substituting its own): show the value in force again. A
+    // substitute arrives through `value` on the next render.
+    if (!applied && this.input) this.input.value = this.value;
   }
 
   #handleInput = (event: Event) => {

@@ -5,6 +5,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 import { DataOperationsController } from '../controllers/data-operation.js';
 import { GridDOMController } from '../controllers/dom.js';
 import { viewIndexer } from '../controllers/history.js';
+import { DEFAULT_PAGINATION } from '../controllers/pagination.js';
 import type { RowPinPosition } from '../controllers/row-pin.js';
 import type { RowDropPosition } from '../controllers/row-reorder.js';
 import { gridStateContext, StateController } from '../controllers/state.js';
@@ -3343,17 +3344,18 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       @apex-quick-filter=${(event: CustomEvent<string>) => {
         event.stopPropagation();
         this.setQuickFilter(event.detail);
+        // Cancelled, or a listener substituted its own value: tell the toolbar
+        // so its input shows the value in force instead of the refused text.
+        if (this.quickFilter !== event.detail) event.preventDefault();
       }}
     ></apex-grid-toolbar>`;
   }
 
   protected renderPaginator() {
     if (!this.stateController.pagination.enabled) return nothing;
-    const options =
-      this.pagination?.pageSizeOptions && this.pagination.pageSizeOptions.length > 0
-        ? this.pagination.pageSizeOptions
-        : [10, 25, 50, 100];
-    return html`<apex-grid-paginator .pageSizeOptions=${options}></apex-grid-paginator>`;
+    return html`<apex-grid-paginator
+      .pageSizeOptions=${this.pagination?.pageSizeOptions ?? DEFAULT_PAGINATION.pageSizeOptions}
+    ></apex-grid-paginator>`;
   }
 
   /**
