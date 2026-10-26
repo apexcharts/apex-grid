@@ -81,6 +81,19 @@ $grid-resize-line-color: var(--grid-resize-line-color, var(--_ag-brand));
     flex-direction: column;
 }
 
+// `showHeader = false` (set on the group and column header rows): the rows
+// stay in the accessibility tree (not `display: none`, `visibility: hidden` or
+// `inert`) but are clipped to nothing, which also leaves nothing to hit. The
+// negative margin hands their 1px back, so they take no room.
+[data-visually-hidden] {
+    block-size: 1px;
+    min-block-size: 0;
+    margin-block-end: -1px;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+}
+
 // --- Row pinning (sticky top / bottom bands) -------------------------------
 // Pinned rows are lifted out of the virtualized body (see RowPinController) and
 // rendered here. The band is sticky on the block axis only, so it parks below

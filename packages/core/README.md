@@ -321,6 +321,16 @@ grid.columnSeparator = false;                     // hide the dividers
 
 Theme the line with `--ag-header-separator` (or the `--header-separator-color` override hook) and set its vertical inset with `--apex-header-separator-inset`. Because the default is `true`, disable it through the property rather than markup (a default-on boolean attribute cannot be turned off by attribute alone). Attribute: `column-separator`.
 
+### Hiding the header
+
+For a compact table, such as a short dashboard tile, leave out the header rows and give their room to the data rows:
+
+```ts
+grid.showHeader = false;                          // or <apex-grid show-header="false">
+```
+
+The column header row, the column group row and the filter panel take no space, paint nothing and take no pointer, and the built-in header controls leave the tab order, so resizing, the column menu and drag reorder are unavailable while the header is hidden (an open column menu closes). A focusable control you render in a `headerTemplate` stays in the tab order: give it `tabindex="-1"` while the header is hidden. The column header row stays in the accessibility tree, so screen readers still announce the column names, and `aria-rowcount` and `aria-rowindex` do not change. Sort, filter, column widths and the current page are kept and come back unchanged with `grid.showHeader = true`. Attribute: `show-header`.
+
 ### Column groups (spanning headers)
 
 ```ts
@@ -695,6 +705,7 @@ See [`demo/state-persistence.html`](../../demo/state-persistence.html) for a sav
 | `rowReordering` | `GridRowReorderingConfiguration` |  | `{ enabled, applyToData?, handle? }` (`handle` default `true`: grip-only drag) |
 | `coordinateHints` | `boolean` | `false` | Show a row-number gutter + A / B / C header chips (spreadsheet look). Attr `coordinate-hints` |
 | `columnMenu` | `boolean` | `true` | Show the always-visible column-menu (kebab) button on headers; `false` hides it |
+| `showHeader` | `boolean` | `true` | `false` hides the header rows (kept for screen readers). Attr `show-header="false"` |
 | `rowId` | `(row: T) => string \| number` |  | Durable row identity for `getState` / `setState` |
 | `localeText` | `GridLocaleText` |  | Override map for built-in strings (e.g. `esLocale`) |
 | `canUndo`, `canRedo` | `boolean` |  | Get (history) |
@@ -784,7 +795,7 @@ Programmatic `sort()` / `filter()` calls are silent; only UI-initiated changes e
 
 ### Attributes
 
-`auto-generate`, `quick-filter`, `show-quick-filter`, `show-export`, `column-reordering`, `coordinate-hints`.
+`auto-generate`, `quick-filter`, `show-quick-filter`, `show-export`, `column-reordering`, `coordinate-hints`, `show-header`.
 
 ### CSS parts
 

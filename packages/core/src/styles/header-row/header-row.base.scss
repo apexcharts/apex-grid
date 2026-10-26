@@ -23,6 +23,14 @@ $accent: var(--cell-active-border-color, var(--_ag-brand));
     inset-block-start: var(--apex-row-top-header, 0);
 }
 
+// Visually hidden (`showHeader = false`, styled in the grid): the column names
+// stay for assistive technology, the controls leave the tab order.
+:host([data-visually-hidden]) apex-grid-header::part(actions),
+:host([data-visually-hidden]) [part='selection-checkbox'],
+:host([data-visually-hidden]) [part='expansion-toggle'] {
+    visibility: hidden;
+}
+
 // Header cells over the leading chrome columns, sticky at the same
 // `--apex-chrome-offset-<track>` as the body's chrome cells below them.
 [part='row-number-header'],

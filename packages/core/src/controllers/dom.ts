@@ -336,8 +336,11 @@ export class GridDOMController<T extends object> implements ReactiveController {
     const paginator = root.querySelector('apex-grid-paginator') as HTMLElement | null;
 
     const toolbarH = toolbar?.offsetHeight ?? 0;
-    const groupH = groupHeader?.offsetHeight ?? 0;
-    const headerH = header?.offsetHeight ?? 0;
+    // A hidden header (`showHeader` off) is a 1px clipped row with a matching
+    // negative margin: it stays for assistive technology but takes no room.
+    const shown = this.host.showHeader;
+    const groupH = shown ? (groupHeader?.offsetHeight ?? 0) : 0;
+    const headerH = shown ? (header?.offsetHeight ?? 0) : 0;
     const filterH = filter?.offsetHeight ?? 0;
     const paginatorH = paginator?.offsetHeight ?? 0;
     // The group header (when present) sits below the toolbar; the column header

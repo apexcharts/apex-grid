@@ -161,6 +161,11 @@ export class ContextMenuController<T extends object>
     this.#close();
   }
 
+  /** A menu opened from a header goes when the header hides (`showHeader` off). */
+  public hostUpdated(): void {
+    if (this.#target?.kind === 'header' && !this.host.showHeader) this.#close();
+  }
+
   /**
    * {@link ColumnMenuProvider}: tell the core header to show its kebab button
    * (on every column, not just sortable / resizable ones) whenever the context

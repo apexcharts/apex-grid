@@ -300,14 +300,21 @@ export default class ApexGridHeader<T extends object> extends LitElement {
    * It re-places itself every frame while open, because no event covers
    * every move: a scroll inside an ancestor shadow root never reaches
    * window, and a layout shift fires nothing. Once the kebab scrolls out
-   * of the grid the menu closes, as the clipped fallback would vanish.
+   * of the grid the menu closes, as the clipped fallback would vanish, and
+   * so it does when the header hides (`showHeader` off), which leaves
+   * nothing to anchor it to.
    */
   #placeMenu = () => {
     const menu = this.renderRoot.querySelector<HTMLElement>('[part="col-menu"]');
     if (typeof menu?.showPopover !== 'function') return;
     const kebab = this.renderRoot.querySelector('[part~="menu-btn"]')?.getBoundingClientRect();
     const grid = this.state.host.getBoundingClientRect();
-    if (!kebab || kebab.right <= grid.left || kebab.left >= grid.right) {
+    if (
+      !kebab ||
+      !this.state.host.showHeader ||
+      kebab.right <= grid.left ||
+      kebab.left >= grid.right
+    ) {
       this.#closeMenu(menu.matches(':focus-within'));
       return;
     }

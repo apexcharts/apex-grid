@@ -1395,6 +1395,27 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   public columnMenu = true;
 
   /**
+   * Whether the column header rows are shown. On by default. Set to `false`
+   * (or the `show-header="false"` attribute) for a compact table, such as a
+   * short dashboard tile, where the rows get the header's room.
+   *
+   * @remarks
+   * Hidden headers take no space, paint nothing and take no pointer, and the
+   * built-in header controls leave the tab order, so resizing, the column
+   * menu, drag reorder and the filter panel are unavailable until the header
+   * returns (an open column menu closes). A focusable control rendered by a
+   * `headerTemplate` stays in the tab order: give it `tabindex="-1"` while
+   * the header is hidden. The column header row
+   * stays in the accessibility tree, so screen readers still announce the
+   * column names, and `aria-rowcount` / `aria-rowindex` do not change. Sort,
+   * filter, column widths and the page are kept.
+   *
+   * @attr show-header
+   */
+  @property({ attribute: 'show-header', converter: (value) => value !== 'false' })
+  public showHeader = true;
+
+  /**
    * Column groups rendered as spanning headers above the column header row.
    *
    * @remarks
@@ -3298,6 +3319,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     if (!this.hasColumnGroups) return nothing;
     return html`
       <apex-grid-group-header-row
+        ?data-visually-hidden=${!this.showHeader}
         style=${styleMap(this.DOM.columnSizes)}
         .columns=${this.DOM.displayColumns}
         .pinOffsets=${this.DOM.pinOffsets}
@@ -3306,9 +3328,14 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     `;
   }
 
+  /**
+   * With {@link ApexGrid.showHeader} off the header rows stay in the DOM,
+   * visually hidden, so assistive technology keeps the column names.
+   */
   protected renderHeaderRow() {
     return html`
       <apex-grid-header-row
+      ?data-visually-hidden=${!this.showHeader}
       style=${styleMap(this.DOM.columnSizes)}
       .columns=${this.DOM.displayColumns}
       .pinOffsets=${this.DOM.pinOffsets}
@@ -3358,8 +3385,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   protected renderFilterRow() {
     // The filter row is a floating panel overlay (position: fixed), not a grid
     // row. It must stay in the shadow root so the @query selector can find it,
-    // but it takes up no layout space when inactive.
-    return this.columns.some((column) => column.filter)
+    // but it takes up no layout space when inactive. It opens from a header
+    // button, so it goes with a hidden header.
+    return this.showHeader && this.columns.some((column) => column.filter)
       ? html`<apex-filter-row></apex-filter-row>`
       : nothing;
   }
