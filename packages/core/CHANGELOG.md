@@ -11,6 +11,29 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   Ask AI panel.
 - The `chart.rangeResized` locale key (English and Spanish), announced when an
   enterprise charted range is resized from the keyboard.
+- **`showHeader`** (attribute `show-header="false"`) leaves out the column
+  header row, the column group row and the filter panel, so a short grid such as
+  a dashboard tile gives that room to the data rows. Screen readers still
+  announce the column names, and sort, filter, column widths and the page come
+  back unchanged when the header returns. While it is hidden, resizing, the
+  column menu, drag reorder and the header filter button are unavailable.
+  ([#35](https://github.com/apexcharts/apex-grid/issues/35))
+- **`selection.isRowSelectable(row)`** keeps chosen rows out of selection,
+  such as a pinned total row. Such a row shows no checkbox, and clicks, Shift
+  and Ctrl clicks, Space, Select all, `selectRow` and `setState` all skip it;
+  the header checkbox counts only selectable rows. Rows stay selectable by
+  default, pinned rows included.
+  ([#38](https://github.com/apexcharts/apex-grid/issues/38))
+- `pagination.paginator: 'compact'` draws the small paginator: summary,
+  previous, page / count, next.
+  ([#36](https://github.com/apexcharts/apex-grid/issues/36))
+- `apex-grid::part()` reaches every paginator and toolbar part
+  (`paginator-host`, `paginator`, `paginator-size`, `paginator-info`,
+  `paginator-controls`, `paginator-page`, `paginator-button`, `toolbar-host`,
+  `toolbar`, `toolbar-search`, `search-input`, `toolbar-actions`, `export`,
+  `export-menu` and the rest), and each paginator button also carries its own
+  part: `paginator-first`, `paginator-prev`, `paginator-next` or
+  `paginator-last`. ([#37](https://github.com/apexcharts/apex-grid/issues/37))
 
 ### Changed
 - **The grid role and its row counts moved from the `<apex-grid>` host to an
@@ -50,6 +73,33 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Forced colors (Windows High Contrast): checkboxes are drawn by the browser in
   system colours, so apps that styled them through parts see the native
   checkbox in that mode only.
+- With pagination, pinned rows no longer count toward the pages: `totalItems`,
+  `pageCount`, the paginator summary and the `pageChanged` detail count the
+  rows the pager pages through, and pinning a row on the last page moves to the
+  new last page. Without pagination `totalItems` still counts every row.
+- A local page or page size change no longer reruns sorting, filtering and the
+  rest of the pipeline, so custom sort and filter hooks are no longer called on
+  a local page change. Remote mode still reruns it.
+- `pageChanged` reports the change that was applied, so two quick
+  `nextPage()` calls report page 2 and then page 3.
+- A page change is announced once ("Page X of N"); the paginator summary and
+  page label are no longer live regions.
+- The first grid on a page adds one window `error` listener that cancels
+  "ResizeObserver loop" messages and hides them from listeners added after it.
+  Listeners registered before the first grid still receive them. Every other
+  error is untouched. ([#32](https://github.com/apexcharts/apex-grid/issues/32))
+- `totalItems` is described one way everywhere: the post-filter, post-sort
+  row count, and in remote mode the `pagination.totalItems` you supply, the
+  number of rows the server holds for the current filter.
+  ([#34](https://github.com/apexcharts/apex-grid/issues/34))
+
+### Removed
+- **Breaking (types):** `DataPipelineConfiguration.pagination` and the
+  `'pagination'` value of `DataPipelineParams.type`. The hook was documented
+  but never called, so no runtime behaviour changes; TypeScript code that sets
+  it stops compiling. For server paging use `pagination.mode: 'remote'`, fetch
+  the page on `pageChanged` and keep `pagination.totalItems` current.
+  ([#33](https://github.com/apexcharts/apex-grid/issues/33))
 
 ### Fixed
 - `aria-rowcount` no longer counts the floating filter panel as a row, and a
@@ -73,6 +123,18 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   in a selected row the cell text, row number, reorder grip and chevrons take
   the selection text colour; an editor opened in a selected row uses the
   system field colours; a keyboard-grabbed row shows an outline.
+- The paginator no longer clips its controls in a narrow grid: it drops the
+  rows per page selector, then the first and last buttons, so previous and next
+  stay reachable. ([#36](https://github.com/apexcharts/apex-grid/issues/36))
+- Grids whose cell text wraps no longer raise "ResizeObserver loop completed
+  with undelivered notifications" while they resize or scroll.
+  ([#32](https://github.com/apexcharts/apex-grid/issues/32))
+- With row pinning and pagination, no trailing page is left empty.
+- A `pageSize` missing from `pageSizeOptions` now appears in the rows per
+  page selector and is selected.
+- A page size change or quick filter cancelled through `pageChanging` or
+  `quickFilterChanging` no longer leaves the selector or search box showing
+  the refused value.
 
 ### Performance
 - Scrolling no longer re-renders the rows that stay in view; only the rows that
