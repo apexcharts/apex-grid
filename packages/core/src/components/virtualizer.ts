@@ -17,6 +17,34 @@ const SIZER_ATTRIBUTE = 'virtualizer-sizer';
  */
 const MAX_RECOVERY_ATTEMPTS = 3;
 
+/** Set once the window listener is in place: one per loaded copy of the grid. */
+let loopNoticeQuieted = false;
+
+/**
+ * Rows whose text wraps change height while the grid resizes or scrolls, and
+ * the upstream virtualizer answers each measurement by resizing its own host
+ * within the same round of resize observations (it also keeps observing the
+ * rows it drops, which then report from outside the document). The browser
+ * defers those observations to the next frame, where the layout settles, and
+ * reports the deferral as an error on the window: Safari logs it, Chrome hands
+ * it to page error listeners and error monitoring. It is benign, so the first
+ * grid to connect cancels that message (and the older "loop limit exceeded"
+ * wording) for the window and keeps it from the listeners added after it
+ * (listeners added earlier still see it). Every other error is left alone.
+ *
+ * @see https://github.com/apexcharts/apex-grid/issues/32
+ */
+export function quietResizeObserverLoopNotice(): void {
+  if (loopNoticeQuieted) return;
+  loopNoticeQuieted = true;
+  window.addEventListener('error', (event) => {
+    if (String((event as ErrorEvent).message).includes('ResizeObserver loop')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  });
+}
+
 /** Space, in px, that sticky chrome covers on each side of the scrollport. */
 export interface ScrollInsets {
   top: number;

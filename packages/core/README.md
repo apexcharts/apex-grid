@@ -192,6 +192,9 @@ With the element registered and the host sized, you should see:
 | `<apex-grid>` blank tag in DOM | Step 2: element not registered |
 | Columns shown as literal `[object Object]` | `columns=` used as an attribute; must be a **property** (`.columns=${...}` in Lit, `[columns]=` in Angular, `:columns.prop=` in Vue, `el.columns = ...` in vanilla JS) |
 
+> [!NOTE]
+> Rows whose text wraps change height while the grid resizes or scrolls, and the browser can defer the resulting row layout by one frame. It reports each deferral as a window `error` event with the message "ResizeObserver loop completed with undelivered notifications" (older browsers say "ResizeObserver loop limit exceeded"). The event is benign, so the first grid to connect adds one window `error` listener that cancels any message containing "ResizeObserver loop" (Safari then stops logging it) and stops the listeners added after it from seeing it. Every other error passes through untouched. Listeners added before the first grid connects, such as error monitoring set up at page start, still receive it, and the same message raised by your own code is quieted as well, since the browser does not say which observer raised it.
+
 ---
 
 ## Features in depth

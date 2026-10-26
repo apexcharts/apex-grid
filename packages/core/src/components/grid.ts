@@ -77,7 +77,7 @@ import ApexGridHeaderRow from './header-row.js';
 import ApexGridPaginator from './paginator.js';
 import ApexGridRow from './row.js';
 import ApexGridToolbar from './toolbar.js';
-import ApexVirtualizer from './virtualizer.js';
+import ApexVirtualizer, { quietResizeObserverLoopNotice } from './virtualizer.js';
 
 /**
  * Event object for the filtering event of the grid.
@@ -2185,6 +2185,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     // The `--ag-*` root defaults (and the `setup()` host sizing) live outside
     // the shadow root; see internal/document-styles.ts.
     adoptGridDocumentStyles(this);
+    // Before the page's own error listeners run, so they never see the notice.
+    quietResizeObserverLoopNotice();
     // The host's labelling names the element with the grid role.
     this.#labelObserver.observe(this, {
       attributeFilter: ['aria-label', 'aria-labelledby', 'aria-describedby'],
