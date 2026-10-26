@@ -264,7 +264,7 @@ grid.addEventListener('pageChanged', async (e) => {
 });
 ```
 
-Properties: `page`, `pageSize`, `pageCount`, `totalItems`, `pageItems`. `totalItems` is the post-filter, post-sort row count (in remote mode, the `pagination.totalItems` you supplied), and `pageChanged` carries the same number in `detail.totalItems`. Events: `pageChanging` (cancellable), `pageChanged`.
+Properties: `page`, `pageSize`, `pageCount`, `totalItems`, `pageItems`. `totalItems` is the post-filter, post-sort row count; with pagination enabled it counts the rows paged through, without pinned rows, which show on every page (in remote mode, the `pagination.totalItems` you supplied), and `pageChanged` carries the same number in `detail.totalItems`. Events: `pageChanging` (cancellable), `pageChanged`.
 
 ### Column pinning
 

@@ -88,5 +88,74 @@ describe('Pagination contract', () => {
       await grid.gotoPage(3);
       expect(details).to.deep.equal([50]);
     });
+
+    it('pinned rows do not count toward the pages, so no trailing page is empty', async () => {
+      const grid = await mount({
+        pagination: { enabled: true, pageSize: 4 },
+        rowPinning: { enabled: true },
+      });
+      for (const row of grid.data.slice(0, 4)) await grid.pinRow(row, 'top');
+      await settle(grid);
+      expect(grid.pageCount).to.equal(1);
+      expect(grid.totalItems).to.equal(4);
+      expect(grid.pageItems.map((row) => row.id)).to.deep.equal([5, 6, 7, 8]);
+      expect(pagerPart(grid, 'paginator-info').textContent?.trim()).to.equal('1-4 of 4');
+      await grid.lastPage();
+      expect(grid.pageItems.length).to.equal(4);
+    });
+
+    it('21 rows, one pinned, page size 10: two pages and the last one has rows', async () => {
+      const grid = await mount({
+        pagination: { enabled: true, pageSize: 10 },
+        rowPinning: { enabled: true },
+        data: rows(21),
+      });
+      await grid.pinRow(grid.data[0], 'top');
+      await settle(grid);
+      expect(grid.pageCount).to.equal(2);
+      await grid.lastPage();
+      expect(grid.pageItems.length).to.equal(10);
+    });
+
+    it('pinning a row on the last page moves to the new last page', async () => {
+      const grid = await mount({
+        pagination: { enabled: true, pageSize: 10 },
+        rowPinning: { enabled: true },
+        data: rows(21),
+      });
+      await grid.lastPage();
+      expect(grid.page).to.equal(2);
+      grid.pinRow(grid.data[0], 'top');
+      await settle(grid);
+      expect(grid.page).to.equal(1);
+      expect(grid.pageCount).to.equal(2);
+      expect(grid.pageItems.length).to.equal(10);
+      expect(pagerPart(grid, 'paginator-page').textContent?.trim()).to.equal('2 / 2');
+    });
+
+    it('turning row pinning back on clamps a page past the new last page', async () => {
+      const grid = await mount({
+        pagination: { enabled: true, pageSize: 10 },
+        rowPinning: { enabled: true },
+        data: rows(21),
+      });
+      grid.pinRow(grid.data[0], 'top');
+      grid.rowPinning = { enabled: false };
+      await settle(grid);
+      await grid.lastPage();
+      expect(grid.page).to.equal(2);
+      grid.rowPinning = { enabled: true };
+      await settle(grid);
+      expect(grid.page).to.equal(1);
+      expect(grid.pageItems.length).to.equal(10);
+    });
+
+    it('without pagination totalItems still counts the pinned rows', async () => {
+      const grid = await mount({ rowPinning: { enabled: true }, data: rows(21) });
+      grid.pinRow(grid.data[0], 'top');
+      await settle(grid);
+      expect(grid.totalItems).to.equal(21);
+      expect(grid.pageItems.length).to.equal(20);
+    });
   });
 });

@@ -799,6 +799,11 @@ function viewShapeChanged(fields: readonly string[] | null, before: unknown, aft
   return fields.some((field) => !Object.is(a[field], b[field]));
 }
 
+/** Whether a memo key differs from the one its cached value was computed for. */
+function keyChanged(key: readonly unknown[], previous: readonly unknown[]): boolean {
+  return key.some((value, i) => value !== previous[i]);
+}
+
 /** Report a dropped entry from a property setter (no result object to carry it). */
 function warnDropped(message: string): void {
   // biome-ignore lint/suspicious/noConsole: the setter has no other channel for a dropped entry
@@ -1634,7 +1639,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
-   * The post-filter, post-sort row count. In `'remote'` pagination mode, the
+   * The post-filter, post-sort row count. With pagination enabled it counts
+   * the rows paged through, so rows pinned to the top or bottom (they show on
+   * every page) are left out. In `'remote'` pagination mode, the
    * `pagination.totalItems` you supplied (the rows the server holds for the
    * current filter).
    *
@@ -1643,44 +1650,53 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * the rows currently rendered into the body.
    */
   public get totalItems() {
-    if (this.pagination?.mode === 'remote') {
-      return Math.max(0, this.pagination?.totalItems ?? 0);
-    }
-    return this.dataState.length;
+    return this.stateController.pagination.totalItems;
   }
+
+  /**
+   * The rows the body pages through: {@link ApexGrid.dataView} without the
+   * pinned rows, which render in their own sticky bands on every page. The
+   * page slice and the page count both read it, so they always agree.
+   */
+  protected get bodyRows(): ReadonlyArray<T> {
+    // Read several times per update and per key press: rescan the view only
+    // when it or the pins changed. The data version covers a pipeline hook
+    // that hands back the same array with new contents.
+    const { rowPin, dataVersion } = this.stateController;
+    const key = [this.dataState, dataVersion, rowPin.version, rowPin.enabled];
+    if (keyChanged(key, this.#bodyKey)) {
+      this.#bodyKey = key;
+      this.#bodyRows = rowPin.hasPinnedRows
+        ? this.dataState.filter((row) => !rowPin.isPinned(row))
+        : this.dataState;
+    }
+    return this.#bodyRows;
+  }
+
+  #bodyKey: unknown[] = [];
+  #bodyRows: ReadonlyArray<T> = [];
 
   /**
    * The records currently rendered into the virtualized body.
    *
    * @remarks
-   * Equal to {@link ApexGrid.dataView} when pagination is disabled. With pagination
-   * enabled (`'local'` mode) this is the active page slice.
+   * Equal to {@link ApexGrid.dataView} without the pinned rows when pagination is
+   * disabled. With pagination enabled (`'local'` mode) this is the active page slice.
    */
   public get pageItems(): ReadonlyArray<T> {
-    // Read several times per update and per key press: recompute only when an
-    // input changed, so a pinned row or a page slice does not rescan the view
-    // and the virtualizer keeps the same items. The data version covers a
-    // pipeline hook that hands back the same array with new contents.
-    const { rowPin, pagination, dataVersion } = this.stateController;
+    // Recompute only when an input changed, so the virtualizer keeps the same items.
+    const { pagination, dataVersion } = this.stateController;
     const key = [
-      this.dataState,
+      this.bodyRows,
       dataVersion,
-      rowPin.version,
-      rowPin.enabled,
       pagination.enabled,
       this.pagination?.mode,
       pagination.page,
       pagination.pageSize,
     ];
-    if (key.some((value, i) => value !== this.#pageKey[i])) {
+    if (keyChanged(key, this.#pageKey)) {
       this.#pageKey = key;
-      // Pinned rows are lifted out of the scrollable body and rendered in
-      // their own sticky bands, so they're excluded here to avoid
-      // duplication. The exclusion happens before pagination so a pinned row
-      // never consumes a body page slot.
-      const base = rowPin.hasPinnedRows
-        ? this.dataState.filter((row) => !rowPin.isPinned(row))
-        : this.dataState;
+      const base = this.bodyRows;
       const { page, pageSize } = pagination;
       this.#pageItems =
         !pagination.enabled || this.pagination?.mode === 'remote' || !pageSize
@@ -1978,6 +1994,21 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     this.stateController.filtering.reset();
     if (entries.length) this.filter([...entries]);
   }
+
+  protected override willUpdate(changed: Map<PropertyKey, unknown>): void {
+    super.willUpdate(changed);
+    // Pinning, unpinning or toggling rowPinning moves rows in or out of the
+    // pages without a pipeline run, so clamp the page here. An update that
+    // runs the pipeline, or a view still settling, reclamps after the run.
+    const { rowPin, pagination } = this.stateController;
+    const key = [rowPin.version, rowPin.enabled];
+    if (keyChanged(key, this.#pinKey)) {
+      this.#pinKey = key;
+      if (!changed.has(PIPELINE) && !this.#viewStale) pagination.reclamp();
+    }
+  }
+
+  #pinKey: unknown[] = [];
 
   protected override updated(): void {
     // This update's watchers consumed every change requested before it; a

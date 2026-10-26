@@ -895,8 +895,9 @@ export interface PaginationState {
    */
   pageCount: number;
   /**
-   * The post-filter, post-sort row count. In `'remote'` mode, the
-   * {@link PaginationConfiguration.totalItems} you supplied.
+   * The post-filter, post-sort row count. With pagination enabled, the rows paged
+   * through: rows pinned to the top or bottom (they show on every page) are left out.
+   * In `'remote'` mode, the {@link PaginationConfiguration.totalItems} you supplied.
    */
   totalItems: number;
 }

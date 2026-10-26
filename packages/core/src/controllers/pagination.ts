@@ -46,11 +46,12 @@ export class PaginationController<T extends object> implements ReactiveControlle
   }
 
   /**
-   * The total number of records before pagination is applied.
+   * The number of rows paged through (see {@link ApexGrid.totalItems}).
    *
    * @remarks
-   * For `'local'` mode this is the post-filter, post-sort dataset length. For `'remote'`
-   * mode the consumer must supply the value via `pagination.totalItems`.
+   * For `'local'` mode this is the post-filter, post-sort row count; with pagination
+   * enabled it leaves out the pinned rows, so it counts the rows {@link ApexGrid.pageItems}
+   * slices. For `'remote'` mode the consumer supplies the value via `pagination.totalItems`.
    */
   public get totalItems(): number {
     const cfg = this.host.pagination;
@@ -58,7 +59,7 @@ export class PaginationController<T extends object> implements ReactiveControlle
       return Math.max(0, cfg?.totalItems ?? 0);
     }
     // @ts-expect-error - protected member access
-    return this.host.dataState?.length ?? 0;
+    return (this.enabled ? this.host.bodyRows : this.host.dataState)?.length ?? 0;
   }
 
   /**
