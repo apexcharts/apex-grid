@@ -255,7 +255,7 @@ await grid.setPageSize(50);
 grid.nextPage(); grid.previousPage(); grid.firstPage(); grid.lastPage();
 ```
 
-Remote mode:
+Remote mode: the grid does not slice `data`, it renders whatever `data` holds as the current page. Fetch the page on `pageChanged`, and keep `pagination.totalItems` at the number of rows the server holds for the current filter (update it when a server side filter changes that number), so the paginator can count the pages:
 
 ```ts
 grid.pagination = { enabled: true, mode: 'remote', pageSize: 25, totalItems: 1280 };
@@ -264,7 +264,7 @@ grid.addEventListener('pageChanged', async (e) => {
 });
 ```
 
-Properties: `page`, `pageSize`, `pageCount`, `totalItems`, `pageItems`. Events: `pageChanging` (cancellable), `pageChanged`.
+Properties: `page`, `pageSize`, `pageCount`, `totalItems`, `pageItems`. `totalItems` is the post-filter, post-sort row count (in remote mode, the `pagination.totalItems` you supplied), and `pageChanged` carries the same number in `detail.totalItems`. Events: `pageChanging` (cancellable), `pageChanged`.
 
 ### Column pinning
 
@@ -659,7 +659,7 @@ See [`demo/state-persistence.html`](../../demo/state-persistence.html) for a sav
 | `columns` | `ColumnConfiguration<T>[]` | `[]` | Column configuration (property only) |
 | `autoGenerate` | `boolean` | `false` | Infer columns from `data[0]` keys. Attr `auto-generate` |
 | `sortConfiguration` | `GridSortConfiguration` | `{ multiple, triState }` | |
-| `dataPipelineConfiguration` | `DataPipelineConfiguration<T>` |  | Custom sort/filter/pagination hooks |
+| `dataPipelineConfiguration` | `DataPipelineConfiguration<T>` |  | Custom sort, filter and quick filter hooks |
 | `pagination` | `PaginationConfiguration` |  | |
 | `quickFilter` | `string` | `''` | Attr `quick-filter` |
 | `showQuickFilter` | `boolean` | `false` | Attr `show-quick-filter` |

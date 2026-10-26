@@ -797,7 +797,7 @@ export type DataPipelineParams<T extends object> = {
   /**
    * The type of data operation being performed.
    */
-  type: 'sort' | 'filter' | 'quickFilter' | 'pagination';
+  type: 'sort' | 'filter' | 'quickFilter';
 };
 
 /**
@@ -820,15 +820,6 @@ export interface DataPipelineConfiguration<T extends object> {
    */
   filter?: DataPipelineHook<T>;
   /**
-   * Hook for customizing pagination operations.
-   *
-   * @remarks
-   * The hook receives the filtered + sorted data slice for the grid to render and the current
-   * pagination state. Return the page slice. For server-driven pagination, return the externally
-   * fetched page and report the row total via {@link ApexGrid.totalItems}.
-   */
-  pagination?: DataPipelineHook<T>;
-  /**
    * Hook for customizing quick (global) filter operations.
    *
    * @remarks
@@ -842,10 +833,11 @@ export interface DataPipelineConfiguration<T extends object> {
  * The pagination mode for the grid.
  *
  * @remarks
- * `'local'` — the grid slices the in-memory {@link ApexGrid.dataView} by `page` and `pageSize`.
- * `'remote'` — the consumer drives data fetching; the grid emits paging events but does not
- *  slice the data. Use together with {@link DataPipelineConfiguration.pagination} or by setting
- *  `data` to the current page on `pageChanged`.
+ * `'local'`: the grid slices the in-memory {@link ApexGrid.dataView} by `page` and `pageSize`.
+ * `'remote'`: the consumer drives data fetching. The grid does not slice `data`; it renders
+ *  whatever `data` holds as the current page. Listen for `pageChanged`, fetch that page and
+ *  assign it to `data`, and keep {@link PaginationConfiguration.totalItems} at the number of
+ *  rows the server holds for the current filter so the paginator can count the pages.
  */
 export type PaginationMode = 'local' | 'remote';
 
@@ -879,8 +871,9 @@ export interface PaginationConfiguration {
    */
   pageSizeOptions?: number[];
   /**
-   * In `'remote'` mode the consumer must supply the unfiltered row total so the paginator
-   * can compute the page count. Ignored in `'local'` mode.
+   * In `'remote'` mode, the number of rows the server holds for the current filter, so the
+   * paginator can compute the page count. Update it when a server side filter changes that
+   * number. Ignored in `'local'` mode, where the grid counts the rows itself.
    */
   totalItems?: number;
 }
@@ -902,7 +895,8 @@ export interface PaginationState {
    */
   pageCount: number;
   /**
-   * The total number of records before pagination (after filter/sort).
+   * The post-filter, post-sort row count. In `'remote'` mode, the
+   * {@link PaginationConfiguration.totalItems} you supplied.
    */
   totalItems: number;
 }

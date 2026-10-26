@@ -202,18 +202,18 @@ describe('advanced filter with the server row models', () => {
     grid.serverSideRowModel = { datasource: server, rowGroupCols: [] };
     await flush(grid);
     expect(grid.dataView.length, 'server rows').to.equal(250);
-    const pagination = ({ data }: { data: Row[] }) => data;
-    grid.dataPipelineConfiguration = { ...grid.dataPipelineConfiguration, pagination };
+    const quickFilter = ({ data }: { data: Row[] }) => data;
+    grid.dataPipelineConfiguration = { ...grid.dataPipelineConfiguration, quickFilter };
     await flush(grid);
     grid.serverSideRowModel = null;
     grid.data = LOCAL.slice();
     await flush(grid);
     const pipeline = grid.dataPipelineConfiguration;
     expect(pipeline?.filter === evens, 'app filter hook back').to.equal(true);
-    expect(pipeline?.pagination === pagination, 'app pagination hook kept').to.equal(true);
+    expect(pipeline?.quickFilter === quickFilter, 'app quick filter hook kept').to.equal(true);
     expect(Object.keys(pipeline ?? {}).sort(), 'no stale passthrough hooks').to.eql([
       'filter',
-      'pagination',
+      'quickFilter',
     ]);
     expect(grid.dataView.length, 'app filter applies').to.equal(10);
   });
@@ -226,15 +226,15 @@ describe('advanced filter with the server row models', () => {
     const read = grid.dataPipelineConfiguration;
     grid.dataPipelineConfiguration = { ...read, sort: ({ data }) => data };
     await flush(grid);
-    const pagination = ({ data }: { data: Row[] }) => data;
-    grid.dataPipelineConfiguration = { ...read, pagination };
+    const quickFilter = ({ data }: { data: Row[] }) => data;
+    grid.dataPipelineConfiguration = { ...read, quickFilter };
     await flush(grid);
     expect(grid.dataView.length, 'advanced filter after the spreads').to.equal(5);
     grid.clearAdvancedFilter();
     await flush(grid);
     const pipeline = grid.dataPipelineConfiguration;
     expect(pipeline?.filter === evens, 'app filter hook back').to.equal(true);
-    expect(pipeline?.pagination === pagination, 'app pagination hook kept').to.equal(true);
+    expect(pipeline?.quickFilter === quickFilter, 'app quick filter hook kept').to.equal(true);
     expect(grid.dataView.length, 'app filter applies').to.equal(10);
   });
 
@@ -263,8 +263,8 @@ describe('advanced filter with the server row models', () => {
     const read = grid.dataPipelineConfiguration;
     grid.infiniteRowModel = { datasource: infiniteServer(), blockSize: 50 };
     await flush(grid);
-    const pagination = ({ data }: { data: Row[] }) => data;
-    grid.dataPipelineConfiguration = { ...read, pagination };
+    const quickFilter = ({ data }: { data: Row[] }) => data;
+    grid.dataPipelineConfiguration = { ...read, quickFilter };
     await flush(grid);
     grid.infiniteRowModel = null;
     grid.data = LOCAL.slice();
@@ -273,7 +273,7 @@ describe('advanced filter with the server row models', () => {
     expect(pipeline?.filter === evens, 'app filter hook back').to.equal(true);
     expect(Object.keys(pipeline ?? {}).sort(), 'no stale passthrough hooks').to.eql([
       'filter',
-      'pagination',
+      'quickFilter',
     ]);
     expect(grid.dataView.length, 'app filter applies').to.equal(10);
     grid.sort({ key: 'id', direction: 'descending' });
@@ -329,7 +329,7 @@ for (const kind of ['infinite', 'server-side'] as const) {
 
     for (const order of ORDERS) {
       it(order.join(', '), async () => {
-        const own: DataPipelineConfiguration<Row> = { pagination: ({ data }) => data };
+        const own: DataPipelineConfiguration<Row> = { quickFilter: ({ data }) => data };
         const grid = await mount({ data: LOCAL.slice(), dataPipelineConfiguration: own });
         const infinite = infiniteServer();
         const serverSide = serverSideServer();

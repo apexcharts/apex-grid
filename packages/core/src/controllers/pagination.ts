@@ -18,8 +18,8 @@ export const DEFAULT_PAGINATION = Object.freeze({
  * @remarks
  * Exposes a state machine for the current `page` and `pageSize`, derives `pageCount`
  * from the host's data, and emits the cancellable `pageChanging` + `pageChanged`
- * events on the grid host. Page slicing itself is performed by
- * {@link PaginationDataOperation} so the controller does not mutate `dataView`.
+ * events on the grid host. The page slice itself is read from
+ * {@link ApexGrid.pageItems}, so the controller never mutates `dataView`.
  */
 export class PaginationController<T extends object> implements ReactiveController {
   /**

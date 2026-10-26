@@ -787,7 +787,7 @@ const VIEW_SHAPING_PROPERTIES: ReadonlyMap<PropertyKey, readonly string[] | null
   ['quickFilter', null],
   ['pagination', ['enabled', 'mode', 'pageSize', 'totalItems']],
   ['tree', ['enabled', 'getDataPath', 'defaultExpanded']],
-  ['dataPipelineConfiguration', ['sort', 'filter', 'pagination', 'quickFilter']],
+  ['dataPipelineConfiguration', ['sort', 'filter', 'quickFilter']],
 ]);
 
 /** Whether a view-shaping property changed in a way that can alter the row count. */
@@ -1634,11 +1634,13 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
-   * The total number of items in the {@link ApexGrid.dataView} collection.
+   * The post-filter, post-sort row count. In `'remote'` pagination mode, the
+   * `pagination.totalItems` you supplied (the rows the server holds for the
+   * current filter).
    *
    * @remarks
-   * This is always the post-filter, post-sort row count — pagination does not change it.
-   * Use {@link ApexGrid.pageItems} to read the rows currently rendered into the body.
+   * The current page does not change it. Use {@link ApexGrid.pageItems} to read
+   * the rows currently rendered into the body.
    */
   public get totalItems() {
     if (this.pagination?.mode === 'remote') {
