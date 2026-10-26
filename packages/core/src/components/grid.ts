@@ -1246,6 +1246,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * @remarks
    * Selection is disabled by default. Set `enabled: true` and (optionally)
    * `mode` (`'single' | 'multiple'`) and `showCheckboxColumn` to opt in.
+   * `isRowSelectable` keeps chosen rows (a pinned total row) out of it.
    *
    * @example
    * ```ts
@@ -1253,7 +1254,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * ```
    */
   @property({ attribute: false })
-  public selection?: GridSelectionConfiguration;
+  public selection?: GridSelectionConfiguration<T>;
 
   /**
    * The currently selected rows, in insertion order.
@@ -1277,7 +1278,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * adding to it in `'multiple'` mode.
    *
    * @returns `true` if the selection changed, `false` if the change was
-   * rejected by a `rowSelecting` listener or selection is disabled.
+   * rejected by a `rowSelecting` listener, the row is not selectable
+   * (`selection.isRowSelectable`) or selection is disabled.
    */
   public selectRow(row: T): Promise<boolean> {
     return this.stateController.selection.selectRow(row);
@@ -1298,8 +1300,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   }
 
   /**
-   * Selects every row in the current view ({@link dataView}). No-op in
-   * `'single'` selection mode.
+   * Selects every selectable row in the current view ({@link dataView}).
+   * No-op in `'single'` selection mode.
    */
   public selectAllRows(): Promise<boolean> {
     return this.stateController.selection.selectAll();
@@ -2495,7 +2497,11 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     const selection = asArray<RowRef>(state.selection, 'selection');
     if (selection) {
       const ctrl = this.stateController.selection;
-      const rows = resolveCounted(selection, 'selection');
+      const resolved = resolveCounted(selection, 'selection');
+      const rows = ctrl.selectable(resolved);
+      if (rows.length < resolved.length) {
+        warn(`selection: ${resolved.length - rows.length} row(s) are not selectable; skipped`);
+      }
       const expected = ctrl.mode === 'single' ? rows.slice(0, 1) : rows;
       if (
         this.#replaceRows('selection', ctrl.enabled, expected, warn, () => {

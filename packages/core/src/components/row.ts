@@ -262,9 +262,14 @@ export default class ApexGridRow<T extends object> extends LitElement {
       return;
     }
 
-    this.selected = Boolean(this.state?.selection.isSelected(this.data));
+    const selection = this.state?.selection;
+    this.selected = Boolean(selection?.isSelected(this.data));
     this.expanded = Boolean(this.state?.expansion.isExpanded(this.data));
-    if (this.state?.selection.enabled) {
+    // The grid pattern marks selectable rows with aria-selected; a row that
+    // cannot be selected (`isRowSelectable`) omits it rather than claiming
+    // an unselected state the user cannot change, unless it is still
+    // selected (it can be deselected).
+    if (selection?.enabled && (this.selected || selection.isSelectable(this.data))) {
       this.setAttribute('aria-selected', this.selected ? 'true' : 'false');
     } else {
       this.removeAttribute('aria-selected');
@@ -492,6 +497,20 @@ export default class ApexGridRow<T extends object> extends LitElement {
         .querySelector<HTMLInputElement>('input[type="checkbox"]')
         ?.click();
     };
+    // A row `isRowSelectable` rejects keeps the cell (the columns stay
+    // aligned) but no control, as the controller refuses to select it; a
+    // still-selected one keeps its checkbox so it can be deselected.
+    const checkbox =
+      this.selected || selection.isSelectable(this.data)
+        ? html`<input
+          type="checkbox"
+          part="selection-checkbox"
+          aria-label=${this.state.localize('row.select')}
+          .checked=${this.selected}
+          @click=${handleClick}
+          @change=${handleChange}
+        />`
+        : nothing;
     return html`<div
       part="selection-cell"
       role="gridcell"
@@ -499,14 +518,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
       data-pinned="start"
       @click=${forwardToCheckbox}
     >
-      <input
-        type="checkbox"
-        part="selection-checkbox"
-        aria-label=${this.state.localize('row.select')}
-        .checked=${this.selected}
-        @click=${handleClick}
-        @change=${handleChange}
-      />
+      ${checkbox}
     </div>`;
   }
 

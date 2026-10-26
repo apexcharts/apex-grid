@@ -583,7 +583,7 @@ export type SelectionMode = 'single' | 'multiple';
 /**
  * Grid-level row-selection configuration.
  */
-export interface GridSelectionConfiguration {
+export interface GridSelectionConfiguration<T extends object = any> {
   /**
    * Whether row selection is enabled. Disabled by default.
    */
@@ -599,6 +599,32 @@ export interface GridSelectionConfiguration {
    * Defaults to `false`.
    */
   showCheckboxColumn?: boolean;
+  /**
+   * Decides per row whether it can be selected. When unset every row is
+   * selectable, pinned rows included.
+   *
+   * @remarks
+   * A row this returns `false` for renders no checkbox (its cell stays, so
+   * the columns line up), carries no `aria-selected`, and is skipped by
+   * every selection path: checkbox and cell clicks, Shift and Ctrl/Cmd
+   * clicks, Space, Select all, `selectRow`, `selectedRows = ...` and
+   * `setState`. The header checkbox counts only selectable rows. When
+   * `selection` or `data` is reassigned, selected rows the predicate now
+   * rejects are dropped through the cancellable `rowSelecting` event. A
+   * selected row it comes to reject otherwise (pinned or edited in place)
+   * keeps its checkbox until it is deselected.
+   *
+   * @example
+   * ```ts
+   * // A pinned total row is a summary, not a record to pick.
+   * grid.selection = {
+   *   enabled: true,
+   *   showCheckboxColumn: true,
+   *   isRowSelectable: (row) => row !== totalRow,
+   * };
+   * ```
+   */
+  isRowSelectable?: (row: T) => boolean;
 }
 
 /**

@@ -463,6 +463,8 @@ grid.selectedRows;                  // snapshot
 grid.selectedRows = [data[2]];      // replace selection (goes through `rowSelecting`)
 ```
 
+Every row is selectable by default, pinned rows included. `selection.isRowSelectable: (row) => boolean` keeps rows out of the selection (a pinned total row, for example): such a row renders no checkbox and no `aria-selected`, every selection path skips it (clicks, Space, Select all, `selectRow`, `selectedRows = ...`, `setState`), and the header checkbox counts only selectable rows. Reassigning `selection` or `data` drops selected rows the predicate now rejects; a selected row it comes to reject otherwise (pinned or edited in place) keeps its checkbox until deselected.
+
 Events: `rowSelecting` (cancellable), `rowSelected`.
 
 ### Row pinning (top / bottom)

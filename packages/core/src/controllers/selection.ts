@@ -22,9 +22,11 @@ export const DEFAULT_SELECTION_CONFIG = Object.freeze({
  * any selected rows that are no longer present in the new array; consumers
  * should call {@link clear} or re-apply selection after such a change.
  *
- * Only data records are selectable: rows a feature module synthesizes into the
- * view (group headers, a grand-total row; see {@link StateController.isDataRow})
- * are skipped by every mutation and ignored by {@link allSelected}.
+ * Only selectable data records are selected (see {@link isSelectable}): rows
+ * a feature module synthesizes into the view (group headers, a grand-total
+ * row; see {@link StateController.isDataRow}) and rows the
+ * `selection.isRowSelectable` predicate rejects are skipped by every
+ * mutation and ignored by {@link allSelected}.
  *
  * Mutations go through the cancellable `rowSelecting` event and emit a
  * follow-up `rowSelected` event, mirroring the pattern used by editing.
@@ -39,11 +41,30 @@ export class SelectionController<T extends object> implements ReactiveController
    */
   public anchor: T | null = null;
 
+  /** The selection config and data the selection was last checked against. */
+  #seen: [unknown, unknown] = [undefined, undefined];
+
   constructor(protected host: GridHost<T>) {
     this.host.addController(this);
   }
 
   public hostConnected() {}
+
+  /**
+   * Drops selected rows the `isRowSelectable` predicate rejects once
+   * `selection` or `data` is reassigned. Runs after the render, so the
+   * `rowSelecting`/`rowSelected` listeners (and any grid property they
+   * write) start a normal update. Without a predicate nothing is checked,
+   * and a mode switch never trims the selection here.
+   */
+  public hostUpdated() {
+    const { selection, data } = this.host;
+    if (selection === this.#seen[0] && data === this.#seen[1]) return;
+    this.#seen = [selection, data];
+    if (!this.enabled || !selection?.isRowSelectable) return;
+    const keep = this.selectable(this.selectedRows());
+    if (keep.length < this.selected.size) void this.#commit(new Set(keep));
+  }
 
   /**
    * Whether selection is enabled at the grid level.
@@ -77,6 +98,32 @@ export class SelectionController<T extends object> implements ReactiveController
   }
 
   /**
+   * Whether `row` can be selected: a data record (see
+   * {@link StateController.isDataRow}) that `selection.isRowSelectable`, when
+   * set, accepts.
+   */
+  public isSelectable(row: T): boolean {
+    return (
+      (this.#state?.isDataRow(row) ?? true) && (this.host.selection?.isRowSelectable?.(row) ?? true)
+    );
+  }
+
+  /**
+   * The selectable rows of `rows` (see {@link isSelectable}), in order.
+   * Returns `rows` itself when nothing filters them (the community grid
+   * without a predicate).
+   */
+  public selectable(rows: ReadonlyArray<T>): ReadonlyArray<T> {
+    return this.#accepted(this.#state?.dataRows(rows) ?? rows);
+  }
+
+  /** The rows `selection.isRowSelectable` accepts; `rows` itself when unset. */
+  #accepted(rows: ReadonlyArray<T>): ReadonlyArray<T> {
+    const accept = this.host.selection?.isRowSelectable;
+    return accept ? rows.filter((row) => accept(row)) : rows;
+  }
+
+  /**
    * Returns the currently selected rows in insertion order.
    */
   public selectedRows(): T[] {
@@ -84,10 +131,10 @@ export class SelectionController<T extends object> implements ReactiveController
   }
 
   /**
-   * Whether every data record the current view covers is selected, including
-   * the leaves of collapsed groups (see {@link StateController.viewRecords}).
-   * `false` when the view covers none. Used by the header checkbox to render
-   * its "all" state.
+   * Whether every selectable record the current view covers is selected,
+   * including the leaves of collapsed groups (see
+   * {@link StateController.viewRecords}). `false` when the view covers none.
+   * Used by the header checkbox to render its "all" state.
    */
   public allSelected(): boolean {
     const records = this.#records();
@@ -114,7 +161,7 @@ export class SelectionController<T extends object> implements ReactiveController
    * only selected row.
    */
   public async toggleRow(row: T): Promise<boolean> {
-    if (!this.enabled || !this.#isDataRow(row)) return false;
+    if (!this.#togglable(row)) return false;
     const next = new Set(this.selected);
     if (next.has(row)) {
       next.delete(row);
@@ -131,7 +178,7 @@ export class SelectionController<T extends object> implements ReactiveController
    * is cleared first.
    */
   public async selectRow(row: T): Promise<boolean> {
-    if (!this.enabled || !this.#isDataRow(row)) return false;
+    if (!this.enabled || !this.isSelectable(row)) return false;
     const next = new Set(this.mode === 'single' ? [] : this.selected);
     next.add(row);
     this.anchor = row;
@@ -155,7 +202,7 @@ export class SelectionController<T extends object> implements ReactiveController
    * {@link selectRow}.
    */
   public async additiveToggle(row: T): Promise<boolean> {
-    if (!this.enabled || !this.#isDataRow(row)) return false;
+    if (!this.#togglable(row)) return false;
     if (this.mode === 'single') return this.toggleRow(row);
     const next = new Set(this.selected);
     if (next.has(row)) {
@@ -173,7 +220,7 @@ export class SelectionController<T extends object> implements ReactiveController
    * in those cases the call falls back to a plain {@link selectRow}.
    */
   public async rangeToggle(row: T): Promise<boolean> {
-    if (!this.enabled || !this.#isDataRow(row)) return false;
+    if (!this.enabled || !this.isSelectable(row)) return false;
     if (this.mode === 'single' || !this.anchor) {
       return this.selectRow(row);
     }
@@ -186,15 +233,15 @@ export class SelectionController<T extends object> implements ReactiveController
     const [lo, hi] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
     const next = new Set(this.selected);
     for (let i = lo; i <= hi; i++) {
-      if (this.#isDataRow(pageItems[i])) next.add(pageItems[i]);
+      if (this.isSelectable(pageItems[i])) next.add(pageItems[i]);
     }
     return this.#commit(next);
   }
 
   /**
-   * Selects every data record the current view ({@link ApexGrid.dataView})
-   * covers, including the leaves of collapsed groups. No-op in `'single'`
-   * mode.
+   * Selects every selectable record the current view
+   * ({@link ApexGrid.dataView}) covers, including the leaves of collapsed
+   * groups. No-op in `'single'` mode.
    */
   public async selectAll(): Promise<boolean> {
     if (!this.enabled || this.mode === 'single') return false;
@@ -216,7 +263,7 @@ export class SelectionController<T extends object> implements ReactiveController
    */
   public async replaceSelection(rows: ReadonlyArray<T>): Promise<boolean> {
     if (!this.enabled) return false;
-    const records = this.#state?.dataRows(rows) ?? rows;
+    const records = this.selectable(rows);
     const next = new Set(this.mode === 'single' ? records.slice(0, 1) : records);
     return this.#commit(next);
   }
@@ -226,14 +273,19 @@ export class SelectionController<T extends object> implements ReactiveController
     return (this.host as unknown as { stateController?: StateController<T> }).stateController;
   }
 
-  /** The data records the current view covers, collapsed group leaves included. */
-  #records(): ReadonlyArray<T> {
-    const view = this.host.dataView as ReadonlyArray<T>;
-    return this.#state?.viewRecords(view) ?? view;
+  /**
+   * Whether a toggle may act on `row`: a selected row can always be
+   * deselected, even one the predicate has since come to reject (a row
+   * pinned or edited in place), so it never gets stuck selected.
+   */
+  #togglable(row: T): boolean {
+    return this.enabled && (this.selected.has(row) || this.isSelectable(row));
   }
 
-  #isDataRow(row: T): boolean {
-    return this.#state?.isDataRow(row) ?? true;
+  /** The selectable records the current view covers, collapsed group leaves included. */
+  #records(): ReadonlyArray<T> {
+    const view = this.host.dataView as ReadonlyArray<T>;
+    return this.#accepted(this.#state?.viewRecords(view) ?? view);
   }
 
   async #commit(next: Set<T>): Promise<boolean> {
