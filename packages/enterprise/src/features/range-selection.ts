@@ -41,6 +41,37 @@ export const RANGE_CHANGED_EVENT = 'apex-range-changed';
  */
 const FILL_HANDLE_HIT = 10;
 
+// Module scope, not static class members: tsc writes a class alias
+// assignment for a static member read through the class name, which bundlers
+// keep as a side effect, so the controller could not tree-shake.
+/** How close (px) to an edge of the body starts an edge auto-scroll. */
+const EDGE_BAND = 28;
+/** Max edge auto-scroll speed (px/frame) at the deepest point of the band. */
+const MAX_SPEED = 24;
+
+/**
+ * Scroll speed (px per frame) along one axis: positive when the pointer is
+ * in the band at the `end` edge or beyond it, negative at `start`, zero
+ * elsewhere. Between `outerStart` and `start` (or `end` and `outerEnd`)
+ * sit pinned columns, cells the pointer is selecting, so a pointer over
+ * them does not scroll; past the grid's own edge it does, at full speed.
+ */
+function edgeSpeed(
+  at: number,
+  start: number,
+  end: number,
+  outerStart = start,
+  outerEnd = end
+): number {
+  const band = EDGE_BAND;
+  let depth: number;
+  if (at > end - band && (at <= end || at > outerEnd)) depth = at - (end - band);
+  else if (at < start + band && (at >= start || at < outerStart)) depth = at - (start + band);
+  else return 0;
+  const intensity = Math.min(1, Math.abs(depth) / band);
+  return Math.sign(depth) * (4 + MAX_SPEED * intensity);
+}
+
 /** The grid body's visible area in client coordinates (see `#bodyViewport`). */
 interface BodyViewport {
   readonly top: number;
@@ -1320,11 +1351,6 @@ export class RangeSelectionController<T extends object>
 
   // --- edge auto-scroll ----------------------------------------------------
 
-  /** How close (px) to an edge of the body starts an auto-scroll. */
-  static readonly #EDGE_BAND = 28;
-  /** Max scroll speed (px/frame) at the deepest point of the edge band. */
-  static readonly #MAX_SPEED = 24;
-
   /** Begin tracking the pointer for edge auto-scroll (called at drag start). */
   #beginDrag(): void {
     this.#dragPointer = null;
@@ -1371,8 +1397,8 @@ export class RangeSelectionController<T extends object>
     const pointer = this.#dragPointer;
     if (!pointer) return false;
     const viewport = this.#bodyViewport();
-    const dy = RangeSelectionController.#edgeSpeed(pointer.y, viewport.top, viewport.bottom);
-    const dx = RangeSelectionController.#edgeSpeed(
+    const dy = edgeSpeed(pointer.y, viewport.top, viewport.bottom);
+    const dx = edgeSpeed(
       pointer.x,
       viewport.left,
       viewport.right,
@@ -1395,29 +1421,6 @@ export class RangeSelectionController<T extends object>
     // scroll limit, so the selection still reaches the first or last one.
     this.#extendToEdge(Math.sign(dy), Math.sign(dx), viewport);
     return scroller.scrollTop !== scrollTop || scroller.scrollLeft !== scrollLeft;
-  }
-
-  /**
-   * Scroll speed (px per frame) along one axis: positive when the pointer is
-   * in the band at the `end` edge or beyond it, negative at `start`, zero
-   * elsewhere. Between `outerStart` and `start` (or `end` and `outerEnd`)
-   * sit pinned columns, cells the pointer is selecting, so a pointer over
-   * them does not scroll; past the grid's own edge it does, at full speed.
-   */
-  static #edgeSpeed(
-    at: number,
-    start: number,
-    end: number,
-    outerStart = start,
-    outerEnd = end
-  ): number {
-    const band = RangeSelectionController.#EDGE_BAND;
-    let depth: number;
-    if (at > end - band && (at <= end || at > outerEnd)) depth = at - (end - band);
-    else if (at < start + band && (at >= start || at < outerStart)) depth = at - (start + band);
-    else return 0;
-    const intensity = Math.min(1, Math.abs(depth) / band);
-    return Math.sign(depth) * (4 + RangeSelectionController.#MAX_SPEED * intensity);
   }
 
   /**
