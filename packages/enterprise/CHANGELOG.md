@@ -80,6 +80,10 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   (date style, select option labels, a localized blank label).
 - A chart linked to a cell range follows its range when the grid is sorted,
   filtered, edited or its columns move, one frame after the change.
+- The README lists all eight feature modules, including `totalRowModule`
+  (needed for `totalRow` and `getTotals()`) and `serverSideRowModelModule`
+  (needed for server-side group row ARIA and unloaded rows of the infinite row
+  model), and every element `/define` registers.
 
 ### Fixed
 - A view-bound chart redraws after a page change with the same page size,
@@ -117,6 +121,11 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Scrolling with a large range selected no longer copies the selected values
   on every scroll event, and the floating Chart button and charted range
   outlines reposition once per animation frame.
+- Apps that import from the package root and register neither
+  `rangeSelectionModule` nor `formulaModule` no longer bundle range selection
+  or the formula cell editor: about 32 KB smaller minified (about 10 KB gzip)
+  with esbuild-based toolchains. Apps that register them, or use
+  `apex-grid-enterprise/define`, are unchanged. A build check keeps it that way.
 
 ## [0.8.0] - 2026-10-21
 
