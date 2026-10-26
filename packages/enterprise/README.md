@@ -59,7 +59,8 @@ import 'apex-grid-enterprise/define'; // registers the enterprise element set
 `/define` is the batteries-included entry: it opts the grid into **every**
 built-in feature module and registers the grid plus its companion elements
 (`<apex-grid-enterprise>`, `<apex-grid-tool-panel>`, `<apex-grid-status-bar>`,
-`<apex-grid-set-filter>`). The configuration API is identical to `apex-grid`;
+`<apex-grid-set-filter>`, `<apex-grid-filter-builder>`, `<apex-grid-chart>`,
+`<apex-grid-ai>`). The configuration API is identical to `apex-grid`;
 see the [`apex-grid` README](https://www.npmjs.com/package/apex-grid) for column
 configuration, theming, and events.
 
@@ -76,10 +77,27 @@ ApexGridEnterprise.use(pivotModule, rangeSelectionModule); // only these are bun
 ApexGridEnterprise.register();
 ```
 
-Available modules: `aggregationModule`, `groupingModule`, `pivotModule`,
-`rangeSelectionModule`, `contextMenuModule`, `formulaModule`. The
-`enterpriseModules` array is the full set (it is what `/define` passes to
-`use()`). Modules a grid is not opted into add nothing to your bundle.
+Available modules, and what each one enables:
+
+| Module | Enables |
+| --- | --- |
+| `aggregationModule` | `aggregations` and `getAggregations()` |
+| `groupingModule` | `groupBy` row grouping with group subtotals |
+| `pivotModule` | pivoting through `pivotRows`, `pivotOn` and `pivotValues` |
+| `rangeSelectionModule` | cell range selection, the fill handle, and range copy and paste |
+| `contextMenuModule` | the right-click context menu |
+| `formulaModule` | `allowFormula` columns, the formula cell editor and recalculation |
+| `serverSideRowModelModule` | group-row ARIA for `serverSideRowModel`, and unloaded rows of the server-side and infinite row models treated as not yet records (skipped by selection, export, fill and editing) |
+| `totalRowModule` | `totalRow` and `getTotals()` |
+
+Without its module, the matching property is ignored silently: `totalRow`
+renders no row and `getTotals()` returns `{}`, and `serverSideRowModel`
+still loads and groups rows but its group rows lack `aria-level` and
+`aria-expanded`. Without `serverSideRowModelModule`, `infiniteRowModel` (and
+`serverSideRowModel`) also count a row that has not loaded yet as a record,
+so selection, export, fill and editing act on it. The `enterpriseModules` array is the full set (it is what
+`/define` passes to `use()`). Modules a grid is not opted into add nothing to
+your bundle.
 
 ---
 

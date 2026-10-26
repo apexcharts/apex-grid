@@ -19,7 +19,8 @@ export {
 
 // Batteries-included entry: opt the grid into every built-in feature module,
 // then register the full enterprise element set (the grid plus its companion
-// sibling elements: columns tool panel, selection status bar, set filter).
+// sibling elements: columns tool panel, selection status bar, set filter,
+// filter builder, chart panel and AI panel).
 // Import from the package root instead to opt into only the modules you use.
 ApexGridEnterprise.use(...enterpriseModules);
 ApexGridEnterprise.register();
