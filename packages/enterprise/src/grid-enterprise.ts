@@ -82,14 +82,15 @@ import {
   type ContextMenuItem,
   type ContextMenuTarget,
 } from './features/context-menu.js';
+import type { FormulaFn } from './features/formula/functions.js';
+import { columnLetterToIndex } from './features/formula/refs.js';
+// The store, not the formula barrel: only the module id is a value here, so
+// the formula engine and its cell editor ship only with formulaModule.
 import {
   FORMULA_MODULE_ID,
   type FormulaController,
-  type FormulaFn,
-  formulaEditorTemplate,
-} from './features/formula/index.js';
-import { columnLetterToIndex } from './features/formula/refs.js';
-import type { FormulaRestoreEntry } from './features/formula/store.js';
+  type FormulaRestoreEntry,
+} from './features/formula/store.js';
 import {
   GROUPING_MODULE_ID,
   type GroupingController,
@@ -1827,7 +1828,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     const next = this.columns.map((column) => {
       if (column.allowFormula && column.editable && !column.editorTemplate) {
         injected = true;
-        return { ...column, editorTemplate: formulaEditorTemplate(controller) };
+        return { ...column, editorTemplate: controller.editorTemplate() };
       }
       return column;
     });

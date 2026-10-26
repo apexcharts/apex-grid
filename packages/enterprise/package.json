@@ -28,7 +28,7 @@
     "lint": "biome lint",
     "start": "vite",
     "vite": "vite",
-    "test": "wtr --coverage",
+    "test": "node scripts/check-tree-shaking.js && wtr --coverage",
     "test:watch": "wtr --watch"
   },
   "dependencies": {

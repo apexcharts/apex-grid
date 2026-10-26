@@ -28,6 +28,7 @@ import {
   viewIndexer,
 } from 'apex-grid/internal';
 import type { ReactiveController } from 'lit';
+import { formulaEditorTemplate } from './editor.js';
 import { type CellValue, cycleError, isFormulaError, refError } from './errors.js';
 import { evaluate, type FormulaContext } from './evaluator.js';
 import { createFunctionRegistry, type FormulaFn } from './functions.js';
@@ -584,6 +585,15 @@ export class FormulaController<T extends object> implements ReactiveController, 
   public hostDisconnected(): void {
     const el = this.#host as unknown as HTMLElement;
     el.removeEventListener('cellValueChanged', this.#onCellValueChanged);
+  }
+
+  /**
+   * The `editorTemplate` the grid gives a column that allows formulas: the
+   * formula cell editor bound to this controller. Built here rather than in
+   * the grid so the editor ships only with {@link formulaModule}.
+   */
+  public editorTemplate(): (ctx: unknown) => unknown {
+    return formulaEditorTemplate(this);
   }
 
   /**
