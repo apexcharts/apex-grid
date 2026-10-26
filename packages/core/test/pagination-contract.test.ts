@@ -158,4 +158,54 @@ describe('Pagination contract', () => {
       expect(grid.pageItems.length).to.equal(20);
     });
   });
+
+  describe('paginator and toolbar behaviour', () => {
+    it('core-toolbar-paginator-2: page changes do not rerun the data pipeline', async () => {
+      let sorts = 0;
+      let filters = 0;
+      const grid = await mount({
+        pagination: { enabled: true, pageSize: 2 },
+        dataPipelineConfiguration: {
+          sort: ({ data }) => {
+            sorts++;
+            return data;
+          },
+          filter: ({ data }) => {
+            filters++;
+            return data;
+          },
+        },
+      });
+      sorts = 0;
+      filters = 0;
+      await grid.gotoPage(1);
+      await grid.nextPage();
+      await grid.setPageSize(3);
+      await grid.lastPage();
+      expect(sorts, 'sort hook').to.equal(0);
+      expect(filters, 'filter hook').to.equal(0);
+      expect(grid.pageItems.map((row) => row.id)).to.deep.equal([7, 8]);
+      expect(grid.rows.map((row) => row.data.id)).to.deep.equal([7, 8]);
+    });
+
+    it('core-toolbar-paginator-9: pageChanged reports each applied change', async () => {
+      const grid = await mount({ pagination: { enabled: true, pageSize: 2 } });
+      const pages: number[] = [];
+      grid.addEventListener('pageChanged', (e) => pages.push(e.detail.page));
+      const a = grid.nextPage();
+      const b = grid.nextPage();
+      await Promise.all([a, b]);
+      expect(pages).to.deep.equal([1, 2]);
+    });
+
+    it('sweep-accessibility-6: a page change is announced once, by the grid', async () => {
+      const grid = await mount({ pagination: { enabled: true, pageSize: 3 } });
+      const pager = paginatorOf(grid)!;
+      expect(pager.renderRoot.querySelectorAll('[aria-live]').length).to.equal(0);
+      await grid.nextPage();
+      await settle(grid);
+      const region = grid.renderRoot.querySelector('[part="live-region"]')!;
+      expect(region.textContent?.trim()).to.equal('Page 2 of 3');
+    });
+  });
 });

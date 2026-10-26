@@ -69,20 +69,21 @@ export class PaginationController<T extends object> implements ReactiveControlle
    * Always at least `1` so a paginator can render a sensible "1 / 1" label for empty data.
    */
   public get pageCount(): number {
-    if (!this.pageSize) return 1;
-    return Math.max(1, Math.ceil(this.totalItems / this.pageSize));
+    return this.state.pageCount;
   }
 
   /**
    * Returns the resolved {@link PaginationState} for the current host.
    */
   public get state(): PaginationState {
-    return {
-      page: this.page,
-      pageSize: this.pageSize,
-      pageCount: this.pageCount,
-      totalItems: this.totalItems,
-    };
+    return this.#stateFor(this.page, this.pageSize);
+  }
+
+  /** The state for `page` and `pageSize` over the rows the grid holds now. */
+  #stateFor(page: number, pageSize: number): PaginationState {
+    const totalItems = this.totalItems;
+    const pageCount = pageSize ? Math.max(1, Math.ceil(totalItems / pageSize)) : 1;
+    return { page, pageSize, pageCount, totalItems };
   }
 
   /**
@@ -122,16 +123,30 @@ export class PaginationController<T extends object> implements ReactiveControlle
     });
   }
 
-  #emitChanged() {
+  /**
+   * Applies `page` and `pageSize`, then fires `pageChanged` for that change
+   * once it rendered. The detail is this change, not whatever page a later
+   * call moved to meanwhile, so two unawaited calls report two pages. In
+   * local mode the body slice is read from {@link ApexGrid.pageItems} on
+   * render, so the data pipeline does not rerun; in remote mode it does, so
+   * a pipeline hook that fetches the page by `grid.page` sees the new page.
+   */
+  async #apply(page: number, pageSize: number): Promise<void> {
+    this.page = page;
+    this.pageSize = pageSize;
+    this.host.requestUpdate(this.host.pagination?.mode === 'remote' ? PIPELINE : undefined);
+    // @ts-expect-error - protected member access
+    await this.host.pipelineSettled();
+    const detail = this.#stateFor(page, pageSize);
     this.host.announce(
-      this.host.localize('announce.page', { page: this.page + 1, total: this.pageCount })
+      this.host.localize('announce.page', { page: page + 1, total: detail.pageCount })
     );
-    return this.host.emitEvent('pageChanged', { detail: this.state });
+    this.host.emitEvent('pageChanged', { detail });
   }
 
   /**
    * Navigates to `page`, emitting the cancellable `pageChanging` event first and
-   * the `pageChanged` event after the pipeline has applied.
+   * the `pageChanged` event after the change rendered.
    *
    * @param page - The target zero-based page index. Out-of-range values are clamped.
    * @returns `true` if the change was applied, `false` if it was cancelled or a no-op.
@@ -144,11 +159,7 @@ export class PaginationController<T extends object> implements ReactiveControlle
       return false;
     }
 
-    this.page = next;
-    this.host.requestUpdate(PIPELINE);
-    // @ts-expect-error - protected member access
-    await this.host.pipelineSettled();
-    this.#emitChanged();
+    await this.#apply(next, this.pageSize);
     return true;
   }
 
@@ -158,12 +169,7 @@ export class PaginationController<T extends object> implements ReactiveControlle
    * pipeline settled when the page actually moved.
    */
   public async resetPage(): Promise<void> {
-    if (this.page === 0) return;
-    this.page = 0;
-    this.host.requestUpdate(PIPELINE);
-    // @ts-expect-error - protected member access
-    await this.host.pipelineSettled();
-    this.#emitChanged();
+    if (this.page !== 0) await this.#apply(0, this.pageSize);
   }
 
   /**
@@ -180,12 +186,7 @@ export class PaginationController<T extends object> implements ReactiveControlle
       return false;
     }
 
-    this.pageSize = next;
-    this.page = 0;
-    this.host.requestUpdate(PIPELINE);
-    // @ts-expect-error - protected member access
-    await this.host.pipelineSettled();
-    this.#emitChanged();
+    await this.#apply(0, next);
     return true;
   }
 

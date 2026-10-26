@@ -96,16 +96,17 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
   }
 
   protected renderInfo() {
+    // The grid's live region announces a page change; this summary stays quiet
+    // so a screen reader hears it once.
     const { page, pageSize, totalItems } = this.controller.state;
-    if (totalItems === 0) {
-      return html`<span part="paginator-info" aria-live="polite"
-        >${this.state.localize('pagination.summaryEmpty')}</span
-      >`;
-    }
     const start = page * pageSize + 1;
     const end = Math.min(totalItems, (page + 1) * pageSize);
-    return html`<span part="paginator-info" aria-live="polite"
-      >${this.state.localize('pagination.summary', { start, end, total: totalItems })}</span
+    return html`<span part="paginator-info"
+      >${
+        totalItems
+          ? this.state.localize('pagination.summary', { start, end, total: totalItems })
+          : this.state.localize('pagination.summaryEmpty')
+      }</span
     >`;
   }
 
@@ -167,7 +168,7 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
           disabled: onFirst,
           onClick: () => this.controller.previousPage(),
         })}
-        <span part="paginator-page" aria-live="polite">${page + 1} / ${pageCount}</span>
+        <span part="paginator-page">${page + 1} / ${pageCount}</span>
         ${this.renderButton({
           id: 'next',
           icon: 'page-next',
