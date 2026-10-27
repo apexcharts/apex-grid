@@ -43,10 +43,13 @@ function toCss(height: number | string): string {
  * and exposes a `detailTemplate` ready to drop into the grid's expansion config.
  *
  * The child grid is created once per master row (keyed by row identity) and
- * reused across re-renders, so its own state and scroll position survive a
- * collapse/expand. Async `getDetailData` resolves into the cached grid and
- * requests a host update; a throw or rejection leaves the detail empty and is
- * retried the next time that detail is shown.
+ * reused across re-renders, so its own state (its sort, for example) stays
+ * with its record across a collapse/expand and a master sort. Its scroll
+ * position does not: the node is detached and re-attached in both cases, and
+ * a re-attached grid starts scrolled to the top. Async `getDetailData`
+ * resolves into the cached grid and requests a host update; a throw or
+ * rejection leaves the detail empty and is retried the next time that detail
+ * is shown.
  */
 export class MasterDetailManager<T extends object> {
   #cache = new WeakMap<object, HTMLElement>();

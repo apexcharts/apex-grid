@@ -11,6 +11,7 @@ import {
 import type { ReactiveController } from 'lit';
 import { html, nothing, render } from 'lit';
 import { carryGridTheme } from './carry-theme.js';
+import { captureFocus, type FocusReturn, returnFocus } from './focus-return.js';
 import { RANGE_SELECTION_MODULE_ID, type RangeSelectionController } from './range-selection.js';
 
 export const CONTEXT_MENU_MODULE_ID = 'context-menu';
@@ -130,7 +131,7 @@ export class ContextMenuController<T extends object>
   #menus: MenuEl<T>[] = [];
   #target: ContextMenuTarget<T> | null = null;
   /** What had focus when the root menu opened, so a keyboard close can put focus back. */
-  #restoreFocus: HTMLElement | null = null;
+  #restoreFocus: FocusReturn | null = null;
   /** The header kebab the open menu was opened from, so a second press closes it. */
   #anchor: HTMLElement | null = null;
   /**
@@ -378,9 +379,7 @@ export class ContextMenuController<T extends object>
 
     // Remember what had focus (deep, across shadow roots) before the menu takes it,
     // so a keyboard close or a run item can put focus back where it was.
-    let focused: Element | null = document.activeElement;
-    while (focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement;
-    this.#restoreFocus = focused instanceof HTMLElement ? focused : null;
+    this.#restoreFocus = captureFocus();
 
     this.#rtl = isRTL('auto', this.host as unknown as Element);
     const menu = this.#spawnMenu(detail.items);
@@ -534,11 +533,14 @@ export class ContextMenuController<T extends object>
     if (target) item.run?.(target);
   }
 
-  /** Close everything, then return focus to the pre-open element (keyboard close / run item). */
+  /**
+   * Close everything, then return focus to the pre-open element (keyboard close / run item),
+   * or for a body cell to its address (see {@link returnFocus}).
+   */
   #closeAndRestore(): void {
     const previous = this.#restoreFocus;
     this.#close();
-    if (previous?.isConnected && typeof previous.focus === 'function') previous.focus();
+    returnFocus(previous);
   }
 
   /** Tear down menus from `index` (inclusive) to the top of the stack. */

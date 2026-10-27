@@ -116,6 +116,12 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   package to install.
 - The chart dialog can be dragged by touch, and the drag ends when the pointer
   is cancelled.
+- **Focus returns to the right cell.** Closing the context menu, the Ask AI
+  dialog or the chart dialog puts focus back on the body cell it came from
+  only while that cell still stands at the same row and column, scrolling it
+  back into view if needed. If a sort or a long scroll moved it, focus goes
+  back to the grid (its active cell when that row is rendered) instead of a
+  cell that now shows another row.
 
 ### Performance
 - Scrolling with a large range selected no longer copies the selected values

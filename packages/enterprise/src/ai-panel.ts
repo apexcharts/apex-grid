@@ -3,6 +3,7 @@ import { registerComponent } from 'apex-grid/internal';
 import { css, html, LitElement, nothing, type PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { AIMode, AIResult, Plan } from './features/ai/index.js';
+import { captureFocus, type FocusReturn, returnFocus } from './features/focus-return.js';
 import type { ApexGridEnterprise } from './grid-enterprise.js';
 
 export const AI_TAG = 'apex-grid-ai';
@@ -14,13 +15,6 @@ interface TranscriptEntry {
   /** The reasoner that produced the plan (`'rule'`, `'llm:claude'`, …). */
   source: string;
   mode: AIMode;
-}
-
-/** The deepest focused element across shadow boundaries (so focus restore lands where it was). */
-function deepActiveElement(): HTMLElement | null {
-  let el: Element | null = document.activeElement;
-  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
-  return el instanceof HTMLElement ? el : null;
 }
 
 /**
@@ -324,7 +318,7 @@ export class ApexGridAI extends LitElement {
   #turnGrid: ApexGridAI['grid'] = null;
   #drag: { pointerId: number; offsetX: number; offsetY: number } | null = null;
   /** What had focus before {@link show}, so a dialog close can put focus back. */
-  #restoreFocus: HTMLElement | null = null;
+  #restoreFocus: FocusReturn | null = null;
 
   /** Resolve a locale key against the bound grid's overrides (English when unbound). */
   #t = (key: GridLocaleKey, fallback?: string): string =>
@@ -354,7 +348,7 @@ export class ApexGridAI extends LitElement {
     this.open = true;
     // Remember where focus came from so close() can put it back (dialog a11y). A second show()
     // while focus is already inside keeps the original target.
-    if (!this.matches(':focus-within')) this.#restoreFocus = deepActiveElement();
+    if (!this.matches(':focus-within')) this.#restoreFocus = captureFocus();
     void this.updateComplete.then(() => this.#focus('input'));
   }
 
@@ -365,9 +359,8 @@ export class ApexGridAI extends LitElement {
     this.dispatchEvent(new CustomEvent('apex-ai-closed', { bubbles: true, composed: true }));
     const previous = this.#restoreFocus;
     this.#restoreFocus = null;
-    if (this.mode === 'dialog' && previous?.isConnected && typeof previous.focus === 'function') {
-      previous.focus();
-    }
+    // A body cell gets focus back by its address: rows may have re-bound while open.
+    if (this.mode === 'dialog') returnFocus(previous);
   }
 
   #onKeydown = (event: KeyboardEvent): void => {

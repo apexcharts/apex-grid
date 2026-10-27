@@ -23,6 +23,7 @@ import {
   renderApexChart,
 } from './features/chart.js';
 import { isValidChartFormula } from './features/chart-calc.js';
+import { captureFocus, type FocusReturn, returnFocus } from './features/focus-return.js';
 import { indexToColumnLetter } from './features/formula/refs.js';
 import { RANGE_CHANGED_EVENT } from './features/range-selection.js';
 import { type ApexGridEnterprise, VIEW_CHANGED_EVENT } from './grid-enterprise.js';
@@ -335,7 +336,7 @@ export class ApexGridChart extends LitElement {
   #rafHandle = 0;
   #drag: { pointerId: number; offsetX: number; offsetY: number } | null = null;
   /** What had focus before {@link show}, so a dialog close can put focus back. */
-  #restoreFocus: HTMLElement | null = null;
+  #restoreFocus: FocusReturn | null = null;
 
   public override disconnectedCallback(): void {
     this.#detach();
@@ -403,7 +404,7 @@ export class ApexGridChart extends LitElement {
   public show(): void {
     this.open = true;
     // Remember where focus came from so close() can put it back (dialog a11y).
-    if (!this.matches(':focus-within')) this.#restoreFocus = deepActiveElement();
+    if (!this.matches(':focus-within')) this.#restoreFocus = captureFocus();
     this.#scheduleRefresh();
     void this.updateComplete.then(() => {
       this.renderRoot.querySelector<HTMLElement>('[part="close"]')?.focus();
@@ -416,9 +417,8 @@ export class ApexGridChart extends LitElement {
     this.dispatchEvent(new CustomEvent('apex-chart-closed', { bubbles: true, composed: true }));
     const previous = this.#restoreFocus;
     this.#restoreFocus = null;
-    if (this.mode === 'dialog' && previous?.isConnected && typeof previous.focus === 'function') {
-      previous.focus();
-    }
+    // A body cell gets focus back by its address: rows may have re-bound while open.
+    if (this.mode === 'dialog') returnFocus(previous);
   }
 
   /**
