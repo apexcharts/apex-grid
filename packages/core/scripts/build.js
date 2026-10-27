@@ -17,8 +17,9 @@ const RELEASE_FILES = ['custom-elements.json', 'LICENSE.md', 'README.md', 'CHANG
 // either one fails the build until this list is reviewed. Anything else that
 // differs fails the build too; see scripts/check-dist-manifest.js.
 const DELIBERATE_MANIFEST_DIFFERENCES = {
-  // Published as tilde ranges on purpose, kept narrower than the workspace.
-  'dependencies.@lit-labs/virtualizer': { workspace: '^2.1.0', published: '~2.1.0' },
+  // Published as a tilde range on purpose, kept narrower than the workspace.
+  // (`@lit-labs/virtualizer` is pinned to one exact version on both sides: the
+  // body's rows directive relies on its private members.)
   'dependencies.@lit/context': { workspace: '^1.1.5', published: '~1.1.5' },
   // The workspace manifest omits the field, so in-repo consumers keep every
   // module. Published, only define.js (registers <apex-grid>) and the two

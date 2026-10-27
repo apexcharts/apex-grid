@@ -98,6 +98,10 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   row count, and in remote mode the `pagination.totalItems` you supply, the
   number of rows the server holds for the current filter.
   ([#34](https://github.com/apexcharts/apex-grid/issues/34))
+- The `@lit-labs/virtualizer` dependency is pinned to exactly `2.1.1` (it was
+  `~2.1.0`). The grid body builds on parts of that package that are not public
+  API, so a newer version arrives only with a grid release that has been
+  checked against it.
 
 ### Removed
 - **Breaking (types):** `DataPipelineConfiguration.pagination` and the
@@ -156,6 +160,9 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - An editor rendered again for an edit already in progress (its row scrolled
   back into view, for example) no longer scrolls the grid or selects the typed
   draft when it takes focus.
+- A jump to a row far outside the view that is still waiting for the body to
+  finish scrolling no longer runs after a newer jump, so two quick jumps end on
+  the second row instead of snapping back to the first.
 
 ### Performance
 - Scrolling no longer re-renders the rows that stay in view; only the rows that

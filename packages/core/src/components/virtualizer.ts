@@ -1,7 +1,8 @@
 import { LitVirtualizer } from '@lit-labs/virtualizer/LitVirtualizer.js';
-import type { PropertyValues } from 'lit';
+import { html, type PropertyValues } from 'lit';
 import { registerComponent } from '../internal/register.js';
 import { GRID_BODY } from '../internal/tags.js';
+import { virtualizedRows, virtualizeRows } from './virtualize-rows.js';
 
 /**
  * Attribute the upstream virtualizer stamps on the spacer element it appends in
@@ -128,18 +129,68 @@ export default class ApexVirtualizer extends LitVirtualizer {
   #first = -1;
   #last = -1;
 
+  /**
+   * The latest scroll asked of {@link element}. A reveal deferred until the
+   * layout settles runs only while it is still the latest, so a slow settle
+   * cannot pull the body back from a newer jump.
+   */
+  #reveal = 0;
+
   constructor() {
     super();
     // The upstream constructor has just assigned its default key, so the
     // switch has to be applied per instance, after it.
     if (ApexVirtualizer.rowKeying === 'spike') this.keyFunction = spikeKey;
-    // Registered before the upstream directive's own listener (added on first
-    // render), so the range is current before the rows are re-rendered.
+    // Rows re-render only after every `rangeChanged` listener has run (see
+    // `dispatchEvent`), so the range is current before they do.
     this.addEventListener('rangeChanged', (event) => {
       const { first, last } = event as Event & { first: number; last: number };
       this.#first = first;
       this.#last = last;
     });
+  }
+
+  /** Upstream's own render, with the body's fork of its directive. */
+  public override render() {
+    const { items, renderItem, keyFunction, layout, scroller } = this;
+    return html`${virtualizeRows({ items, renderItem, keyFunction, layout, scroller })}`;
+  }
+
+  /**
+   * Holds the rows' re-render until every `rangeChanged` listener has run, so
+   * a listener sees the rows of the previous range whatever its registration
+   * order. The grid's `bodyRangeChanged` relies on this: it reads which index
+   * the focused row showed before the range moved.
+   */
+  public override dispatchEvent(event: Event): boolean {
+    const rows = event.type === 'rangeChanged' ? virtualizedRows(this) : undefined;
+    return rows ? rows.holdRender(() => super.dispatchEvent(event)) : super.dispatchEvent(event);
+  }
+
+  /**
+   * Upstream's promise, which settles only from its children ResizeObserver.
+   * A render that re-binds rows in place (a sort or a move under slot keys)
+   * resizes nothing, so it would never settle; when nothing has happened for
+   * two frames since the last render, the rows directive settles it instead.
+   * Anything else is left to upstream untouched.
+   */
+  public override get layoutComplete(): Promise<void> | undefined {
+    const promise = super.layoutComplete;
+    if (promise) virtualizedRows(this)?.armLayoutComplete(this.isUpdatePending);
+    return promise;
+  }
+
+  /**
+   * Resolves once the rows reflect this element's latest state: a pending
+   * update, the render it leads to (new items render a few microtasks later,
+   * once the layout reports the range) and every rendered row's own update.
+   *
+   * @internal For the row FLIP settle step. Not public API.
+   */
+  public async rendered(): Promise<void> {
+    if (this.isUpdatePending) await this.updateComplete;
+    if (!this.isConnected) return;
+    await virtualizedRows(this)?.rendered();
   }
 
   /**
@@ -174,9 +225,10 @@ export default class ApexVirtualizer extends LitVirtualizer {
     if (!super.element(target)) return undefined;
     return {
       scrollIntoView: (options: RevealOptions = {}) => {
+        const reveal = ++this.#reveal;
         const row = this.#renderedChild(target);
         if (row) revealWithin(this.#scroller(), row, options);
-        else this.#scrollToUnrendered(target, options);
+        else this.#scrollToUnrendered(target, options, reveal);
       },
     };
   }
@@ -205,7 +257,7 @@ export default class ApexVirtualizer extends LitVirtualizer {
     return null;
   }
 
-  #scrollToUnrendered(index: number, options: RevealOptions): void {
+  #scrollToUnrendered(index: number, options: RevealOptions, reveal: number): void {
     const scroller = this.#scroller();
     const count = this.items.length;
     if (!scroller || !count) return;
@@ -244,8 +296,10 @@ export default class ApexVirtualizer extends LitVirtualizer {
         else return;
     }
     scroller.scrollTo({ top, behavior: options.behavior });
-    // The offset was an estimate; once the target is rendered, align the real row.
+    // The offset was an estimate; once the target is rendered, align the real
+    // row, unless a newer scroll has been asked for in the meantime.
     void this.settled().then(() => {
+      if (reveal !== this.#reveal) return;
       const row = this.#renderedChild(index);
       if (row) revealWithin(scroller, row, options);
     });
