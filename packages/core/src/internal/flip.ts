@@ -1,3 +1,5 @@
+import type { GridHost } from './types.js';
+
 /**
  * Lightweight FLIP (First / Last / Invert / Play) helpers for animating
  * element re-positioning during column reorder + row sort.
@@ -141,6 +143,27 @@ export async function awaitChildUpdates(
   await Promise.all(
     elements.filter((el): el is UpdatableElement => el != null).map((el) => el.updateComplete)
   );
+}
+
+/** What {@link settleRowsForFlip} needs of the grid; the first two are protected there. */
+interface FlipSettleHost {
+  pipelineSettled(): Promise<void>;
+  scrollContainer?: { rendered(): Promise<void> } | null;
+  rows: ReadonlyArray<UpdatableElement>;
+}
+
+/**
+ * Waits until the rows can be measured for a row FLIP's "Last" rects, after
+ * a sort or a row move: the pipeline run it started and the grid's render of
+ * the result, then the body's rows render (new items reach the rows only once
+ * the layout reports the range) and update. Rows outside the body (pinned
+ * rows) are awaited too. Sort and row reorder both use this one wait.
+ */
+export async function settleRowsForFlip<T extends object>(host: GridHost<T>): Promise<void> {
+  const grid = host as unknown as FlipSettleHost;
+  await grid.pipelineSettled();
+  await grid.scrollContainer?.rendered();
+  await awaitChildUpdates(grid.rows);
 }
 
 /**

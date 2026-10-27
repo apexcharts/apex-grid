@@ -1,6 +1,6 @@
 import type { ReactiveController } from 'lit';
 import { PIPELINE } from '../internal/constants.js';
-import { awaitChildUpdates, type KeyedFlipEntry, playKeyedFlip } from '../internal/flip.js';
+import { type KeyedFlipEntry, playKeyedFlip, settleRowsForFlip } from '../internal/flip.js';
 import type { GridHost } from '../internal/types.js';
 import type { SortExpression } from '../operations/sort/types.js';
 import SortDataOperation from '../operations/sort.js';
@@ -455,8 +455,7 @@ export class RowReorderController<T extends object> implements ReactiveControlle
     try {
       const before = this.#captureRowRects();
       if (this.#commit(this.dragging as T, target, position)) {
-        await this.host.updateComplete;
-        await awaitChildUpdates(this.host.rows);
+        await settleRowsForFlip(this.host);
         this.#playRowFlip(before);
       }
     } finally {
@@ -647,8 +646,7 @@ export class RowReorderController<T extends object> implements ReactiveControlle
   }
 
   async #flipAfterUpdate(before: ReadonlyArray<KeyedFlipEntry<T>>): Promise<void> {
-    await this.host.updateComplete;
-    await awaitChildUpdates(this.host.rows);
+    await settleRowsForFlip(this.host);
     this.#playRowFlip(before);
   }
 

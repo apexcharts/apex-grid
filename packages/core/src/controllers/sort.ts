@@ -1,6 +1,6 @@
 import type { ReactiveController } from 'lit';
 import { PIPELINE } from '../internal/constants.js';
-import { awaitChildUpdates, type KeyedFlipEntry, playKeyedFlip } from '../internal/flip.js';
+import { type KeyedFlipEntry, playKeyedFlip, settleRowsForFlip } from '../internal/flip.js';
 import type {
   ColumnConfiguration,
   ColumnSortConfiguration,
@@ -117,12 +117,10 @@ export class SortController<T extends object> implements ReactiveController {
 
     this._sort(expression);
 
-    // @ts-expect-error - protected member access
-    await this.host.pipelineSettled();
-    // Wait for body row updates so the new data is committed to each row
-    // element before measuring the "Last" rect — otherwise the captured-
-    // before and measured-after rects match and the animation no-ops.
-    await awaitChildUpdates(this.host.rows);
+    // The rows must show the sorted data before the "Last" rects are
+    // measured, otherwise the captured-before and measured-after rects match
+    // and the animation no-ops.
+    await settleRowsForFlip(this.host);
     this.#playRowFlip(beforeRects);
     this.#announce(expression, column);
     this.#emitSortedEvent(expression);

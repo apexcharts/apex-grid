@@ -160,6 +160,9 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - An editor rendered again for an edit already in progress (its row scrolled
   back into view, for example) no longer scrolls the grid or selects the typed
   draft when it takes focus.
+- With an async `dataPipelineConfiguration` hook, moving a row with
+  `moveRow`, a keyboard grab or a drag animates the rows into their new places.
+  They jumped there without the animation before.
 - A jump to a row far outside the view that is still waiting for the body to
   finish scrolling no longer runs after a newer jump, so two quick jumps end on
   the second row instead of snapping back to the first.
