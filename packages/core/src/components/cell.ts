@@ -133,6 +133,18 @@ export default class ApexGridCell<T extends object> extends LitElement {
   public value!: PropertyType<T>;
 
   /**
+   * The record (row data object) the cell shows, set by the row next to
+   * {@link value}. A row element can be re-bound to another record without
+   * being rebuilt (a pinned band does when a row above it is unpinned), and
+   * `value` alone cannot tell: two records may hold the same value. A change
+   * here is a full update that drops every per-record state of the cell.
+   *
+   * @internal
+   */
+  @property({ attribute: false })
+  public record!: T;
+
+  /**
    * A reference to the column configuration object.
    */
   @property({ attribute: false })
@@ -165,23 +177,28 @@ export default class ApexGridCell<T extends object> extends LitElement {
   protected editorElement!: HTMLElement | null;
 
   protected get context(): ApexCellContext<T> {
+    // Captured now: by the time a template commits (after an await, say) this
+    // cell and its row may show another record.
+    const data = this.row.data;
+    const key = this.column.key;
     const ctx = {
       parent: this,
       row: this.row,
       column: this.column,
       value: this.value,
+      data,
     } as unknown as {
       parent: ApexGridCell<T>;
       row: ApexGridRow<T>;
       column: ColumnConfiguration<T>;
       value: PropertyType<T>;
+      data: T;
       commit?: (value: unknown) => Promise<boolean>;
     };
     // Only expose `commit` when the column is editable — non-editable
     // interactive widgets should render as read-only.
     if (this.isEditable) {
-      ctx.commit = (next: unknown) =>
-        this.editingController.commitImmediate(this.row.data, this.column.key, next);
+      ctx.commit = (next: unknown) => this.editingController.commitImmediate(data, key, next);
     }
     return ctx as unknown as ApexCellContext<T>;
   }
@@ -269,6 +286,9 @@ export default class ApexGridCell<T extends object> extends LitElement {
   /** Set by a reconnect, whose context re-request is a bare requestUpdate(). */
   #reconnected = false;
 
+  /** Whether the current update re-binds the cell to another {@link record}. */
+  #rebound = false;
+
   public override connectedCallback(): void {
     // A moved row reconnects its cells; the state context consumer then
     // requests an update with nothing changed, which needs no render.
@@ -296,6 +316,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
    * its row beyond {@link value} (a `cellTemplate`, which may read other fields
    * or the row index, or the tree group cell, whose chevron shows the row's
    * expansion) still renders when the row index or the data token moves.
+   * A {@link record} change is never a token: the cell renders in full.
    */
   protected override shouldUpdate(changed: PropertyValues<this>): boolean {
     const reconnected = this.#reconnected;
@@ -314,8 +335,13 @@ export default class ApexGridCell<T extends object> extends LitElement {
   }
 
   protected override willUpdate(changed: PropertyValues<this>) {
+    // A re-bind needs no reset of its own: the staged value, the resumed
+    // draft, the validation errors, the decoration and the tree attribute are
+    // all recomputed below from the record the cell shows now, and a pending
+    // refocus is checked against the re-bind in `updated`.
+    this.#rebound = this.hasUpdated && changed.has('record');
     this.#applyStaged();
-    if (changed.has('editing')) {
+    if (changed.has('editing') || this.#rebound) {
       this.#resumed = this.editing
         ? this.editingController.heldDraft(this.row.data, this.column.key)
         : null;
@@ -452,8 +478,14 @@ export default class ApexGridCell<T extends object> extends LitElement {
       // (validation, decoration) must keep the caret and the user's focus.
       if (!changed.has('editing')) return;
       const editor = this.editorElement;
-      editor?.focus();
-      if (editor instanceof HTMLInputElement) {
+      // An editor rendered again for an edit already in progress (a held
+      // draft, or a re-bind that brought the edited record to this cell) is
+      // not a new edit: no scroll jump, and the draft is not selected over.
+      // A fresh edit keeps the focus scroll that brings a partly hidden cell
+      // into view.
+      const resumed = this.#resumed !== null || this.#rebound;
+      editor?.focus(resumed ? { preventScroll: true } : undefined);
+      if (!resumed && editor instanceof HTMLInputElement) {
         if (editor.type === 'text' || editor.type === 'number') {
           editor.select();
         }
@@ -466,6 +498,11 @@ export default class ApexGridCell<T extends object> extends LitElement {
     // never set the flag, so they don't steal focus from the click target.
     if (changed.get('editing') === true && this.#refocusAfterEdit) {
       this.#refocusAfterEdit = false;
+      // Re-bound away from a record whose edit is still open: the edit
+      // resumes on the record's new cell, which keeps the focus.
+      if (this.#rebound && this.editingController.activeCell) return;
+      // The default focus scroll brings the cell back into view when the
+      // grid was scrolled while the editor was open.
       this.focus();
     }
   }
@@ -756,6 +793,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
       row: this.row,
       column: this.column,
       value: this.#editorValue,
+      data: this.row.data,
       commit: (next: unknown) => this.editingController.commitCell(next),
       cancel: () => this.editingController.cancelCell(),
       setDraft: (next: unknown) => this.editingController.setDraft(next),

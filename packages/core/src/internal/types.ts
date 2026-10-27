@@ -487,12 +487,29 @@ export interface ApexHeaderContext<T extends object> {
 export interface BaseApexCellContext<T extends object, K extends Keys<T> = Keys<T>> {
   /**
    * The cell element parent of the template.
+   *
+   * @remarks
+   * A rendered element, not the record: the grid may later re-bind it to show
+   * another record (a pinned band does when a row above it is unpinned). Read
+   * {@link data} for the record, and do not hold this element across an
+   * `await`.
    */
   parent: ApexGridCell<T>;
   /**
    * The row element containing the cell.
+   *
+   * @remarks
+   * A rendered element that may later show another record, as for
+   * {@link parent}. Read {@link data} for the record, and do not hold this
+   * element across an `await`.
    */
   row: ApexGridRow<T>;
+  /**
+   * The record (row data object) this cell was rendered for. Stays the same
+   * record for the life of this context object, even after the cell element
+   * is re-bound to another record.
+   */
+  readonly data: T;
   /**
    * The current configuration for the column.
    */
@@ -508,6 +525,8 @@ export interface BaseApexCellContext<T extends object, K extends Keys<T> = Keys<
    *
    * Goes through the cancellable `cellValueChanging` event and follow-up
    * `cellValueChanged` event — same write path as an edit-mode commit.
+   * Writes to {@link data}, the record the context was built for, so a commit
+   * issued after an `await` still lands on that record.
    */
   commit?: (value: PropertyType<T, K>) => Promise<boolean>;
 }
@@ -531,6 +550,12 @@ export interface BaseApexEditorContext<T extends object, K extends Keys<T> = Key
   /**
    * Commits `value` as the new cell value, going through the cancellable
    * `cellValueChanging` event and then `cellValueChanged`.
+   *
+   * @remarks
+   * Unlike the display context's `commit`, this one is not bound to
+   * {@link BaseApexCellContext.data}: it commits the cell that is in edit
+   * when it is called. Do not call it after an `await` that can outlive the
+   * edit, as another cell may be in edit by then.
    *
    * @returns `true` if the value was applied, `false` if cancelled.
    */

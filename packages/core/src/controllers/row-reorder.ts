@@ -33,6 +33,26 @@ export interface RowGhostInit {
 }
 
 /**
+ * Snapshots a row element for the floating ghost: its bounding rect and each
+ * cell's rendered text, width and alignment. A cell renders into its own
+ * shadow root, so the text is read from there.
+ */
+export function captureRowGhost(
+  row: Element,
+  cells: ReadonlyArray<Element>,
+  clientX: number,
+  clientY: number
+): RowGhostInit {
+  const rect = row.getBoundingClientRect();
+  const snapshot = cells.map((cell) => ({
+    text: ((cell.shadowRoot ?? cell).textContent ?? '').replace(/\s+/g, ' ').trim(),
+    width: cell.getBoundingClientRect().width,
+    align: getComputedStyle(cell).textAlign,
+  }));
+  return { rect, clientX, clientY, cells: snapshot };
+}
+
+/**
  * Live state for the floating "ghost" row that trails the cursor during a
  * pointer drag. Mirrors {@link ReorderController}'s column ghost: the source
  * row stays in the grid (and live-swaps), the ghost is a purely visual proxy.
@@ -114,7 +134,7 @@ export class RowReorderController<T extends object> implements ReactiveControlle
    */
   #pending: {
     data: T;
-    getGhost: () => RowGhostInit;
+    getGhost: () => RowGhostInit | null;
     startX: number;
     startY: number;
     pointerId: number;
@@ -340,11 +360,13 @@ export class RowReorderController<T extends object> implements ReactiveControlle
    * listener is bound to the **grid host**, so the gesture is immune to the
    * source row's DOM being recycled by a live-swap; the up / cancel listeners
    * are bound to the document, so a release outside the grid ends it too, as
-   * does a move with the primary button no longer held. `getGhost` is a thunk
-   * the controller invokes once, the instant the drag engages, to snapshot the
-   * row's cells (the row is still in place then).
+   * does a move with the primary button no longer held. The ghost is
+   * snapshotted once, the instant the drag engages, from the row element that
+   * renders `data` then; `getGhost` is the pressed row's own snapshot, used
+   * when no rendered row shows `data`, and returns `null` once that row shows
+   * another record.
    */
-  public armPointerDrag(data: T, getGhost: () => RowGhostInit, event: PointerEvent): void {
+  public armPointerDrag(data: T, getGhost: () => RowGhostInit | null, event: PointerEvent): void {
     const pinned = this.host.pinnedRows;
     if (!this.enabled || pinned.top.includes(data) || pinned.bottom.includes(data)) return;
     this.#pending = {
@@ -379,11 +401,29 @@ export class RowReorderController<T extends object> implements ReactiveControlle
       } catch {
         /* a synthetic pointer id may not be capturable; hit-testing still works */
       }
-      this.startDrag(pending.data, pending.getGhost());
+      this.startDrag(pending.data, this.#ghostAtEngage(pending) ?? undefined);
     }
     this.moveGhost(event.clientX, event.clientY);
     this.dragOver(event.clientY);
   };
+
+  /**
+   * The ghost snapshot for an engaging drag, taken from the row element that
+   * renders the pressed record now. A re-bind between the press and the
+   * engage (a sort, a data change) can leave another record in the pressed
+   * element, so the element is found by record, not kept from the press.
+   */
+  #ghostAtEngage(pending: {
+    data: T;
+    getGhost: () => RowGhostInit | null;
+    startX: number;
+    startY: number;
+  }): RowGhostInit | null {
+    const row = this.host.rows.find((candidate) => candidate.data === pending.data);
+    if (!row) return pending.getGhost();
+    const cells = row.cells as unknown as Element[];
+    return captureRowGhost(row as unknown as Element, cells, pending.startX, pending.startY);
+  }
 
   #onPointerUp = (event: PointerEvent): void => {
     if (event.pointerId === this.#pending?.pointerId) this.#endPointer();

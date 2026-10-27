@@ -1,10 +1,13 @@
 import { consume } from '@lit/context';
 import { html, LitElement, nothing } from 'lit';
 import { property, queryAll } from 'lit/decorators.js';
+import { keyed } from 'lit/directives/keyed.js';
+import { live } from 'lit/directives/live.js';
 import { repeat } from 'lit/directives/repeat.js';
-import type { RowGhostInit } from '../controllers/row-reorder.js';
+import { captureRowGhost, type RowGhostInit } from '../controllers/row-reorder.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
 import type { PresentedRow } from '../internal/feature-module.js';
+import { cancelFlips, FLIP_ID_Y, hasFlipsInFlight } from '../internal/flip.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_ROW_TAG } from '../internal/tags.js';
 import type { ActiveNode, ColumnConfiguration, Keys } from '../internal/types.js';
@@ -145,9 +148,6 @@ export default class ApexGridRow<T extends object> extends LitElement {
    */
   #presented: PresentedRow | null = null;
 
-  #dragStartX = 0;
-  #dragStartY = 0;
-
   /**
    * Arms a row drag. In handle mode only the grip starts one; in whole-row mode
    * a press anywhere except an interactive sub-part does. The move / up plumbing
@@ -186,33 +186,25 @@ export default class ApexGridRow<T extends object> extends LitElement {
       }
     }
 
-    this.#dragStartX = event.clientX;
-    this.#dragStartY = event.clientY;
-    // The controller snapshots the ghost the instant the drag engages (the row
-    // is still in place then), seeded from the original press point.
+    // The controller snapshots the ghost the instant the drag engages, seeded
+    // from the original press point, from whichever row renders the pressed
+    // record then. This row may show another record by that time (a re-bind),
+    // so its own snapshot declines once it does.
+    const data = this.data;
+    const { clientX, clientY } = event;
     reorder.armPointerDrag(
-      this.data,
-      () => this.#captureGhost(this.#dragStartX, this.#dragStartY),
+      data,
+      () => (this.data === data ? this.#captureGhost(clientX, clientY) : null),
       event
     );
   };
 
   /**
    * Snapshots the row's visible cells (text, width, alignment) and bounding rect
-   * so the controller can paint a faithful floating ghost. Invoked once, at the
-   * moment the drag engages.
+   * so the controller can paint a faithful floating ghost.
    */
   #captureGhost(clientX: number, clientY: number): RowGhostInit {
-    const rect = this.getBoundingClientRect();
-    const cells = this.cells.map((cell) => {
-      const el = cell as unknown as HTMLElement;
-      return {
-        text: (el.textContent ?? '').replace(/\s+/g, ' ').trim(),
-        width: el.getBoundingClientRect().width,
-        align: getComputedStyle(el).textAlign,
-      };
-    });
-    return { rect, clientX, clientY, cells };
+    return captureRowGhost(this, this.cells as unknown as Element[], clientX, clientY);
   }
 
   public override connectedCallback(): void {
@@ -233,7 +225,18 @@ export default class ApexGridRow<T extends object> extends LitElement {
   @property({ attribute: false, type: Number })
   public ariaRowOffset = 1;
 
+  /** The record this element rendered last, to spot a re-bind to another one. */
+  #renderedData: T | undefined;
+
   protected override willUpdate() {
+    // A row FLIP moves the record it was started for. Re-bound to another
+    // record mid-flight, the element would carry that motion over to the new
+    // one, so it stops. Checked only while a FLIP runs: scroll re-binds pay
+    // nothing.
+    if (this.data !== this.#renderedData) {
+      if (this.#renderedData !== undefined && hasFlipsInFlight()) cancelFlips(this, FLIP_ID_Y);
+      this.#renderedData = this.data;
+    }
     this.setAttribute('aria-rowindex', String(this.index + this.ariaRowOffset + 1));
     // Zebra parity from the row index, not the DOM position (body-row.scss).
     this.toggleAttribute('data-alt', this.index % 2 === 1);
@@ -247,7 +250,11 @@ export default class ApexGridRow<T extends object> extends LitElement {
       : null;
     this.#syncExportParts();
     if (this.#presented) {
+      // Data-row state does not apply, and an element re-bound from a data
+      // row (a pinned band, a recycled body slot) must not carry it over.
+      // `dragging` and `grabbed` are bound by record on every render.
       this.selected = false;
+      this.expanded = false;
       this.removeAttribute('aria-selected');
       if (typeof this.#presented.level === 'number') {
         this.setAttribute('aria-level', String(this.#presented.level));
@@ -437,13 +444,18 @@ export default class ApexGridRow<T extends object> extends LitElement {
       parent: this.state.host,
     });
     // A row owns only cells, so the panel is one cell across the whole row.
+    // The content is keyed by record: a row element re-bound to another
+    // record (a pinned band, a recycled body slot) builds fresh detail DOM
+    // rather than showing the previous record's (a typed input, a nested
+    // grid's sort). A row that keeps its record keeps its detail DOM.
+    const detail = keyed(this.data, content);
     return html`<div
       part="detail-panel"
       role="gridcell"
       aria-colindex="1"
       aria-colspan=${this.state.colCount}
     >
-      <div role="region" aria-label=${this.state.localize('row.detail')}>${content}</div>
+      <div role="region" aria-label=${this.state.localize('row.detail')}>${detail}</div>
     </div>`;
   }
 
@@ -475,8 +487,12 @@ export default class ApexGridRow<T extends object> extends LitElement {
       const cell = input.parentElement;
       const focused =
         this.renderRoot instanceof ShadowRoot && this.renderRoot.activeElement === input;
-      void selection.toggleRow(this.data).then(async () => {
-        input.checked = selection.isSelected(this.data);
+      // The record clicked, captured before the await: by the time the
+      // selection settles this row may show another record, whose state its
+      // own render (the live `.checked` binding below) already wrote.
+      const record = this.data;
+      void selection.toggleRow(record).then(async () => {
+        if (this.data === record) input.checked = selection.isSelected(record);
         // A rejected row that was still selected loses its checkbox once
         // deselected. Keep focus in its cell rather than letting it fall to
         // the body, where the grid's keys no longer reach.
@@ -511,14 +527,17 @@ export default class ApexGridRow<T extends object> extends LitElement {
     };
     // A row `isRowSelectable` rejects keeps the cell (the columns stay
     // aligned) but no control, as the controller refuses to select it; a
-    // still-selected one keeps its checkbox so it can be deselected.
+    // still-selected one keeps its checkbox so it can be deselected. `live`
+    // checks against the box itself: a click flips it before the binding
+    // knows, so a row re-bound in the same render to a record with the old
+    // binding value would otherwise keep the clicked state.
     const checkbox =
       this.selected || selection.isSelectable(this.data)
         ? html`<input
           type="checkbox"
           part="selection-checkbox"
           aria-label=${this.state.localize('row.select')}
-          .checked=${this.selected}
+          .checked=${live(this.selected)}
           @click=${handleClick}
           @change=${handleChange}
         />`
@@ -595,6 +614,7 @@ export default class ApexGridRow<T extends object> extends LitElement {
             .editing=${editing}
             .column=${column}
             .row=${this as ApexGridRow<T>}
+            .record=${this.data}
             .value=${this.data[column.key]}
             .colindex=${ariaColindex}
             .rowIndex=${this.index}

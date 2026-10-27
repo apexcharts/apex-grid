@@ -34,6 +34,12 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   `export-menu` and the rest), and each paginator button also carries its own
   part: `paginator-first`, `paginator-prev`, `paginator-next` or
   `paginator-last`. ([#37](https://github.com/apexcharts/apex-grid/issues/37))
+- **`ctx.data` in cell and editor templates.** The context handed to a
+  `cellTemplate` or an `editorTemplate` carries `data`, the record the cell
+  was rendered for. It stays that record after an `await`, while `ctx.row`
+  and `ctx.parent` are elements that a pinned row band can later re-bind to
+  another record. A `cellTemplate`'s `ctx.commit` writes to `ctx.data`. An
+  editor's `ctx.commit` still commits the cell in edit when it is called.
 
 ### Changed
 - **The grid role and its row counts moved from the `<apex-grid>` host to an
@@ -135,6 +141,21 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - A page size change or quick filter cancelled through `pageChanging` or
   `quickFilterChanging` no longer leaves the selector or search box showing
   the refused value.
+- **Pinned rows no longer show the previous row's state.** When a pinned row
+  element switches to another record (a row above it is unpinned, say), it no
+  longer keeps the previous record's staged row edit value, validation error,
+  expanded state, detail panel content or selection checkbox state, even when
+  both records hold the same cell value.
+- A `cellTemplate` that calls `ctx.commit` after an `await` writes to the
+  record it was rendered for, even if the rows changed in the meantime.
+- Moving a keyboard grabbed row with the arrow keys keeps focus on that row
+  instead of dropping it to the page, and Escape puts the active cell and
+  focus back on the row at its original position.
+- The floating ghost of a row drag shows the row's cell text. It showed empty
+  cells before.
+- An editor rendered again for an edit already in progress (its row scrolled
+  back into view, for example) no longer scrolls the grid or selects the typed
+  draft when it takes focus.
 
 ### Performance
 - Scrolling no longer re-renders the rows that stay in view; only the rows that

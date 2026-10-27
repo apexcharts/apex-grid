@@ -17,9 +17,66 @@ const FLIP_DURATION_MS = 220;
 const FLIP_EASING = 'cubic-bezier(0.2, 0, 0.2, 1)';
 const MIN_DELTA_PX = 0.5;
 
+/** Animation id of a vertical (row) FLIP. */
+export const FLIP_ID_Y = 'apex-flip-y';
+/** Animation id of a horizontal (column) FLIP. */
+export const FLIP_ID_X = 'apex-flip-x';
+/** Animation id of a FLIP that may move on both axes. */
+export const FLIP_ID_BOTH = 'apex-flip';
+
+type FlipAxis = 'x' | 'y' | 'both';
+
+const FLIP_IDS: Record<FlipAxis, string> = { x: FLIP_ID_X, y: FLIP_ID_Y, both: FLIP_ID_BOTH };
+
+/**
+ * FLIP animations started and not yet finished or cancelled, across every
+ * grid on the page. A row re-bound to another record cancels its running
+ * FLIP only while this is non-zero, so ordinary scroll re-binds pay nothing.
+ */
+let flipsInFlight = 0;
+
+/** Whether any FLIP animation is running right now. */
+export function hasFlipsInFlight(): boolean {
+  return flipsInFlight > 0;
+}
+
+/** Cancels the running FLIP animations with `id` on `element` (not its subtree). */
+export function cancelFlips(element: Element, id: string): void {
+  for (const animation of element.getAnimations()) {
+    if (animation.id === id) animation.cancel();
+  }
+}
+
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false;
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/**
+ * Starts one FLIP on `element`, tagged with the axis id and counted in
+ * {@link hasFlipsInFlight} until it finishes or is cancelled.
+ */
+function animateFlip(element: HTMLElement, dx: number, dy: number, axis: FlipAxis): void {
+  // `composite: 'add'` stacks our delta on top of any inline transform
+  // (e.g. the virtualizer's `translate(0, Ypx)` on row elements).
+  const animation = element.animate(
+    [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
+    {
+      id: FLIP_IDS[axis],
+      duration: FLIP_DURATION_MS,
+      easing: FLIP_EASING,
+      composite: 'add',
+    }
+  );
+  flipsInFlight++;
+  let counted = true;
+  const done = () => {
+    if (!counted) return;
+    counted = false;
+    flipsInFlight--;
+  };
+  animation.addEventListener('finish', done);
+  animation.addEventListener('cancel', done);
 }
 
 /**
@@ -40,7 +97,7 @@ export interface FlipEntry {
  * vertical motion (row sort), `'both'` for diagonal motion if either axis
  * could move.
  */
-export function playFlip(entries: ReadonlyArray<FlipEntry>, axis: 'x' | 'y' | 'both' = 'both') {
+export function playFlip(entries: ReadonlyArray<FlipEntry>, axis: FlipAxis = 'both') {
   if (prefersReducedMotion() || entries.length === 0) return;
 
   for (const { element, rect: oldRect } of entries) {
@@ -49,17 +106,7 @@ export function playFlip(entries: ReadonlyArray<FlipEntry>, axis: 'x' | 'y' | 'b
     const dx = axis === 'y' ? 0 : oldRect.left - newRect.left;
     const dy = axis === 'x' ? 0 : oldRect.top - newRect.top;
     if (Math.abs(dx) < MIN_DELTA_PX && Math.abs(dy) < MIN_DELTA_PX) continue;
-
-    // `composite: 'add'` stacks our delta on top of any inline transform
-    // (e.g. the virtualizer's `translate(0, Ypx)` on row elements).
-    element.animate(
-      [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
-      {
-        duration: FLIP_DURATION_MS,
-        easing: FLIP_EASING,
-        composite: 'add',
-      }
-    );
+    animateFlip(element, dx, dy, axis);
   }
 }
 
@@ -120,29 +167,28 @@ export interface KeyedFlipEntry<K> {
  * @param resolveElement - Function that returns the current DOM element
  * representing `key`, or `null` if the keyed row is no longer in view.
  * @param axis - Same semantics as {@link playFlip}.
+ *
+ * @remarks
+ * A FLIP of the same axis still running on an element is cancelled before
+ * its new rect is measured, so a quick second move replaces the first
+ * rather than stacking on it. Motion stays continuous: the captured "First"
+ * rect already includes the cancelled animation's offset.
  */
 export function playKeyedFlip<K>(
   before: ReadonlyArray<KeyedFlipEntry<K>>,
   resolveElement: (key: K) => HTMLElement | null,
-  axis: 'x' | 'y' | 'both' = 'both'
+  axis: FlipAxis = 'both'
 ) {
   if (prefersReducedMotion() || before.length === 0) return;
 
   for (const { key, rect: oldRect } of before) {
     const element = resolveElement(key);
     if (!element?.isConnected) continue;
+    if (flipsInFlight > 0) cancelFlips(element, FLIP_IDS[axis]);
     const newRect = element.getBoundingClientRect();
     const dx = axis === 'y' ? 0 : oldRect.left - newRect.left;
     const dy = axis === 'x' ? 0 : oldRect.top - newRect.top;
     if (Math.abs(dx) < MIN_DELTA_PX && Math.abs(dy) < MIN_DELTA_PX) continue;
-
-    element.animate(
-      [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
-      {
-        duration: FLIP_DURATION_MS,
-        easing: FLIP_EASING,
-        composite: 'add',
-      }
-    );
+    animateFlip(element, dx, dy, axis);
   }
 }

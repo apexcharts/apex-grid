@@ -448,6 +448,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
       | {
           enabled: boolean;
           isGrabbing: boolean;
+          grabbed: T | null;
           grab(rowIndex: number): boolean;
           moveGrabbed(direction: -1 | 1): number;
           drop(): void;
@@ -471,10 +472,12 @@ export class NavigationController<T extends object> implements ReactiveControlle
         case 'ArrowUp':
         case 'ArrowDown': {
           event.preventDefault();
+          const row = reorder.grabbed;
           const next = reorder.moveGrabbed(event.key === 'ArrowDown' ? 1 : -1);
-          if (next >= 0) {
+          if (next >= 0 && row) {
             this.active = Object.assign(this.nextNode, { row: next });
             this.scrollToRow(next);
+            this.#followRecord(row);
           }
           return true;
         }
@@ -483,10 +486,13 @@ export class NavigationController<T extends object> implements ReactiveControlle
           event.preventDefault();
           reorder.drop();
           return true;
-        case 'Escape':
+        case 'Escape': {
           event.preventDefault();
+          const row = reorder.grabbed;
           reorder.cancelGrab();
+          if (row) this.#followRecord(row);
           return true;
+        }
         default:
           return false;
       }
@@ -497,6 +503,28 @@ export class NavigationController<T extends object> implements ReactiveControlle
       return reorder.grab(this.active.row);
     }
     return false;
+  }
+
+  /**
+   * After a keyboard grab moves `record` (or Escape puts it back), puts the
+   * active row on the record's view index and real focus on its cell, once
+   * the re-run pipeline has rendered. The move re-renders the rows, which
+   * can drop focus or leave it on an element now showing another record.
+   * Yields when the active cell changed in the meantime (a newer key).
+   */
+  #followRecord(record: T): void {
+    const node = this._active;
+    // @ts-expect-error - protected member access
+    void (this.host.pipelineSettled() as Promise<void>).then(() => {
+      if (this._active !== node || node === SENTINEL_NODE) return;
+      const row = this.host.pageItems.indexOf(record);
+      if (row < 0) return;
+      if (row !== node.row) {
+        this.active = { ...node, row };
+        this.scrollToRow(row);
+      }
+      this.focusActiveCell();
+    });
   }
 
   public navigate(event: KeyboardEvent) {

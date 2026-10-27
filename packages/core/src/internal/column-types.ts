@@ -35,14 +35,19 @@ export type SelectOption<V = unknown> = V | { value: V; label?: string };
  * conditional-type narrowing in generic positions.
  */
 export interface ColumnTypeCellContext<T extends object> {
+  /** Rendered element; may later show another record (see {@link data}). */
   parent: ApexGridCell<T>;
+  /** Rendered element; may later show another record (see {@link data}). */
   row: ApexGridRow<T>;
   column: ColumnConfiguration<T>;
   value: unknown;
+  /** The record this context was built for. */
+  readonly data: T;
   /**
    * Commits a new value for this cell without entering edit mode. Only
    * present when the column is editable. Used by interactive display
-   * widgets like the boolean checkbox.
+   * widgets like the boolean checkbox. Writes to {@link data}, also after an
+   * `await`.
    */
   commit?(value: unknown): Promise<boolean>;
 }
@@ -53,6 +58,11 @@ export interface ColumnTypeCellContext<T extends object> {
  * {@link EditingController}.
  */
 export interface ColumnTypeEditorContext<T extends object> extends ColumnTypeCellContext<T> {
+  /**
+   * Commits the open editor's value (see `BaseApexEditorContext.commit`).
+   * It commits the cell in edit when called, not {@link data}, so it should
+   * not run after an `await` that outlives the edit.
+   */
   commit(value: unknown): Promise<boolean>;
   cancel(): void;
   /**
