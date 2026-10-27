@@ -5,7 +5,6 @@ import type ApexGridHeader from '../components/header.js';
 import type ApexGridRow from '../components/row.js';
 import type { SortComparer } from '../operations/sort/types.js';
 
-export type NavigationState = 'previous' | 'current';
 export type GridHost<T extends object> = ReactiveControllerHost & ApexGrid<T>;
 
 /**
