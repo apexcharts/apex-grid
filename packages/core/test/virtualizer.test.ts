@@ -51,6 +51,30 @@ function renderedRows(grid: ApexGrid<Row>) {
 }
 
 /**
+ * Guards the suite-wide keying switch: the spike group must really key the
+ * body by slot, or a broken hook would rerun item keys and pass vacuously.
+ */
+describe('virtualizer row keying switch', () => {
+  afterEach(() => fixtureCleanup());
+
+  it('keys the body by slot under the spike run and by record otherwise', async () => {
+    // Removed afterwards: the boxes are not fixtures, and one left in the flow
+    // would push the later suites' grids below the window.
+    const box = makeBox({});
+    const grid = mount(box);
+    await settle(grid, 2);
+    const item = { id: 131 };
+    const key = bodyOf(grid).keyFunction(item, 130);
+    box.remove();
+    if ((globalThis as { __apexRowKeying?: unknown }).__apexRowKeying === 'spike') {
+      expect(key).to.equal(2);
+    } else {
+      expect(key).to.equal(item);
+    }
+  });
+});
+
+/**
  * Regression cover for https://github.com/apexcharts/apex-grid/issues/31: a grid
  * that settles with a correct row count and scroll extent but no rendered rows,
  * because the upstream virtualizer measured a zero-height viewport and has no

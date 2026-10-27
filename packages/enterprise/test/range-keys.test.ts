@@ -1,6 +1,7 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
 import { ApexGridEnterprise, enterpriseModules, type RangeBounds } from '../src/index.js';
+import { settle as settleLayout } from './settle.js';
 
 // Range selection keys and pointer drags: which keys the grid acts on, RTL
 // extension, scrolling the range into view, ending abandoned drags, restoring
@@ -69,10 +70,7 @@ async function mount<T extends object = Row>(
     ></apex-grid-enterprise>`,
     { parentNode: parent }
   );
-  await grid.updateComplete;
-  await (grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } })
-    .scrollContainer?.layoutComplete;
-  await settle(grid);
+  await settleLayout(grid);
   return grid;
 }
 

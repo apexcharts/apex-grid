@@ -1,6 +1,7 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
 import { ApexGridChart, ApexGridEnterprise, enterpriseModules } from '../src/index.js';
+import { settle } from './settle.js';
 
 interface Row {
   name: string;
@@ -22,20 +23,12 @@ function sizedParent() {
   return node;
 }
 
-async function layoutComplete(grid: ApexGridEnterprise<Row>) {
-  await grid.updateComplete;
-  const scroll = (grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } })
-    .scrollContainer;
-  await scroll?.layoutComplete;
-  await nextFrame();
-}
-
 async function mount() {
   const grid = await fixture<ApexGridEnterprise<Row>>(
     html`<apex-grid-enterprise .data=${data.map((r) => ({ ...r }))} .columns=${columns}></apex-grid-enterprise>`,
     { parentNode: sizedParent() }
   );
-  await layoutComplete(grid);
+  await settle(grid);
   return grid;
 }
 
@@ -296,7 +289,7 @@ describe('Context menu: targets, events and entry points (ctx-menu batch)', () =
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await layoutComplete(grid as unknown as ApexGridEnterprise<Row>);
+    await settle(grid);
     await grid.expandRow(orders[0]);
     await grid.updateComplete;
     const root = (grid as unknown as { shadowRoot: ShadowRoot }).shadowRoot;
@@ -366,7 +359,7 @@ describe('Context menu: targets, events and entry points (ctx-menu batch)', () =
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await layoutComplete(grid);
+    await settle(grid);
     let seen: { row?: Row; rowIndex?: number } | null = null;
     grid.contextMenu = {
       items: (target) => {
@@ -375,7 +368,7 @@ describe('Context menu: targets, events and entry points (ctx-menu batch)', () =
       },
     };
     expect(grid.pinRow(rows[2], 'top')).to.equal(true);
-    await layoutComplete(grid);
+    await settle(grid);
     const root = (grid as unknown as { shadowRoot: ShadowRoot }).shadowRoot;
     const nameCell = (record: Row, pinned: boolean) =>
       deepFind(root, (el) => {
@@ -410,7 +403,7 @@ describe('Context menu: targets, events and entry points (ctx-menu batch)', () =
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await layoutComplete(grid);
+    await settle(grid);
     let seen: { row?: Row; rowIndex?: number } | null = null;
     grid.contextMenu = {
       items: (target) => {
@@ -458,7 +451,7 @@ describe('Context menu: targets, events and entry points (ctx-menu batch)', () =
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await layoutComplete(grid);
+    await settle(grid);
     rightClick(headerElement(grid, 'name')!);
     expect(item('Pin to start')).to.exist;
     expect(item('Sort ascending')).to.equal(undefined);
@@ -476,12 +469,12 @@ describe('Context menu: targets, events and entry points (ctx-menu batch)', () =
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await layoutComplete(grid);
+    await settle(grid);
     rightClick(headerElement(grid, 'value')!);
     expect(item('Sort ascending'), 'sortable before the move').to.exist;
     for (const m of document.querySelectorAll('.apex-grid-context-menu')) m.remove();
     expect(grid.moveRow(0, 2, 'after')).to.equal(true);
-    await layoutComplete(grid);
+    await settle(grid);
     rightClick(headerElement(grid, 'value')!);
     expect(item('Pin to start')).to.exist;
     expect(item('Sort ascending')).to.equal(undefined);
@@ -520,7 +513,7 @@ describe('Context menu: targets, events and entry points (ctx-menu batch)', () =
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await layoutComplete(grid);
+    await settle(grid);
     expect(grid.contextMenu).to.equal(false);
     expect(grid.rangeSelection).to.equal(false);
     const event = rightClick(cellElement(grid, 0, 'name')!);
@@ -628,7 +621,7 @@ describe('Context menu: targets, events and entry points (ctx-menu batch)', () =
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await layoutComplete(grid);
+    await settle(grid);
     expect(await grid.editCell(0, 'name')).to.equal(true);
     const cell = cellElement(grid, 0, 'name')!;
     const editorInput = () => deepFind(cell.shadowRoot!, (el) => el.localName === 'input');
@@ -652,7 +645,7 @@ describe('Context menu: targets, events and entry points (ctx-menu batch)', () =
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await layoutComplete(grid);
+    await settle(grid);
     const root = (grid as unknown as { shadowRoot: ShadowRoot }).shadowRoot;
     const checkbox = deepFind(
       root,

@@ -60,6 +60,20 @@ export type RevealOptions = ScrollIntoViewOptions & { insets?: ScrollInsets };
 const SETTLE_TIMEOUT_MS = 250;
 
 /**
+ * How the body keys its rows. `'item'` is upstream's default (the record
+ * itself). `'spike'` keys by slot, `index % 128`, so a rebind reuses the row
+ * elements in place.
+ *
+ * @internal Test-only, for the suite-wide keying switch. Not public API.
+ */
+export type RowKeying = 'item' | 'spike';
+
+/** Number of slots the spike key cycles through. */
+const SPIKE_SLOTS = 128;
+
+const spikeKey = (_item: unknown, index: number) => index % SPIKE_SLOTS;
+
+/**
  * Scrolls `el` into view as if `scroller` had `insets` as its scroll-padding.
  * The padding is set only for the duration of the call. Left in place, the
  * browser would apply it to every later scroll into view, including focus
@@ -82,6 +96,16 @@ export function revealWithin(
 }
 
 export default class ApexVirtualizer extends LitVirtualizer {
+  /**
+   * Row keying every body starts with, read once from the page global
+   * `__apexRowKeying` that the test runner sets for its second suite run.
+   * Anything other than `'spike'` leaves upstream's item key untouched.
+   *
+   * @internal Test-only, for the suite-wide keying switch. Not public API.
+   */
+  public static rowKeying: RowKeying =
+    (globalThis as { __apexRowKeying?: unknown }).__apexRowKeying === 'spike' ? 'spike' : 'item';
+
   /**
    * Watches the host's intersection with the window, which is the one input to
    * the upstream viewport measurement that has no invalidation signal of its
@@ -106,6 +130,9 @@ export default class ApexVirtualizer extends LitVirtualizer {
 
   constructor() {
     super();
+    // The upstream constructor has just assigned its default key, so the
+    // switch has to be applied per instance, after it.
+    if (ApexVirtualizer.rowKeying === 'spike') this.keyFunction = spikeKey;
     // Registered before the upstream directive's own listener (added on first
     // render), so the range is current before the rows are re-rendered.
     this.addEventListener('rangeChanged', (event) => {

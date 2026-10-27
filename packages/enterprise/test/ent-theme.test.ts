@@ -17,6 +17,7 @@ import {
 } from '../src/features/ai/index.js';
 import { ApexGridChart, ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 import { rows as aiRows, enterpriseSchema } from './ai-fixtures.js';
+import { settle } from './settle.js';
 
 // Enterprise chrome follows the grid: chart panel and dialog surfaces, the
 // body-portaled context menu (colours and direction), the group chevrons'
@@ -77,11 +78,7 @@ async function mountGrid(attrs: { theme?: string; dir?: string; style?: string }
     ></apex-grid-enterprise>`,
     { parentNode: sizedParent() }
   );
-  await grid.updateComplete;
-  const scroll = (grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } })
-    .scrollContainer;
-  await scroll?.layoutComplete;
-  await nextFrame();
+  await settle(grid);
   return grid;
 }
 

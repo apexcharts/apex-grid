@@ -28,8 +28,9 @@
     "lint": "biome lint",
     "start": "vite",
     "vite": "vite",
-    "test": "node scripts/check-tree-shaking.js && wtr --coverage",
-    "test:watch": "wtr --watch"
+    "test": "node scripts/check-tree-shaking.js && wtr --group default --coverage",
+    "test:spike": "wtr --group spike",
+    "test:watch": "wtr --group default --watch"
   },
   "dependencies": {
     "apex-commons": "^0.8.0",

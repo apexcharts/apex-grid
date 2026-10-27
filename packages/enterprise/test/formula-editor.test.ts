@@ -8,6 +8,7 @@ import {
   type FormulaEditorController,
 } from '../src/features/formula/index.js';
 import { ApexGridEnterprise, enterpriseModules } from '../src/index.js';
+import { settle } from './settle.js';
 
 function makeController() {
   const formulas = new Map<string, string>();
@@ -360,11 +361,7 @@ describe('formula editor autocomplete + click-to-insert (Tier 2, P3, grid-bound)
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await grid.updateComplete;
-    const scroll = (grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } })
-      .scrollContainer;
-    await scroll?.layoutComplete;
-    await nextFrame();
+    await settle(grid);
     return grid;
   }
 
@@ -448,11 +445,7 @@ describe('formula editor point mode: drag range + arrow keys (grid-bound)', () =
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await grid.updateComplete;
-    const scroll = (grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } })
-      .scrollContainer;
-    await scroll?.layoutComplete;
-    await nextFrame();
+    await settle(grid);
     return grid;
   }
 

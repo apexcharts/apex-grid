@@ -28,7 +28,7 @@
     "e2e:report": "playwright show-report",
     "e2e:docker": "docker run --rm --ipc=host -v \"$PWD\":/work -w /work mcr.microsoft.com/playwright:v1.60.0-noble npx playwright test",
     "e2e:docker:update": "docker run --rm --ipc=host -v \"$PWD\":/work -w /work mcr.microsoft.com/playwright:v1.60.0-noble npx playwright test --update-snapshots",
-    "test": "npm run test -w packages/core && npm run test -w packages/enterprise && npm run check:generated -w react-apex-grid && npm run test -w react-apex-grid",
+    "test": "npm run test -w packages/core && npm run test:spike -w packages/core && npm run test -w packages/enterprise && npm run test:spike -w packages/enterprise && npm run check:generated -w react-apex-grid && npm run test -w react-apex-grid",
     "lint": "npm run lint -w packages/core && npm run lint -w packages/enterprise",
     "format": "npm run format -w packages/core",
     "prepare": "husky"

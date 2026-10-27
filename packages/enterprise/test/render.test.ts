@@ -1,4 +1,4 @@
-import { elementUpdated, expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
+import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
 import { ApexGrid } from 'apex-grid/internal';
 import {
@@ -7,6 +7,7 @@ import {
   enterpriseModules,
   VIEW_CHANGED_EVENT,
 } from '../src/index.js';
+import { settle } from './settle.js';
 
 type Row = { id: number; name: string };
 const data: Row[] = Array.from({ length: 5 }, (_, id) => ({ id, name: `Row ${id}` }));
@@ -22,16 +23,6 @@ function sizedParent() {
 function stateOf(grid: ApexGridEnterprise<Row>) {
   return (grid as unknown as { stateController: { modules: Map<string, unknown> } })
     .stateController;
-}
-
-/** Waits for the virtualizer's first layout so `grid.rows` is populated. */
-async function layoutComplete(grid: ApexGridEnterprise<Row>) {
-  await elementUpdated(grid);
-  const scrollContainer = (
-    grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } }
-  ).scrollContainer;
-  await scrollContainer?.layoutComplete;
-  await nextFrame();
 }
 
 describe('ApexGridEnterprise', () => {
@@ -57,9 +48,31 @@ describe('ApexGridEnterprise', () => {
       html`<apex-grid-enterprise .data=${data} .columns=${columns}></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await layoutComplete(grid);
+    await settle(grid);
     expect(grid.columns.length).to.equal(columns.length);
     expect(grid.rows.length).to.equal(data.length);
+  });
+
+  // Guards the suite-wide keying switch against a core dist built without the
+  // hook: the spike run would then rerun item keys and pass vacuously.
+  it('keys the body by slot under the spike run and by record otherwise', async () => {
+    const grid = await fixture<ApexGridEnterprise<Row>>(
+      html`<apex-grid-enterprise .data=${data} .columns=${columns}></apex-grid-enterprise>`,
+      { parentNode: sizedParent() }
+    );
+    await settle(grid);
+    const body = (
+      grid as unknown as {
+        scrollContainer: { keyFunction: (item: unknown, index: number) => unknown };
+      }
+    ).scrollContainer;
+    const item = { id: 131 };
+    const key = body.keyFunction(item, 130);
+    if ((globalThis as { __apexRowKeying?: unknown }).__apexRowKeying === 'spike') {
+      expect(key).to.equal(2);
+    } else {
+      expect(key).to.equal(item);
+    }
   });
 
   // Declared before the `use()` test below: the static module registry is
@@ -95,7 +108,7 @@ describe('ApexGridEnterprise', () => {
       html`<apex-grid-enterprise .data=${data} .columns=${columns}></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await layoutComplete(grid);
+    await settle(grid);
     let fired = 0;
     grid.addEventListener(VIEW_CHANGED_EVENT, () => {
       fired += 1;

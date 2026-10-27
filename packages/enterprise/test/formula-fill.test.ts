@@ -1,4 +1,4 @@
-import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
+import { expect, fixture, fixtureCleanup, html } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
 import {
   FORMULA_MODULE_ID,
@@ -6,6 +6,7 @@ import {
   formulaModule,
 } from '../src/features/formula/index.js';
 import { ApexGridEnterprise, enterpriseModules } from '../src/index.js';
+import { settle } from './settle.js';
 
 interface Row {
   qty: number; // A
@@ -71,11 +72,7 @@ describe('formula fill + paste (Tier 2, P2)', () => {
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await grid.updateComplete;
-    const scroll = (grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } })
-      .scrollContainer;
-    await scroll?.layoutComplete;
-    await nextFrame();
+    await settle(grid);
     return grid;
   }
 

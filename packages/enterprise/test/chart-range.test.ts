@@ -1,4 +1,4 @@
-import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
+import { expect, fixture, fixtureCleanup, html } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
 import type { ApexGridChart } from '../src/chart-panel.js';
 import type { ChartModel } from '../src/features/chart.js';
@@ -9,6 +9,7 @@ import {
   enterpriseModules,
   type RangeBounds,
 } from '../src/index.js';
+import { settle } from './settle.js';
 
 interface Row {
   region: string;
@@ -36,21 +37,12 @@ function sizedParent() {
   return node;
 }
 
-async function layoutComplete(grid: ApexGridEnterprise<Row>) {
-  await grid.updateComplete;
-  const scrollContainer = (
-    grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } }
-  ).scrollContainer;
-  await scrollContainer?.layoutComplete;
-  await nextFrame();
-}
-
 async function mount() {
   const grid = await fixture<ApexGridEnterprise<Row>>(
     html`<apex-grid-enterprise .data=${data.map((r) => ({ ...r }))} .columns=${columns}></apex-grid-enterprise>`,
     { parentNode: sizedParent() }
   );
-  await layoutComplete(grid);
+  await settle(grid);
   return grid;
 }
 

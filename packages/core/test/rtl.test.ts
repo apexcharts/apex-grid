@@ -1,8 +1,9 @@
-import { expect, fixture, fixtureCleanup, html, nextFrame, waitUntil } from '@open-wc/testing';
+import { expect, fixture, fixtureCleanup, html, waitUntil } from '@open-wc/testing';
 import { ApexGrid } from '../src/components/grid.js';
 import ApexGridHeaderRow from '../src/components/header-row.js';
 import type { ColumnConfiguration } from '../src/internal/types.js';
 import { isRTL } from '../src/internal/utils.js';
+import { settle } from './utils/settle.js';
 
 interface Row {
   id: number;
@@ -35,10 +36,7 @@ async function mount(dir: 'ltr' | 'rtl') {
     html`<apex-grid .data=${data} .columns=${columns}></apex-grid>`,
     { parentNode: parent }
   );
-  await grid.updateComplete;
-  await (grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } })
-    .scrollContainer?.layoutComplete;
-  await nextFrame();
+  await settle(grid);
   await waitUntil(() => grid.rows.length > 0, 'body rows never rendered');
   return grid;
 }

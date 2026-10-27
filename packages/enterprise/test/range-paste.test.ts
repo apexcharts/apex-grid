@@ -1,7 +1,8 @@
-import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
+import { expect, fixture, fixtureCleanup, html } from '@open-wc/testing';
 import { type ColumnConfiguration, max } from 'apex-grid';
 import { getGroupMeta } from '../src/features/grouping.js';
 import { ApexGridEnterprise, enterpriseModules } from '../src/index.js';
+import { settle } from './settle.js';
 
 // Range paste and fill: the editing gate, formula history, type coercion,
 // quoted TSV, synthetic rows, overlapping formula paste, series typing and
@@ -59,11 +60,7 @@ async function mount<T extends object>(
     ></apex-grid-enterprise>`,
     { parentNode: sizedParent() }
   );
-  await grid.updateComplete;
-  const scroll = (grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } })
-    .scrollContainer;
-  await scroll?.layoutComplete;
-  await nextFrame();
+  await settle(grid);
   return grid;
 }
 

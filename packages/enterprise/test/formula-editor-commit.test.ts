@@ -6,6 +6,7 @@ import {
   type FormulaEditorController,
 } from '../src/features/formula/index.js';
 import { ApexGridEnterprise, enterpriseModules } from '../src/index.js';
+import { settle } from './settle.js';
 
 // The formula editor commits through the grid's edit path: an untouched editor
 // writes nothing, literals keep the column type, a rejected literal keeps the
@@ -70,11 +71,7 @@ async function mount<R extends object>(
     ></apex-grid-enterprise>`,
     { parentNode: parent }
   );
-  await grid.updateComplete;
-  await (grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } })
-    .scrollContainer?.layoutComplete;
-  await nextFrame();
-  await nextFrame();
+  await settle(grid);
   return grid;
 }
 

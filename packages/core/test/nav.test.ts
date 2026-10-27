@@ -22,6 +22,7 @@ import type {
   RowTransformer,
 } from '../src/internal/feature-module.js';
 import type { ActiveNode, ColumnConfiguration, GridHost } from '../src/internal/types.js';
+import { settle as settleLayout } from './utils/settle.js';
 
 /**
  * Keyboard navigation: per-grid state, revalidation of the active cell after
@@ -61,8 +62,8 @@ async function mount<T extends object>(
   const parentNode = document.createElement('div');
   Object.assign(parentNode.style, style);
   const grid = await fixture<ApexGrid<T>>(template, { parentNode });
-  // An empty body never completes a layout, so the wait is bounded.
-  await Promise.race([body(grid).layoutComplete, aTimeout(300)]);
+  // An empty body never completes a layout; `settled()` bounds the wait.
+  await settleLayout(grid);
   await settle(grid);
   return grid;
 }

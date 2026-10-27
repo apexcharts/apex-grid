@@ -12,6 +12,7 @@ import type {
   RowTransformer,
 } from '../src/internal/feature-module.js';
 import type { ColumnConfiguration, GridHost } from '../src/internal/types.js';
+import { settle as settleLayout } from './utils/settle.js';
 
 interface Row {
   id: number;
@@ -28,10 +29,7 @@ function sizedParent() {
 }
 
 async function settle<T extends object>(grid: ApexGrid<T>) {
-  await grid.updateComplete;
-  await (grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } })
-    .scrollContainer?.layoutComplete;
-  await nextFrame();
+  await settleLayout(grid);
   await waitUntil(() => grid.rows.length > 0, 'rows never rendered', { timeout: 3000 });
   await Promise.all(grid.rows.map((row) => row.updateComplete));
 }

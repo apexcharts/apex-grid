@@ -1,8 +1,9 @@
-import { expect, fixture, fixtureCleanup, html, nextFrame, waitUntil } from '@open-wc/testing';
+import { expect, fixture, fixtureCleanup, html, waitUntil } from '@open-wc/testing';
 import { ApexGrid } from '../src/components/grid.js';
 import ApexGridHeaderRow from '../src/components/header-row.js';
 import ApexGridPaginator from '../src/components/paginator.js';
 import type { ColumnConfiguration } from '../src/internal/types.js';
+import { settle } from './utils/settle.js';
 
 interface Row {
   id: number;
@@ -44,11 +45,8 @@ async function mount(paginate = false) {
     ></apex-grid>`,
     { parentNode: sizedParent() }
   );
-  await grid.updateComplete;
   // Let the virtualizer lay out, or `grid.rows` is still empty.
-  await (grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } })
-    .scrollContainer?.layoutComplete;
-  await nextFrame();
+  await settle(grid);
   // The header row renders its headers in a later update than the grid's own,
   // so a fixed number of frames is a race on the first mount of the suite.
   await waitUntil(() => {

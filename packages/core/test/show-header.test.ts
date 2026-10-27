@@ -1,17 +1,10 @@
-import {
-  aTimeout,
-  elementUpdated,
-  expect,
-  fixture,
-  fixtureCleanup,
-  html,
-  nextFrame,
-} from '@open-wc/testing';
+import { elementUpdated, expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import { sendKeys } from '@web/test-runner-commands';
 import { ApexGrid } from '../src/components/grid.js';
 import type ApexVirtualizer from '../src/components/virtualizer.js';
 import type { StateController } from '../src/controllers/state.js';
 import type { ColumnConfiguration } from '../src/internal/types.js';
+import { settle as settleLayout } from './utils/settle.js';
 
 /**
  * `showHeader = false` (GitHub #35): the header rows leave the layout and the
@@ -56,7 +49,7 @@ async function mount(
   const parentNode = document.createElement('div');
   Object.assign(parentNode.style, style);
   const grid = await fixture<ApexGrid<Row>>(template, { parentNode });
-  await Promise.race([internals(grid).scrollContainer.layoutComplete, aTimeout(300)]);
+  await settleLayout(grid);
   await settle(grid);
   return grid;
 }
@@ -178,7 +171,7 @@ describe('showHeader', () => {
       ></apex-grid>
     </div>`);
     const grid = wrap.querySelector('apex-grid') as ApexGrid<Row>;
-    await Promise.race([internals(grid).scrollContainer.layoutComplete, aTimeout(300)]);
+    await settleLayout(grid);
     await settle(grid);
 
     wrap.querySelector<HTMLButtonElement>('#before')!.focus();

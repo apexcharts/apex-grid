@@ -8,6 +8,7 @@ import type CellTestFixture from './cell-fixture.js';
 import FilterRowFixture from './filter-row.fixture.js';
 import HeaderTestFixture from './header-fixture.js';
 import RowTestFixture from './row-fixture.js';
+import { settle } from './settle.js';
 
 interface RowCollection<T extends object> {
   first: RowTestFixture<T>;
@@ -63,7 +64,7 @@ export default class GridTestFixture<T extends object> {
     this.updateConfig();
 
     this.grid = await fixture(this.setupTemplate(), { parentNode: this.setupParentNode() });
-    await this.gridBody.layoutComplete;
+    await settle(this.grid);
   }
 
   public tearDown() {

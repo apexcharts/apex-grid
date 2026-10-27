@@ -6,6 +6,7 @@ import {
   RANGE_CHANGED_EVENT,
   type RangeChangedDetail,
 } from '../src/index.js';
+import { settle } from './settle.js';
 
 interface Row {
   id: number;
@@ -34,23 +35,13 @@ function sizedParent() {
   return node;
 }
 
-/** Waits for the virtualizer's first layout so `grid.rows`/cells are populated. */
-async function layoutComplete(grid: ApexGridEnterprise<Row>) {
-  await grid.updateComplete;
-  const scrollContainer = (
-    grid as unknown as { scrollContainer?: { layoutComplete?: Promise<unknown> } }
-  ).scrollContainer;
-  await scrollContainer?.layoutComplete;
-  await nextFrame();
-}
-
 async function mount() {
   // Clone the data so mutating features (paste / fill) can't leak across tests.
   const grid = await fixture<ApexGridEnterprise<Row>>(
     html`<apex-grid-enterprise .data=${data.map((row) => ({ ...row }))} .columns=${columns} .editing=${{ enabled: true }}></apex-grid-enterprise>`,
     { parentNode: sizedParent() }
   );
-  await layoutComplete(grid);
+  await settle(grid);
   return grid;
 }
 
@@ -383,7 +374,7 @@ describe('Range selection', () => {
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await layoutComplete(grid);
+    await settle(grid);
 
     const failed: string[] = [];
     grid.addEventListener('cellValidationFailed', (event) => {
@@ -409,7 +400,7 @@ describe('Range selection', () => {
       ></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
     );
-    await layoutComplete(grid);
+    await settle(grid);
 
     grid.selectRange({ row: 0, column: 'amount' });
     grid.pasteText('5\t6\n7\t8'); // 4 cells across amount/score for rows 0-1
@@ -489,7 +480,7 @@ describe('Range selection', () => {
         ></apex-grid-enterprise>`,
         { parentNode: parent }
       );
-      await layoutComplete(grid);
+      await settle(grid);
       return grid;
     }
 
