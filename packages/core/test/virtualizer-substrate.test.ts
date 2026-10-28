@@ -11,7 +11,7 @@ import { settle } from './utils/settle.js';
 // The body virtualizer substrate: the forked rows directive and what it adds on
 // top of upstream (measure on reuse, the `layoutComplete` fallback, the reveal
 // token, `rendered()` and the range listener order). Everything here runs in
-// both keyings; the spike group keys the body by slot, which is where a reused
+// both keyings; the slot group recycles the body rows, which is where a reused
 // row element stands at a new index.
 // See plans/core/2026-10-27-row-recycling-plan.md, sections 3.1 and 3.5.
 
@@ -109,7 +109,7 @@ describe('virtualizer substrate', () => {
       detailTemplate: ({ data }) => html`<div style="height: 200px">detail ${data.id}</div>`,
     };
 
-    // Under the spike key a jump re-binds row elements to new indexes in place.
+    // Under slot recycling a jump re-binds row elements to new indexes in place.
     // Upstream measures only what its ResizeObserver reports, so without a
     // fresh observation those indexes keep an estimated size and rows overlap.
     it('keeps rendered rows contiguous and measured across jumps and a smooth scroll', async () => {
@@ -364,7 +364,7 @@ describe('virtualizer substrate', () => {
         { once: true }
       );
 
-      // Far enough that index 133 (slot 5 under the spike key) renders and 5 does not.
+      // Far enough that index 5 leaves the range, so slot recycling re-binds its row in place.
       grid.scrollTop = 130 * bodyRows(grid)[0].getBoundingClientRect().height;
       await settle(grid);
 

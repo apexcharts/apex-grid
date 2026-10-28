@@ -2,7 +2,7 @@ import type { ReactiveController } from 'lit';
 import type ApexGridRow from '../components/row.js';
 import { revealWithin, type ScrollInsets } from '../components/virtualizer.js';
 import { SENTINEL_NODE } from '../internal/constants.js';
-import { GRID_ROW_TAG } from '../internal/tags.js';
+import { GRID_BODY, GRID_CELL_TAG, GRID_ROW_TAG } from '../internal/tags.js';
 import type { ActiveNode, ColumnConfiguration, GridHost, Keys } from '../internal/types.js';
 import { getDisplayColumns, isRTL } from '../internal/utils.js';
 
@@ -17,6 +17,13 @@ const RELATIVE_KEYS = new Set([
   'PageUp',
   'PageDown',
 ]);
+
+/** The focused element, through every open shadow root on the way down. */
+function deepActiveElement(): Element | null {
+  let el = document.activeElement;
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+  return el;
+}
 
 export class NavigationController<T extends object> implements ReactiveController {
   protected handlers = new Map(
@@ -219,24 +226,27 @@ export class NavigationController<T extends object> implements ReactiveControlle
    * whose target row was not rendered when the scroll started.
    */
   public focusActiveCell(reveal = false): void {
+    void this.#focusActive(reveal);
+  }
+
+  /** {@link focusActiveCell}, settling once the focus moved or was given up. */
+  async #focusActive(reveal = false): Promise<void> {
     const node = this._active;
     if (node === SENTINEL_NODE) return;
-    void (async () => {
-      await this.host.updateComplete;
-      let cell = this.findCell(node);
-      if (!cell) {
-        await this.virtualizer.settled();
-        cell = this.findCell(node);
-      }
-      if (!cell) {
-        await new Promise(requestAnimationFrame);
-        cell = this.findCell(node);
-      }
-      // The user moved on while this was waiting: leave focus to the newer move.
-      if (!cell || this._active !== node) return;
-      if (reveal) this.scrollToCell(node);
-      cell.focus({ preventScroll: true });
-    })();
+    await this.host.updateComplete;
+    let cell = this.findCell(node);
+    if (!cell) {
+      await this.virtualizer.settled();
+      cell = this.findCell(node);
+    }
+    if (!cell) {
+      await new Promise(requestAnimationFrame);
+      cell = this.findCell(node);
+    }
+    // The user moved on while this was waiting: leave focus to the newer move.
+    if (!cell || this._active !== node) return;
+    if (reveal) this.scrollToCell(node);
+    cell.focus({ preventScroll: true });
   }
 
   public get active() {
@@ -250,6 +260,231 @@ export class NavigationController<T extends object> implements ReactiveControlle
 
   constructor(protected host: GridHost<T>) {
     this.host.addController(this);
+  }
+
+  /**
+   * Whether this grid's body holds focus: the body itself, one of its cells
+   * or an editor in one, not a grid nested in a detail panel. Tracked from
+   * the body's focus events ({@link focusEntered}, {@link focusLeft}). A
+   * focus loss a re-bind caused (it removed the focused editor while a
+   * reconcile is running) keeps it until that reconcile has run, so it can
+   * put focus back under row recycling. Any other loss clears it: a click
+   * elsewhere, the window losing focus, a template removing its own focused
+   * element, the grid leaving the document. Focus is never taken back once
+   * it left the grid.
+   */
+  public get ownsFocus(): boolean {
+    return this.#ownsFocus;
+  }
+
+  #ownsFocus = false;
+
+  /** The record the focused row showed when focus arrived, for the reconcile. */
+  #focusedRecord: T | null = null;
+
+  /**
+   * The element that lost focus to nowhere in this task, until a microtask
+   * tells a removal (no longer in the document) from a blur (still there).
+   */
+  #blurred: Element | null = null;
+
+  /** Bumped by every {@link reconcileFocus}, so only the latest one acts. */
+  #reconcile = 0;
+
+  /** The token of the reconcile still to run, or 0 when none is. */
+  #reconciling = 0;
+
+  /** Set while a page change holds focus in the body (see {@link parkFocus}). */
+  #parked: { record: T | null } | null = null;
+
+  /** Set while this controller focuses the body itself, which must not forward. */
+  #focusingBody = false;
+
+  /** A focused grid's active cell when it was detached, until it is re-attached. */
+  #detached: { node: ActiveNode<T> } | null = null;
+
+  /**
+   * Whether focus arriving on the body itself should move on to the active
+   * cell (the roving tab stop). Not while a page change holds focus in the
+   * body, or while this controller puts it there.
+   */
+  public get forwardsBodyFocus(): boolean {
+    return !this.#parked && !this.#focusingBody;
+  }
+
+  /**
+   * Focus arrived in the body. `owned` is whether the event is this grid's
+   * rather than a nested grid's (the grid's `ownsEvent`).
+   */
+  public focusEntered(event: FocusEvent, owned: boolean): void {
+    this.#blurred = null;
+    this.#ownsFocus = owned;
+    this.#focusedRecord = owned ? (this.#locate(event.composedPath()[0])?.row?.data ?? null) : null;
+  }
+
+  /**
+   * Focus left something in the body. Focus moving to another element is
+   * followed by its `focusin`, which sets {@link ownsFocus} again when that
+   * element is this body's. Focus going nowhere is a blur when the element
+   * is still in the document a microtask later, and a removal otherwise. A
+   * removal keeps {@link ownsFocus} only while a reconcile is running, which
+   * then decides; with none, nothing would repair it, so a later reconcile
+   * must not either.
+   */
+  public focusLeft(event: FocusEvent, owned: boolean): void {
+    if (!owned) return;
+    if (event.relatedTarget) {
+      this.#ownsFocus = false;
+      return;
+    }
+    const target = event.composedPath()[0] as Element;
+    this.#blurred = target;
+    queueMicrotask(() => {
+      if (this.#blurred !== target) return;
+      this.#blurred = null;
+      if (target.isConnected || !this.#reconciling) this.#ownsFocus = false;
+    });
+  }
+
+  /**
+   * Row recycling: after the rows re-render, puts focus back in the body when
+   * the render took it away. A re-bind keeps every row element in place, so
+   * focus usually stays where it was, on the cell at the active position; it
+   * is lost only when the focused element left the document (an editor whose
+   * slot now shows another record) or stands on a row that now shows another
+   * record without being active. Then focus goes to the edited record's
+   * editor when it is rendered, else the active cell when its row is, else
+   * the body. Acts only while the body owns focus, so it never takes focus
+   * back from outside the grid or off a nested grid. A loss it leaves
+   * unrepaired clears {@link ownsFocus}.
+   */
+  public reconcileFocus(): void {
+    if (!this.#ownsFocus || !this.host.rowRecycling) return;
+    const token = ++this.#reconcile;
+    this.#reconciling = token;
+    void (async () => {
+      try {
+        // A range change commits its rows right after its listeners return.
+        await Promise.resolve();
+        await this.virtualizer.rendered();
+        if (token !== this.#reconcile || this.#parked) return;
+        if (!this.#ownsFocus || !this.host.isConnected) return;
+        const focused = deepActiveElement();
+        if (focused && focused !== document.body) {
+          const at = this.#locate(focused);
+          if (!at?.row) return;
+          const active = this._active;
+          const onActive =
+            at.row.index === active.row && (!at.cell || at.cell.column.key === active.column);
+          if (onActive || at.row.data === this.#focusedRecord) return;
+        }
+        await this.#restoreFocus();
+      } finally {
+        if (token === this.#reconcile) {
+          this.#reconciling = 0;
+          // A page change decides once its pipeline has run (parkFocus).
+          if (!this.#parked && this.#lost()) this.#ownsFocus = false;
+        }
+      }
+    })();
+  }
+
+  /** Focus on the edited record's editor, else the active cell, else the body. */
+  async #restoreFocus(): Promise<void> {
+    const edit = this.editing?.activeCell;
+    const row = edit && this.#renderedRows().find((each) => each.data === edit.data);
+    const cell = row?.cells.find((each) => each.column.key === edit?.columnKey);
+    if (cell) {
+      await cell.updateComplete;
+      const editor = cell.shadowRoot?.querySelector<HTMLElement>('input, [data-apex-editor]');
+      if (this.#lost()) (editor ?? cell).focus({ preventScroll: true });
+      return;
+    }
+    if (this._active !== SENTINEL_NODE && this.virtualizer.isRendered(this._active.row)) {
+      await this.#focusActive();
+      return;
+    }
+    this.#focusBody();
+  }
+
+  /**
+   * Row recycling: a page change re-binds every row to the new page's
+   * records, so a focused cell would stay focused on another record. Holds
+   * focus in the body across the change: the body does not forward focus to
+   * the active cell, and the post-render reconcile waits. Returns what to
+   * call once the change has run its pipeline: focus then moves to the body
+   * unless it rests on an editor or on a cell still showing the record it
+   * showed before. Returns `null`, holding nothing, without row recycling or
+   * while the body does not own focus.
+   */
+  public parkFocus(): (() => Promise<void>) | null {
+    if (!this.host.rowRecycling || !this.#ownsFocus) return null;
+    const at = this.#locate(deepActiveElement());
+    const park = { record: at?.row?.data ?? null };
+    this.#parked = park;
+    return async () => {
+      await this.virtualizer.rendered();
+      if (this.#parked !== park) return;
+      this.#parked = null;
+      if (!this.#ownsFocus || !this.host.isConnected) return;
+      const focused = deepActiveElement();
+      if (focused && focused !== document.body) {
+        const now = this.#locate(focused);
+        if (!now?.row) return;
+        if (now.cell && (now.cell as HTMLElement & { editing?: boolean }).editing) return;
+        if (now.row.data === park.record) return;
+      }
+      this.#focusBody();
+    };
+  }
+
+  /** Focuses the body itself, without its forward to the active cell. */
+  #focusBody(): void {
+    this.#focusingBody = true;
+    try {
+      (this.virtualizer as HTMLElement).focus({ preventScroll: true });
+    } finally {
+      this.#focusingBody = false;
+    }
+  }
+
+  /** Whether focus has gone nowhere. */
+  #lost(): boolean {
+    const focused = deepActiveElement();
+    return !focused || focused === document.body;
+  }
+
+  #renderedRows(): ApexGridRow<T>[] {
+    return Array.from(
+      this.virtualizer.querySelectorAll(GRID_ROW_TAG)
+    ) as unknown as ApexGridRow<T>[];
+  }
+
+  /**
+   * Where `el` stands in this grid's body: the row and cell holding it, or
+   * neither for the body itself. `null` when it is not in this body, which
+   * includes a grid nested in one of its rows (its own body comes first on
+   * the way up).
+   */
+  #locate(
+    el: EventTarget | null
+  ): { row?: ApexGridRow<T>; cell?: ApexGridRow<T>['cells'][number] } | null {
+    const body = this.virtualizer as Element | null;
+    if (!body) return null;
+    let row: ApexGridRow<T> | undefined;
+    let cell: ApexGridRow<T>['cells'][number] | undefined;
+    let node = el instanceof Node ? el : null;
+    while (node) {
+      if (node === body) return { row, cell };
+      if (node instanceof Element) {
+        const name = node.localName;
+        if (name === GRID_BODY) return null;
+        if (!cell && name === GRID_CELL_TAG) cell = node as unknown as typeof cell;
+        if (!row && name === GRID_ROW_TAG) row = node as unknown as ApexGridRow<T>;
+      }
+      node = node instanceof ShadowRoot ? node.host : node.parentNode;
+    }
+    return null;
   }
 
   /**
@@ -408,16 +643,55 @@ export class NavigationController<T extends object> implements ReactiveControlle
     void this.host.toggleRowSelection(data);
   }
 
-  public hostConnected() {}
+  public hostConnected() {
+    const detached = this.#detached;
+    this.#detached = null;
+    if (detached) this.#refocusAfterMove(detached.node);
+  }
 
   public hostDisconnected() {
+    // A grid moved while its body held focus: under row recycling the master
+    // row showing this grid's record changes on a master sort, and the
+    // detail node follows its record into another row. The browser dropped
+    // focus just before (`#blurred`); a re-attach within this task restores
+    // the active cell and focus. Anything later is a removal, as before.
+    const moved = this.#blurred !== null && this.host.rowRecycling;
+    const detached = moved ? { node: this._active } : null;
     this.active = SENTINEL_NODE as ActiveNode<T>;
+    this.#detached = detached;
+    // A grid out of the document holds no focus: a re-attach later (a kept
+    // alive tab or route) must not take focus on its next sort or scroll.
+    if (!detached) this.#ownsFocus = false;
+    if (detached) {
+      setTimeout(() => {
+        if (this.#detached !== detached) return;
+        this.#detached = null;
+        this.#ownsFocus = false;
+      });
+    }
+  }
+
+  /**
+   * Restores the active cell a moved grid had and focuses it (the body when
+   * no cell was active, or its row is not rendered), unless something else
+   * took focus in the meantime.
+   */
+  #refocusAfterMove(node: ActiveNode<T>): void {
+    if (node !== SENTINEL_NODE) this.active = node;
+    void (async () => {
+      await this.host.updateComplete;
+      if (!this.#lost() || this._active !== node || !this.host.isConnected) return;
+      const cell = node === SENTINEL_NODE ? undefined : this.findCell(node);
+      // The body forwards to the active cell once the rows have rendered.
+      (cell ?? (this.virtualizer as HTMLElement)).focus({ preventScroll: true });
+    })();
   }
 
   protected get editing() {
     // @ts-expect-error - protected member access
     return this.host.stateController.editing as
       | {
+          activeCell: { data: T; columnKey: Keys<T> } | null;
           enabled: boolean;
           isEditable(column: ColumnConfiguration<T>): boolean;
           editCell(rowIndex: number, columnKey: Keys<T>): Promise<boolean>;

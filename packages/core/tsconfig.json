@@ -42,6 +42,7 @@
     "exclude": "**/*+(.test|-fixture|-styles).ts",
     "excludePrivate": true,
     "excludeProtected": true,
+    "excludeInternal": true,
     "excludeExternals": true,
     "excludeNotDocumented": true,
     "disableSources": true,

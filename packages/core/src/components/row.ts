@@ -1,5 +1,5 @@
 import { consume } from '@lit/context';
-import { html, LitElement, nothing } from 'lit';
+import { html, LitElement, nothing, type RootPart, render } from 'lit';
 import { property, queryAll } from 'lit/decorators.js';
 import { keyed } from 'lit/directives/keyed.js';
 import { live } from 'lit/directives/live.js';
@@ -30,6 +30,129 @@ const GRIP_ICON = html`<svg
   <circle cx="6" cy="12.5" r="1.25" />
   <circle cx="10" cy="12.5" r="1.25" />
 </svg>`;
+
+/**
+ * Rows marked `data-rebound` whose frame has not painted yet, and the ones
+ * whose frame has: the mark comes off one frame after the frame that paints
+ * the new record. A `requestAnimationFrame` callback runs before that frame's
+ * style pass, so clearing in the first one would let the change animate.
+ */
+let reboundPending = new Set<Element>();
+let reboundPainted = new Set<Element>();
+let reboundFrame = 0;
+
+function clearRebound() {
+  reboundFrame = 0;
+  for (const row of reboundPainted) row.removeAttribute('data-rebound');
+  reboundPainted = reboundPending;
+  reboundPending = new Set();
+  if (reboundPainted.size) reboundFrame = requestAnimationFrame(clearRebound);
+}
+
+/**
+ * Marks a row that now shows another record (or, under row recycling, its
+ * first one) for one painted frame. `body-row.scss` zeroes the motion tokens
+ * under the mark, and they inherit into everything the row renders, the
+ * cells' shadow roots included, so nothing animates from what the element
+ * showed before.
+ */
+function markRebound(row: Element) {
+  row.setAttribute('data-rebound', '');
+  reboundPainted.delete(row);
+  reboundPending.add(row);
+  if (!reboundFrame) reboundFrame = requestAnimationFrame(clearRebound);
+}
+
+/** One record's detail content, rendered into a node of its own. */
+interface DetailRoot {
+  readonly node: HTMLElement;
+  readonly part: RootPart;
+  /** The row that last took the node. */
+  owner: Element | null;
+  /** Changes whenever another row takes the node (see {@link DetailRoots.show}). */
+  key: number;
+}
+
+/** Source of {@link DetailRoot.key} values, unique across grids. */
+let detailKey = 0;
+
+/**
+ * Detail panel content per record, for a grid that recycles its body rows
+ * (`rowRecycling`). A body row element there shows whatever record its slot
+ * holds next, so a sort or `moveRow` would hand one record's detail DOM to
+ * another, or (keyed) rebuild it. Instead each record's content is rendered
+ * into a root node of its own and the row hands Lit that node, which then
+ * moves into whichever row shows the record, its DOM state (typed text, a
+ * nested grid's sort) intact. A root is dropped when a row renders its record
+ * collapsed or the record is no longer in a body row, which is what item
+ * keys destroy.
+ */
+class DetailRoots {
+  readonly #roots = new Map<object, DetailRoot>();
+  #frame = 0;
+
+  /**
+   * Renders `content` into the root of `record` and returns the root's node
+   * for `row` to commit. The node comes keyed by the row that last took it: a
+   * row set aside as a spare keeps the node as its committed value after
+   * another row took it, so without a new key Lit would skip committing the
+   * same node when the spare shows the record again.
+   */
+  public show(record: object, content: unknown, host: object, row: Element): unknown {
+    let root = this.#roots.get(record);
+    if (!root) {
+      const node = document.createElement('div');
+      // Layout-neutral: the content lays out as if it sat in the panel.
+      node.style.display = 'contents';
+      // The grid is the stable `this` for listeners: the row changes.
+      root = { node, part: render(nothing, node, { host }), owner: null, key: 0 };
+      this.#roots.set(record, root);
+    }
+    if (root.owner !== row) {
+      root.owner = row;
+      root.key = ++detailKey;
+    }
+    render(content, root.node);
+    return keyed(root.key, root.node);
+  }
+
+  /** Drops the root of `record`, disconnecting the directives it rendered. */
+  public drop(record: object) {
+    const root = this.#roots.get(record);
+    if (!root) return;
+    this.#roots.delete(record);
+    root.part.setConnected(false);
+  }
+
+  /**
+   * Prunes, at the next frame, the roots no body row shows. Within one batch
+   * of row renders a root can sit detached between the row that let go of it
+   * and the row that takes it, so the check waits for the batch to finish.
+   */
+  public schedule() {
+    if (this.#frame || this.#roots.size === 0) return;
+    this.#frame = requestAnimationFrame(() => {
+      this.#frame = 0;
+      for (const [record, root] of this.#roots) {
+        if (!inBodyRow(root.node)) this.drop(record);
+      }
+    });
+  }
+}
+
+/**
+ * Whether a detail root sits in a row the body still holds. A row the body
+ * removed has no parent, and one set aside for reuse sits in a fragment. A
+ * grid out of the document keeps its rows, so this is not `isConnected`.
+ */
+function inBodyRow(node: Node): boolean {
+  if (!node.parentNode) return false;
+  const row = (node.getRootNode() as ShadowRoot).host;
+  return row?.parentNode?.nodeType === Node.ELEMENT_NODE;
+}
+
+/** Detail roots per grid: one record may show in several grids. */
+const detailRoots = new WeakMap<object, DetailRoots>();
 
 /**
  * Every part a row renders in its own shadow root. Rows live in the grid's
@@ -215,6 +338,11 @@ export default class ApexGridRow<T extends object> extends LitElement {
 
   public override disconnectedCallback(): void {
     this.removeEventListener('pointerdown', this.#handleReorderPointerDown);
+    // A row leaving the body (set aside as a spare, or removed) renders
+    // nothing more, so it prunes the detail roots itself: a range that
+    // shrinks to no rows would otherwise keep them until some later render.
+    const host = this.state?.host;
+    if (host) detailRoots.get(host)?.schedule();
     super.disconnectedCallback();
   }
 
@@ -233,9 +361,16 @@ export default class ApexGridRow<T extends object> extends LitElement {
     // record mid-flight, the element would carry that motion over to the new
     // one, so it stops. Checked only while a FLIP runs: scroll re-binds pay
     // nothing.
+    // A re-bind must not animate either: a progress bar growing from the
+    // previous record's value, a selected wash fading out, a chevron turning.
+    // Under row recycling a new row counts too, as a spare or fresh body row
+    // can be styled before its first update; item mode keeps today's path
+    // for new rows. A real toggle keeps the record, so it still animates.
     if (this.data !== this.#renderedData) {
-      if (this.#renderedData !== undefined && hasFlipsInFlight()) cancelFlips(this, FLIP_ID_Y);
+      const rebound = this.#renderedData !== undefined;
+      if (rebound && hasFlipsInFlight()) cancelFlips(this, FLIP_ID_Y);
       this.#renderedData = this.data;
+      if (rebound || this.state?.host?.rowRecycling) markRebound(this);
     }
     this.setAttribute('aria-rowindex', String(this.index + this.ariaRowOffset + 1));
     // Zebra parity from the row index, not the DOM position (body-row.scss).
@@ -435,20 +570,39 @@ export default class ApexGridRow<T extends object> extends LitElement {
 
   protected renderDetailPanel() {
     const expansion = this.state?.expansion;
-    if (!expansion?.isExpanded(this.data)) return nothing;
-    const template = this.state.host.expansion?.detailTemplate;
+    const host = this.state?.host;
+    const roots = host && detailRoots.get(host);
+    roots?.schedule();
+    if (!expansion?.isExpanded(this.data)) {
+      // Rendered collapsed, the panel closed: an expand builds it fresh.
+      roots?.drop(this.data);
+      return nothing;
+    }
+    const template = host.expansion?.detailTemplate;
     if (typeof template !== 'function') return nothing;
     const content = template({
       data: this.data,
       rowIndex: this.index,
-      parent: this.state.host,
+      parent: host,
     });
     // A row owns only cells, so the panel is one cell across the whole row.
-    // The content is keyed by record: a row element re-bound to another
-    // record (a pinned band, a recycled body slot) builds fresh detail DOM
-    // rather than showing the previous record's (a typed input, a nested
-    // grid's sort). A row that keeps its record keeps its detail DOM.
-    const detail = keyed(this.data, content);
+    // A recycled body row takes the record's own root (see DetailRoots).
+    // Otherwise the content is keyed by record: a row element re-bound to
+    // another record (a pinned band) builds fresh detail DOM rather than
+    // showing the previous record's (a typed input, a nested grid's sort). A
+    // row that keeps its record keeps its detail DOM.
+    let detail: unknown;
+    if (host.rowRecycling && !this.state.rowPin.isPinned(this.data)) {
+      let own = roots;
+      if (!own) {
+        own = new DetailRoots();
+        detailRoots.set(host, own);
+      }
+      detail = own.show(this.data, content, host, this);
+      own.schedule();
+    } else {
+      detail = keyed(this.data, content);
+    }
     return html`<div
       part="detail-panel"
       role="gridcell"

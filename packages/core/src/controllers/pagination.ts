@@ -134,9 +134,17 @@ export class PaginationController<T extends object> implements ReactiveControlle
   async #apply(page: number, pageSize: number): Promise<void> {
     this.page = page;
     this.pageSize = pageSize;
-    this.host.requestUpdate(this.host.pagination?.mode === 'remote' ? PIPELINE : undefined);
+    // Row recycling re-binds the focused row to the new page's record, so
+    // focus moves to the body rather than stay on the same slot.
     // @ts-expect-error - protected member access
-    await this.host.pipelineSettled();
+    const parked = this.host.stateController.navigation.parkFocus() as (() => Promise<void>) | null;
+    this.host.requestUpdate(this.host.pagination?.mode === 'remote' ? PIPELINE : undefined);
+    try {
+      // @ts-expect-error - protected member access
+      await this.host.pipelineSettled();
+    } finally {
+      if (parked) void parked();
+    }
     const detail = this.#stateFor(page, pageSize);
     this.host.announce(
       this.host.localize('announce.page', { page: page + 1, total: detail.pageCount })

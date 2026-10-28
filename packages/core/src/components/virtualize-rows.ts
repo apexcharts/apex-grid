@@ -1,6 +1,13 @@
 import { type VirtualizeDirectiveConfig, virtualize } from '@lit-labs/virtualizer/virtualize.js';
-import { type ChildPart, noChange } from 'lit';
-import { type DirectiveResult, directive } from 'lit/directive.js';
+import { type ChildPart, noChange, nothing, type RootPart, render } from 'lit';
+import { Directive, type DirectiveResult, directive } from 'lit/directive.js';
+import {
+  getCommittedValue,
+  insertPart,
+  removePart,
+  setChildPartValue,
+  setCommittedValue,
+} from 'lit/directive-helpers.js';
 import { repeat } from 'lit/directives/repeat.js';
 
 /**
@@ -20,6 +27,9 @@ import { repeat } from 'lit/directives/repeat.js';
  * - a render that changed nothing upstream can observe still lets
  *   `layoutComplete` settle ({@link VirtualizedRows.armLayoutComplete});
  * - {@link VirtualizedRows.rendered} resolves after the latest render.
+ *
+ * In `'slot'` mode the rows render through the slot reconciler
+ * ({@link SlotRowsDirective}) instead of upstream's keyed `repeat`.
  *
  * Built against `@lit-labs/virtualizer` 2.1.1 exactly (pinned in package.json).
  * The private members it touches are pinned by
@@ -46,16 +56,145 @@ interface UpstreamVirtualizer {
   /** Called at the end of every children `ResizeObserver` callback, and only there. */
   _scheduleLayoutComplete(): void;
   _resolveLayoutCompletePromise(): void;
+  /** Children `_measureChildren` measures next (it reads only the keys). */
+  _toBeMeasured: Map<Element, unknown>;
+  /** Measures those children and schedules a reflow with the sizes. */
+  _measureChildren(): void;
 }
 
 /** Attribute upstream stamps on its sizer element, which is not a row. */
 const SIZER_ATTRIBUTE = 'virtualizer-sizer';
 
 /**
- * How the directive maps rows to elements. Only `'item'` (upstream's `repeat`
- * by key) exists today; the slot reconciler lands as `'slot'` in a later phase.
+ * How the directive maps rows to elements. `'item'` is upstream's `repeat` by
+ * key, so an element follows its record. `'slot'` re-binds elements by
+ * position, so an element shows whatever record its slot holds next.
  */
-export type RowMode = 'item';
+export type RowMode = 'item' | 'slot';
+
+/** The rows directive's config: upstream's, plus the row mapping. */
+export type VirtualizeRowsConfig = VirtualizeDirectiveConfig<unknown> & { mode?: RowMode };
+
+/**
+ * Most rows a shrinking range sets aside for when it grows again. A guess:
+ * plan section 14, open question 6.
+ */
+const SPARE_LIMIT = 32;
+
+/**
+ * The slot reconciler: renders `values` (the rows for indexes `first`,
+ * `first + 1`, ...) into child parts in index order, with no keys.
+ *
+ * - A part whose index stays in range keeps its place, so a row that stays
+ *   on screen is not touched beyond its (usually unchanged) values.
+ * - Parts whose index left the range take the indexes entering it, moved as
+ *   one block to the other end, so a k-row step moves k rows. DOM order stays
+ *   index order, which upstream relies on to place the i-th child at index
+ *   `first + i`.
+ * - When the old and new ranges do not overlap (a jump), and when they are
+ *   the same (a sort, a filter that keeps the range), every part is re-bound
+ *   where it stands: nothing moves.
+ * - The range grows with spare parts first, then new ones. Parts a shrinking
+ *   range drops wait, disconnected, in a detached fragment (up to
+ *   `SPARE_LIMIT`); the rest are removed.
+ *
+ * A new instance on a part another directive rendered (a mode switch from
+ * `repeat`) removes those rows and builds its own, once.
+ */
+class SlotRowsDirective extends Directive {
+  /** Parts in DOM order; null until this instance first updates. */
+  #parts: ChildPart[] | null = null;
+  /** Item index the first part shows. */
+  #first = 0;
+  #spares: ChildPart[] = [];
+  /** Lit's parent for the spares: disconnected, so their directives are too. */
+  #spareRoot: RootPart | null = null;
+
+  public render(_values: unknown[], _first: number): unknown {
+    return noChange;
+  }
+
+  public override update(container: ChildPart, [values, first]: [unknown[], number]): unknown {
+    let parts = this.#parts;
+    if (!parts) {
+      const inherited = getCommittedValue(container);
+      if (Array.isArray(inherited)) {
+        for (const part of inherited as ChildPart[]) removePart(part);
+      }
+      parts = [];
+    }
+
+    const count = values.length;
+    const next: ChildPart[] = new Array(count);
+    const start = Math.max(first, this.#first);
+    const end = Math.min(first + count, this.#first + parts.length);
+
+    if (end <= start) {
+      // No index survives (a jump, or a first render): re-bind in place.
+      const kept = Math.min(parts.length, count);
+      for (let i = 0; i < kept; i++) next[i] = parts[i];
+      for (let i = kept; i < parts.length; i++) this.#setAside(parts[i]);
+      for (let i = kept; i < count; i++) next[i] = this.#take(container, undefined);
+    } else {
+      for (let index = start; index < end; index++) {
+        next[index - first] = parts[index - this.#first];
+      }
+      // At most one end of the range loses parts while the other gains slots
+      // (or both shrink, or both grow).
+      const leftHead = parts.slice(0, start - this.#first);
+      const leftTail = parts.slice(end - this.#first);
+      const head = start - first;
+      const tail = first + count - end;
+
+      // Scrolling down: the parts above the range become the rows below it.
+      for (let i = 0; i < tail; i++) {
+        const part = leftHead.shift();
+        next[end - first + i] = part
+          ? (insertPart(container, undefined, part) as ChildPart)
+          : this.#take(container, undefined);
+      }
+      // Scrolling up: the parts below the range become the rows above it.
+      const ref = next[head];
+      for (let i = 0; i < head; i++) {
+        const part = leftTail.shift();
+        next[i] = part
+          ? (insertPart(container, ref, part) as ChildPart)
+          : this.#take(container, ref);
+      }
+      for (const part of leftHead) this.#setAside(part);
+      for (const part of leftTail) this.#setAside(part);
+    }
+
+    for (let i = 0; i < count; i++) setChildPartValue(next[i], values[i]);
+    this.#parts = next;
+    this.#first = first;
+    setCommittedValue(container, next);
+    return noChange;
+  }
+
+  /** A spare part, or a new one, inserted before `ref` (the end when undefined). */
+  #take(container: ChildPart, ref: ChildPart | undefined): ChildPart {
+    const spare = this.#spares.pop();
+    return insertPart(container, ref, spare) as ChildPart;
+  }
+
+  /** Keeps a part the range no longer needs as a spare, or removes it. */
+  #setAside(part: ChildPart): void {
+    if (this.#spares.length >= SPARE_LIMIT) {
+      removePart(part);
+      return;
+    }
+    // Inserting into another container reparents the part, and lit notifies
+    // its directives that it left the document.
+    this.#spareRoot ??= render(nothing, document.createDocumentFragment(), {
+      isConnected: false,
+    });
+    insertPart(this.#spareRoot, undefined, part);
+    this.#spares.push(part);
+  }
+}
+
+const slotRows = directive(SlotRowsDirective);
 
 /** What the body virtualizer asks of its rows directive. */
 export interface VirtualizedRows {
@@ -128,17 +267,25 @@ class VirtualizeRowsDirective extends UpstreamDirective implements VirtualizedRo
         itemsToRender.push(this._items[i]);
       }
     }
-    // Item branch: upstream's render, byte for byte. The slot branch joins it
-    // here, behind `mode`, with the slot reconciler.
+    if (this.mode === 'slot') {
+      return slotRows(
+        itemsToRender.map((item, i) => this._renderItem(item, i)),
+        this._first
+      );
+    }
+    // Item branch: upstream's render, byte for byte.
     return repeat(itemsToRender, this._keyFunction, this._renderItem);
   }
 
-  public override update(part: ChildPart, args: [VirtualizeDirectiveConfig<unknown>]): unknown {
+  public override update(part: ChildPart, args: [VirtualizeRowsConfig]): unknown {
     const host = part.parentNode as Element | null;
     if (host && host.nodeType === Node.ELEMENT_NODE && host !== this.#host) {
       this.#host = host;
       directives.set(host, this);
     }
+    // A switch renders through the other branch's directive, which rebuilds
+    // the rows once. This class (and so upstream's range listener) stays.
+    this.mode = args[0].mode ?? 'item';
     const value = super.update(part, args);
     this.#observeLayoutComplete();
     if (value === noChange) {
@@ -230,6 +377,8 @@ class VirtualizeRowsDirective extends UpstreamDirective implements VirtualizedRo
     const observer = this.#virtualizer?._childrenRO ?? null;
     const previous = this.#rows;
     const rows: Element[] = [];
+    const slot = this.mode === 'slot';
+    const moved: Element[] = [];
     let changed = false;
     for (let child = host.firstElementChild; child; child = child.nextElementSibling) {
       if (child.hasAttribute(SIZER_ATTRIBUTE)) continue;
@@ -239,18 +388,52 @@ class VirtualizeRowsDirective extends UpstreamDirective implements VirtualizedRo
         observer.unobserve(child);
         observer.observe(child);
       }
+      if (slot && was !== index) moved.push(child);
       this.#indexOf.set(child, index);
       if (previous[rows.length] !== child) changed = true;
       rows.push(child);
     }
     if (rows.length !== previous.length) changed = true;
     this.#rows = rows;
+    if (moved.length) void this.#measure(moved);
 
     this.#epoch++;
     // Rows added, removed or moved are observed (or re-observed) above or by
     // upstream, so its own path settles `layoutComplete`. Only a render that
     // kept every row element where it was can go unobserved.
     if (!changed) this.#probe();
+  }
+
+  /**
+   * Slot mode: measures rows that stand at a new index once they have
+   * rendered their new record, before the frame paints.
+   *
+   * The fresh observation above is not enough on its own here. A render that
+   * a children `ResizeObserver` callback set off (a measure that moved the
+   * range) observes rows no deeper in the tree than the ones that callback
+   * just reported, and the browser holds such observations to the next frame.
+   * Under item keys the same round also reports the rows it removed, which
+   * sit outside the tree, so the new rows still land in that frame. Re-bound
+   * rows have no such luck: through a fling the layout would stay a frame
+   * behind, keep its unmeasured anchor, and finally correct the scroll offset.
+   * The observation still runs, and is what settles `layoutComplete`.
+   */
+  async #measure(moved: Element[]): Promise<void> {
+    await Promise.all(
+      moved.map((row) => (row as Element & { updateComplete?: Promise<unknown> }).updateComplete)
+    );
+    const virtualizer = this.#virtualizer;
+    const host = this.#host;
+    if (!virtualizer?._childrenRO || !host?.isConnected) return;
+    let pending = false;
+    for (const row of moved) {
+      // Only rows still where this render put them.
+      const index = this.#indexOf.get(row);
+      if (index === undefined || this.#rows[index - this._first] !== row) continue;
+      virtualizer._toBeMeasured.set(row, null);
+      pending = true;
+    }
+    if (pending) virtualizer._measureChildren();
   }
 
   /**
@@ -300,5 +483,5 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
  * The body's `virtualize` directive. Annotated because the inferred type names
  * upstream's private members (TS2742 / TS4094).
  */
-export const virtualizeRows: (config: VirtualizeDirectiveConfig<unknown>) => DirectiveResult =
+export const virtualizeRows: (config: VirtualizeRowsConfig) => DirectiveResult =
   directive(VirtualizeRowsDirective);

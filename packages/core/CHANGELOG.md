@@ -7,6 +7,14 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **`rowRecycling`** (attribute `row-recycling`), experimental and off by
+  default. With it on, a scroll, sort or filter re-binds the rendered body rows
+  to the records now in view instead of building new rows, which makes jumps
+  and sorts cheaper on large grids. Cell, editor and detail templates must then
+  derive what they render from their context on each render and read
+  `ctx.data` for the record; leave it off for templates that keep state in the
+  elements they create. Detail panel content follows its record, and a grid
+  created inside a `detailTemplate` keeps its own setting.
 - The `ai.cancelled` locale key (English and Spanish), used by the enterprise
   Ask AI panel.
 - The `chart.rangeResized` locale key (English and Spanish), announced when an
@@ -166,6 +174,12 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - A jump to a row far outside the view that is still waiting for the body to
   finish scrolling no longer runs after a newer jump, so two quick jumps end on
   the second row instead of snapping back to the first.
+- A pinned row that switches to another record no longer animates from the
+  previous record's look: its selected wash, expand chevron, checkbox and
+  progress bars show the new record's state at once.
+- An image cell whose URL changes (a pinned row switching records, an edit of
+  the URL) renders a new `<img>`, so the previous picture no longer stays on
+  screen while the new one loads.
 
 ### Performance
 - Scrolling no longer re-renders the rows that stay in view; only the rows that

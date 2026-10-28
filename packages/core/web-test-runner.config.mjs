@@ -12,10 +12,10 @@ const filteredLogs = ['in dev mode'];
 const RESIZE_OBSERVER_NOISE = 'ResizeObserver loop';
 
 /**
- * Test page for the suite. `keying` sets the page global `ApexVirtualizer`
- * reads its row keying from, before `test/setup.js` (and so the grid) loads.
+ * Test page for the suite. `keying` sets the page global `ApexGrid` reads its
+ * `rowRecycling` default from, before `test/setup.js` (and so the grid) loads.
  *
- * @param {'spike'} [keying]
+ * @param {'slot'} [keying]
  */
 const runnerHtml = (keying) => (testFramework) => `
   <html>
@@ -41,12 +41,12 @@ export default /** @type {import("@web/test-runner").TestRunnerConfig} */ ({
 
   testRunnerHtml: runnerHtml(),
 
-  // The same suite again with the body keyed by slot (`index % 128`), so code
-  // that only works because a sort or move rebuilds its rows fails here.
-  // `npm test` runs only the default group; `npm run test:spike` runs this one.
-  // The group leaves out `files` so it takes the root pattern, which `--files`
-  // also narrows.
-  groups: [{ name: 'spike', testRunnerHtml: runnerHtml('spike') }],
+  // The same suite again with every grid recycling its rows (`rowRecycling`
+  // defaults to true), so code that only works because a sort or move rebuilds
+  // its rows fails here. `npm test` runs only the default group; `npm run
+  // test:slot` runs this one. The group leaves out `files` so it takes the root
+  // pattern, which `--files` also narrows.
+  groups: [{ name: 'slot', testRunnerHtml: runnerHtml('slot') }],
 
   /** Resolve bare module imports */
   nodeResolve: {

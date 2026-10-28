@@ -61,6 +61,10 @@ describe('virtualizer private API the rows directive relies on', () => {
     );
     expect(proto._childrenSizeChanged, '_childrenSizeChanged').to.be.a('function');
     expect(String(proto._childrenSizeChanged)).to.contain('_scheduleLayoutComplete');
+    // Slot mode measures re-bound rows synchronously through these two.
+    expect(virtualizer._toBeMeasured, '_toBeMeasured').to.be.instanceOf(Map);
+    expect(proto._measureChildren, '_measureChildren').to.be.a('function');
+    expect(String(proto._measureChildren)).to.contain('_toBeMeasured');
     expect(virtualizer, '_layoutCompletePromise').to.have.property('_layoutCompletePromise');
     expect(virtualizer, '_pendingLayoutComplete').to.have.property('_pendingLayoutComplete');
     // Upstream creates the promise lazily from the getter and drops it once

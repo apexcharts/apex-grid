@@ -19,8 +19,8 @@ import { settle } from './utils/settle.js';
 
 // Recycle safety: a row element (and its cells) may be re-bound to another
 // record without being rebuilt. The pinned bands already do this today (an
-// unkeyed `rows.map`), and the suite's spike group keys the body by slot so a
-// sort re-binds the body rows in place too. Whatever a row or cell shows must
+// unkeyed `rows.map`), and the suite's slot group recycles the body rows
+// (`rowRecycling`) so a sort re-binds them in place too. Whatever a row or cell shows must
 // come from the record it shows now, never from the one it showed before.
 // See plans/core/2026-10-27-row-recycling-plan.md, sections 5.4, 6.3 and 7.
 
@@ -86,9 +86,9 @@ function pinnedRows(grid: ApexGrid<Row>): ApexGridRow<Row>[] {
   return rowsOf(grid).filter((row) => row.closest('[part~="pinned-rows"]'));
 }
 
-/** Whether this run keys the body by slot (the suite's spike group). */
+/** Whether this run's grids recycle their body rows (the suite's slot group). */
 function slotKeyed(): boolean {
-  return (globalThis as { __apexRowKeying?: unknown }).__apexRowKeying === 'spike';
+  return ApexGrid.defaultRowRecycling;
 }
 
 function cellOf(row: ApexGridRow<Row>, key: keyof Row): ApexGridCell<Row> {

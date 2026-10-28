@@ -116,6 +116,8 @@ describe('Render path: display columns', () => {
       html`<apex-grid .data=${data} .columns=${columns.map((c) => ({ ...c }))}></apex-grid>`
     );
     await settle(grid);
+    // The first rows can wait on a resize observation under load.
+    for (let i = 0; i < 10 && grid.rows.length === 0; i++) await nextFrame();
     const first = domOf(grid).displayColumns;
     expect(domOf(grid).displayColumns, 'two reads').to.equal(first);
     const rowOf = () => grid.rows[0] as unknown as ApexGridRow<TestData>;

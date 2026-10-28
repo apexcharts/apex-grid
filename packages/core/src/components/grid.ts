@@ -938,6 +938,16 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   public static override styles = gridStyles;
 
   /**
+   * The `rowRecycling` every grid starts with: `true` only when the page
+   * global `__apexRowKeying` is `'slot'`, which the test runner sets for its
+   * second suite run so every grid in it recycles rows.
+   *
+   * @internal Test-only, for the suite-wide keying switch. Not public API.
+   */
+  public static defaultRowRecycling =
+    (globalThis as { __apexRowKeying?: unknown }).__apexRowKeying === 'slot';
+
+  /**
    * Registers `<apex-grid>` and its internal dependencies with the custom-element
    * registry. Idempotent — safe to call more than once.
    *
@@ -1223,6 +1233,28 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   @property({ type: Boolean, attribute: 'column-separator', reflect: true })
   public columnSeparator = true;
+
+  /**
+   * Experimental. Reuses body row elements across records: when `true`, a
+   * scroll, sort or filter re-binds the rendered rows to the records now in
+   * view instead of building rows for them, which makes jumps and sorts
+   * cheaper on large grids. Off by default: with it on, templates must derive
+   * what they render from their context (`ctx.data`) on each render.
+   *
+   * @remarks
+   * With it on, a row element (and its cells) shows another
+   * record after a scroll or a sort, so cell and editor templates must derive
+   * everything they render from their context on each render, and must not
+   * keep state in the elements they create. `ctx.row` and `ctx.parent` are
+   * row and cell elements that may show another record later; read
+   * `ctx.data` for the record. Leave it off for templates that keep element
+   * state across renders, such as third-party widgets.
+   *
+   * @attr row-recycling
+   * @default false
+   */
+  @property({ type: Boolean, attribute: 'row-recycling' })
+  public rowRecycling: boolean = ApexGrid.defaultRowRecycling;
 
   /**
    * Inline editing configuration for the grid.
@@ -2064,6 +2096,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     // pipeline still running is tracked by #shapingPending.
     this.#viewChangePending = false;
     this.#syncBodyTabStop();
+    this.stateController.navigation.reconcileFocus();
     this.#emitStateChangedIfNeeded();
   }
 
@@ -3222,6 +3255,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     ) {
       this.scrollContainer.focus({ preventScroll: true });
     }
+    this.stateController.navigation.reconcileFocus();
   }
 
   /** The body cell an event started on, when that cell is one of this grid's. */
@@ -3277,11 +3311,28 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   /**
    * Tabbing into the grid body lands on the scroll container; forward focus to
    * the active cell (when one exists) so the roving tab stop is honored.
+   * Also tells navigation whether this body, not a grid nested in it, now
+   * holds focus.
    */
   protected bodyFocusHandler(event: FocusEvent) {
-    if (this.scrollContainer.isSameNode(event.target as HTMLElement)) {
-      this.stateController.navigation.focusActiveCell();
+    const navigation = this.stateController.navigation;
+    navigation.focusEntered(event, this.ownsEvent(event));
+    if (
+      this.scrollContainer.isSameNode(event.target as HTMLElement) &&
+      navigation.forwardsBodyFocus
+    ) {
+      navigation.focusActiveCell();
     }
+  }
+
+  /**
+   * Focus left something in the body; see {@link NavigationController.focusLeft}.
+   * Captured, so the body stops owning focus before a handler further down
+   * (an editor committing on focus loss) runs and lets queued work see it.
+   */
+  @eventOptions({ capture: true })
+  protected bodyFocusOutHandler(event: FocusEvent) {
+    this.stateController.navigation.focusLeft(event, this.ownsEvent(event));
   }
 
   /**
@@ -3350,9 +3401,11 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
         role="rowgroup"
         .items=${this.pageItems as T[]}
         .renderItem=${this.DOM.rowRenderer}
+        .rowMode=${this.rowRecycling ? 'slot' : 'item'}
         @click=${this.bodyClickHandler}
         @keydown=${this.bodyKeydownHandler}
         @focusin=${this.bodyFocusHandler}
+        @focusout=${this.bodyFocusOutHandler}
         @rangeChanged=${this.bodyRangeChanged}
         @pointerdown=${this.bodyPointerHandler}
         @pointermove=${this.bodyPointerHandler}

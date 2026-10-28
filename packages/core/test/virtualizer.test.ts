@@ -1,5 +1,6 @@
 import { elementUpdated, expect, fixtureCleanup, nextFrame } from '@open-wc/testing';
 import { ApexGrid } from '../src/components/grid.js';
+import { virtualizedRows } from '../src/components/virtualize-rows.js';
 import type ApexVirtualizer from '../src/components/virtualizer.js';
 import { GRID_BODY } from '../src/internal/tags.js';
 
@@ -50,27 +51,44 @@ function renderedRows(grid: ApexGrid<Row>) {
   return bodyOf(grid).querySelectorAll('apex-grid-row').length;
 }
 
+function renderedRowElements(grid: ApexGrid<Row>): Element[] {
+  return Array.from(bodyOf(grid).querySelectorAll('apex-grid-row'));
+}
+
 /**
- * Guards the suite-wide keying switch: the spike group must really key the
- * body by slot, or a broken hook would rerun item keys and pass vacuously.
+ * Guards the suite-wide keying switch: the slot group must really recycle the
+ * body rows, or a broken hook would rerun item keys and pass vacuously.
  */
 describe('virtualizer row keying switch', () => {
   afterEach(() => fixtureCleanup());
 
-  it('keys the body by slot under the spike run and by record otherwise', async () => {
+  it('recycles the body rows under the slot run and keys them by record otherwise', async () => {
+    const keying = (globalThis as { __apexRowKeying?: unknown }).__apexRowKeying;
+    // Any other value is a runner config this switch no longer understands.
+    expect([undefined, 'slot'], 'page global __apexRowKeying').to.include(keying);
+    const slot = keying === 'slot';
     // Removed afterwards: the boxes are not fixtures, and one left in the flow
     // would push the later suites' grids below the window.
     const box = makeBox({});
     const grid = mount(box);
     await settle(grid, 2);
+    const body = bodyOf(grid);
     const item = { id: 131 };
-    const key = bodyOf(grid).keyFunction(item, 130);
+    const key = body.keyFunction(item, 130);
+    const elements = renderedRowElements(grid);
+    grid.sort({ key: 'id', direction: 'descending' });
+    await settle(grid, 4);
+    const kept = renderedRowElements(grid).filter((row) => elements.includes(row)).length;
     box.remove();
-    if ((globalThis as { __apexRowKeying?: unknown }).__apexRowKeying === 'spike') {
-      expect(key).to.equal(2);
-    } else {
-      expect(key).to.equal(item);
-    }
+
+    expect(ApexGrid.defaultRowRecycling).to.equal(slot);
+    expect(grid.rowRecycling).to.equal(slot);
+    expect(body.rowMode).to.equal(slot ? 'slot' : 'item');
+    expect(virtualizedRows(body)?.mode).to.equal(slot ? 'slot' : 'item');
+    // The item branch keeps upstream's record key in both runs.
+    expect(key).to.equal(item);
+    // A sort of the whole list re-binds rows in place only when they recycle.
+    expect(kept, 'row elements kept across a sort').to.equal(slot ? elements.length : 0);
   });
 });
 

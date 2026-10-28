@@ -3,7 +3,8 @@ import { sendMouse, setViewport } from '@web/test-runner-commands';
 import type { PropertyValues } from 'lit';
 import { ApexGrid } from '../../src/components/grid.js';
 import ApexGridRow from '../../src/components/row.js';
-import ApexVirtualizer from '../../src/components/virtualizer.js';
+import { virtualizedRows } from '../../src/components/virtualize-rows.js';
+import ApexVirtualizer, { type RowKeying } from '../../src/components/virtualizer.js';
 import type { ActiveNode, ColumnConfiguration } from '../../src/internal/types.js';
 import type { SortExpression } from '../../src/operations/sort/types.js';
 
@@ -27,7 +28,11 @@ import type { SortExpression } from '../../src/operations/sort/types.js';
 /** Number of times each scenario runs on a fresh fixture; the median is reported. */
 const REPEATS = 3;
 const COLUMN_COUNTS = [20, 100];
-const MODES = ['item', 'spike'] as const;
+/**
+ * `item` keys rows by record (today's default), `slot` is the slot reconciler
+ * (`rowRecycling = true`), `spike` the P0 reference key (`index % 128`).
+ */
+const MODES = ['item', 'slot', 'spike'] as const;
 
 const ROWS = 10_000;
 const COLUMN_WIDTH = '90px';
@@ -72,8 +77,8 @@ type Internals = {
 };
 const internals = (grid: ApexGrid<Row>) => grid as unknown as Internals;
 
-/** The test-only keying switch on the virtualizer (P0 item 2). */
-const keying = ApexVirtualizer as unknown as { rowKeying?: Mode };
+/** The benchmark-only keying switch on the virtualizer, for the spike reference. */
+const keying = ApexVirtualizer as unknown as { rowKeying: RowKeying };
 
 const frame = () => new Promise<number>((resolve) => requestAnimationFrame(resolve));
 
@@ -188,12 +193,15 @@ async function settle(grid: ApexGrid<Row>) {
   await frames(2);
 }
 
-/** Fails when the keying switch did not reach the virtualizer, so a missing hook cannot benchmark item keys twice. */
+/** Fails when the mode did not reach the virtualizer, so a missing hook cannot benchmark item keys twice. */
 function assertKeying(body: ApexVirtualizer, mode: Mode) {
   const item = {};
   const key = body.keyFunction?.(item, 130);
-  if (mode === 'item') {
-    expect(key, 'item mode keys rows by their record').to.equal(item);
+  expect(virtualizedRows(body)?.mode, 'rows directive mode').to.equal(
+    mode === 'slot' ? 'slot' : 'item'
+  );
+  if (mode !== 'spike') {
+    expect(key, 'the item branch keys rows by their record').to.equal(item);
   } else {
     expect(
       key,
@@ -204,12 +212,13 @@ function assertKeying(body: ApexVirtualizer, mode: Mode) {
 
 async function mount(cols: number, mode: Mode): Promise<Bench> {
   const { data, columns } = dataset(cols);
-  keying.rowKeying = mode;
+  keying.rowKeying = mode === 'spike' ? 'spike' : 'item';
 
   const parentNode = document.createElement('div');
   parentNode.style.height = HOST_HEIGHT;
   const grid = await fixture<ApexGrid<Row>>(
     html`<apex-grid
+      .rowRecycling=${mode === 'slot'}
       .data=${data.slice()}
       .columns=${columns}
       .sortConfiguration=${{ multiple: false, triState: true }}

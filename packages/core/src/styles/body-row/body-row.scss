@@ -41,6 +41,20 @@ $accent: var(--cell-active-border-color, var(--_ag-brand));
     --_ag-bar: 2px;
 }
 
+// A row that now shows another record (a recycled body slot, a pinned band
+// shifting up) or, under row recycling, its first one, for one painted frame.
+// Its look jumps to the record it shows instead of animating from the one
+// before: the selected wash, the grabbed ring and the stripe here, the
+// chevrons, checkboxes and progress bars below and inside the cells. Every
+// transition reads these tokens (see the reduced-motion block in
+// `_tokens.scss`), and custom properties inherit into the cells' shadow roots
+// and module-rendered content, which no selector here can reach.
+:host([data-rebound]) {
+    --_ag-dur-fast: 0ms;
+    --_ag-dur-med: 0ms;
+    --_ag-dur-slow: 0ms;
+}
+
 :host(:last-of-type) {
     border-bottom: 0;
 }

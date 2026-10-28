@@ -1,4 +1,5 @@
 import { html, nothing, svg, type TemplateResult } from 'lit';
+import { keyed } from 'lit/directives/keyed.js';
 import { ref } from 'lit/directives/ref.js';
 import type ApexGridCell from '../components/cell.js';
 import type ApexGridRow from '../components/row.js';
@@ -477,12 +478,20 @@ const imageType: ColumnTypeRenderer<object> = {
     const shape = (ctx.column as { shape?: 'square' | 'circle' }).shape ?? 'square';
     const colAny = ctx.column as { alt?: string; key?: unknown };
     const alt = colAny.alt ?? String(colAny.key ?? '');
-    return html`<img
-      part=${shape === 'circle' ? 'image circle' : 'image'}
-      src=${String(value)}
-      alt=${alt}
-      loading="lazy"
-    />`;
+    const src = String(value);
+    // Keyed by the picture: a cell re-bound to another record (a recycled
+    // row, a pinned band shifting up) gets a fresh `<img>` rather than a new
+    // `src` on the old one, which some engines keep painting with the
+    // previous record's picture until the new one has loaded.
+    return keyed(
+      src,
+      html`<img
+        part=${shape === 'circle' ? 'image circle' : 'image'}
+        src=${src}
+        alt=${alt}
+        loading="lazy"
+      />`
+    );
   },
   // Editing an image URL is just text editing — fall through to the default
   // text editor for `editable: true` image columns.

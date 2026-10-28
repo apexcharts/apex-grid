@@ -9,8 +9,8 @@ import data, { type TestData } from './utils/test-data.js';
 /**
  * Row reorder under rows that re-bind to another record (plan section 4):
  * keyboard grab focus, FLIP ids and cancellation, and the drag ghost resolved
- * by record. The spike group keys the body by slot, so a sort or a move
- * re-binds row elements in place there.
+ * by record. The slot group recycles the body rows (`rowRecycling`), so a sort
+ * or a move re-binds row elements in place there.
  */
 class RecycleFixture<T extends TestData> extends GridTestFixture<T> {
   public rowReordering: GridRowReorderingConfiguration = { enabled: true };
@@ -204,10 +204,12 @@ describe('Row reorder recycling: FLIP ids and cancellation', () => {
       rebound++;
       expect(runningScriptAnimations(row), `row ${row.index}`).to.deep.equal([]);
     }
-    // Item keys move each element with its record, so only slot keys re-bind.
-    const slotKeyed = (globalThis as { __apexRowKeying?: unknown }).__apexRowKeying === 'spike';
-    if (slotKeyed) expect(rebound, 'rows re-bound to another record').to.be.greaterThan(0);
-    else expect(rebound).to.equal(0);
+    // Item keys move each element with its record, so only recycled rows re-bind.
+    if (fx.grid.rowRecycling) {
+      expect(rebound, 'rows re-bound to another record').to.be.greaterThan(0);
+    } else {
+      expect(rebound).to.equal(0);
+    }
   });
 });
 

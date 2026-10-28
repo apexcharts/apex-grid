@@ -222,6 +222,11 @@ export default class ApexGridCell<T extends object> extends LitElement {
     return pin.hasPinnedRows && pin.enabled && pin.isPinned(this.row.data);
   }
 
+  /** Whether the cell's row is a body row of a grid that recycles its rows. */
+  get #recycledBody(): boolean {
+    return Boolean(this.state.host.rowRecycling) && !this.#inPinnedBand;
+  }
+
   /**
    * 1-based column index used to populate `aria-colindex`. Accounts for the
    * auto-rendered selection + expansion columns ahead of the data columns.
@@ -484,6 +489,10 @@ export default class ApexGridCell<T extends object> extends LitElement {
       // A fresh edit keeps the focus scroll that brings a partly hidden cell
       // into view.
       const resumed = this.#resumed !== null || this.#rebound;
+      // Under row recycling a body row re-binds wherever the record lands, and
+      // focus may have left the grid meanwhile: such an editor takes focus
+      // only while the body holds it.
+      if (resumed && this.#recycledBody && !this.state.navigation.ownsFocus) return;
       editor?.focus(resumed ? { preventScroll: true } : undefined);
       if (!resumed && editor instanceof HTMLInputElement) {
         if (editor.type === 'text' || editor.type === 'number') {

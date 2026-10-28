@@ -654,6 +654,24 @@ grid.coordinateHints = true;
 
 When `coordinateHints` is on, the grid shows a leading row-number gutter (1, 2, 3, and so on) and A / B / C column-letter chips in the headers, so cell references are discoverable (a spreadsheet-style look). Set it directly for a persistent spreadsheet look. `apex-grid-enterprise` turns it on by default for any grid that has an `allowFormula` column, so the gutter is reserved up front and entering a formula never shifts the layout. Reflected to the `coordinate-hints` attribute (default `false`).
 
+### Row recycling (experimental)
+
+```ts
+grid.rowRecycling = true;
+```
+
+```html
+<apex-grid row-recycling></apex-grid>
+```
+
+Off by default. With it on, a scroll, sort or filter re-binds the rendered body rows to the records now in view instead of building new rows, which makes long jumps and sorts cheaper on large grids. A row element, and its cells, then shows another record later, so templates have to follow these rules:
+
+- Derive everything a cell, editor or detail template renders from its context on each render, and keep no state in the elements it creates.
+- Read `ctx.data` for the record, also after an `await`; `ctx.row` and `ctx.parent` are elements that may show another record by then.
+- Wrap a template that has to keep element state in `keyed(ctx.data, ...)` from `lit/directives/keyed.js`, or leave `rowRecycling` off for it (third-party widgets, for example).
+
+Detail panel content follows its record into whichever row shows it. A grid created inside a `detailTemplate` has its own `rowRecycling` setting.
+
 ### State & persistence
 
 `getState()` returns a JSON-safe snapshot of the grid's restorable view and `setState()` applies one back. The snapshot covers column layout (order, width, pinning, visibility), sort, filter, quick filter, pagination, selection, expansion, tree expansion, pinned rows, the manual drag-reorder order, and any feature-module state (enterprise grouping / pivot / aggregation / ranges). Functions and templates are never serialized: sort comparers, filter condition functions, and cell/header/editor templates re-bind from the live `columns` config on restore (filter conditions are captured by operand name).
@@ -706,6 +724,7 @@ See [`demo/state-persistence.html`](../../demo/state-persistence.html) for a sav
 | `coordinateHints` | `boolean` | `false` | Show a row-number gutter + A / B / C header chips (spreadsheet look). Attr `coordinate-hints` |
 | `columnMenu` | `boolean` | `true` | Show the always-visible column-menu (kebab) button on headers; `false` hides it |
 | `showHeader` | `boolean` | `true` | `false` hides the header rows (kept for screen readers). Attr `show-header="false"` |
+| `rowRecycling` | `boolean` | `false` | Experimental: re-binds body row elements across records on scroll, sort and filter. See [Row recycling](#row-recycling-experimental). Attr `row-recycling` |
 | `rowId` | `(row: T) => string \| number` |  | Durable row identity for `getState` / `setState` |
 | `localeText` | `GridLocaleText` |  | Override map for built-in strings (e.g. `esLocale`) |
 | `canUndo`, `canRedo` | `boolean` |  | Get (history) |
@@ -795,7 +814,7 @@ Programmatic `sort()` / `filter()` calls are silent; only UI-initiated changes e
 
 ### Attributes
 
-`auto-generate`, `quick-filter`, `show-quick-filter`, `show-export`, `column-reordering`, `coordinate-hints`, `show-header`.
+`auto-generate`, `quick-filter`, `show-quick-filter`, `show-export`, `column-reordering`, `coordinate-hints`, `show-header`, `row-recycling`.
 
 ### CSS parts
 

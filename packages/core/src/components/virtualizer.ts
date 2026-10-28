@@ -1,8 +1,9 @@
 import { LitVirtualizer } from '@lit-labs/virtualizer/LitVirtualizer.js';
 import { html, type PropertyValues } from 'lit';
+import { property } from 'lit/decorators.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_BODY } from '../internal/tags.js';
-import { virtualizedRows, virtualizeRows } from './virtualize-rows.js';
+import { type RowMode, virtualizedRows, virtualizeRows } from './virtualize-rows.js';
 
 /**
  * Attribute the upstream virtualizer stamps on the spacer element it appends in
@@ -61,11 +62,12 @@ export type RevealOptions = ScrollIntoViewOptions & { insets?: ScrollInsets };
 const SETTLE_TIMEOUT_MS = 250;
 
 /**
- * How the body keys its rows. `'item'` is upstream's default (the record
- * itself). `'spike'` keys by slot, `index % 128`, so a rebind reuses the row
- * elements in place.
+ * How the item branch keys its rows. `'item'` is upstream's default (the
+ * record itself). `'spike'` keys by slot, `index % 128`, so a rebind reuses
+ * the row elements in place: the measured reference the slot reconciler
+ * replaced, kept for the benchmark.
  *
- * @internal Test-only, for the suite-wide keying switch. Not public API.
+ * @internal Benchmark-only. Not public API.
  */
 export type RowKeying = 'item' | 'spike';
 
@@ -98,14 +100,22 @@ export function revealWithin(
 
 export default class ApexVirtualizer extends LitVirtualizer {
   /**
-   * Row keying every body starts with, read once from the page global
-   * `__apexRowKeying` that the test runner sets for its second suite run.
-   * Anything other than `'spike'` leaves upstream's item key untouched.
+   * Row keying every body built afterwards starts with. Anything other than
+   * `'spike'` leaves upstream's item key untouched.
    *
-   * @internal Test-only, for the suite-wide keying switch. Not public API.
+   * @internal Benchmark-only, for its spike reference mode. Not public API.
    */
-  public static rowKeying: RowKeying =
-    (globalThis as { __apexRowKeying?: unknown }).__apexRowKeying === 'spike' ? 'spike' : 'item';
+  public static rowKeying: RowKeying = 'item';
+
+  /**
+   * How rows map to elements: `'item'` keys each row by its record,
+   * `'slot'` re-binds row elements by position (the grid's `rowRecycling`).
+   * A switch rebuilds the rendered rows once.
+   *
+   * @internal Set by the grid. Not public API.
+   */
+  @property({ attribute: false })
+  public rowMode: RowMode = 'item';
 
   /**
    * Watches the host's intersection with the window, which is the one input to
@@ -152,8 +162,8 @@ export default class ApexVirtualizer extends LitVirtualizer {
 
   /** Upstream's own render, with the body's fork of its directive. */
   public override render() {
-    const { items, renderItem, keyFunction, layout, scroller } = this;
-    return html`${virtualizeRows({ items, renderItem, keyFunction, layout, scroller })}`;
+    const { items, renderItem, keyFunction, layout, scroller, rowMode: mode } = this;
+    return html`${virtualizeRows({ items, renderItem, keyFunction, layout, scroller, mode })}`;
   }
 
   /**
