@@ -7,6 +7,10 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- Master-detail detail grids take the master grid's experimental
+  `rowRecycling` when they are created, so a master that leaves it off leaves
+  it off for its detail grids too. `configureDetail` runs after and can set
+  its own.
 - `LLMRequest.rowCount`, the number of rows loaded in the grid, also sent in
   the proxy body.
 - `ConversationTurn.reverts`, set on turns that only undid an earlier change.

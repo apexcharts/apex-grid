@@ -29,7 +29,7 @@
     "start": "vite",
     "vite": "vite",
     "test": "node scripts/check-tree-shaking.js && wtr --group default --coverage",
-    "test:spike": "wtr --group spike",
+    "test:slot": "wtr --group slot",
     "test:watch": "wtr --group default --watch"
   },
   "dependencies": {

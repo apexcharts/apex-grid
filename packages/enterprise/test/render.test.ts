@@ -54,8 +54,12 @@ describe('ApexGridEnterprise', () => {
   });
 
   // Guards the suite-wide keying switch against a core dist built without the
-  // hook: the spike run would then rerun item keys and pass vacuously.
-  it('keys the body by slot under the spike run and by record otherwise', async () => {
+  // hook: the slot run would then rerun item keys and pass vacuously.
+  it('recycles the body rows under the slot run and keys them by record otherwise', async () => {
+    const keying = (globalThis as { __apexRowKeying?: unknown }).__apexRowKeying;
+    // Any other value is a runner config this switch no longer understands.
+    expect([undefined, 'slot'], 'page global __apexRowKeying').to.include(keying);
+    const slot = keying === 'slot';
     const grid = await fixture<ApexGridEnterprise<Row>>(
       html`<apex-grid-enterprise .data=${data} .columns=${columns}></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
@@ -63,15 +67,32 @@ describe('ApexGridEnterprise', () => {
     await settle(grid);
     const body = (
       grid as unknown as {
-        scrollContainer: { keyFunction: (item: unknown, index: number) => unknown };
+        scrollContainer: HTMLElement & {
+          rowMode?: unknown;
+          keyFunction: (item: unknown, index: number) => unknown;
+        };
       }
     ).scrollContainer;
     const item = { id: 131 };
-    const key = body.keyFunction(item, 130);
-    if ((globalThis as { __apexRowKeying?: unknown }).__apexRowKeying === 'spike') {
-      expect(key).to.equal(2);
+    expect((grid as unknown as { rowRecycling?: unknown }).rowRecycling).to.equal(slot);
+    expect(body.rowMode).to.equal(slot ? 'slot' : 'item');
+    // The item branch keeps upstream's record key in both runs.
+    expect(body.keyFunction(item, 130)).to.equal(item);
+
+    // A sort re-binds rows in place when they recycle; under item keys every
+    // row element moves with its record.
+    type RowElement = Element & { data: Row };
+    const elements = Array.from(body.querySelectorAll<RowElement>('apex-grid-row'));
+    const shown = new Map(elements.map((row) => [row, row.data]));
+    grid.sort({ key: 'id', direction: 'descending' });
+    await settle(grid);
+    const after = Array.from(body.querySelectorAll<RowElement>('apex-grid-row'));
+    const rebound = after.filter((row) => shown.get(row) !== row.data).length;
+    if (slot) {
+      expect(after, 'the same row elements, in place').to.eql(elements);
+      expect(rebound, 'rows showing another record').to.be.greaterThan(0);
     } else {
-      expect(key).to.equal(item);
+      expect(rebound, 'rows showing another record').to.equal(0);
     }
   });
 

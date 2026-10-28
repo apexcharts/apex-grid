@@ -30,7 +30,11 @@ export interface MasterDetailConfig<T extends object, C extends object = Record<
   detailHeight?: number | string;
   /** Gate which master rows can expand. Expandable by default. */
   isExpandable?: (row: T) => boolean;
-  /** Hook to set extra properties on the freshly-created detail grid. */
+  /**
+   * Hook to set extra properties on the freshly-created detail grid. The
+   * grid already has the master's `rowRecycling` here, so the hook can
+   * override it.
+   */
   configureDetail?: (grid: HTMLElement, context: MasterDetailContext<T>) => void;
 }
 
@@ -66,7 +70,8 @@ export class MasterDetailManager<T extends object> {
     return {
       enabled: true,
       isExpandable: this.config.isExpandable,
-      detailTemplate: (context) => this.#renderDetail(context.data, context.rowIndex),
+      detailTemplate: (context) =>
+        this.#renderDetail(context.data, context.rowIndex, context.parent.rowRecycling),
       exportParts: ['master-detail', 'detail-grid'],
     };
   }
@@ -76,12 +81,12 @@ export class MasterDetailManager<T extends object> {
     this.#cache.delete(row as object);
   }
 
-  #renderDetail(row: T, rowIndex: number): TemplateResult {
-    const grid = this.#ensureGrid(row, rowIndex);
+  #renderDetail(row: T, rowIndex: number, rowRecycling: boolean): TemplateResult {
+    const grid = this.#ensureGrid(row, rowIndex, rowRecycling);
     return html`<div part="master-detail" style="padding:8px;box-sizing:border-box">${grid}</div>`;
   }
 
-  #ensureGrid(row: T, rowIndex: number): HTMLElement {
+  #ensureGrid(row: T, rowIndex: number, rowRecycling: boolean): HTMLElement {
     const cached = this.#cache.get(row as object);
     if (cached) {
       // A failed load is retried the next time the detail is shown (expand, or scrolled back in),
@@ -92,6 +97,7 @@ export class MasterDetailManager<T extends object> {
 
     const grid = document.createElement(this.config.detailTag ?? 'apex-grid') as HTMLElement & {
       columns?: unknown;
+      rowRecycling?: boolean;
     };
     grid.setAttribute('part', 'detail-grid');
     // Only the size: the grid's own host style keeps `display: grid`.
@@ -100,6 +106,10 @@ export class MasterDetailManager<T extends object> {
     const columns =
       typeof this.config.columns === 'function' ? this.config.columns(row) : this.config.columns;
     grid.columns = columns;
+    // The master's choice covers its detail grids (and theirs, in turn), so a
+    // master that opts out of row recycling opts out everywhere it renders.
+    // `configureDetail` runs after, so it can still set its own.
+    grid.rowRecycling = rowRecycling;
     this.config.configureDetail?.(grid, { data: row, rowIndex });
 
     this.#cache.set(row as object, grid);

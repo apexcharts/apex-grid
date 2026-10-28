@@ -7,7 +7,8 @@ const RESIZE_OBSERVER_NOISE = 'ResizeObserver loop';
 /**
  * Test page for every group. `keying`, when set, is published as
  * `window.__apexRowKeying` before `test/setup.js` loads, which is ahead of
- * any grid module, so core's virtualizer reads it when it builds.
+ * any grid module, so core's `ApexGrid` reads it for its `rowRecycling`
+ * default when it loads.
  *
  * @param {string} testFramework
  * @param {string} [keying]
@@ -35,15 +36,15 @@ export default /** @type {import("@web/test-runner").TestRunnerConfig} */ ({
 
   testRunnerHtml: (testFramework) => runnerHtml(testFramework),
 
-  // A second pass over the whole suite with the body rows keyed by a fixed
-  // pool of slots instead of by record, so tests catch row state that leaks
+  // A second pass over the whole suite with every grid recycling its rows
+  // (`rowRecycling` defaults to true), so tests catch row state that leaks
   // across a rebind (row recycling plan, section 9). `npm test` runs only the
-  // default group, `npm run test:spike` only this one. The group leaves out
+  // default group, `npm run test:slot` only this one. The group leaves out
   // `files` so it takes the root pattern, which `--files` also narrows.
   groups: [
     {
-      name: 'spike',
-      testRunnerHtml: (testFramework) => runnerHtml(testFramework, 'spike'),
+      name: 'slot',
+      testRunnerHtml: (testFramework) => runnerHtml(testFramework, 'slot'),
     },
   ],
 
