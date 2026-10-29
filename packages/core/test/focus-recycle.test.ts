@@ -1,4 +1,5 @@
 import { aTimeout, expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
+import { sendKeys } from '@web/test-runner-commands';
 import type ApexGridCell from '../src/components/cell.js';
 import { ApexGrid } from '../src/components/grid.js';
 import type ApexGridRow from '../src/components/row.js';
@@ -165,6 +166,48 @@ describe('Focus under row recycling', () => {
     expect([editor.selectionStart, editor.selectionEnd], 'no select-all').to.deep.equal([5, 5]);
     expect(grid.editingCell).to.deep.equal({ rowIndex: cell.row.index, columnKey: 'name' });
   });
+
+  it('a sort while editing moves the active cell with the record; the keyboard carries on from it', async () => {
+    const grid = await mount({ data: records(20), editing: { enabled: true, mode: 'cell' } });
+    cellAt(grid, 3, 'name')!.click();
+    await settle(grid);
+    await grid.editCell(3, 'name');
+    await settle(grid);
+
+    grid.sort({ key: 'id', direction: 'descending' });
+    await settle(grid);
+    expect(activeOf(grid), 'the active cell is the edited one').to.deep.equal({
+      column: 'name',
+      row: 16,
+    });
+    expect(cellAt(grid, 3, 'name')!.active, 'no second outline').to.equal(false);
+
+    await sendKeys({ press: 'Enter' });
+    await settle(grid);
+    await sendKeys({ press: 'ArrowDown' });
+    await settle(grid);
+    expect(activeOf(grid)).to.deep.equal({ column: 'name', row: 17 });
+    expect(deepActive()).to.equal(cellAt(grid, 17, 'name'));
+  });
+
+  for (const recycling of [true, false]) {
+    it(`${recycling ? 'recycled' : 'item'} rows: a record added above an open edit moves the active cell along`, async () => {
+      const grid = await mount({
+        recycling,
+        data: records(20),
+        editing: { enabled: true, mode: 'cell' },
+      });
+      cellAt(grid, 3, 'name')!.click();
+      await settle(grid);
+      await grid.editCell(3, 'name');
+      await settle(grid);
+
+      grid.data = [{ id: 99, name: 'new', age: 1 }, ...grid.data];
+      await settle(grid);
+      expect(grid.editingCell).to.deep.equal({ rowIndex: 4, columnKey: 'name' });
+      expect(activeOf(grid)).to.deep.equal({ column: 'name', row: 4 });
+    });
+  }
 
   it('a filter that drops the edited record puts focus on the active cell, not the page', async () => {
     // The slot keeps its place and shows the next record, so its editor goes
@@ -438,7 +481,7 @@ describe('Focus under row recycling', () => {
     expect(bodyTabStops(grid)).to.equal(1);
   });
 
-  it('6 of 6 back-to-back keyboard jumps focus their target, each under 50ms', async () => {
+  it('6 of 6 back-to-back keyboard jumps focus their target without waiting out a settle', async () => {
     const grid = await mount({ height: '600px' });
     cellAt(grid, 0, 'id')!.click();
     await settle(grid);
@@ -459,8 +502,51 @@ describe('Focus under row recycling', () => {
       landed.push(ok && deepActive() === cellAt(grid, target.row, target.key));
     }
     expect(landed).to.deep.equal([true, true, true, true, true, true]);
-    expect(Math.max(...latency), `latencies ${latency.map(Math.round)}`).to.be.below(50);
+    // A jump that waits out the virtualizer's settle timeout (250ms) fails;
+    // the margin below it absorbs a slow CI runner.
+    expect(Math.max(...latency), `latencies ${latency.map(Math.round)}`).to.be.below(150);
   });
+
+  for (const recycling of [true, false]) {
+    it(`${recycling ? 'recycled' : 'item'} rows: a scroll to the row past the rendered ones lands on it when the rows grew after they were measured`, async () => {
+      const grid = await mount({
+        recycling,
+        height: '520px',
+        data: records(500),
+        expansion: {
+          enabled: true,
+          detailTemplate: () => html`<div style="height: 150px">detail</div>`,
+        },
+      });
+      // Measure rows collapsed, then grow every one: the size estimates for
+      // rows not rendered since are now far too small.
+      for (let top = 0; top <= 4000; top += 200) {
+        grid.scrollTop = top;
+        await nextFrame();
+        await nextFrame();
+      }
+      grid.scrollTop = 0;
+      await settle(grid);
+      await grid.expandAllRows();
+      await settle(grid);
+
+      // What ArrowDown from the last rendered row asks for.
+      const body = bodyOf(grid);
+      const target = Math.max(...renderedRows(grid).map((row) => row.index)) + 1;
+      const before = grid.scrollTop;
+      body.element(target)!.scrollIntoView({ block: 'nearest' });
+      await body.revealed();
+
+      expect(grid.scrollTop, 'never scrolls back').to.be.greaterThan(before);
+      const row = renderedRows(grid).find((each) => each.index === target);
+      expect(row, 'the row is rendered').to.exist;
+      const box = grid.getBoundingClientRect();
+      const rect = row!.getBoundingClientRect();
+      expect(rect.top >= box.top && rect.bottom <= box.bottom + 1, 'the row is in view').to.equal(
+        true
+      );
+    });
+  }
 });
 
 describe('Focus under row recycling: pagination', () => {

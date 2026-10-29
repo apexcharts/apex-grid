@@ -243,6 +243,12 @@ export class NavigationController<T extends object> implements ReactiveControlle
       await new Promise(requestAnimationFrame);
       cell = this.findCell(node);
     }
+    // An estimated scroll missed the row (stale size estimates): wait for the
+    // virtualizer's corrected scrolls to render it.
+    if (!cell && this._active === node) {
+      await this.virtualizer.revealed();
+      cell = this.findCell(node);
+    }
     // The user moved on while this was waiting: leave focus to the newer move.
     if (!cell || this._active !== node) return;
     if (reveal) this.scrollToCell(node);
@@ -288,6 +294,12 @@ export class NavigationController<T extends object> implements ReactiveControlle
    */
   #blurred: Element | null = null;
 
+  /**
+   * An element that lost focus by moving into another row with its record
+   * while a reconcile was running, for the reconcile to focus again.
+   */
+  #moved: Element | null = null;
+
   /** Bumped by every {@link reconcileFocus}, so only the latest one acts. */
   #reconcile = 0;
 
@@ -318,6 +330,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
    */
   public focusEntered(event: FocusEvent, owned: boolean): void {
     this.#blurred = null;
+    this.#moved = null;
     this.#ownsFocus = owned;
     this.#focusedRecord = owned ? (this.#locate(event.composedPath()[0])?.row?.data ?? null) : null;
   }
@@ -338,11 +351,22 @@ export class NavigationController<T extends object> implements ReactiveControlle
       return;
     }
     const target = event.composedPath()[0] as Element;
+    const from = this.#locate(target)?.row;
     this.#blurred = target;
     queueMicrotask(() => {
       if (this.#blurred !== target) return;
       this.#blurred = null;
-      if (target.isConnected || !this.#reconciling) this.#ownsFocus = false;
+      if (!this.#reconciling) {
+        this.#ownsFocus = false;
+        return;
+      }
+      if (!target.isConnected) return;
+      // Still in the document but in another row: a detail panel's content
+      // followed its record there (see DetailRoots in row.ts), which the
+      // browser treats as a blur. The reconcile puts focus back on it.
+      const to = this.#locate(target)?.row;
+      if (to && to !== from) this.#moved = target;
+      else this.#ownsFocus = false;
     });
   }
 
@@ -382,6 +406,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
       } finally {
         if (token === this.#reconcile) {
           this.#reconciling = 0;
+          this.#moved = null;
           // A page change decides once its pipeline has run (parkFocus).
           if (!this.#parked && this.#lost()) this.#ownsFocus = false;
         }
@@ -389,8 +414,20 @@ export class NavigationController<T extends object> implements ReactiveControlle
     })();
   }
 
-  /** Focus on the edited record's editor, else the active cell, else the body. */
+  /**
+   * Focus on what moved with the focused record (a detail panel's input),
+   * else the edited record's editor, else the active cell, else the body.
+   */
   async #restoreFocus(): Promise<void> {
+    const moved = this.#moved;
+    this.#moved = null;
+    if (moved?.isConnected && moved instanceof HTMLElement) {
+      const at = this.#locate(moved);
+      if (at?.row && at.row.data === this.#focusedRecord) {
+        moved.focus({ preventScroll: true });
+        return;
+      }
+    }
     const edit = this.editing?.activeCell;
     const row = edit && this.#renderedRows().find((each) => each.data === edit.data);
     const cell = row?.cells.find((each) => each.column.key === edit?.columnKey);
@@ -502,6 +539,20 @@ export class NavigationController<T extends object> implements ReactiveControlle
     if (!count || !this.visibleColumns.length) {
       this._active = SENTINEL_NODE as ActiveNode<T>;
       return;
+    }
+    // An open edit follows its record when a sort, filter or data change
+    // moves it (the editing controller updates its index after this render).
+    // The active cell on it goes along when the record stays in the rendered
+    // rows, so the keyboard carries on from the edited cell once the edit
+    // closes. A record moved out of view leaves the active cell in place,
+    // where the user is looking.
+    const edit = this.editing?.activeCell;
+    if (edit && node.row === edit.rowIndex && node.column === edit.columnKey) {
+      const index = this.host.pageItems.indexOf(edit.data);
+      if (index >= 0 && index !== edit.rowIndex && this.virtualizer.isRendered(index)) {
+        this._active = { column: node.column, row: index } as ActiveNode<T>;
+        return;
+      }
     }
     const row = Math.min(node.row, count - 1);
     const column = this.#nearestVisibleColumn(node.column);
@@ -691,7 +742,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
     // @ts-expect-error - protected member access
     return this.host.stateController.editing as
       | {
-          activeCell: { data: T; columnKey: Keys<T> } | null;
+          activeCell: { data: T; columnKey: Keys<T>; rowIndex: number } | null;
           enabled: boolean;
           isEditable(column: ColumnConfiguration<T>): boolean;
           editCell(rowIndex: number, columnKey: Keys<T>): Promise<boolean>;

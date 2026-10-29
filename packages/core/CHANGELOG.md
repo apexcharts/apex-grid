@@ -189,6 +189,14 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - An image cell whose URL changes (a pinned row switching records, an edit of
   the URL) renders a new `<img>`, so the previous picture no longer stays on
   screen while the new one loads.
+- Arrow and Page keys in a grid whose rows grew after they were first shown
+  (detail panels expanded, wrapped text) keep the active cell in view and
+  focused. A quick run of key presses could leave it unrendered, with focus on
+  the body or on a cell of another record, until the next click.
+- When a sort, a filter or a data change moves the record of an open cell
+  edit to another row that is still in view, the active cell moves with it, so
+  the keyboard carries on from the edited cell once the edit closes. It used to
+  stay on the old row, which then showed another record.
 
 ### Performance
 - Scrolling no longer re-renders the rows that stay in view; only the rows that

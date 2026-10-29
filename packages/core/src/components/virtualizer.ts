@@ -61,6 +61,9 @@ export type RevealOptions = ScrollIntoViewOptions & { insets?: ScrollInsets };
 /** Longest wait for the layout to settle after a scroll to an unrendered row. */
 const SETTLE_TIMEOUT_MS = 250;
 
+/** Estimated scrolls to an unrendered row before giving up on rendering it. */
+const MAX_REVEAL_ATTEMPTS = 4;
+
 /**
  * How the item branch keys its rows. `'item'` is upstream's default (the
  * record itself). `'spike'` keys by slot, `index % 128`, so a rebind reuses
@@ -267,52 +270,96 @@ export default class ApexVirtualizer extends LitVirtualizer {
     return null;
   }
 
+  /** The scroll that reaches an unrendered item, until it has revealed it or given up. */
+  #revealing: Promise<void> = Promise.resolve();
+
+  /**
+   * Resolves once the latest scroll to an unrendered item (see
+   * {@link element}) has rendered and revealed it, or given up.
+   */
+  public revealed(): Promise<void> {
+    return this.#revealing;
+  }
+
   #scrollToUnrendered(index: number, options: RevealOptions, reveal: number): void {
     const scroller = this.#scroller();
-    const count = this.items.length;
-    if (!scroller || !count) return;
-    // The upstream layout sizes this element to its estimate of the total
-    // extent, so the average item size here matches its own estimates for
-    // items it has not measured.
-    const size = this.offsetHeight / count;
-    if (!size) return;
+    if (!scroller || !this.items.length) return;
+    this.#revealing = this.#chase(scroller, index, options, reveal);
+  }
+
+  /**
+   * Scrolls to the estimated offset of item `index` until the item is
+   * rendered, then aligns the real row. Each estimate starts from the rows
+   * rendered by then, so a miss is corrected from where the last scroll
+   * landed. Stops when a newer scroll has been asked for.
+   */
+  async #chase(
+    scroller: HTMLElement,
+    index: number,
+    options: RevealOptions,
+    reveal: number
+  ): Promise<void> {
+    for (let attempt = 0; attempt < MAX_REVEAL_ATTEMPTS; attempt++) {
+      const top = this.#estimateScroll(scroller, index, options);
+      if (top === null) return;
+      scroller.scrollTo({ top, behavior: options.behavior });
+      await this.settled();
+      if (reveal !== this.#reveal) return;
+      const row = this.#renderedChild(index);
+      if (row) {
+        revealWithin(scroller, row, options);
+        return;
+      }
+    }
+  }
+
+  /**
+   * The scroll offset that brings unrendered item `index` into view as
+   * `options` asks, or `null` when no scroll is needed or possible.
+   *
+   * The upstream layout sizes this element to its estimate of the total
+   * extent, so the average item size matches its own estimates for items it
+   * has not measured. That average can be stale (rows that grew after they
+   * were measured, an expanded detail panel), so it is applied only across
+   * the gap from the nearest rendered row, whose position is real: an item
+   * just past the rendered range lands where the layout will draw it, and a
+   * scroll never jumps back past a correct position.
+   */
+  #estimateScroll(scroller: HTMLElement, index: number, options: RevealOptions): number | null {
+    const size = this.offsetHeight / this.items.length;
+    if (!size) return null;
 
     const padStart = options.insets?.top ?? 0;
     const padEnd = options.insets?.bottom ?? 0;
     const viewport = scroller.clientHeight - padStart - padEnd;
-    const origin =
-      this.getBoundingClientRect().top -
-      scroller.getBoundingClientRect().top -
-      scroller.clientTop +
-      scroller.scrollTop;
-    const start = origin + index * size;
+    const base = scroller.getBoundingClientRect().top + scroller.clientTop - scroller.scrollTop;
+    const offsetOf = (el: Element) => el.getBoundingClientRect().top - base;
+
+    const after = index > this.#last ? this.#renderedChild(this.#last) : null;
+    const before = index < this.#first ? this.#renderedChild(this.#first) : null;
+    let start: number;
+    if (after) {
+      start = offsetOf(after) + after.offsetHeight + (index - this.#last - 1) * size;
+    } else if (before) {
+      start = offsetOf(before) - (this.#first - index) * size;
+    } else {
+      start = offsetOf(this) + index * size;
+    }
     const end = start + size;
     const current = scroller.scrollTop;
 
-    let top: number;
     switch (options.block ?? 'start') {
       case 'start':
-        top = start - padStart;
-        break;
+        return start - padStart;
       case 'end':
-        top = end - padStart - viewport;
-        break;
+        return end - padStart - viewport;
       case 'center':
-        top = (start + end) / 2 - padStart - viewport / 2;
-        break;
+        return (start + end) / 2 - padStart - viewport / 2;
       default:
-        if (start < current + padStart) top = start - padStart;
-        else if (end > current + padStart + viewport) top = end - padStart - viewport;
-        else return;
+        if (start < current + padStart) return start - padStart;
+        if (end > current + padStart + viewport) return end - padStart - viewport;
+        return null;
     }
-    scroller.scrollTo({ top, behavior: options.behavior });
-    // The offset was an estimate; once the target is rendered, align the real
-    // row, unless a newer scroll has been asked for in the meantime.
-    void this.settled().then(() => {
-      if (reveal !== this.#reveal) return;
-      const row = this.#renderedChild(index);
-      if (row) revealWithin(scroller, row, options);
-    });
   }
 
   public static get tagName() {

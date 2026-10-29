@@ -1,4 +1,5 @@
 import { aTimeout, expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
+import { sendKeys } from '@web/test-runner-commands';
 import { nothing } from 'lit';
 import { AsyncDirective, directive } from 'lit/async-directive.js';
 import { ApexGrid } from '../src/components/grid.js';
@@ -166,6 +167,45 @@ describe('Detail panel under row recycling', () => {
     await settle(grid);
     expect(grid.pageItems[0].id, 'the master is sorted').to.equal(6);
     check('master sort');
+  });
+
+  for (const change of ['insert above', 'remove above'] as const) {
+    it(`typing into a detail input carries on after an ${change} moves its record`, async () => {
+      const grid = await mount({ recycling: true, data: records(12) });
+      const record = grid.data[5];
+      await grid.expandRow(record);
+      await settle(grid);
+      const note = noteOf(rowOf(grid, record))!;
+      note.focus();
+      await sendKeys({ type: 'abc' });
+
+      // The record changes row, and its detail follows it into that row.
+      grid.data =
+        change === 'insert above' ? [{ id: 99, name: 'new' }, ...grid.data] : grid.data.slice(1);
+      await settle(grid);
+      await nextFrame();
+      expect(noteOf(rowOf(grid, record)), 'the same input').to.equal(note);
+      await sendKeys({ type: 'XYZ' });
+
+      expect(note.value).to.equal('abcXYZ');
+      let focused: Element | null = document.activeElement;
+      while (focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement;
+      expect(focused, 'focus stays in the input').to.equal(note);
+    });
+  }
+
+  it('a click out of a detail input is not undone by a later data change', async () => {
+    const grid = await mount({ recycling: true, data: records(12) });
+    const record = grid.data[5];
+    await grid.expandRow(record);
+    await settle(grid);
+    noteOf(rowOf(grid, record))!.focus();
+    (document.activeElement as HTMLElement).blur();
+
+    grid.data = [{ id: 99, name: 'new' }, ...grid.data];
+    await settle(grid);
+    await nextFrame();
+    expect(document.activeElement).to.equal(document.body);
   });
 
   for (const recycling of [true, false]) {
