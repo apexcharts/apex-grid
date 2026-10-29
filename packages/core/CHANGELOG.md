@@ -6,6 +6,32 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [4.0.0-beta.1] - 2026-10-29
+
+A pre-release of 4.0.0, published under the `next` npm tag for trying out
+before it becomes `latest`. It is a major version because these changes can
+break existing code:
+
+- **Body rows are recycled by default** (`rowRecycling`). A row element and
+  its cells can show another record after a scroll, sort or filter, so a
+  template that keeps state in the elements it creates, or code that holds
+  `grid.rows` elements or `ctx.row` across an `await`, can see another
+  record. Set `rowRecycling = false` (or `row-recycling="false"`) to keep
+  record-keyed rows.
+- **The grid role moved off the host.** `role`, `aria-rowcount`,
+  `aria-colcount`, `aria-multiselectable` and the accessible name are on the
+  inner `[part~="table"]` element.
+- **Types removed:** `DataPipelineConfiguration.pagination` and the
+  `'pagination'` value of `DataPipelineParams.type`.
+- **Pagination:** pinned rows no longer count toward `totalItems` and the
+  pages, and a local page change no longer calls custom sort and filter hooks.
+- **Smaller type and DOM changes:** `ctx.data` is a required field of the cell
+  context, `ApexGridPaginator.pageSizeOptions` is `readonly number[]`, the
+  paginator's previous button id is `prev`, and the protected
+  `ApexGrid.headerRowCount` and `ApexGridHeaderRow.renderDragGhost` are gone.
+
+See Changed and Removed for the details and for other changes apps may notice.
+
 ### Added
 - The `ai.cancelled` locale key (English and Spanish), used by the enterprise
   Ask AI panel.
@@ -115,6 +141,13 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   row count, and in remote mode the `pagination.totalItems` you supply, the
   number of rows the server holds for the current filter.
   ([#34](https://github.com/apexcharts/apex-grid/issues/34))
+- Type and DOM details for code that builds on the grid's internals:
+  `BaseApexCellContext.data` is required, so code that builds a cell context
+  by hand must supply it; `ApexGridPaginator.pageSizeOptions` is typed
+  `readonly number[]`; the paginator's previous button has the id `prev`
+  (it was `previous`) inside its shadow root; and the protected
+  `ApexGrid.headerRowCount` and `ApexGridHeaderRow.renderDragGhost` were
+  removed, which affects subclasses only.
 - The `@lit-labs/virtualizer` dependency is pinned to exactly `2.1.1` (it was
   `~2.1.0`). The grid body builds on parts of that package that are not public
   API, so a newer version arrives only with a grid release that has been

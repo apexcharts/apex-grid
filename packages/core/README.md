@@ -427,7 +427,7 @@ the host becomes its description. The references are resolved when the grid
 renders, so if you add the referenced element later (a heading shown
 conditionally), set the attribute again afterwards to pick it up.
 
-> Changed after 3.6.0: the role and the row and column counts used to be on the
+> Changed in 4.0.0: the role and the row and column counts used to be on the
 > host. Query `grid.shadowRoot.querySelector('[part~="table"]')` instead.
 
 > Changed in 3.4.0: Home / End used to jump to the first / last row; they now

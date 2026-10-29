@@ -1,6 +1,6 @@
 {
   "name": "react-apex-grid",
-  "version": "0.1.0",
+  "version": "0.1.1-beta.1",
   "description": "React wrapper for apex-grid, the framework-agnostic web component data grid",
   "keywords": [
     "react",
@@ -33,7 +33,7 @@
     "build": "npm run generate && tsc -p tsconfig.build.json && node scripts/pack-dist.js"
   },
   "peerDependencies": {
-    "apex-grid": "^3.4.0",
+    "apex-grid": "^3.4.0 || ^4.0.0-beta.1",
     "react": ">=18",
     "react-dom": ">=18"
   },

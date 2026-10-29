@@ -140,7 +140,10 @@ jobs:
               echo "Release $gittag already exists, skipping"
             else
               notes=$(printf '%s\n\n%s' "\`$name@$version\` published to npm with provenance." "See the commit history for changes since the previous release.")
-              gh release create "$gittag" --title "$gittag" --notes "$notes"
+              # A `next` release is a GitHub pre-release, so it never becomes "Latest".
+              prerelease=()
+              if [[ "$npmtag" == next ]]; then prerelease=(--prerelease); fi
+              gh release create "$gittag" --title "$gittag" --notes "$notes" ${prerelease[@]+"${prerelease[@]}"}
             fi
             echo "::endgroup::"
           done < <(printf '%s\n' "$RELEASES")

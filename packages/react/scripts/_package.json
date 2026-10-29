@@ -36,7 +36,7 @@
     "node": ">=20"
   },
   "peerDependencies": {
-    "apex-grid": "^3.4.0",
+    "apex-grid": "^3.4.0 || ^4.0.0-beta.1",
     "react": ">=18",
     "react-dom": ">=18"
   },

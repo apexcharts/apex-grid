@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1-beta.1
+
+Pre-release, published under the `next` npm tag.
+
+- The `apex-grid` peer range accepts the 4.0 line (`^3.4.0 || ^4.0.0-beta.1`),
+  so the wrapper installs next to apex-grid 4.0.0-beta.1 without a peer
+  conflict. The wrapper code is unchanged, and the new `rowRecycling` property
+  passes through like any other.
+
 ## 0.1.0
 
 Initial release.

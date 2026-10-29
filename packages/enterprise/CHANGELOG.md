@@ -6,6 +6,15 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.0-beta.1] - 2026-10-29
+
+A pre-release of 0.9.0, published under the `next` npm tag alongside apex-grid
+4.0.0-beta.1, which it needs. Apps may notice: body rows are recycled by
+default (opt out with `rowRecycling = false`), a bulk write fires one
+`apex-view-changed`, only visible columns reach a model or proxy, AI requests
+and replies are checked more strictly, and charts skip blank cells and format
+numbers for the locale. See Changed for the details.
+
 ### Added
 - Master-detail detail grids take the master grid's `rowRecycling` (on by
   default in core) when they are created, so a master that turns it off turns
