@@ -64,6 +64,10 @@ built-in feature module and registers the grid plus its companion elements
 see the [`apex-grid` README](https://www.npmjs.com/package/apex-grid) for column
 configuration, theming, and events.
 
+Body rows are recycled by default, as in `apex-grid` (`rowRecycling`, see Row
+recycling in the `apex-grid` README for the template rules). Set
+`row-recycling="false"` on `<apex-grid-enterprise>` to keep record-keyed rows.
+
 ### Composing only the features you use
 
 Importing from the package root wires in **no** feature modules by default, so
@@ -397,6 +401,11 @@ Set `masterDetail` back to `null` to turn it off; the grid restores the
 detail shows empty and the data is requested again the next time that detail
 is shown. Style the panel with `apex-grid-enterprise::part(master-detail)` and
 the nested grid with `::part(detail-grid)`.
+
+A detail grid takes the master's `rowRecycling` setting when it is created, so
+a master with `rowRecycling = false` gets record-keyed detail grids too. A
+`masterDetail.configureDetail(grid, context)` hook runs after that and can
+still set its own.
 
 ## Integrated charts
 

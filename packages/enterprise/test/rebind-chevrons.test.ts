@@ -5,8 +5,8 @@ import { getPivotMeta, type PivotController } from '../src/features/pivot.js';
 import { ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 import { settle } from './settle.js';
 
-// A body row re-bound to another record (a recycled slot; this suite's second
-// group recycles body rows) must show that record's group and pivot
+// A body row re-bound to another record (a recycled slot; body rows recycle
+// by default, and this suite's item group keys them by record) must show that record's group and pivot
 // chevrons as they are, not rotate from the previous record's. Core marks
 // such a row `data-rebound` for a frame and zeroes the motion tokens under it,
 // and the chevrons' rotation reads those tokens, so it stays put. The
@@ -50,7 +50,7 @@ const columns: ColumnConfiguration<Row>[] = [
 const SLOW_MOTION = '--ag-dur-fast: 20s; --ag-dur-med: 20s; --ag-dur-slow: 20s;';
 
 /** Whether this run recycles body rows, so a sort or a jump re-binds them in place. */
-const rebinding = () => Boolean((globalThis as { __apexRowKeying?: string }).__apexRowKeying);
+const rebinding = () => ApexGridEnterprise.defaultRowRecycling;
 
 function modules(grid: ApexGridEnterprise<Row>) {
   return (grid as unknown as { stateController: { modules: Map<string, unknown> } }).stateController

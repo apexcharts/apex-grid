@@ -156,6 +156,12 @@ describe('ApexGridSetFilter: sync with the applied filter', () => {
     await settle(grid, filter);
     grid.scrollTop = 4000;
     await settle(grid);
+    // Under load the body can still be sizing itself, which clamps the scroll.
+    for (let i = 0; i < 60 && grid.scrollTop === 0; i++) {
+      await nextFrame();
+      grid.scrollTop = 4000;
+      await settle(grid);
+    }
     const before = grid.scrollTop;
     expect(before).to.be.greaterThan(0);
     grid.setState(grid.getState());

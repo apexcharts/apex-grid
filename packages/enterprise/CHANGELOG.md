@@ -7,8 +7,8 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
-- Master-detail detail grids take the master grid's experimental
-  `rowRecycling` when they are created, so a master that leaves it off leaves
+- Master-detail detail grids take the master grid's `rowRecycling` (on by
+  default in core) when they are created, so a master that turns it off turns
   it off for its detail grids too. `configureDetail` runs after and can set
   its own.
 - `LLMRequest.rowCount`, the number of rows loaded in the grid, also sent in
@@ -26,6 +26,12 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   and the new size is announced.
 
 ### Changed
+- **Body rows are recycled by default** (apex-grid `rowRecycling`, now `true`),
+  in `<apex-grid-enterprise>` too. Cell and editor templates should read
+  `ctx.data` for the record and keep no state in the elements they create; set
+  `rowRecycling = false` (or `row-recycling="false"` on
+  `<apex-grid-enterprise>`) to keep record-keyed rows. See the apex-grid
+  changelog.
 - **A bulk write fires one `apex-view-changed`** (`applyEdits`, a range paste,
   a fill drag, or undo or redo of a batch) instead of one per cell, so a docked
   view chart and the status bar refresh once. After a single cell edit the

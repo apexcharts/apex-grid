@@ -36,15 +36,16 @@ export default /** @type {import("@web/test-runner").TestRunnerConfig} */ ({
 
   testRunnerHtml: (testFramework) => runnerHtml(testFramework),
 
-  // A second pass over the whole suite with every grid recycling its rows
-  // (`rowRecycling` defaults to true), so tests catch row state that leaks
-  // across a rebind (row recycling plan, section 9). `npm test` runs only the
-  // default group, `npm run test:slot` only this one. The group leaves out
-  // `files` so it takes the root pattern, which `--files` also narrows.
+  // The default group runs the shipping default, every grid recycling its rows
+  // (`rowRecycling` true). This group is a second pass over the whole suite
+  // with every grid keeping record-keyed rows (`rowRecycling` defaults to
+  // false), the opt-out path. `npm test` runs only the default group, `npm run
+  // test:item` only this one. The group leaves out `files` so it takes the
+  // root pattern, which `--files` also narrows.
   groups: [
     {
-      name: 'slot',
-      testRunnerHtml: (testFramework) => runnerHtml(testFramework, 'slot'),
+      name: 'item',
+      testRunnerHtml: (testFramework) => runnerHtml(testFramework, 'item'),
     },
   ],
 

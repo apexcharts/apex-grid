@@ -54,12 +54,14 @@ describe('ApexGridEnterprise', () => {
   });
 
   // Guards the suite-wide keying switch against a core dist built without the
-  // hook: the slot run would then rerun item keys and pass vacuously.
-  it('recycles the body rows under the slot run and keys them by record otherwise', async () => {
+  // hook: one group would then rerun the other's mode and pass vacuously. The
+  // default group recycles the body rows (the shipping default), the item
+  // group keys them by record.
+  it('recycles the body rows by default and keys them by record under the item run', async () => {
     const keying = (globalThis as { __apexRowKeying?: unknown }).__apexRowKeying;
     // Any other value is a runner config this switch no longer understands.
-    expect([undefined, 'slot'], 'page global __apexRowKeying').to.include(keying);
-    const slot = keying === 'slot';
+    expect([undefined, 'item'], 'page global __apexRowKeying').to.include(keying);
+    const slot = keying !== 'item';
     const grid = await fixture<ApexGridEnterprise<Row>>(
       html`<apex-grid-enterprise .data=${data} .columns=${columns}></apex-grid-enterprise>`,
       { parentNode: sizedParent() }
