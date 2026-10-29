@@ -394,7 +394,10 @@ describe('Body styles', () => {
       expect(cs(toggle).color, 'tree-toggle').to.equal(rowColor);
     });
 
-    it('an editor in a selected row rejoins the forced palette', async () => {
+    it('an editor in a selected row rejoins the forced palette', async function () {
+      // The fix hands the editor back to the forced palette, which WebKit
+      // never applies (no `forced-color-adjust`, no forced colors mode).
+      if (!CSS.supports('forced-color-adjust', 'auto')) this.skip();
       ApexGrid.register();
       const grid = await fixture<ApexGrid<Row>>(
         html`<apex-grid

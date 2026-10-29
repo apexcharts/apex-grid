@@ -199,8 +199,11 @@ describe('Detail panel under row recycling', () => {
     const record = grid.data[5];
     await grid.expandRow(record);
     await settle(grid);
-    noteOf(rowOf(grid, record))!.focus();
-    (document.activeElement as HTMLElement).blur();
+    const note = noteOf(rowOf(grid, record))!;
+    note.focus();
+    // Blur the input itself: `document.activeElement` is the grid (focus is in
+    // its shadow tree), and Firefox ignores `blur()` on a shadow host.
+    note.blur();
 
     grid.data = [{ id: 99, name: 'new' }, ...grid.data];
     await settle(grid);

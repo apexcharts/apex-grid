@@ -493,6 +493,9 @@ export default class ApexGridCell<T extends object> extends LitElement {
       // focus may have left the grid meanwhile: such an editor takes focus
       // only while the body holds it.
       if (resumed && this.#recycledBody && !this.state.navigation.ownsFocus) return;
+      // WebKit scrolls a text input focused before its first layout into view
+      // once laid out, `preventScroll` or not: lay it out first.
+      if (resumed) editor?.getBoundingClientRect();
       editor?.focus(resumed ? { preventScroll: true } : undefined);
       if (!resumed && editor instanceof HTMLInputElement) {
         if (editor.type === 'text' || editor.type === 'number') {

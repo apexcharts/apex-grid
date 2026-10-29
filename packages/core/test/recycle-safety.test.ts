@@ -679,10 +679,17 @@ describe('Recycle safety', () => {
       await settle(grid);
 
       if (!slotKeyed()) {
-        // Item keys move the focused row element, which drops focus, so the
-        // focus-loss path commits the draft and closes the editor (5.3).
-        expect(grid.editingCell).to.equal(null);
-        expect(second.name).to.equal('TYPED');
+        // Item keys move the focused row element, which drops focus. Chromium
+        // reports that with a `focusout`, so the focus-loss path commits the
+        // draft and closes the editor (5.3). Firefox and WebKit drop focus
+        // without an event and the edit stays open. Either way the draft is
+        // kept.
+        if (grid.editingCell === null) {
+          expect(second.name).to.equal('TYPED');
+        } else {
+          const row = bodyRows(grid).find((entry) => entry.data === second)!;
+          expect(editorOf(cellOf(row, 'name'))!.value).to.equal('TYPED');
+        }
         return;
       }
       const row = bodyRows(grid).find((entry) => entry.data === second)!;

@@ -280,13 +280,29 @@ export class NavigationController<T extends object> implements ReactiveControlle
    * it left the grid.
    */
   public get ownsFocus(): boolean {
+    this.#settleLoss();
     return this.#ownsFocus;
   }
 
   #ownsFocus = false;
 
+  /**
+   * Clears {@link ownsFocus} when focus went nowhere with nothing pending to
+   * repair it. Chromium reports a focused element removed or moved in the
+   * DOM with a `focusout` ({@link focusLeft} decides then); Firefox and
+   * WebKit drop focus silently, so the loss is noticed here, the next time
+   * anything asks.
+   */
+  #settleLoss(): void {
+    if (!this.#ownsFocus || this.#reconciling || this.#parked || this.#detached) return;
+    if (this.#lost()) this.#ownsFocus = false;
+  }
+
   /** The record the focused row showed when focus arrived, for the reconcile. */
   #focusedRecord: T | null = null;
+
+  /** The element focus arrived on and the row it stood in, for the reconcile. */
+  #focusTarget: { el: Element; row: ApexGridRow<T> | undefined } | null = null;
 
   /**
    * The element that lost focus to nowhere in this task, until a microtask
@@ -332,7 +348,10 @@ export class NavigationController<T extends object> implements ReactiveControlle
     this.#blurred = null;
     this.#moved = null;
     this.#ownsFocus = owned;
-    this.#focusedRecord = owned ? (this.#locate(event.composedPath()[0])?.row?.data ?? null) : null;
+    const el = event.composedPath()[0] as Element;
+    const row = owned ? this.#locate(el)?.row : undefined;
+    this.#focusedRecord = row?.data ?? null;
+    this.#focusTarget = owned ? { el, row } : null;
   }
 
   /**
@@ -383,6 +402,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
    * unrepaired clears {@link ownsFocus}.
    */
   public reconcileFocus(): void {
+    this.#settleLoss();
     if (!this.#ownsFocus || !this.host.rowRecycling) return;
     const token = ++this.#reconcile;
     this.#reconciling = token;
@@ -419,7 +439,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
    * else the edited record's editor, else the active cell, else the body.
    */
   async #restoreFocus(): Promise<void> {
-    const moved = this.#moved;
+    const moved = this.#moved ?? this.#silentlyMoved();
     this.#moved = null;
     if (moved?.isConnected && moved instanceof HTMLElement) {
       const at = this.#locate(moved);
@@ -445,6 +465,19 @@ export class NavigationController<T extends object> implements ReactiveControlle
   }
 
   /**
+   * The focused element when it moved into another row without a `focusout`
+   * (Firefox, WebKit), which {@link focusLeft} records as {@link #moved} in
+   * Chromium: focus went nowhere and the element is back in the document in
+   * another row.
+   */
+  #silentlyMoved(): Element | null {
+    const target = this.#focusTarget;
+    if (!target?.el.isConnected || !this.#lost()) return null;
+    const to = this.#locate(target.el)?.row;
+    return to && to !== target.row ? target.el : null;
+  }
+
+  /**
    * Row recycling: a page change re-binds every row to the new page's
    * records, so a focused cell would stay focused on another record. Holds
    * focus in the body across the change: the body does not forward focus to
@@ -455,6 +488,7 @@ export class NavigationController<T extends object> implements ReactiveControlle
    * while the body does not own focus.
    */
   public parkFocus(): (() => Promise<void>) | null {
+    this.#settleLoss();
     if (!this.host.rowRecycling || !this.#ownsFocus) return null;
     const at = this.#locate(deepActiveElement());
     const park = { record: at?.row?.data ?? null };
@@ -704,9 +738,11 @@ export class NavigationController<T extends object> implements ReactiveControlle
     // A grid moved while its body held focus: under row recycling the master
     // row showing this grid's record changes on a master sort, and the
     // detail node follows its record into another row. The browser dropped
-    // focus just before (`#blurred`); a re-attach within this task restores
-    // the active cell and focus. Anything later is a removal, as before.
-    const moved = this.#blurred !== null && this.host.rowRecycling;
+    // focus just before (`#blurred`, or silently in Firefox and WebKit, which
+    // fire no `focusout` for it); a re-attach within this task restores the
+    // active cell and focus. Anything later is a removal, as before.
+    const dropped = this.#blurred !== null || (this.#ownsFocus && this.#lost());
+    const moved = dropped && this.host.rowRecycling;
     const detached = moved ? { node: this._active } : null;
     this.active = SENTINEL_NODE as ActiveNode<T>;
     this.#detached = detached;

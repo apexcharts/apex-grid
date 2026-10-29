@@ -96,7 +96,9 @@ function layoutFaults(grid: ApexGrid<Row>): string[] {
     if (cache.getChildSize(rows[i].index) === undefined) faults.push(`${rows[i].index}: unsized`);
     if (i === 0 || rows[i].index !== rows[i - 1].index + 1) continue;
     const gap = rows[i].getBoundingClientRect().top - rows[i - 1].getBoundingClientRect().bottom;
-    if (Math.abs(gap) > 1) faults.push(`${rows[i].index}: ${gap.toFixed(1)}px`);
+    // Firefox rounds row offsets to the device pixel, so a measured layout can
+    // be a pixel and a fraction out; an unmeasured row is tens of pixels out.
+    if (Math.abs(gap) > 1.5) faults.push(`${rows[i].index}: ${gap.toFixed(1)}px`);
   }
   return faults;
 }
@@ -351,7 +353,9 @@ describe('virtualizer substrate', () => {
       const body = bodyOf(grid);
       const before = new Map(bodyRows(grid).map((row) => [row, row.index]));
       const focused = bodyRows(grid)[5];
-      focused.cells[0].focus();
+      // No focus scroll: WebKit runs it after the next layout, which would undo
+      // the scroll below.
+      focused.cells[0].focus({ preventScroll: true });
       const seen: string[] = [];
       // Registered after the rows directive's own listener.
       body.addEventListener(
