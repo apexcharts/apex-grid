@@ -297,6 +297,8 @@ describe('RowAriaProvider seam', () => {
     );
     await grid.updateComplete;
     await nextFrame();
+    // The first rows can wait on a resize observation under load.
+    for (let i = 0; i < 60 && grid.rows.length === 0; i++) await nextFrame();
     return grid;
   }
 

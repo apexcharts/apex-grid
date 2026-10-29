@@ -34,6 +34,11 @@ async function settle(grid: HTMLElement & { updateComplete: Promise<boolean> }) 
   await grid.updateComplete;
 }
 
+/** Waits for the first body rows, which can wait on a resize observation under load. */
+async function rowsReady(grid: { rows: unknown[] }) {
+  for (let i = 0; i < 60 && grid.rows.length === 0; i++) await nextFrame();
+}
+
 /** The body rows the view should hold: the view minus pins, then the page. */
 function expectedPage(grid: ApexGrid<TestData>): TestData[] {
   const rowPin = stateOf(grid).rowPin;
@@ -76,7 +81,7 @@ describe('Render path: display columns', () => {
     );
     await elementUpdated(grid);
     const rowsOf = () => grid.rows as unknown as ApexGridRow<Wide>[];
-    for (let i = 0; i < 10 && rowsOf().length === 0; i++) await nextFrame();
+    await rowsReady(grid);
 
     const proto = ApexGridRow.prototype as unknown as {
       update: (changed: Map<PropertyKey, unknown>) => void;
@@ -116,8 +121,7 @@ describe('Render path: display columns', () => {
       html`<apex-grid .data=${data} .columns=${columns.map((c) => ({ ...c }))}></apex-grid>`
     );
     await settle(grid);
-    // The first rows can wait on a resize observation under load.
-    for (let i = 0; i < 10 && grid.rows.length === 0; i++) await nextFrame();
+    await rowsReady(grid);
     const first = domOf(grid).displayColumns;
     expect(domOf(grid).displayColumns, 'two reads').to.equal(first);
     const rowOf = () => grid.rows[0] as unknown as ApexGridRow<TestData>;
@@ -135,6 +139,7 @@ describe('Render path: display columns', () => {
       html`<apex-grid .data=${data} .columns=${columns.map((c) => ({ ...c }))}></apex-grid>`
     );
     await settle(grid);
+    await rowsReady(grid);
     const dom = domOf(grid);
     const keys = () => dom.displayColumns.map((c) => c.key);
     const cellsOf = () =>

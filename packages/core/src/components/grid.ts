@@ -938,14 +938,14 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   public static override styles = gridStyles;
 
   /**
-   * The `rowRecycling` every grid starts with: `true` only when the page
-   * global `__apexRowKeying` is `'slot'`, which the test runner sets for its
-   * second suite run so every grid in it recycles rows.
+   * The `rowRecycling` every grid starts with: `true` unless the page global
+   * `__apexRowKeying` is `'item'`, which the test runner sets for its second
+   * suite run so every grid in it keeps record-keyed rows.
    *
    * @internal Test-only, for the suite-wide keying switch. Not public API.
    */
   public static defaultRowRecycling =
-    (globalThis as { __apexRowKeying?: unknown }).__apexRowKeying === 'slot';
+    (globalThis as { __apexRowKeying?: unknown }).__apexRowKeying !== 'item';
 
   /**
    * Registers `<apex-grid>` and its internal dependencies with the custom-element
@@ -1235,26 +1235,40 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   public columnSeparator = true;
 
   /**
-   * Experimental. Reuses body row elements across records: when `true`, a
-   * scroll, sort or filter re-binds the rendered rows to the records now in
-   * view instead of building rows for them, which makes jumps and sorts
-   * cheaper on large grids. Off by default: with it on, templates must derive
-   * what they render from their context (`ctx.data`) on each render.
+   * Reuses body row elements across records. On by default: a scroll, sort or
+   * filter re-binds the rendered rows to the records now in view instead of
+   * building rows for them, which makes jumps and sorts cheaper on large
+   * grids. Set to `false` (or the `row-recycling="false"` attribute) to
+   * restore record-keyed rows, where each row element stays with its record.
+   * `undefined` or `null` (a framework prop that was set and then dropped)
+   * restores the default, so only `false` opts out.
    *
    * @remarks
-   * With it on, a row element (and its cells) shows another
-   * record after a scroll or a sort, so cell and editor templates must derive
-   * everything they render from their context on each render, and must not
-   * keep state in the elements they create. `ctx.row` and `ctx.parent` are
-   * row and cell elements that may show another record later; read
-   * `ctx.data` for the record. Leave it off for templates that keep element
-   * state across renders, such as third-party widgets.
+   * A row element (and its cells) shows another record after a scroll or a
+   * sort, so cell and editor templates must derive everything they render
+   * from their context on each render, and must not keep state in the
+   * elements they create. `ctx.row` and `ctx.parent` are row and cell
+   * elements that may show another record later: read `ctx.data` for the
+   * record, and do not hold `ctx.row` or `ctx.parent` across an `await`. A
+   * template that keeps element state wraps itself in
+   * `keyed(ctx.data, html...)` so the state never shows on the wrong record
+   * (it is rebuilt on every rebind). Turn recycling off for templates that
+   * must keep element state across a sort or a move, such as some
+   * third-party widgets.
    *
    * @attr row-recycling
-   * @default false
+   * @default true
    */
-  @property({ type: Boolean, attribute: 'row-recycling' })
-  public rowRecycling: boolean = ApexGrid.defaultRowRecycling;
+  @property({ attribute: 'row-recycling', converter: (value) => value !== 'false' })
+  public get rowRecycling(): boolean {
+    return this.#rowRecycling;
+  }
+
+  public set rowRecycling(value: boolean) {
+    this.#rowRecycling = value ?? ApexGrid.defaultRowRecycling;
+  }
+
+  #rowRecycling = ApexGrid.defaultRowRecycling;
 
   /**
    * Inline editing configuration for the grid.
@@ -1690,7 +1704,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    *
    * @remarks
    * Since the grid has virtualization, this property returns only the currently rendered
-   * chunk of elements in the DOM.
+   * chunk of elements in the DOM. With `rowRecycling` on (the default) an element can
+   * show another record after a scroll, sort or filter; read its `data` each time
+   * rather than keeping the element as a handle to a record.
    */
   public get rows() {
     return Array.from(this._rows);

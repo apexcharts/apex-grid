@@ -9,8 +9,9 @@ import data, { type TestData } from './utils/test-data.js';
 /**
  * Row reorder under rows that re-bind to another record (plan section 4):
  * keyboard grab focus, FLIP ids and cancellation, and the drag ghost resolved
- * by record. The slot group recycles the body rows (`rowRecycling`), so a sort
- * or a move re-binds row elements in place there.
+ * by record. Body rows recycle by default (`rowRecycling`), so a sort or a
+ * move re-binds row elements in place; the suite's item group keys them by
+ * record instead.
  */
 class RecycleFixture<T extends TestData> extends GridTestFixture<T> {
   public rowReordering: GridRowReorderingConfiguration = { enabled: true };

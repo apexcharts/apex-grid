@@ -45,8 +45,8 @@
     "start": "concurrently -k -r \"npm:sass:watch\" \"npm:vite\"",
     "pretest": "node -e \"import('./scripts/sass.js').then(m => m.buildComponents())\"",
     "test": "wtr --group default --coverage",
-    "pretest:slot": "node -e \"import('./scripts/sass.js').then(m => m.buildComponents())\"",
-    "test:slot": "wtr --group slot",
+    "pretest:item": "node -e \"import('./scripts/sass.js').then(m => m.buildComponents())\"",
+    "test:item": "wtr --group item",
     "test:watch": "wtr --group default --watch",
     "typedoc": "typedoc",
     "vite": "vite"

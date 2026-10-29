@@ -457,5 +457,40 @@ describe('Row recycling: slot reconciler', () => {
       expect(grid.rowRecycling).to.equal(true);
       expect(virtualizedRows(bodyOf(grid))?.mode).to.equal('slot');
     });
+
+    it('turns recycling off with row-recycling="false"', async () => {
+      ApexGrid.register();
+      const host = document.createElement('div');
+      host.style.height = '400px';
+      const grid = await fixture<ApexGrid<Row>>(
+        html`<apex-grid row-recycling="false" .data=${records(50)} .columns=${COLUMNS}></apex-grid>`,
+        { parentNode: host }
+      );
+      await settle(grid);
+      expect(grid.rowRecycling).to.equal(false);
+      expect(virtualizedRows(bodyOf(grid))?.mode).to.equal('item');
+
+      grid.setAttribute('row-recycling', '');
+      await settle(grid);
+      expect(grid.rowRecycling, 'any other value turns it on').to.equal(true);
+      expect(virtualizedRows(bodyOf(grid))?.mode).to.equal('slot');
+    });
+
+    it('restores the default when rowRecycling is set to undefined or null', async () => {
+      // A framework wrapper unsets a dropped prop by assigning `undefined`
+      // (React through @lit/react does), which must not read as an opt-out.
+      const fallback = ApexGrid.defaultRowRecycling;
+      const fallbackMode = fallback ? 'slot' : 'item';
+      for (const empty of [undefined, null]) {
+        const grid = await mount({ data: records(50), height: '400px', recycling: !fallback });
+        expect(grid.rowRecycling).to.equal(!fallback);
+
+        grid.rowRecycling = empty as unknown as boolean;
+        await settle(grid);
+        expect(grid.rowRecycling, `after ${empty}`).to.equal(fallback);
+        expect(virtualizedRows(bodyOf(grid))?.mode, `after ${empty}`).to.equal(fallbackMode);
+        fixtureCleanup();
+      }
+    });
   });
 });

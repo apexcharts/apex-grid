@@ -56,17 +56,18 @@ function renderedRowElements(grid: ApexGrid<Row>): Element[] {
 }
 
 /**
- * Guards the suite-wide keying switch: the slot group must really recycle the
- * body rows, or a broken hook would rerun item keys and pass vacuously.
+ * Guards the suite-wide keying switch: the default group must really recycle
+ * the body rows (the shipping default) and the item group must really key them
+ * by record, or a broken hook would rerun one mode twice and pass vacuously.
  */
 describe('virtualizer row keying switch', () => {
   afterEach(() => fixtureCleanup());
 
-  it('recycles the body rows under the slot run and keys them by record otherwise', async () => {
+  it('recycles the body rows by default and keys them by record under the item run', async () => {
     const keying = (globalThis as { __apexRowKeying?: unknown }).__apexRowKeying;
     // Any other value is a runner config this switch no longer understands.
-    expect([undefined, 'slot'], 'page global __apexRowKeying').to.include(keying);
-    const slot = keying === 'slot';
+    expect([undefined, 'item'], 'page global __apexRowKeying').to.include(keying);
+    const slot = keying !== 'item';
     // Removed afterwards: the boxes are not fixtures, and one left in the flow
     // would push the later suites' grids below the window.
     const box = makeBox({});

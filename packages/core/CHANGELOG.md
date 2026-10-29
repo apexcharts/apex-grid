@@ -7,14 +7,6 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
-- **`rowRecycling`** (attribute `row-recycling`), experimental and off by
-  default. With it on, a scroll, sort or filter re-binds the rendered body rows
-  to the records now in view instead of building new rows, which makes jumps
-  and sorts cheaper on large grids. Cell, editor and detail templates must then
-  derive what they render from their context on each render and read
-  `ctx.data` for the record; leave it off for templates that keep state in the
-  elements they create. Detail panel content follows its record, and a grid
-  created inside a `detailTemplate` keeps its own setting.
 - The `ai.cancelled` locale key (English and Spanish), used by the enterprise
   Ask AI panel.
 - The `chart.rangeResized` locale key (English and Spanish), announced when an
@@ -50,6 +42,23 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   editor's `ctx.commit` still commits the cell in edit when it is called.
 
 ### Changed
+- **Body rows are now recycled by default** (new `rowRecycling` property,
+  default `true`). A scroll, sort or filter re-binds the rendered row elements
+  to the records now in view instead of building new rows, which makes long
+  jumps and sorts cheaper on large grids. A row element, and its cells, can
+  therefore show another record later. Cell and editor templates should
+  derive what they render from their context on each render, read
+  `ctx.data` for the record, and not hold `ctx.row` or `ctx.parent` across an
+  `await`; a template that keeps element state can wrap itself in
+  `keyed(ctx.data, ...)`. What you might notice: a template that keeps state
+  in the elements it creates (an input's typed value, a third-party widget)
+  can show it on another record after a scroll or a sort, and code that holds
+  `grid.rows` elements across a scroll or a sort finds them showing other
+  records. To keep record-keyed rows, set `grid.rowRecycling = false` (or the
+  `row-recycling="false"` attribute). Detail panel content follows its record
+  and keeps its DOM state across a scroll, a sort or a `moveRow`, so detail
+  templates need no change; a grid created inside a `detailTemplate` keeps its
+  own setting.
 - **The grid role and its row counts moved from the `<apex-grid>` host to an
   inner element** exposed as part `table`: `role` (`grid` or `treegrid`),
   `aria-rowcount`, `aria-colcount`, `aria-multiselectable` and the accessible

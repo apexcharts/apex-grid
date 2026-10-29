@@ -105,6 +105,20 @@ describe('react-apex-grid wrapper', () => {
     }
   });
 
+  it('restores row recycling when the rowRecycling prop is dropped', async () => {
+    const { container, root } = await render(
+      <ApexGrid rowRecycling={false} style={{ height: 300 }} />
+    );
+    const el = container.querySelector('apex-grid') as unknown as { rowRecycling: boolean };
+    expect(el.rowRecycling).to.equal(false);
+    // React unsets a dropped prop by assigning undefined, which must restore
+    // the default (on) rather than read as an opt-out.
+    root.render(<ApexGrid style={{ height: 300 }} />);
+    await tick();
+    expect(el.rowRecycling).to.equal(true);
+    cleanup(root, container);
+  });
+
   it('forwards ref to the underlying custom element', async () => {
     let node: Element | null = null;
     const { container, root } = await render(

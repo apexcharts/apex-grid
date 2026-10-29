@@ -654,23 +654,26 @@ grid.coordinateHints = true;
 
 When `coordinateHints` is on, the grid shows a leading row-number gutter (1, 2, 3, and so on) and A / B / C column-letter chips in the headers, so cell references are discoverable (a spreadsheet-style look). Set it directly for a persistent spreadsheet look. `apex-grid-enterprise` turns it on by default for any grid that has an `allowFormula` column, so the gutter is reserved up front and entering a formula never shifts the layout. Reflected to the `coordinate-hints` attribute (default `false`).
 
-### Row recycling (experimental)
+### Row recycling
 
 ```ts
-grid.rowRecycling = true;
+grid.rowRecycling = false; // opt out
 ```
 
 ```html
-<apex-grid row-recycling></apex-grid>
+<apex-grid row-recycling="false"></apex-grid>
 ```
 
-Off by default. With it on, a scroll, sort or filter re-binds the rendered body rows to the records now in view instead of building new rows, which makes long jumps and sorts cheaper on large grids. A row element, and its cells, then shows another record later, so templates have to follow these rules:
+On by default. A scroll, sort or filter re-binds the rendered body rows to the records now in view instead of building new rows, which makes long jumps and sorts cheaper on large grids. A row element, and its cells, then shows another record later, so cell and editor templates follow these rules:
 
-- Derive everything a cell, editor or detail template renders from its context on each render, and keep no state in the elements it creates.
-- Read `ctx.data` for the record, also after an `await`; `ctx.row` and `ctx.parent` are elements that may show another record by then.
-- Wrap a template that has to keep element state in `keyed(ctx.data, ...)` from `lit/directives/keyed.js`, or leave `rowRecycling` off for it (third-party widgets, for example).
+- Derive everything a template renders from its context on each render, and keep no state in the elements it creates.
+- Read `ctx.data` for the record, also after an `await`. `ctx.row` and `ctx.parent` are row and cell elements that may show another record by then, so do not hold them across an `await`.
+- Wrap a template that has to keep element state in `keyed(ctx.data, ...)` from `lit/directives/keyed.js`. The state then never shows on the wrong record, but it is rebuilt every time the row shows another record, including after a sort or `moveRow`.
+- Code that holds `grid.rows` elements across a scroll or a sort should read each element's `data` again rather than assume it still shows the same record.
 
-Detail panel content follows its record into whichever row shows it. A grid created inside a `detailTemplate` has its own `rowRecycling` setting.
+Set `rowRecycling` to `false` (or the `row-recycling="false"` attribute) to restore record-keyed rows, where each row element stays with its record. Do that for templates that must keep element state across a sort or a move, such as some third-party widgets.
+
+Detail templates are different: their content follows its record into whichever row shows it, and keeps its DOM state (typed text, a nested grid's sort) across a scroll within the rendered rows, a sort or a `moveRow`, so it needs neither `keyed()` nor the opt-out. It is rebuilt when the record leaves the rendered rows or is collapsed, as before. `ctx.parent` in a detail context is the grid itself. A grid created inside a `detailTemplate` has its own `rowRecycling` setting, so set it there too when you opt out.
 
 ### State & persistence
 
@@ -724,7 +727,7 @@ See [`demo/state-persistence.html`](../../demo/state-persistence.html) for a sav
 | `coordinateHints` | `boolean` | `false` | Show a row-number gutter + A / B / C header chips (spreadsheet look). Attr `coordinate-hints` |
 | `columnMenu` | `boolean` | `true` | Show the always-visible column-menu (kebab) button on headers; `false` hides it |
 | `showHeader` | `boolean` | `true` | `false` hides the header rows (kept for screen readers). Attr `show-header="false"` |
-| `rowRecycling` | `boolean` | `false` | Experimental: re-binds body row elements across records on scroll, sort and filter. See [Row recycling](#row-recycling-experimental). Attr `row-recycling` |
+| `rowRecycling` | `boolean` | `true` | Re-binds body row elements across records on scroll, sort and filter; `false` restores record-keyed rows. See [Row recycling](#row-recycling). Attr `row-recycling="false"` |
 | `rowId` | `(row: T) => string \| number` |  | Durable row identity for `getState` / `setState` |
 | `localeText` | `GridLocaleText` |  | Override map for built-in strings (e.g. `esLocale`) |
 | `canUndo`, `canRedo` | `boolean` |  | Get (history) |

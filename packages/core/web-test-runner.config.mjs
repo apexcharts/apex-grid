@@ -15,7 +15,7 @@ const RESIZE_OBSERVER_NOISE = 'ResizeObserver loop';
  * Test page for the suite. `keying` sets the page global `ApexGrid` reads its
  * `rowRecycling` default from, before `test/setup.js` (and so the grid) loads.
  *
- * @param {'slot'} [keying]
+ * @param {'item'} [keying]
  */
 const runnerHtml = (keying) => (testFramework) => `
   <html>
@@ -41,12 +41,13 @@ export default /** @type {import("@web/test-runner").TestRunnerConfig} */ ({
 
   testRunnerHtml: runnerHtml(),
 
-  // The same suite again with every grid recycling its rows (`rowRecycling`
-  // defaults to true), so code that only works because a sort or move rebuilds
-  // its rows fails here. `npm test` runs only the default group; `npm run
-  // test:slot` runs this one. The group leaves out `files` so it takes the root
-  // pattern, which `--files` also narrows.
-  groups: [{ name: 'slot', testRunnerHtml: runnerHtml('slot') }],
+  // The default group runs the shipping default, every grid recycling its rows
+  // (`rowRecycling` true). This group runs the same suite again with every grid
+  // keeping record-keyed rows (`rowRecycling` defaults to false), the opt-out
+  // path. `npm test` runs only the default group; `npm run test:item` runs
+  // this one. The group leaves out `files` so it takes the root pattern, which
+  // `--files` also narrows.
+  groups: [{ name: 'item', testRunnerHtml: runnerHtml('item') }],
 
   /** Resolve bare module imports */
   nodeResolve: {

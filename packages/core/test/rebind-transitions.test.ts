@@ -14,8 +14,8 @@ import type {
 } from '../src/internal/types.js';
 import { settle } from './utils/settle.js';
 
-// A row element re-bound to another record (a pinned band today, a body slot
-// under row recycling, which the suite's second group turns on) must
+// A row element re-bound to another record (a pinned band, or a body slot
+// under row recycling, the default; the suite's item group turns it off) must
 // show the new record as it is, not animate from the previous record's look:
 // a progress bar growing from the old value, a selected wash fading out, a
 // chevron rotating shut. The row marks such a re-bind with `data-rebound`
@@ -143,7 +143,7 @@ function bandRows(grid: ApexGrid<Row>): ApexGridRow<Row>[] {
 }
 
 /** Whether this run recycles body rows, so a sort or a jump re-binds them in place. */
-const rebinding = () => Boolean((globalThis as { __apexRowKeying?: string }).__apexRowKeying);
+const rebinding = () => ApexGrid.defaultRowRecycling;
 
 const rowHeight = (grid: ApexGrid<Row>) => bodyRows(grid)[0].getBoundingClientRect().height;
 
@@ -156,9 +156,12 @@ async function after(grid: ApexGrid<Row>, step: () => unknown) {
 }
 
 /**
- * A programmatic sort, a jump and a 5-row scroll step. Under item keys none
- * of them re-binds a body row (nothing to animate); under slot keys each one
- * re-binds rows in place, and none may leave a transition behind.
+ * A programmatic sort, a jump and a 5-row scroll step. Under slot keys each
+ * one re-binds rows in place, and none may leave a transition behind. Under
+ * item keys none of them re-binds a body row: the sort moves each element
+ * with its record (nothing to animate), and the jump and the step build new
+ * rows instead, whose first paint keeps the record-keyed path unchanged (a
+ * new selected row may still fade in its wash), so only the sort is checked.
  */
 async function expectNoTransitionsAcrossRebinds(grid: ApexGrid<Row>, sortKey: keyof Row) {
   let records = boundRecords(grid);
@@ -170,21 +173,17 @@ async function expectNoTransitionsAcrossRebinds(grid: ApexGrid<Row>, sortKey: ke
 
   records = boundRecords(grid);
   const step = rowHeight(grid);
-  expect(
-    await after(grid, () => {
-      grid.scrollTop = 64 * step;
-    }),
-    'after a jump'
-  ).to.deep.equal([]);
+  const jumped = await after(grid, () => {
+    grid.scrollTop = 64 * step;
+  });
+  if (rebinding()) expect(jumped, 'after a jump').to.deep.equal([]);
   const jumpRebinds = reboundCount(records, grid);
 
   records = boundRecords(grid);
-  expect(
-    await after(grid, () => {
-      grid.scrollTop += 5 * step;
-    }),
-    'after a 5-row scroll step'
-  ).to.deep.equal([]);
+  const stepped = await after(grid, () => {
+    grid.scrollTop += 5 * step;
+  });
+  if (rebinding()) expect(stepped, 'after a 5-row scroll step').to.deep.equal([]);
   const stepRebinds = reboundCount(records, grid);
 
   return { sortRebinds, jumpRebinds, stepRebinds };

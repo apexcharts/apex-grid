@@ -11,8 +11,9 @@ import { settle } from './utils/settle.js';
 // The body virtualizer substrate: the forked rows directive and what it adds on
 // top of upstream (measure on reuse, the `layoutComplete` fallback, the reveal
 // token, `rendered()` and the range listener order). Everything here runs in
-// both keyings; the slot group recycles the body rows, which is where a reused
-// row element stands at a new index.
+// both keyings; the default group recycles the body rows, which is where a
+// reused row element stands at a new index, and the item group keys them by
+// record.
 // See plans/core/2026-10-27-row-recycling-plan.md, sections 3.1 and 3.5.
 
 interface Row {

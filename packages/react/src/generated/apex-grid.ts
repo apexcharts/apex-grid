@@ -1,6 +1,6 @@
 'use client';
 // GENERATED FROM custom-elements.json - do not edit by hand.
-// Manifest hash: 84d90e1a30f5
+// Manifest hash: 5c0e9a26ec29
 // Regenerate with `npm run generate`.
 
 import * as React from 'react';
