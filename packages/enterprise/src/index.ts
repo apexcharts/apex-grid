@@ -123,7 +123,12 @@ export {
 } from './features/total-row.js';
 export type { XLSXExportOptions } from './features/xlsx.js';
 export { ApexGridFilterBuilder, FILTER_BUILDER_TAG } from './filter-builder.js';
-export { ApexGridEnterprise, ENTERPRISE_TAG, VIEW_CHANGED_EVENT } from './grid-enterprise.js';
+export {
+  ApexGridEnterprise,
+  type ApexGridEnterpriseHost,
+  ENTERPRISE_TAG,
+  VIEW_CHANGED_EVENT,
+} from './grid-enterprise.js';
 // Aggregate of every built-in feature module, for the batteries-included path.
 export { enterpriseModules } from './modules.js';
 export { ApexGridSetFilter, SET_FILTER_TAG } from './set-filter.js';

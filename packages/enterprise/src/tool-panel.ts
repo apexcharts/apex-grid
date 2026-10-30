@@ -3,7 +3,7 @@ import { getDisplayColumns, registerComponent } from 'apex-grid/internal';
 import { css, html, LitElement, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { AggregationFn } from './features/aggregation.js';
-import type { ApexGridEnterprise } from './grid-enterprise.js';
+import type { ApexGridEnterpriseHost } from './grid-enterprise.js';
 import { GridLink } from './status-bar.js';
 
 export const TOOL_PANEL_TAG = 'apex-grid-tool-panel';
@@ -166,9 +166,12 @@ export class ApexGridToolPanel extends LitElement {
     }
   `;
 
-  /** The grid this panel controls. */
+  /**
+   * The grid this panel controls, or `null` (the default) for none. `undefined`
+   * also unbinds, as it did when this property was optional.
+   */
   @property({ attribute: false })
-  public grid?: ApexGridEnterprise<Record<string, unknown>>;
+  public grid: ApexGridEnterpriseHost | null | undefined = null;
 
   @state()
   private search = '';
@@ -179,7 +182,7 @@ export class ApexGridToolPanel extends LitElement {
   /** pivotMode was set while `grid` was not the bound grid: willUpdate applies it. */
   #deferred = false;
   /** The grid willUpdate last bound; `grid` differs from it until the next update. */
-  #bound: ApexGridEnterprise<Record<string, unknown>> | null | undefined;
+  #bound: ApexGridEnterpriseHost | null | undefined = null;
   /** The grid's columns from its last unpivoted render (a pivot swaps in generated ones). */
   #source: AnyColumn[] | null = null;
   readonly #link = new GridLink(this);

@@ -449,6 +449,24 @@ export interface FormulaExportOptions {
 }
 
 /**
+ * The grid a companion element binds through its `grid` property: the chart
+ * panel, status bar, tool panel, AI panel, filter builder and set filter.
+ *
+ * An alias of `ApexGridEnterprise<any>` rather than a fixed row type: the grid
+ * is invariant in its row type (options such as `contextMenu` take callbacks
+ * over `T`), so a fixed row type would reject a grid typed with the app's own
+ * rows. The companions read rows generically, so any row shape binds without
+ * a cast.
+ *
+ * @example
+ * ```ts
+ * const grid = document.querySelector('apex-grid-enterprise') as ApexGridEnterprise<Employee>;
+ * statusBar.grid = grid;
+ * ```
+ */
+export type ApexGridEnterpriseHost = ApexGridEnterprise<any>;
+
+/**
  * Pro-licensed grid. Extends the community {@link ApexGrid} and registers as
  * `<apex-grid-enterprise>`, reusing the full grid template/DOM and layering in
  * enterprise-only feature modules through `createStateController()`.
@@ -2265,7 +2283,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       // dependency on the element, so it tree-shakes when a consumer never asks.
       const ai = document.createElement(AI_PANEL) as ApexGridAI;
       ai.mode = 'dialog';
-      ai.grid = this as unknown as ApexGridEnterprise<Record<string, unknown>>;
+      ai.grid = this;
       ai.addEventListener('apex-ai-closed', () => {
         ai.remove();
         this.#aiDialog = null;
@@ -2290,7 +2308,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     // chart element, so it tree-shakes when a consumer never charts.
     const chart = document.createElement(CHART_PANEL) as ApexGridChart;
     chart.mode = 'dialog';
-    chart.grid = this as unknown as ApexGridEnterprise<Record<string, unknown>>;
+    chart.grid = this;
     // Cascade each new dialog by its position in the open set.
     chart.style.setProperty('--chart-cascade', String(this.#chartDialogs.size));
     if (options.type) chart.type = options.type;

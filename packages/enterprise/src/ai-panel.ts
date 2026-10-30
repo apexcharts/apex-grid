@@ -4,7 +4,7 @@ import { css, html, LitElement, nothing, type PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { AIMode, AIResult, Plan } from './features/ai/index.js';
 import { captureFocus, type FocusReturn, returnFocus } from './features/focus-return.js';
-import type { ApexGridEnterprise } from './grid-enterprise.js';
+import type { ApexGridEnterprise, ApexGridEnterpriseHost } from './grid-enterprise.js';
 
 export const AI_TAG = 'apex-grid-ai';
 
@@ -291,7 +291,7 @@ export class ApexGridAI extends LitElement {
    * app mounts itself needs `requestUpdate()` after the app changes `localeText`.
    */
   @property({ attribute: false })
-  public grid: ApexGridEnterprise<Record<string, unknown>> | null = null;
+  public grid: ApexGridEnterpriseHost | null = null;
 
   /** `'inline'` renders in place; `'dialog'` (default) is a floating, draggable panel. */
   @property({ reflect: true })

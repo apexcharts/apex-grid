@@ -14,7 +14,7 @@ import {
   type RangeChangedDetail,
   type RangeStats,
 } from './features/range-selection.js';
-import { type ApexGridEnterprise, VIEW_CHANGED_EVENT } from './grid-enterprise.js';
+import { type ApexGridEnterpriseHost, VIEW_CHANGED_EVENT } from './grid-enterprise.js';
 
 export const STATUS_BAR_TAG = 'apex-grid-status-bar';
 
@@ -139,7 +139,7 @@ export class ApexGridStatusBar extends LitElement {
 
   /** The enterprise grid to summarize. Setting it (re)binds the listener. */
   @property({ attribute: false })
-  public grid: ApexGridEnterprise<Record<string, unknown>> | null = null;
+  public grid: ApexGridEnterpriseHost | null = null;
 
   @state()
   private stats: RangeStats | null = null;

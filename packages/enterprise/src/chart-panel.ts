@@ -26,7 +26,7 @@ import { isValidChartFormula } from './features/chart-calc.js';
 import { captureFocus, type FocusReturn, returnFocus } from './features/focus-return.js';
 import { indexToColumnLetter } from './features/formula/refs.js';
 import { RANGE_CHANGED_EVENT } from './features/range-selection.js';
-import { type ApexGridEnterprise, VIEW_CHANGED_EVENT } from './grid-enterprise.js';
+import { type ApexGridEnterpriseHost, VIEW_CHANGED_EVENT } from './grid-enterprise.js';
 
 export const CHART_TAG = 'apex-grid-chart';
 
@@ -195,7 +195,7 @@ export class ApexGridChart extends LitElement {
 
   /** The enterprise grid to chart. Setting it (re)binds the live listeners. */
   @property({ attribute: false })
-  public grid: ApexGridEnterprise<Record<string, unknown>> | null = null;
+  public grid: ApexGridEnterpriseHost | null = null;
 
   /** Resolve a locale key against the bound grid's overrides (English when unbound). */
   #t = (key: GridLocaleKey, fallback?: string): string =>
@@ -324,7 +324,7 @@ export class ApexGridChart extends LitElement {
    * condition object, so only that expression is removed (a user filter on the column stays).
    */
   #crossFilter: {
-    grid: ApexGridEnterprise<Record<string, unknown>>;
+    grid: ApexGridEnterpriseHost;
     key: string;
     value: string;
     condition: object;

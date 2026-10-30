@@ -8,7 +8,7 @@ import {
 import { registerComponent, registerFilterOperand } from 'apex-grid/internal';
 import { css, html, LitElement, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
-import type { ApexGridEnterprise } from './grid-enterprise.js';
+import type { ApexGridEnterpriseHost } from './grid-enterprise.js';
 
 export const SET_FILTER_TAG = 'apex-grid-set-filter';
 
@@ -87,8 +87,6 @@ function isSetExpression(expression: FilterExpression<any>, key: string): boolea
   const name = typeof condition === 'string' ? condition : condition?.name;
   return expression.key === key && name === SET_CONDITION.name;
 }
-
-type AnyGrid = ApexGridEnterprise<Record<string, unknown>>;
 
 /**
  * Excel-style **set filter**: a per-column checklist of the column's distinct
@@ -214,7 +212,7 @@ export class ApexGridSetFilter extends LitElement {
 
   /** The enterprise grid to filter. */
   @property({ attribute: false })
-  public grid: AnyGrid | null = null;
+  public grid: ApexGridEnterpriseHost | null = null;
 
   /** The column key whose distinct values are listed. */
   @property({ type: String })

@@ -14,11 +14,9 @@ import {
   operandsForType,
   operatorsForType,
 } from './features/advanced-filter.js';
-import type { ApexGridEnterprise } from './grid-enterprise.js';
+import type { ApexGridEnterprise, ApexGridEnterpriseHost } from './grid-enterprise.js';
 
 export const FILTER_BUILDER_TAG = 'apex-grid-filter-builder';
-
-type AnyGrid = ApexGridEnterprise<Record<string, unknown>>;
 
 /**
  * Enterprise **advanced filter builder**: a nested AND/OR visual query builder.
@@ -161,7 +159,7 @@ export class ApexGridFilterBuilder extends LitElement {
 
   /** The enterprise grid to filter. */
   @property({ attribute: false })
-  public grid: AnyGrid | null = null;
+  public grid: ApexGridEnterpriseHost | null = null;
 
   /**
    * The editable root group. An empty builder given a `grid` that already has
@@ -180,12 +178,12 @@ export class ApexGridFilterBuilder extends LitElement {
     localize(this.grid?.localeText, key) || fallback;
 
   /** The columns a new condition can pick (visible ones). */
-  #columns(): Array<ColumnConfiguration<Record<string, unknown>>> {
+  #columns(): Array<ColumnConfiguration<any>> {
     return (this.grid?.columns ?? []).filter((column) => !column.hidden && column.key != null);
   }
 
   /** Any grid column by key, hidden ones included, as the evaluator resolves it. */
-  #column(key: string): ColumnConfiguration<Record<string, unknown>> | undefined {
+  #column(key: string): ColumnConfiguration<any> | undefined {
     return this.grid?.columns.find((column) => column.key != null && String(column.key) === key);
   }
 
