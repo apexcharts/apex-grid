@@ -13,11 +13,17 @@ import {
   CHART_TAG,
   type ChartModel,
   type ChartSeries,
+  createFunctionRegistry,
   enterpriseModules,
+  evaluate,
   FILTER_BUILDER_TAG,
+  type FormulaAst,
+  type FormulaExportOptions,
   linearForecast,
   linearForecastBand,
   linearTrend,
+  ParseError,
+  parseFormula,
   recommendChartType,
   SET_FILTER_TAG,
   STATUS_BAR_TAG,
@@ -165,6 +171,83 @@ describe('enterprise public types', () => {
       });
       const perUnit = model.series.find((s) => s.name === 'Per unit');
       expect(perUnit?.data).to.eql([5, null]);
+    });
+  });
+
+  describe('formula exports', () => {
+    it('exports ParseError and FormulaAst beside parseFormula and evaluate', () => {
+      const ast: FormulaAst = parseFormula('1+2');
+      expect(
+        evaluate(ast, {
+          getRef: () => null,
+          getRange: () => [],
+          functions: createFunctionRegistry(),
+        })
+      ).to.equal(3);
+      let caught: unknown;
+      try {
+        parseFormula('1+');
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).to.be.instanceOf(ParseError);
+      expect((caught as ParseError).position).to.be.a('number');
+    });
+
+    it('exports FormulaExportOptions for an options object built ahead of the call', async () => {
+      const data = [{ a: 2, b: 0 }];
+      const grid = await fixture<ApexGridEnterprise<{ a: number; b: number }>>(
+        html`<apex-grid-enterprise
+          .data=${data}
+          .columns=${[{ key: 'a' }, { key: 'b', allowFormula: true }]}
+        ></apex-grid-enterprise>`
+      );
+      await grid.updateComplete;
+      grid.setFormula(data[0], 'b', '=A1*3');
+      const options: FormulaExportOptions = { formulas: true };
+      expect(grid.exportToCSV(options)).to.contain('=A2*3');
+    });
+  });
+
+  describe('engine cellValueChanged rowIndex', () => {
+    type Row = { qty: number; total: number };
+
+    it('reports -1 for a recalculated row on another page and the view index on this one', async () => {
+      const data: Row[] = [
+        { qty: 1, total: 0 },
+        { qty: 2, total: 0 },
+        { qty: 3, total: 0 },
+        { qty: 4, total: 0 },
+      ];
+      const grid = await fixture<ApexGridEnterprise<Row>>(
+        html`<apex-grid-enterprise
+          .data=${data}
+          .columns=${[{ key: 'qty', type: 'number', editable: true }, { key: 'total', allowFormula: true }]}
+          .pagination=${{ enabled: true, pageSize: 2 }}
+          .editing=${{ enabled: true, mode: 'cell' }}
+        ></apex-grid-enterprise>`
+      );
+      await grid.updateComplete;
+      await nextFrame();
+      expect(grid.pageItems).to.eql([data[0], data[1]]);
+
+      // Both formulas read A1 (row 0, on this page); row 3 sits on page 2.
+      grid.setFormula(data[1], 'total', '=A1*10');
+      grid.setFormula(data[3], 'total', '=A1*100');
+      await grid.updateComplete;
+
+      const seen: { row: Row; rowIndex: number }[] = [];
+      grid.addEventListener('cellValueChanged', (event) => {
+        const { data: row, rowIndex, key } = (event as CustomEvent).detail;
+        if (key === 'total') seen.push({ row, rowIndex });
+      });
+      grid.applyEdits([{ rowIndex: 0, column: 'qty', value: 5 }]);
+      await grid.updateComplete;
+
+      expect(data[3].total).to.equal(500);
+      expect(seen.find((each) => each.row === data[1])?.rowIndex).to.equal(1);
+      // Not a data-row index (3), which would name an unrelated row of pageItems.
+      expect(seen.find((each) => each.row === data[3])?.rowIndex).to.equal(-1);
     });
   });
 });

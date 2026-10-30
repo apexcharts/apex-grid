@@ -60,6 +60,7 @@ export {
   evaluate,
   FORMULA_EDITOR_TAG,
   FORMULA_MODULE_ID,
+  type FormulaAst,
   FormulaCellEditor,
   type FormulaContext,
   type FormulaController,
@@ -67,6 +68,7 @@ export {
   type FormulaErrorCode,
   type FormulaFn,
   formulaModule,
+  ParseError,
   parseFormula,
   type RangeAddress,
 } from './features/formula/index.js';
@@ -127,6 +129,7 @@ export {
   ApexGridEnterprise,
   type ApexGridEnterpriseHost,
   ENTERPRISE_TAG,
+  type FormulaExportOptions,
   VIEW_CHANGED_EVENT,
 } from './grid-enterprise.js';
 // Aggregate of every built-in feature module, for the batteries-included path.
