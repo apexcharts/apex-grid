@@ -293,10 +293,9 @@ function buildCategoryModel<T extends object>(
     } else {
       frame = positional.map(aggregate);
     }
-    // A calculated series may carry nulls (a category where the formula errored / was
-    // non-finite); ApexCharts renders those as gaps. ChartSeries types data as number[], so cast
-    // (matching how the panel's trend/forecast overlays already introduce null gaps).
-    return computeCalculatedSeries([field], frame, categories.length) as ChartSeries[];
+    // A calculated series may carry nulls (a category where the formula errored or was not
+    // finite); ApexCharts renders those as gaps.
+    return computeCalculatedSeries([field], frame, categories.length);
   });
   return { categories, series: [...series, ...calculated] };
 }

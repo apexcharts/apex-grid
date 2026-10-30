@@ -1027,7 +1027,7 @@ export class ApexGridChart extends LitElement {
       }
     }
 
-    const augmented = { categories, series } as unknown as ChartModel; // series may carry nulls (gaps)
+    const augmented: ChartModel = { categories, series };
     const apexOptions: RenderChartOptions['apexOptions'] = {
       ...options.apexOptions,
       // Dash the overlay lines (0 = solid for the base series); chartModelToApexOptions supplies the

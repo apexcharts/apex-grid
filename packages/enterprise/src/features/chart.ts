@@ -3,7 +3,11 @@ import type { default as ApexCharts, ApexOptions } from 'apexcharts';
 /** A single chart series (one bar/line group). */
 export interface ChartSeries {
   readonly name: string;
-  readonly data: number[];
+  /**
+   * One value per category. `null` is a gap: a calculated field whose formula errors or is not
+   * finite for that category yields `null` there, and the chart leaves the point out.
+   */
+  readonly data: readonly (number | null)[];
 }
 
 /** Chart-ready model derived from the grid's range / group / pivot aggregates. */
@@ -118,45 +122,63 @@ export interface ChartFormat {
   readonly axisTitles?: { readonly x?: string; readonly y?: string };
 }
 
-/** Least-squares fit of `values` against index (0, 1, 2, …): `{ slope, intercept, n }`. */
-function linearFit(values: readonly number[]): { slope: number; intercept: number; n: number } {
-  const n = values.length;
-  if (n === 0) return { slope: 0, intercept: 0, n: 0 };
+/**
+ * Least-squares fit of `values` against index (0, 1, 2, ...), skipping `null` gaps so a missing point
+ * neither counts nor pulls the line toward 0. `n` is the number of points fitted; `meanX` and `sxx`
+ * (the spread of their indices) feed the prediction band.
+ */
+function linearFit(values: readonly (number | null)[]): {
+  slope: number;
+  intercept: number;
+  n: number;
+  meanX: number;
+  sxx: number;
+} {
+  let n = 0;
   let sumX = 0;
   let sumY = 0;
   let sumXX = 0;
   let sumXY = 0;
-  for (let i = 0; i < n; i += 1) {
+  for (let i = 0; i < values.length; i += 1) {
+    const y = values[i];
+    if (y == null) continue;
+    n += 1;
     sumX += i;
-    sumY += values[i];
+    sumY += y;
     sumXX += i * i;
-    sumXY += i * values[i];
+    sumXY += i * y;
   }
+  if (n === 0) return { slope: 0, intercept: 0, n: 0, meanX: 0, sxx: 0 };
+  const meanX = sumX / n;
+  const sxx = sumXX - sumX * meanX;
   const denom = n * sumXX - sumX * sumX;
-  if (denom === 0) return { slope: 0, intercept: sumY / n, n };
+  if (denom === 0) return { slope: 0, intercept: sumY / n, n, meanX, sxx };
   const slope = (n * sumXY - sumX * sumY) / denom;
-  return { slope, intercept: (sumY - slope * sumX) / n, n };
+  return { slope, intercept: (sumY - slope * sumX) / n, n, meanX, sxx };
 }
 
 /**
- * Least-squares linear fit of `values` against their index (0, 1, 2, …), returned as the predicted
- * y for each index — i.e. the straight trend line through the series. A flat line (mean) when the
- * x-variance is zero; empty in, empty out.
+ * Least-squares linear fit of `values` against their index (0, 1, 2, ...), returned as the predicted
+ * y for each index, i.e. the straight trend line through the series. `null` gaps are left out of the
+ * fit but still get a trend value at their index. A flat line (mean) when the x-variance is zero;
+ * empty in, empty out; all gaps give a flat line at 0.
  */
-export function linearTrend(values: readonly number[]): number[] {
+export function linearTrend(values: readonly (number | null)[]): number[] {
   const { slope, intercept } = linearFit(values);
   return values.map((_, i) => intercept + slope * i);
 }
 
 /**
  * Project `periods` future values by extending the least-squares fit of `values` past its end
- * (indices n, n+1, …). Empty when `periods <= 0` or there is nothing to fit. Pairs with
- * {@link linearTrend} to draw a forecast continuation.
+ * (indices n, n+1, ..., where n is the series length, gaps included). `null` gaps are left out of
+ * the fit. Empty when `periods <= 0` or `values` is empty. Pairs with {@link linearTrend} to draw a
+ * forecast continuation.
  */
-export function linearForecast(values: readonly number[], periods: number): number[] {
+export function linearForecast(values: readonly (number | null)[], periods: number): number[] {
   if (periods <= 0 || values.length === 0) return [];
-  const { slope, intercept, n } = linearFit(values);
-  return Array.from({ length: periods }, (_, k) => intercept + slope * (n + k));
+  const { slope, intercept } = linearFit(values);
+  const start = values.length;
+  return Array.from({ length: periods }, (_, k) => intercept + slope * (start + k));
 }
 
 /** Two-sided 95% Student-t quantiles for 1 to 9 degrees of freedom. */
@@ -169,27 +191,30 @@ const T_975 = [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262];
  * `t` the two-sided 97.5% Student-t quantile for `n - 2` degrees of freedom (a table below 10, the
  * Cornish-Fisher series from 10 on, within 0.003). The band widens the further out the period is.
  * Collapses to the point forecast (zero width) below 3 points, where spread cannot be estimated.
- * Empty in, empty out.
+ * `null` gaps are left out: `n`, `mean x` and `Sxx` cover the points present. Empty in, empty out.
  */
 export function linearForecastBand(
-  values: readonly number[],
+  values: readonly (number | null)[],
   periods: number
 ): { upper: number[]; lower: number[] } {
   const forecast = linearForecast(values, periods);
   if (forecast.length === 0) return { upper: [], lower: [] };
-  const { slope, intercept, n } = linearFit(values);
-  // Residual standard error (n - 2 dof for a line fit); undefined below 3 points → no band.
+  const { slope, intercept, n, meanX, sxx } = linearFit(values);
+  // Residual standard error needs n - 2 > 0 dof: below 3 points there is no spread, so no band.
+  if (n < 3) return { upper: [...forecast], lower: [...forecast] };
   let sse = 0;
-  for (let i = 0; i < n; i += 1) sse += (values[i] - (intercept + slope * i)) ** 2;
+  for (let i = 0; i < values.length; i += 1) {
+    const y = values[i];
+    if (y != null) sse += (y - (intercept + slope * i)) ** 2;
+  }
   const dof = n - 2;
-  const se = dof > 0 ? Math.sqrt(sse / dof) : 0;
+  const se = Math.sqrt(sse / dof);
   const z = 1.96;
   const t =
     T_975[dof - 1] ??
     z + (z ** 3 + z) / (4 * dof) + (5 * z ** 5 + 16 * z ** 3 + 3 * z) / (96 * dof * dof);
-  const mean = (n - 1) / 2;
-  const sxx = (n * (n * n - 1)) / 12;
-  const halfWidth = (k: number) => t * se * Math.sqrt(1 + 1 / n + (n + k - mean) ** 2 / sxx);
+  const start = values.length;
+  const halfWidth = (k: number) => t * se * Math.sqrt(1 + 1 / n + (start + k - meanX) ** 2 / sxx);
   return {
     upper: forecast.map((v, k) => v + halfWidth(k)),
     lower: forecast.map((v, k) => v - halfWidth(k)),
@@ -393,8 +418,8 @@ export function recommendChartType(model: ChartModel): ChartType {
   if (
     model.series.length === 1 &&
     model.categories.length <= 6 &&
-    data.every((v) => v >= 0) &&
-    data.reduce((a, b) => a + b, 0) > 0
+    data.every((v) => v == null || v >= 0) &&
+    data.reduce<number>((a, b) => a + (b ?? 0), 0) > 0
   ) {
     return 'pie';
   }
@@ -487,7 +512,8 @@ export function chartModelToApexOptions(
   if (CIRCULAR.has(type)) {
     // Pie/donut chart the first measure across categories; extra series are ignored.
     const apexOptions: ApexOptions = {
-      series: model.series[0]?.data ?? [],
+      // ApexCharts types a pie series as number[]; a null gap is passed through unchanged.
+      series: (model.series[0]?.data ?? []) as number[],
       labels: model.categories,
       ...title,
       ...userApex,
@@ -501,13 +527,13 @@ export function chartModelToApexOptions(
     type === 'combo'
       ? model.series.map((s, i) => ({
           name: s.name,
-          data: s.data,
+          data: s.data as (number | null)[],
           type: toApexType(options.comboTypes?.[i] ?? (i === 0 ? 'column' : 'line')),
           // Per-series color: overlays (trend/forecast) carry their own so they read as distinct
           // from the data series (see the panel's #withOverlays).
           ...((s as { color?: string }).color ? { color: (s as { color?: string }).color } : {}),
         }))
-      : model.series.map((s) => ({ name: s.name, data: s.data }));
+      : model.series.map((s) => ({ name: s.name, data: s.data as (number | null)[] }));
 
   const xaxis = { categories: model.categories, ...userApex.xaxis };
   // 'column' is the default (vertical); 'bar' flips to horizontal. Deep-merge so a caller's
