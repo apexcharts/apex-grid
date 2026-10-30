@@ -6,6 +6,28 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- `ApexGridEnterpriseHost`, the grid type the companion elements accept, and
+  the `ParseError`, `FormulaAst` and `FormulaExportOptions` exports.
+
+### Changed
+- `ChartSeries.data` is typed `readonly (number | null)[]`, matching the null
+  gaps calculated fields already produce. TypeScript code that reads chart model
+  values as `number` needs to handle `null`.
+- The tool panel's `grid` defaults to `null` like the other companion
+  elements; assigning `undefined` still unbinds it.
+
+### Fixed
+- The `grid` property of the chart panel, status bar, tool panel, AI panel,
+  filter builder and set filter accepts a grid typed with your own row
+  interface or type alias without a cast.
+- The trend line, forecast and forecast band skip null gaps in the first series
+  instead of reading them as 0, and the band no longer returns `NaN` below
+  three points.
+
+
+
+
 ## [0.9.0-beta.1] - 2026-10-29
 
 A pre-release of 0.9.0, published under the `next` npm tag alongside apex-grid
