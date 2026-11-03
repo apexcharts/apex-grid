@@ -126,8 +126,15 @@ jobs:
               echo "❌ $name: dist version ($dist_v) does not match expected ($version). Build did not inject the version."; exit 1
             fi
 
-            ( cd "$dir/dist" && npm publish --provenance --tag "$npmtag" )
-            echo "✅ Published $name@$version to npm (dist-tag: $npmtag)"
+            # A rerun after a partial release finds some versions already on npm,
+            # and publishing one again fails the job before the later packages:
+            # skip it, the same way the tag and release steps below skip.
+            if [[ "$(npm view "$name@$version" version 2>/dev/null || true)" == "$version" ]]; then
+              echo "$name@$version is already on npm, skipping publish"
+            else
+              ( cd "$dir/dist" && npm publish --provenance --tag "$npmtag" )
+              echo "✅ Published $name@$version to npm (dist-tag: $npmtag)"
+            fi
 
             if git rev-parse "$gittag" >/dev/null 2>&1; then
               echo "Tag $gittag already exists, skipping"
