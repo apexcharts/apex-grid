@@ -32,6 +32,10 @@ jobs:
       # After the build: the enterprise tests resolve apex-grid through core's
       # dist/, and core's own sources import the generated *.css.ts files.
       - run: npm run typecheck
+      # The bundle size budget does not depend on the Node version: run it once.
+      - name: Check bundle size budget
+        if: matrix.node-version == '20.x'
+        run: npm run check:size
       - run: npm run test
       # One upload per package: each lcov names files relative to its own
       # package (src/...), so each needs its own base-path, and the two
