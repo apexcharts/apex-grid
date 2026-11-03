@@ -1,7 +1,6 @@
-import { writeFile } from 'node:fs/promises';
 import watch from 'node-watch';
 import * as sass from 'sass-embedded';
-import { compileSass, SCSS_EXT, TEMPLATE, TEMPLATE_REG_EXP } from './sass.js';
+import { writeStyleModule } from './sass.js';
 
 const watchOptions = {
   recursive: true,
@@ -21,11 +20,7 @@ const watcher = watch(['src/styles'], watchOptions, async (_, path) => {
   updating = true;
 
   try {
-    await writeFile(
-      path.replace(SCSS_EXT, '.css.ts'),
-      TEMPLATE.replace(TEMPLATE_REG_EXP, await compileSass(path, compiler)),
-      'utf-8'
-    );
+    await writeStyleModule(path, compiler);
   } catch (e) {
     // biome-ignore lint/suspicious/noConsole: Build info
     console.error(e);
