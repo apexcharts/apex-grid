@@ -1,6 +1,7 @@
 import { LicenseManager, Watermark } from 'apex-commons';
 import type {
   ApexCellContext,
+  ApexGridEventMap,
   ColumnConfiguration,
   ColumnGroupConfiguration,
   CSVExportOptions,
@@ -80,6 +81,7 @@ import {
   type ContextMenuConfig,
   type ContextMenuController,
   type ContextMenuItem,
+  type ContextMenuOpeningDetail,
   type ContextMenuTarget,
 } from './features/context-menu.js';
 import type { FormulaFn } from './features/formula/functions.js';
@@ -101,6 +103,8 @@ import {
   type InfiniteHost,
   type InfiniteRowModelConfig,
   InfiniteRowModelManager,
+  type RowsLoadedDetail,
+  type RowsLoadFailedDetail,
   serverQueryKey,
 } from './features/infinite-row-model.js';
 import { type MasterDetailConfig, MasterDetailManager } from './features/master-detail.js';
@@ -115,10 +119,13 @@ import {
   RANGE_CHANGED_EVENT,
   RANGE_SELECTION_MODULE_ID,
   type RangeBounds,
+  type RangeChangedDetail,
   type RangeSelectionController,
   type RangeStats,
 } from './features/range-selection.js';
 import {
+  type ServerRowsLoadedDetail,
+  type ServerRowsLoadFailedDetail,
   type ServerSideHost,
   type ServerSideRowModelConfig,
   ServerSideRowModelManager,
@@ -466,6 +473,56 @@ export interface FormulaExportOptions {
 export type ApexGridEnterpriseHost = ApexGridEnterprise<any>;
 
 /**
+ * The events an `<apex-grid-enterprise>` fires: every {@link ApexGridEventMap}
+ * event plus the enterprise ones, so `addEventListener` accepts their names and
+ * types the listener's event.
+ */
+export interface ApexGridEnterpriseEventMap<T extends object> extends ApexGridEventMap<T> {
+  /** The rendered view (columns, row count, grouping, pivot, data) changed. */
+  'apex-view-changed': CustomEvent<null>;
+  /** The context menu is about to open; edit `detail.items` or cancel it. */
+  'apex-context-menu-opening': CustomEvent<ContextMenuOpeningDetail<T>>;
+  /** The cell range selection changed. */
+  'apex-range-changed': CustomEvent<RangeChangedDetail>;
+  /** Infinite row model: a block arrived. */
+  'apex-rows-loaded': CustomEvent<RowsLoadedDetail>;
+  /** Infinite row model: `getRows` rejected. */
+  'apex-rows-load-failed': CustomEvent<RowsLoadFailedDetail>;
+  /** Server-side row model: the flattened tree changed. */
+  'apex-server-rows-loaded': CustomEvent<ServerRowsLoadedDetail>;
+  /** Server-side row model: `getRows` rejected. */
+  'apex-server-rows-load-failed': CustomEvent<ServerRowsLoadFailedDetail>;
+}
+
+/**
+ * Types `addEventListener` / `removeEventListener` against
+ * {@link ApexGridEnterpriseEventMap}. Declaration only: the methods are the
+ * ones the grid inherits, so this adds no code.
+ */
+export interface ApexGridEnterprise<T extends object> {
+  addEventListener<K extends keyof ApexGridEnterpriseEventMap<T>>(
+    type: K,
+    listener: (this: HTMLElement, ev: ApexGridEnterpriseEventMap<T>[K]) => unknown,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  addEventListener<K extends keyof M, M extends ApexGridEventMap<T> & HTMLElementEventMap>(
+    type: K,
+    listener: (this: HTMLElement, ev: M[K]) => unknown,
+    options?: boolean | AddEventListenerOptions
+  ): void;
+  removeEventListener<K extends keyof ApexGridEnterpriseEventMap<T>>(
+    type: K,
+    listener: (this: HTMLElement, ev: ApexGridEnterpriseEventMap<T>[K]) => unknown,
+    options?: boolean | EventListenerOptions
+  ): void;
+  removeEventListener<K extends keyof M, M extends ApexGridEventMap<T> & HTMLElementEventMap>(
+    type: K,
+    listener: (this: HTMLElement, ev: M[K]) => unknown,
+    options?: boolean | EventListenerOptions
+  ): void;
+}
+
+/**
  * Pro-licensed grid. Extends the community {@link ApexGrid} and registers as
  * `<apex-grid-enterprise>`, reusing the full grid template/DOM and layering in
  * enterprise-only feature modules through `createStateController()`.
@@ -489,6 +546,7 @@ export type ApexGridEnterpriseHost = ApexGridEnterprise<any>;
  *
  * @csspart license-watermark - Non-interactive diagonal watermark overlay shown when no valid license is set. Painted by `apex-commons`' shared `Watermark`, so it matches the other Apex products; this part stays on the node for styling.
  */
+// biome-ignore lint/suspicious/noUnsafeDeclarationMerging: the interface above only adds listener overloads
 export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   /** Live instances, so {@link setLicense} can refresh watermarks on the fly. */
   static #instances = new Set<ApexGridEnterprise<any>>();

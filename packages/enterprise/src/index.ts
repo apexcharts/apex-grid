@@ -127,6 +127,7 @@ export type { XLSXExportOptions } from './features/xlsx.js';
 export { ApexGridFilterBuilder, FILTER_BUILDER_TAG } from './filter-builder.js';
 export {
   ApexGridEnterprise,
+  type ApexGridEnterpriseEventMap,
   type ApexGridEnterpriseHost,
   ENTERPRISE_TAG,
   type FormulaExportOptions,

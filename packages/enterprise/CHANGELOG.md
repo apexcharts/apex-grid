@@ -24,6 +24,12 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - The trend line, forecast and forecast band skip null gaps in the first series
   instead of reading them as 0, and the band no longer returns `NaN` below
   three points.
+- `addEventListener` and `removeEventListener` on `ApexGridEnterprise` accept
+  the enterprise events (`apex-view-changed`, `apex-range-changed`,
+  `apex-context-menu-opening`, `apex-rows-loaded`, `apex-rows-load-failed`,
+  `apex-server-rows-loaded`, `apex-server-rows-load-failed`) and type each
+  listener's event detail, so TypeScript apps no longer need a cast. The map
+  is exported as `ApexGridEnterpriseEventMap`.
 
 
 
