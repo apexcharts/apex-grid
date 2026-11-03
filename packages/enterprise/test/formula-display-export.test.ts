@@ -20,9 +20,11 @@ function controllerOf(grid: ApexGridEnterprise<Row>): FormulaController<Row> {
   ).stateController.module(FORMULA_MODULE_ID);
 }
 
+type TotalCellContext = ApexCellContext<Row, 'total'>;
+
 /** A minimal cell context for invoking an injected display `cellTemplate`. */
 const ctxFor = (record: Row, value: unknown) =>
-  ({ row: { data: record }, column: { key: 'total' }, value }) as unknown as ApexCellContext<Row>;
+  ({ row: { data: record }, column: { key: 'total' }, value }) as unknown as TotalCellContext;
 
 describe('formula show-formulas + export (Tier 2, P4/P5)', () => {
   before(() => {

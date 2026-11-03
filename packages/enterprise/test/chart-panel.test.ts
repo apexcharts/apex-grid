@@ -23,6 +23,10 @@ const columns: ColumnConfiguration<Row>[] = [
 
 const EMPTY: ChartModel = { categories: [], series: [] };
 
+/** The rendered chart's resolved config (ApexCharts keeps it on the untyped `w`). */
+const chartConfig = (panel: ApexGridChart) =>
+  (panel.getChart() as unknown as { w?: { config?: Record<string, any> } } | null)?.w?.config;
+
 function sizedParent() {
   const node = document.createElement('div');
   node.style.height = '500px';
@@ -273,7 +277,7 @@ describe('ApexGridChart panel', () => {
     // reports a dual value axis — two entries, the second on the opposite side.
     let yaxis: Array<{ opposite?: boolean }> | undefined;
     for (let i = 0; i < 40; i += 1) {
-      yaxis = panel.getChart()?.w?.config?.yaxis as Array<{ opposite?: boolean }> | undefined;
+      yaxis = chartConfig(panel)?.yaxis as Array<{ opposite?: boolean }> | undefined;
       if (Array.isArray(yaxis) && yaxis.length === 2 && yaxis[1]?.opposite) break;
       await nextFrame();
     }
@@ -328,7 +332,7 @@ describe('ApexGridChart panel', () => {
     // The calculated field renders as an extra series.
     let names: string[] = [];
     for (let i = 0; i < 40; i += 1) {
-      names = (panel.getChart()?.w?.config?.series ?? []).map((s: { name: string }) => s.name);
+      names = (chartConfig(panel)?.series ?? []).map((s: { name: string }) => s.name);
       if (names.includes('Deal rate')) break;
       await nextFrame();
     }

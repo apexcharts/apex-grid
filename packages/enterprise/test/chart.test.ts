@@ -381,7 +381,7 @@ describe('ApexGridEnterprise integrated charts — getChartModel', () => {
 
   it('flat view reflects a filter (fewer rows → different category totals)', async () => {
     const grid = await mount({});
-    grid.filter({ key: 'region', searchTerm: 'AMER' });
+    grid.filter({ key: 'region', condition: 'equals', searchTerm: 'AMER' });
     await grid.updateComplete;
     await nextFrame();
     const model = grid.getViewChartModel();

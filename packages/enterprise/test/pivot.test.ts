@@ -57,7 +57,7 @@ async function mountPivot(
 
 /** Reads pivot rows as plain records (synthetic keys). */
 function rowsOf(grid: ApexGridEnterprise<Row>) {
-  return grid.pageItems as ReadonlyArray<Record<string, unknown>>;
+  return grid.pageItems as unknown as ReadonlyArray<Record<string, unknown>>;
 }
 
 const A = 'pivot::A::amount::sum';

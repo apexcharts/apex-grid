@@ -29,6 +29,9 @@ jobs:
       - run: npx playwright install --with-deps --only-shell chromium
       - run: npm run lint
       - run: npm run build
+      # After the build: the enterprise tests resolve apex-grid through core's
+      # dist/, and core's own sources import the generated *.css.ts files.
+      - run: npm run typecheck
       - run: npm run test
       - name: Publish to coveralls.io
         if: matrix.node-version == '20.x'
