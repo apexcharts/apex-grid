@@ -60,6 +60,15 @@ export default /** @type {import("@web/test-runner").TestRunnerConfig} */ ({
     // prefix are excluded too; otherwise the v8→istanbul step tries to read
     // those URLs as real paths and logs ENOENT warnings (monorepo hoisting).
     exclude: ['**/node_modules/**', '**/__wds-outside-root__/**', '**/styles/**', 'test/**'],
+    // Fails `npm test` (the default group, the one run with --coverage) when
+    // coverage drops below these, so deleting or disabling a test file turns
+    // CI red. Set just under the numbers measured on 2026-11-03 (statements
+    // 98.53, branches 92.22, functions 97.72, lines 98.53). Branches get more
+    // room: the animation and scroll paths in flip.ts, reorder.ts and the
+    // virtualizer take timing-dependent branches, so the same source measured
+    // anywhere from 92.17 to 92.23 across runs. Raise these as coverage grows;
+    // lower them only with a reason in the commit.
+    threshold: { statements: 98.5, branches: 92.0, functions: 97.7, lines: 98.5 },
   },
 
   /** Browsers to run tests on */

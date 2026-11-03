@@ -57,6 +57,12 @@ export default /** @type {import("@web/test-runner").TestRunnerConfig} */ ({
     // Match the core package: exclude hoisted/out-of-root deps so the v8→istanbul
     // step does not try to read those served URLs as real paths.
     exclude: ['**/node_modules/**', '**/__wds-outside-root__/**', 'test/**'],
+    // Fails `npm test` (the default group, the one run with --coverage) when
+    // coverage drops below these, so deleting or disabling a test file turns
+    // CI red. Set just under the numbers measured on 2026-11-03 (statements
+    // 97.73, branches 92.69, functions 96.59, lines 97.73). Raise them as
+    // coverage grows; lower them only with a reason in the commit.
+    threshold: { statements: 97.7, branches: 92.6, functions: 96.5, lines: 97.7 },
   },
 
   browsers: [playwrightLauncher({ product: 'chromium', headless: true })],

@@ -33,9 +33,31 @@ jobs:
       # dist/, and core's own sources import the generated *.css.ts files.
       - run: npm run typecheck
       - run: npm run test
-      - name: Publish to coveralls.io
+      # One upload per package: each lcov names files relative to its own
+      # package (src/...), so each needs its own base-path, and the two
+      # parallel uploads are then closed as one build.
+      - name: Publish core coverage to coveralls.io
         if: matrix.node-version == '20.x'
         uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ github.token }}
-          path-to-lcov: ./packages/core/coverage/lcov.info
+          file: ./packages/core/coverage/lcov.info
+          base-path: packages/core
+          flag-name: core
+          parallel: true
+      - name: Publish enterprise coverage to coveralls.io
+        if: matrix.node-version == '20.x'
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ github.token }}
+          file: ./packages/enterprise/coverage/lcov.info
+          base-path: packages/enterprise
+          flag-name: enterprise
+          parallel: true
+      - name: Close the coveralls.io build
+        if: matrix.node-version == '20.x'
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ github.token }}
+          parallel-finished: true
+          carryforward: core,enterprise
