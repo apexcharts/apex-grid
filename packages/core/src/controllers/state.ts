@@ -132,16 +132,6 @@ export class StateController<T extends object> implements ReactiveController {
     return this.host.toolbar;
   }
 
-  /**
-   * Cumulative pin offsets (in px) keyed by column key. Populated by the
-   * {@link GridDOMController} after each layout.
-   */
-  public get pinOffsets(): Map<unknown, number> {
-    // @ts-expect-error - Protected member access
-    const dom = this.host.DOM as { pinOffsets?: Map<unknown, number> } | undefined;
-    return dom?.pinOffsets ?? new Map();
-  }
-
   constructor(
     public host: GridHost<T>,
     private extraModules: ReadonlyArray<GridFeatureModule<T>> = []
