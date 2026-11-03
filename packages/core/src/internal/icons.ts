@@ -113,17 +113,11 @@ const CHROME_ICONS: Record<string, IconDef> = {
     stroke: true,
     paths: svg`<path d="m6 9 6 6 6-6"/>`,
   },
-  // ArrowUp (used by expansion and group row icons)
+  // ArrowUp (column menu: Autosize)
   'arrow-upward': {
     viewBox: '0 0 24 24',
     stroke: true,
     paths: svg`<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>`,
-  },
-  // ArrowDown
-  'arrow-downward': {
-    viewBox: '0 0 24 24',
-    stroke: true,
-    paths: svg`<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>`,
   },
   // Download
   download: {
@@ -174,17 +168,9 @@ const CHROME_ICONS: Record<string, IconDef> = {
 
 const ICONS: Record<string, IconDef> = { ...OPERAND_ICONS, ...CHROME_ICONS };
 
-export type GridIconName = keyof typeof ICONS;
-
-export interface IconRenderOptions {
-  /** Lit `slot` attribute. Useful when icons sit inside slotted positions of other components. */
-  slot?: string;
+interface IconRenderOptions {
   /** Lit `part` attribute. */
   part?: string;
-  /** Inline `class` attribute. */
-  class?: string;
-  /** When provided, sets `data-sort-index` (used by the header sort indicator). */
-  sortIndex?: number | string;
 }
 
 /**
@@ -207,10 +193,7 @@ export function renderIcon(name: string, opts: IconRenderOptions = {}): Template
     aria-hidden="true"
     focusable="false"
     data-icon=${name}
-    slot=${ifDefined(opts.slot)}
     part=${ifDefined(opts.part)}
-    class=${ifDefined(opts.class)}
-    data-sort-index=${ifDefined(opts.sortIndex)}
   >${icon.paths}</svg>`;
 }
 
