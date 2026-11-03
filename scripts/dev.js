@@ -3,14 +3,17 @@
 // is reflected on a plain page refresh (no manual rebuild, no stale bundle).
 //
 // Pipeline:
-//   1. esbuild --watch bundles BOTH packages straight from source (not dist),
+//   1. The core SCSS is compiled once into the `*.css.ts` modules the
+//      components import. Those modules are generated and gitignored, so a
+//      fresh clone has none until this step (or a core build or test) runs.
+//   2. esbuild --watch bundles BOTH packages straight from source (not dist),
 //      so a source edit rebuilds the matching bundle in ~tens of ms. The
 //      enterprise bundle resolves `apex-grid` / `apex-grid/internal` to core's
 //      `src` via a resolve plugin (the published build resolves them to core's
 //      `dist`, which is what goes stale).
-//   2. The SCSS watcher regenerates the committed `*.css.ts` files that the
-//      components import; esbuild then picks those rebuilds up automatically.
-//   3. A tiny static server sends `Cache-Control: no-store`, so the browser
+//   3. The SCSS watcher regenerates a `*.css.ts` module when its SCSS changes;
+//      esbuild then picks that rebuild up automatically.
+//   4. A tiny static server sends `Cache-Control: no-store`, so the browser
 //      never serves a cached copy of a just-rebuilt bundle.
 //
 // Environment:
@@ -19,8 +22,8 @@
 //         HOST=0.0.0.0 to open the demos to other devices on the network; they
 //         can then read any file under the repo root.
 //
-// This is a DEV tool only. The published/committed bundles are still produced
-// by `npm run demo:bundle[:enterprise]` (from `dist`); run those before commit.
+// This is a DEV tool only. The bundles it writes are gitignored; the e2e
+// suite builds its own from `dist` with `npm run demo:bundle[:enterprise]`.
 
 import { spawn } from 'node:child_process';
 import { createReadStream, readdirSync, realpathSync, statSync } from 'node:fs';
@@ -141,7 +144,30 @@ function handle(req, res) {
     .pipe(res);
 }
 
+// Runs `scripts/sass.js` in packages/core and settles once every style module
+// is written, so the first esbuild pass can resolve the `*.css.js` imports.
+function buildStyles() {
+  return new Promise((resolve, reject) => {
+    spawn(process.execPath, ['scripts/sass.js'], {
+      cwd: path.join(ROOT, 'packages/core'),
+      stdio: 'inherit',
+    })
+      .on('error', reject)
+      .on('exit', (code) =>
+        code === 0 ? resolve() : reject(new Error(`the style build exited with ${code}`))
+      );
+  });
+}
+
 async function main() {
+  try {
+    await buildStyles();
+  } catch (err) {
+    // biome-ignore lint/suspicious/noConsole: dev server fatal error
+    console.error(`Dev server could not build the styles: ${err.message}`);
+    process.exit(1);
+  }
+
   const shared = { bundle: true, format: 'iife', minify: true, logLevel: 'info' };
 
   const contexts = await Promise.all([
@@ -162,7 +188,7 @@ async function main() {
 
   await Promise.all(contexts.map((ctx) => ctx.watch()));
 
-  // Regenerate `*.css.ts` from SCSS on change; esbuild watches those outputs.
+  // Regenerate a `*.css.ts` module when its SCSS changes; esbuild watches those.
   const sass = spawn(process.execPath, ['scripts/watch-styles.js'], {
     cwd: path.join(ROOT, 'packages/core'),
     stdio: 'inherit',
