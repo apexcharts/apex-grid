@@ -18,6 +18,22 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   elements; assigning `undefined` still unbinds it.
 
 ### Fixed
+- The chart panel reads grid tokens written in CSS Color 4 syntax (`oklch()`,
+  `lab()`, `color()`, `color-mix()`, relative colors, space-separated `rgb()`).
+  A light grid with such a surface no longer gets a dark chart and dark
+  tooltips (Chromium and WebKit; Firefox was not affected), and a brand such
+  as `color-mix(in srgb, ...)` no longer draws its series gray. These colors
+  reach ApexCharts as hex, or `rgba()` when translucent, clipped to sRGB, and
+  the Format swatch value is always `#rrggbb`, so no browser shows them as
+  black (older Chromium releases did, translucent colors included). Hex,
+  named, comma `rgb()`, `hsl()` and `hwb()` tokens (with or without `calc()`
+  inside), including every default, are passed on exactly as before; a
+  relative `hsl(from ...)` is converted like the other modern syntaxes.
+- With an Ignite UI theme whose palette shades are relative colors (the 6.x
+  Bootstrap, Material and Fluent themes), every chart series now draws at the
+  usual fill opacity. Before, the second series, which takes
+  `--ig-primary-700` (`--ig-primary-400` in dark mode), drew fully opaque.
+  Themes with hex shades are unchanged.
 - The `grid` property of the chart panel, status bar, tool panel, AI panel,
   filter builder and set filter accepts a grid typed with your own row
   interface or type alias without a cast.

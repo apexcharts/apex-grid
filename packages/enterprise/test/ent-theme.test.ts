@@ -147,6 +147,24 @@ describe('ent-theme: enterprise chrome follows the grid', () => {
       });
     }
 
+    // CSS Color 4 surfaces: Chromium and WebKit keep these as written in a canvas fillStyle, and
+    // the panel used to read their 0-1 or L/a/b numbers as bytes, so every one came out dark.
+    for (const [surface, mode] of [
+      ['oklch(0.98 0.01 250)', 'light'],
+      ['lab(97 0 0)', 'light'],
+      ['color-mix(in srgb, white 90%, #0f172a)', 'light'],
+      ['hsl(from #0d6fd3 h s 97%)', 'light'],
+      ['oklch(0.2 0 0)', 'dark'],
+      ['color(srgb 0.1 0.1 0.1)', 'dark'],
+    ]) {
+      it(`reads ${surface} as a ${mode} surface`, async () => {
+        const grid = await mountGrid({ style: `--ag-surface: ${surface}` });
+        const panel = await inlinePanel(grid);
+        const canvas = panel.querySelector('.apexcharts-canvas')!;
+        expect(canvas.className).to.contain(`apexcharts-theme-${mode}`);
+      });
+    }
+
     it('keeps a light grid light', async () => {
       const grid = await mountGrid();
       const panel = await inlinePanel(grid);

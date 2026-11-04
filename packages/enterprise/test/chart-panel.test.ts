@@ -723,6 +723,157 @@ describe('ApexGridChart Format and Data controls', () => {
     expect(swatches(panel)[0].value).to.equal('#112233');
   });
 
+  // The theme palette the panel hands ApexCharts. The defaults are hex and must reach it exactly
+  // as before; a CSS Color 4 token (Chromium keeps it as written in a canvas) used to give black
+  // swatches, and a color-mix(in srgb, ...) brand a gray series.
+  const fills = (panel: ApexGridChart) =>
+    [...panel.querySelectorAll('.apexcharts-series')].map((s) =>
+      s.querySelector('path')!.getAttribute('fill')
+    );
+  /** The colors and theme the next redraw hands ApexCharts, copied before ApexCharts edits them. */
+  const handed = async (panel: ApexGridChart) => {
+    type Handed = { colors?: string[]; chart?: { foreColor?: string }; theme?: { mode?: string } };
+    const chart = panel.getChart() as unknown as {
+      updateOptions(o: Handed, ...r: unknown[]): unknown;
+    };
+    const update = chart.updateOptions;
+    let seen: Handed = {};
+    chart.updateOptions = function (o: Handed, ...rest: unknown[]) {
+      seen = { colors: o.colors && [...o.colors], chart: { ...o.chart }, theme: { ...o.theme } };
+      return update.call(this, o, ...rest);
+    };
+    await panel.refresh();
+    chart.updateOptions = update;
+    return seen;
+  };
+  const openFormat = async (panel: ApexGridChart) => {
+    panel.querySelector<HTMLButtonElement>('[part="format-button"]')!.click();
+    await panel.updateComplete;
+  };
+
+  it('hands ApexCharts the default light theme exactly as the tokens hold it', async () => {
+    const panel = await mountChart(await mountWide());
+    const options = await handed(panel);
+    expect(options.colors).to.eql([
+      '#0d6fd3',
+      '#0a56b8',
+      '#047857',
+      '#b45309',
+      '#b91c1c',
+      '#92400e',
+    ]);
+    expect(options.chart?.foreColor).to.equal('#1f2937');
+    expect(options.theme?.mode).to.equal('light');
+    expect(fills(panel)).to.eql(['rgba(13,111,211,0.85)', 'rgba(10,86,184,0.85)']);
+    await openFormat(panel);
+    expect(swatches(panel).map((s) => s.value)).to.eql(['#0d6fd3', '#0a56b8']);
+  });
+
+  it('hands ApexCharts the default dark theme exactly as the tokens hold it', async () => {
+    const grid = await mountWide();
+    (grid as unknown as HTMLElement).setAttribute('theme', 'dark');
+    await grid.updateComplete;
+    const panel = await mountChart(grid);
+    const options = await handed(panel);
+    expect(options.colors).to.eql([
+      '#3b82f6',
+      '#60a5fa',
+      '#34d399',
+      '#fbbf24',
+      '#f87171',
+      '#fcd34d',
+    ]);
+    expect(options.chart?.foreColor).to.equal('#e2e8f0');
+    expect(options.theme?.mode).to.equal('dark');
+  });
+
+  it('keeps legacy brand syntaxes as written', async () => {
+    const grid = await mountWide();
+    const host = grid as unknown as HTMLElement;
+    host.style.setProperty('--ag-brand', 'rgb(13, 111, 211)');
+    host.style.setProperty('--ag-brand-strong', 'hsl(210, 88%, 44%)');
+    const panel = await mountChart(grid);
+    expect(drawn(panel).w.config.colors.slice(0, 2)).to.eql([
+      'rgb(13, 111, 211)',
+      'hsl(210, 88%, 44%)',
+    ]);
+  });
+
+  it('draws and shows CSS Color 4 brand tokens as their sRGB color', async () => {
+    const grid = await mountWide();
+    const host = grid as unknown as HTMLElement;
+    host.style.setProperty('--ag-brand', 'color-mix(in srgb, #06f 80%, white)');
+    host.style.setProperty('--ag-brand-strong', 'oklch(0.45 0.2 260)');
+    const panel = await mountChart(grid);
+    const [brand, strong] = drawn(panel).w.config.colors;
+    expect(brand).to.equal('#3385ff');
+    expect(strong).to.match(/^#[0-9a-f]{6}$/);
+    // The brand color with the usual fill opacity, not ApexCharts' gray fallback.
+    expect(fills(panel)).to.eql(['rgba(51,133,255,0.85)', `rgba(${rgbBytes(strong)},0.85)`]);
+    await openFormat(panel);
+    expect(swatches(panel).map((s) => s.value)).to.eql(['#3385ff', strong]);
+  });
+
+  it('gives ApexCharts a concrete text color for a CSS Color 4 text token', async () => {
+    const grid = await mountWide();
+    (grid as unknown as HTMLElement).style.setProperty('--ag-text-body', 'oklch(0.3 0 0)');
+    const panel = await mountChart(grid);
+    const { chart } = await handed(panel);
+    expect(chart?.foreColor).to.match(/^#[0-9a-f]{6}$/);
+    expect(rgbOfColor(chart!.foreColor!)).to.equal(rgbOfColor('oklch(0.3 0 0)'));
+  });
+
+  // An Ignite UI 6 Bootstrap, Material or Fluent theme writes its darker and lighter shades as
+  // relative colors (the formulas below are igniteui-webcomponents 6.1.2's). The second series
+  // used to reach ApexCharts as that string and draw fully opaque; an Indigo-style hex shade
+  // still passes through as written.
+  const IGNITE_500 = '#0d6efd';
+  const igniteParent = (grid: unknown, tokens: Record<string, string>) => {
+    const parent = (grid as HTMLElement).parentElement!;
+    for (const [name, value] of Object.entries(tokens)) parent.style.setProperty(name, value);
+  };
+
+  it('draws an Ignite UI 6 relative shade at the usual fill opacity', async () => {
+    const grid = await mountWide();
+    igniteParent(grid, {
+      '--ig-primary-500': IGNITE_500,
+      '--ig-primary-700': 'hsl(from var(--ig-primary-500) h calc(s * 1.26) calc(l * 0.81))',
+    });
+    const panel = await mountChart(grid);
+    expect(drawn(panel).w.config.colors.slice(0, 2)).to.eql([IGNITE_500, '#0052f1']);
+    expect(fills(panel)).to.eql(['rgba(13,110,253,0.85)', 'rgba(0,82,241,0.85)']);
+  });
+
+  it('draws an Ignite UI 6 dark relative shade at the usual fill opacity', async () => {
+    const grid = await mountWide();
+    (grid as unknown as HTMLElement).setAttribute('theme', 'dark');
+    igniteParent(grid, {
+      '--ig-primary-500': IGNITE_500,
+      '--ig-primary-400': 'hsl(from var(--ig-primary-500) h calc(s * 0.875) calc(l * 1.08))',
+    });
+    await grid.updateComplete;
+    const panel = await mountChart(grid);
+    expect(drawn(panel).w.config.colors.slice(0, 2)).to.eql([IGNITE_500, '#307def']);
+  });
+
+  it('passes an Ignite UI hex shade through as written', async () => {
+    const grid = await mountWide();
+    igniteParent(grid, { '--ig-primary-500': '#3f51b5', '--ig-primary-700': '#333d83' });
+    const panel = await mountChart(grid);
+    expect(drawn(panel).w.config.colors.slice(0, 2)).to.eql(['#3f51b5', '#333d83']);
+    expect(fills(panel)).to.eql(['rgba(63,81,181,0.85)', 'rgba(51,61,131,0.85)']);
+  });
+
+  it('passes an Ignite UI hsl() triplet with calc() through as written', async () => {
+    const grid = await mountWide();
+    igniteParent(grid, {
+      '--ig-primary-500': '216deg, calc(98% * 1), calc(52% * 1)',
+      '--ag-brand': 'hsl(var(--ig-primary-500))',
+    });
+    const panel = await mountChart(grid);
+    expect(drawn(panel).w.config.colors[0]).to.equal('hsl(216deg, calc(98% * 1), calc(52% * 1))');
+  });
+
   it('toggling a measure keeps a calculated field on the secondary axis', async () => {
     const panel = await mountChart(await mountWide(), 'line');
     panel.definition = {
@@ -935,3 +1086,17 @@ describe('ApexGridChart Format and Data controls', () => {
     expect(select.value).to.equal('year');
   });
 });
+
+/** `#rrggbb` as the `r,g,b` ApexCharts writes into an rgba() fill. */
+function rgbBytes(hex: string): string {
+  return [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16)).join(',');
+}
+
+/** A CSS color as the sRGB `rgb()` the canvas paints it. */
+function rgbOfColor(color: string): string {
+  const ctx = document.createElement('canvas').getContext('2d')!;
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  return `rgb(${r}, ${g}, ${b})`;
+}

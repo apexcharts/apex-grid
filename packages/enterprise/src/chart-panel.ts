@@ -23,6 +23,7 @@ import {
   renderApexChart,
 } from './features/chart.js';
 import { isValidChartFormula } from './features/chart-calc.js';
+import { chartColor, isDark, toHex } from './features/chart-color.js';
 import { captureFocus, type FocusReturn, returnFocus } from './features/focus-return.js';
 import { indexToColumnLetter } from './features/formula/refs.js';
 import { RANGE_CHANGED_EVENT } from './features/range-selection.js';
@@ -111,36 +112,6 @@ function deepActiveElement(): HTMLElement | null {
   let el: Element | null = document.activeElement;
   while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
   return el instanceof HTMLElement ? el : null;
-}
-
-/**
- * Coarse light/dark decision from any CSS color: hex in every length (#rgb, #rgba, #rrggbb,
- * #rrggbbaa), rgb()/rgba(), or any other syntax the canvas parses. The canvas normalises an
- * opaque color to `#rrggbb` and a translucent one to `rgba()`; a fully transparent or
- * unparseable color reads as light.
- */
-function isDark(color: string): boolean {
-  const c = color.trim() ? toHex(color) : '';
-  const rgb = c.startsWith('#')
-    ? [1, 3, 5].map((i) => Number.parseInt(c.slice(i, i + 2), 16))
-    : c.match(/\d+(\.\d+)?/g)?.map(Number);
-  if (!rgb || rgb.length < 3 || rgb[3] === 0) return false;
-  const [r, g, b] = rgb;
-  // Rec. 601 luma; < 0.5 of 255 reads as a dark surface.
-  return 0.299 * r + 0.587 * g + 0.114 * b < 128;
-}
-
-let colorCtx: CanvasRenderingContext2D | null | undefined;
-/**
- * A CSS color as the `#rrggbb` a color input accepts (it shows black for any other syntax). The
- * canvas normalises an opaque color to hex; one it cannot parse reads as gray.
- */
-function toHex(color: unknown): string {
-  colorCtx ??= document.createElement('canvas').getContext('2d');
-  if (!colorCtx) return '#888888';
-  colorCtx.fillStyle = '#888888';
-  colorCtx.fillStyle = String(color);
-  return colorCtx.fillStyle;
 }
 
 /** The toolbar popovers, each a `[part=<name>]` wrapper holding `<name>-button` and `<name>-menu`. */
@@ -1216,8 +1187,9 @@ export class ApexGridChart extends LitElement {
     if (!grid) return {};
     const cs = getComputedStyle(grid);
     const read = (name: string) => cs.getPropertyValue(name).trim();
-    const colors = PALETTE_TOKENS.map(read).filter(Boolean);
-    const foreColor = read('--_ag-text-body');
+    // As concrete colors: ApexCharts misreads oklch(), color-mix() and the like (hex passes as is).
+    const colors = PALETTE_TOKENS.map(read).filter(Boolean).map(chartColor);
+    const foreColor = chartColor(read('--_ag-text-body'));
     return {
       ...(colors.length ? { colors } : {}),
       theme: { mode: isDark(read('--_ag-surface')) ? 'dark' : 'light' },
