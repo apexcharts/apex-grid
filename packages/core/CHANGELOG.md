@@ -6,6 +6,17 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- An explicit `--ag-font` now wins over an Ignite UI `--ig-font-family`, the
+  same order the brand tokens use. Before, an Ignite UI theme on the page
+  replaced the grid font even when `--ag-font` was set on the grid itself. The
+  Ignite UI font still applies when `--ag-font` is not set, and the default
+  Inter stack is unchanged. To keep that fallback reachable, `--ag-font` no
+  longer has a root default (it is gone from `:where(:root)` and
+  `apex-grid/tokens.css`), so page CSS that reads `var(--ag-font)` needs its
+  own fallback, as with `--ag-brand`. A copy of the old root defaults in your
+  own CSS now sets the font explicitly and overrides the Ignite UI font.
+
 ## [4.0.0-beta.1] - 2026-10-29
 
 A pre-release of 4.0.0, published under the `next` npm tag for trying out

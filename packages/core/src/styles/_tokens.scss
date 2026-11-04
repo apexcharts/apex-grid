@@ -21,6 +21,7 @@
 // the private copies, so they swap defaults without blocking inherited values.
 // No `!important`, no downstream hardcoded numerics; every rule resolves here.
 // ─────────────────────────────────────────────────────────────────────────
+@use 'sass:list';
 @use 'sass:map';
 @use 'token-values' as tv;
 
@@ -45,9 +46,16 @@
     --_ag-brand: var(--ag-brand, var(--ig-primary-500, #0d6fd3)); /* primary blue */
     --_ag-brand-strong: var(--ag-brand-strong, var(--ig-primary-700, #0a56b8)); /* hover / pressed */
 
+    // ── Font ── the same order as the brand: an explicit `--ag-font`, then an
+    // Ignite UI theme's `--ig-font-family`, then the Inter stack. `--ag-font`
+    // has no root default either, or the Ignite UI font could never win.
+    --_ag-font: var(--ag-font, var(--ig-font-family, #{map.get(tv.$light, 'font')}));
+
     // Everything else: the public input, or its default.
     @each $name, $value in tv.$light {
-        --_ag-#{$name}: #{light($name)};
+        @if not list.index(tv.$no-root-default, $name) {
+            --_ag-#{$name}: #{light($name)};
+        }
     }
 
     // ── Derived ──────────────────────────────────────────────────────────

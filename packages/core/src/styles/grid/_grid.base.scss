@@ -22,7 +22,7 @@ $grid-resize-line-color: var(--grid-resize-line-color, var(--_ag-brand));
     height: 100%;
     position: relative;
     box-sizing: border-box;
-    font-family: var(--ig-font-family, var(--_ag-font));
+    font-family: var(--_ag-font);
     font-size: var(--_ag-fs-cell);
     line-height: var(--_ag-leading);
     color: $content-text-color;

@@ -133,6 +133,7 @@ import 'apex-grid/tokens.css';
 The grid renders the same without the sheet; it carries the defaults as fallbacks. Three groups have no root default, so page CSS reading them needs its own fallback:
 
 - `--ag-brand` and `--ag-brand-strong`, so an Ignite UI palette set on any ancestor keeps tinting the grid (see below).
+- `--ag-font`, so an Ignite UI font set on any ancestor still reaches the grid (see below).
 - The derived washes `--ag-brand-soft`, `--ag-brand-softer`, `--ag-brand-line`, `--ag-row-hover` and `--ag-surface-alt`. The grid mixes them from the brand and surface in effect, so they follow a brand set on an ancestor. Set them only to override the mix.
 
 **Dark mode.** `theme="dark"` reads its own colour inputs, `--ag-dark-*` (`--ag-dark-surface`, `--ag-dark-text`, `--ag-dark-hairline`, `--ag-dark-shadow-card`, and so on), so a light palette set on a shared ancestor never puts a white surface under the dark theme's light text. Sizing, typography, motion, the brand and the base state colours are shared by both modes. To theme both from one place, set both palettes:
@@ -155,7 +156,7 @@ apex-grid[theme~='dark'] { --ag-grid-shadow: var(--ag-dark-shadow-card); } /* th
 apex-grid { --ag-grid-shadow: none; }                                      /* remove the edge entirely */
 ```
 
-If you embed the grid in an Ignite UI app, the brand tokens automatically re-tint from its palette, wherever it is declared: they read `--ig-primary-500` with the grid's own default as the fallback. That is a plain CSS variable lookup, so the grid neither depends on nor bundles Ignite UI.
+If you embed the grid in an Ignite UI app, the brand tokens automatically re-tint from its palette, wherever it is declared: they read `--ig-primary-500` with the grid's own default as the fallback. The font follows `--ig-font-family` the same way. A `--ag-brand`, `--ag-brand-strong` or `--ag-font` you set still wins over the Ignite UI value. That is a plain CSS variable lookup, so the grid neither depends on nor bundles Ignite UI.
 
 ### 4. Size the host
 

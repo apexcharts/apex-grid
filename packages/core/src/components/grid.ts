@@ -917,7 +917,7 @@ function warnDropped(message: string): void {
  * @cssprop [--ag-row-h] - Row height.
  * @cssprop [--ag-header-h] - Header height.
  * @cssprop [--ag-radius] - Outer card corner radius.
- * @cssprop [--ag-font] - Grid font family.
+ * @cssprop [--ag-font] - Grid font family. Wins over an Ignite UI `--ig-font-family`, which the grid falls back to when this is unset.
  * @cssprop [--ag-fs-cell] - Cell font size.
  *
  * @see {@link https://github.com/apexcharts/apex-grid/blob/main/packages/core/src/styles/_tokens.scss | _tokens.scss} for the complete `--ag-*` token list.

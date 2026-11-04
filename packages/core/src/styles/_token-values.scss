@@ -11,10 +11,14 @@
 //  - `--ag-brand` / `--ag-brand-strong`: the grid falls back to an Ignite UI
 //    `--ig-primary-*` palette set on any ancestor. A root default would win
 //    over a palette scoped below `:root`, so the brand stays unset there.
+//  - `--ag-font`, for the same reason: the grid falls back to an Ignite UI
+//    `--ig-font-family` set on any ancestor. Its default still lives in
+//    `$light` below; `$no-root-default` keeps it off the root.
 //  - Derived tokens (brand washes, row hover, alternate surface): they are
 //    mixed from other tokens on the grid host. Resolved on `:root` they would
 //    freeze there and never follow a brand or surface set lower down.
 // ─────────────────────────────────────────────────────────────────────────
+@use 'sass:list';
 
 // Light palette plus every non-colour token (typography, sizing, motion).
 // Light grids read `--ag-<name>`.
@@ -104,11 +108,17 @@ $dark: (
     'shadow-card': (0 16px 38px rgb(0 0 0 / 55%), 0 0 0 1px rgb(255 255 255 / 6%), 0 1px 0 rgb(255 255 255 / 4%) inset),
 );
 
+// `$light` tokens left off the root (see above). `_tokens.scss` resolves each
+// one on the host with its Ignite UI fallback instead.
+$no-root-default: ('font',);
+
 // The public defaults, at zero specificity so any declaration beats them.
 @mixin root-defaults {
     :where(:root) {
         @each $name, $value in $light {
-            --ag-#{$name}: #{$value};
+            @if not list.index($no-root-default, $name) {
+                --ag-#{$name}: #{$value};
+            }
         }
 
         @each $name, $value in $dark {
