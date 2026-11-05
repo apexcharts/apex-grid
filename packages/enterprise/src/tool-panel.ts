@@ -1,5 +1,10 @@
 import { type ColumnConfiguration, type GridLocaleKey, localize } from 'apex-grid';
-import { getDisplayColumns, registerComponent } from 'apex-grid/internal';
+import {
+  getDisplayColumns,
+  isComposing,
+  registerComponent,
+  trackCompositions,
+} from 'apex-grid/internal';
 import { css, html, LitElement, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { AggregationFn } from './features/aggregation.js';
@@ -226,6 +231,17 @@ export class ApexGridToolPanel extends LitElement {
     }
   }
 
+  public override connectedCallback(): void {
+    super.connectedCallback();
+    trackCompositions();
+  }
+
+  /** Searches as typed; text an IME is still converting waits for the conversion's end. */
+  #onSearch = (event: Event): void => {
+    if (event.type === 'input' && isComposing(event)) return;
+    this.search = (event.target as HTMLInputElement).value;
+  };
+
   protected override willUpdate(): void {
     const grid = this.grid;
     if (grid !== this.#bound) {
@@ -450,9 +466,8 @@ export class ApexGridToolPanel extends LitElement {
         placeholder=${this.#t('toolPanel.searchPlaceholder')}
         aria-label=${this.#t('toolPanel.searchPlaceholder')}
         .value=${this.search}
-        @input=${(event: Event) => {
-          this.search = (event.target as HTMLInputElement).value;
-        }}
+        @input=${this.#onSearch}
+        @compositionend=${this.#onSearch}
       />
       <ul part="list">
         ${display.map((column, index) => {

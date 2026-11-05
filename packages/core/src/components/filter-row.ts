@@ -1,10 +1,12 @@
 import { consume } from '@lit/context';
-import { html, LitElement, nothing } from 'lit';
+import { html, LitElement, nothing, type PropertyValues } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
 import type { GridLocaleKey } from '../i18n/index.js';
 import { DEFAULT_COLUMN_CONFIG } from '../internal/constants.js';
 import { renderIcon } from '../internal/icons.js';
+import { isComposing, trackCompositions } from '../internal/ime.js';
+import { parseNumberInput } from '../internal/number-input.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_FILTER_ROW_TAG } from '../internal/tags.js';
 import type { ColumnConfiguration } from '../internal/types.js';
@@ -227,6 +229,9 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     const origin = event.composedPath()[0];
     const unowned = origin === document.body || origin === document.documentElement;
     if (event.key !== 'Escape' || !this.active || !(unowned || this.#fromPanel(event))) return;
+    // Escape during an IME conversion in the panel's input cancels the
+    // conversion, not the panel.
+    if (isComposing(event)) return;
 
     if (this.dropdownOpen) {
       event.stopPropagation();
@@ -241,13 +246,74 @@ export default class ApexFilterRow<T extends object> extends LitElement {
     }
   };
 
-  async #handleInput(event: Event) {
-    event.stopPropagation();
+  /**
+   * The text a composition just ended with, applied on `compositionend`. A
+   * browser that follows the end with one more `input` event carrying the
+   * same text does not apply it a second time. The next real keystroke
+   * forgets it.
+   */
+  #composed: string | null = null;
 
+  #handleInput(event: Event) {
+    event.stopPropagation();
+    // Text still being converted by an IME is not the term yet: it is applied
+    // once the composition ends.
+    if (isComposing(event)) return;
     const raw = (event.target as HTMLInputElement).value ?? '';
-    const value = this.isNumeric ? Number.parseFloat(raw) : raw;
+    const composed = this.#composed;
+    this.#composed = null;
+    if (raw === composed) return;
+    return this.#applyInput(raw);
+  }
+
+  #handleCompositionEnd(event: CompositionEvent) {
+    const raw = (event.target as HTMLInputElement).value ?? '';
+    this.#composed = raw;
+    return this.#applyInput(raw);
+  }
+
+  /**
+   * A typed number term: full-width digits, grouping and a currency mark read
+   * by the shared parser in the column's locale, anything else as it always
+   * was (so a partial `1,0` still filters by 1 until the group is complete).
+   */
+  #parseNumber(raw: string): number {
+    const parsed = parseNumberInput(raw, this.column.locale, this.column.currency);
+    return Number.isNaN(parsed) ? Number.parseFloat(raw) : parsed;
+  }
+
+  /**
+   * The text typed for an expression and the term it produced. While the
+   * expression still holds that term the input keeps showing the text, so a
+   * number read from `1,000` or `1.234,` is not written back as `1000` or
+   * `1234` under the caret. A term set any other way (a chip, a reset, code)
+   * shows as itself.
+   */
+  #typed: { expression: FilterExpression<T>; text: string; term: unknown } | null = null;
+
+  protected override willUpdate(changed: PropertyValues<this>): void {
+    // A newly selected expression shows its own term.
+    if (changed.has('expression')) this.#typed = null;
+  }
+
+  /** The text the input shows for the current expression. */
+  #inputText(): string {
+    const expression = this.expression;
+    const typed = this.#typed;
+    if (typed && typed.expression === expression && Object.is(typed.term, expression?.searchTerm)) {
+      return typed.text;
+    }
+    return (expression?.searchTerm as string) ?? '';
+  }
+
+  async #applyInput(raw: string) {
+    const value = this.isNumeric ? this.#parseNumber(raw) : raw;
     const shouldUpdate = this.isNumeric ? !Number.isNaN(value as number) : !!value;
     const expression = this.expression;
+    // Recorded before the commit settles, as the grid may render the panel
+    // in between, then matched to the term the expression ends up with.
+    const typed = { expression, text: raw, term: shouldUpdate ? value : expression.searchTerm };
+    this.#typed = typed;
 
     // A cancelled change leaves the typed text alone: the chip shows the
     // term still in effect, and resetting the input would fight the user.
@@ -265,11 +331,15 @@ export default class ApexFilterRow<T extends object> extends LitElement {
       expression.searchTerm = undefined;
     }
 
+    if (this.#typed === typed) typed.term = expression.searchTerm;
     this.requestUpdate();
   }
 
   #handleKeydown(event: KeyboardEvent) {
     event.stopPropagation();
+    // Enter and Escape confirm or back out of an IME conversion.
+    if (isComposing(event)) return;
+    this.#composed = null;
 
     switch (event.key) {
       case 'Enter':
@@ -296,6 +366,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
 
   public override connectedCallback(): void {
     super.connectedCallback();
+    trackCompositions();
     document.addEventListener('pointerdown', this.#handleOutsidePointer, true);
     document.addEventListener('keydown', this.#handleDocumentKey, true);
     if (this.active) this.#listenForMoves(true);
@@ -396,7 +467,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
           part="criteria"
           @click=${this.#chipCriteriaFor(expr)}
         >
-          ${expr.criteria}
+          ${this.state.localize(expr.criteria === 'or' ? 'filter.or' : 'filter.and')}
         </button>`
       : nothing;
   }
@@ -416,8 +487,18 @@ export default class ApexFilterRow<T extends object> extends LitElement {
       .join(', ');
   }
 
+  /** The display label of an operand: its `filter.operator.*` text, else its own label. */
+  #operatorLabel(condition: FilterOperation<T>): string {
+    return this.state.localize(
+      `filter.operator.${condition.name}` as GridLocaleKey,
+      undefined,
+      condition.label ?? condition.name
+    );
+  }
+
   protected renderExpressionChip(props: ExpressionChipProps<T>) {
-    const { name, unary } = props.expression.condition as FilterOperation<T>;
+    const condition = props.expression.condition as FilterOperation<T>;
+    const { name, unary } = condition;
     const { searchTerm: term } = props.expression;
 
     return html`<div
@@ -430,7 +511,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
         @click=${props.onSelect}
       >
         ${renderIcon(name)}
-        <span>${unary ? name : this.#termLabel(term)}</span>
+        <span>${unary ? this.#operatorLabel(condition) : this.#termLabel(term)}</span>
       </button>
       <button
         part="chip-remove"
@@ -518,11 +599,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   }
 
   protected renderDropdownTarget() {
-    const conditionLabel = this.state.localize(
-      `filter.operator.${this.condition.name}` as GridLocaleKey,
-      undefined,
-      (this.condition as FilterOperation<T>).label ?? this.condition.name
-    );
+    const conditionLabel = this.#operatorLabel(this.condition as FilterOperation<T>);
     return html`<button
       id="condition"
       type="button"
@@ -552,9 +629,10 @@ export default class ApexFilterRow<T extends object> extends LitElement {
               <input
                 part="filter-input"
                 type="text"
-                .value=${(this.expression?.searchTerm as string) ?? ''}
+                .value=${this.#inputText()}
                 placeholder=${this.state.localize('filter.inputPlaceholder')}
                 @input=${this.#handleInput}
+                @compositionend=${this.#handleCompositionEnd}
                 @keydown=${this.#handleKeydown}
               />
             </div>`

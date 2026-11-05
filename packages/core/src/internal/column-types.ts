@@ -3,6 +3,8 @@ import { keyed } from 'lit/directives/keyed.js';
 import { ref } from 'lit/directives/ref.js';
 import type ApexGridCell from '../components/cell.js';
 import type ApexGridRow from '../components/row.js';
+import { EN_LOCALE, type GridLocaleKey } from '../i18n/en.js';
+import { interpolate, type LocaleParams } from '../i18n/localize.js';
 import { renderIcon } from './icons.js';
 import type { BadgeVariant, ColumnConfiguration, StatusVariant } from './types.js';
 
@@ -382,12 +384,29 @@ const dateType: ColumnTypeRenderer<object> = {
   },
 };
 
+/**
+ * A built-in cell string through the grid's `localeText`. A cell rendered
+ * without a grid (no state yet) gets the English default.
+ */
+function localizeCell(
+  ctx: ColumnTypeCellContext<object>,
+  key: GridLocaleKey,
+  params?: LocaleParams
+): string {
+  return ctx.parent.state?.localize(key, params) ?? interpolate(EN_LOCALE[key], params);
+}
+
+/** The accessible name of a rating, `{value} of {max}` in English. */
+function ratingLabel(ctx: ColumnTypeCellContext<object>, value: number, max: number): string {
+  return localizeCell(ctx, 'cell.rating', { value, max });
+}
+
 const ratingType: ColumnTypeRenderer<object> = {
   display(ctx) {
     const max = getRatingMax(ctx.column as { max?: number });
     const value = clampRating(ctx.value, max);
     const stars = Array.from({ length: max }, (_, i) => i < value);
-    return html`<span part="rating" role="img" aria-label="${value} of ${max}">
+    return html`<span part="rating" role="img" aria-label=${ratingLabel(ctx, value, max)}>
       ${stars.map(
         (filled) =>
           html`<span part=${filled ? 'rating-star filled' : 'rating-star'} aria-hidden="true">
@@ -420,7 +439,7 @@ const ratingType: ColumnTypeRenderer<object> = {
           part=${rank <= current ? 'rating-star filled selected' : 'rating-star'}
           role="radio"
           aria-checked=${rank === current}
-          aria-label=${`${rank} of ${max}`}
+          aria-label=${ratingLabel(ctx, rank, max)}
           data-rating-value=${rank}
           data-apex-editor=${rank === focusRank ? '' : nothing}
           @click=${() => commitTo(rank === current ? 0 : rank)}
@@ -447,7 +466,7 @@ const booleanType: ColumnTypeRenderer<object> = {
       .checked=${truthy}
       tabindex=${editable ? '0' : '-1'}
       aria-readonly=${editable ? 'false' : 'true'}
-      aria-label=${truthy ? 'true' : 'false'}
+      aria-label=${localizeCell(ctx, truthy ? 'cell.true' : 'cell.false')}
       @click=${(event: Event) => {
         // Keep the click inside the cell — we don't want it to bubble into
         // the grid body-click handler twice or trigger edit-mode logic.

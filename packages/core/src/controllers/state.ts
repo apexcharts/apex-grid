@@ -54,7 +54,7 @@ export class StateController<T extends object> implements ReactiveController {
   /**
    * Optional feature controllers contributed by {@link GridFeatureModule}s,
    * keyed by module id. Empty for the community `<apex-grid>` element; populated
-   * by derived grids (e.g. `@apexcharts/grid-enterprise`) that pass modules to
+   * by derived grids (e.g. `apex-grid-enterprise`) that pass modules to
    * the constructor.
    */
   public readonly modules = new Map<string, ReactiveController>();

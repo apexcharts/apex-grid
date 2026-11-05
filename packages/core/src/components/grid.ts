@@ -1185,7 +1185,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    *
    * @example
    * ```ts
-   * import { esLocale } from '@apexcharts/grid';
+   * import { esLocale } from 'apex-grid';
    *
    * // Whole-UI translation:
    * grid.localeText = esLocale;
@@ -3175,12 +3175,12 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    *
    * @remarks
    * The community grid offers CSV only. This is the seam derived grids use to
-   * contribute more formats: `@apexcharts/grid-enterprise` overrides it to add
+   * contribute more formats: `apex-grid-enterprise` overrides it to add
    * `'xlsx'`. The toolbar renders one menu item per entry and dispatches the
    * chosen id to {@link ApexGrid.exportAs}.
    */
   public get exportFormats(): ReadonlyArray<ExportFormat> {
-    return [{ id: 'csv', label: 'Export CSV' }];
+    return [{ id: 'csv', label: this.localize('toolbar.exportCsv') }];
   }
 
   /**
@@ -3190,7 +3190,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * @remarks
    * The community grid contributes none. This is the seam derived grids use to
    * add toolbar buttons (mirroring {@link ApexGrid.exportFormats}):
-   * `@apexcharts/grid-enterprise` overrides it to add a "Create chart" action.
+   * `apex-grid-enterprise` overrides it to add a "Create chart" action.
    * The toolbar renders one button per entry and calls its `run()` on click.
    */
   public get toolbarActions(): ReadonlyArray<ToolbarAction> {

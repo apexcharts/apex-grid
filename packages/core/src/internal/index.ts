@@ -2,7 +2,7 @@
  * Unstable, first-party extension surface for `apex-grid`.
  *
  * This entry point (`apex-grid/internal`) exposes the internals that the
- * first-party `@apexcharts/grid-enterprise` package builds on: the grid class,
+ * first-party `apex-grid-enterprise` package builds on: the grid class,
  * its state controller, the component registration helper, and the feature
  * module contract. It is intentionally separate from the public `.` barrel.
  *
@@ -63,6 +63,8 @@ export {
   isRowTransformer,
   isSerializableModule,
 } from './feature-module.js';
+export { isComposing, trackCompositions } from './ime.js';
+export { parseLocaleNumberInput, parseNumberInput } from './number-input.js';
 export { registerComponent } from './register.js';
 export type {
   ColumnLayoutState,

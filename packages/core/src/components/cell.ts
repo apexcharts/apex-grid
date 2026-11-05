@@ -3,6 +3,7 @@ import { html, LitElement, type PropertyValues } from 'lit';
 import { property, query } from 'lit/decorators.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
 import { getColumnTypeRenderer } from '../internal/column-types.js';
+import { isComposing, trackCompositions } from '../internal/ime.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_CELL_TAG, GRID_ROW_TAG } from '../internal/tags.js';
 import type {
@@ -304,6 +305,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
     this.addEventListener('dblclick', this.#handleDoubleClick);
     this.addEventListener('keydown', this.#handleCellKeydown);
     this.addEventListener('focusout', this.#handleCellFocusOut);
+    trackCompositions();
   }
 
   public override disconnectedCallback(): void {
@@ -664,6 +666,9 @@ export default class ApexGridCell<T extends object> extends LitElement {
 
   #handleKeydown = (event: KeyboardEvent) => {
     event.stopPropagation();
+    // Enter and Escape confirm or back out of an IME conversion: the edit
+    // stays open until the composition ends.
+    if (isComposing(event)) return;
     switch (event.key) {
       case 'Enter':
         event.preventDefault();
@@ -693,10 +698,11 @@ export default class ApexGridCell<T extends object> extends LitElement {
    *
    * Per-editor `keydown` handlers that need to consume Enter (e.g. the
    * built-in `<select>` editor) still get the first crack — they call
-   * `event.stopPropagation()` and we never see those keys here.
+   * `event.stopPropagation()` and we never see those keys here. Keys of an
+   * IME composition in a custom text editor are left to the input method.
    */
   #handleCellKeydown = (event: KeyboardEvent) => {
-    if (!this.isEditing) return;
+    if (!this.isEditing || isComposing(event)) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       this.#refocusAfterEdit = true;

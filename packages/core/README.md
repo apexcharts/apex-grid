@@ -478,6 +478,12 @@ const columns = [
 
 Validators run inside the commit path, before the cancellable `cellValueChanging` gate. A failure keeps the editor open, marks the cell (`aria-invalid` + an error message node), and fires `cellValidationFailed { key, rowIndex, data, value, errors }`. Built-ins: `required`, `min`, `max`, `pattern`, `custom`, or any `(value, ctx) => string | null`. In row mode all pending cells are validated atomically (no partial write); enterprise paste / fill validate per cell.
 
+A built-in called without a message reports a `validation.*` locale key, so `localeText` translates it: `validation.required` ("This field is required"), `validation.min` ("Must be at least {limit}"), `validation.max` ("Must be at most {limit}") and `validation.pattern` ("Invalid format"). A message you pass wins. Inside the grid the validator context carries `ctx.localize(key, params?)`, so a custom validator can use the grid's locale too.
+
+`min` and `max` read text the way the grid reads a typed number (see [Typed numbers](#typed-numbers)), so `'１２３'` and `'¥1,200'` are checked as 123 and 1200. A value that is not a number at all fails both.
+
+> Changed in 4.0.0: `min` and `max` used to let a value that is not a number (`'abc'`) pass.
+
 ### Undo / redo
 
 ```ts
@@ -596,7 +602,7 @@ Toolbar dropdown:
 <apex-grid show-export></apex-grid>
 ```
 
-Renders a download icon in the toolbar's trailing actions area; the menu has an "Export CSV" entry (the enterprise grid adds "Export XLSX"). Toolbar `exportFilename` overrides the default `data` filename. Attribute: `show-export`.
+Renders a download icon in the toolbar's trailing actions area; the menu has an "Export CSV" entry (the `toolbar.exportCsv` locale key; the enterprise grid adds "Export XLSX"). Toolbar `exportFilename` overrides the default `data` filename. Attribute: `show-export`.
 
 ### Toolbar
 
@@ -672,6 +678,64 @@ Behaviour that reasons in physical directions mirrors too: ArrowLeft moves to th
 next column rather than the previous one, column resize grows the column as the
 pointer moves toward the (now left-hand) inline-end edge, and a column drag drops
 on the side the cursor actually crossed.
+
+### Localization
+
+Every built-in string resolves through `localeText`, a partial map of locale
+keys to text. Keys you leave out fall back to English. `EN_LOCALE` lists every
+key with its English default, `GridLocaleKey` types them, and `esLocale` is a
+complete Spanish translation. `{name}` tokens are filled in at render time, so
+a translation can reorder them.
+
+```ts
+import { esLocale } from 'apex-grid';
+
+grid.localeText = esLocale;
+grid.localeText = { 'pagination.summary': '{total}件中 {start}～{end}件' };
+```
+
+Besides the labels you see, the keys cover screen-reader text (`announce.*`,
+`header.*`, `cell.rating` "{value} of {max}", `cell.true` / `cell.false` for a
+boolean cell), the filter panel's chips (`filter.and` / `filter.or`, and the
+`filter.operator.*` labels on a chip with no value), the CSV export menu item
+(`toolbar.exportCsv`), and the default validator messages (`validation.*`).
+
+#### Input methods (IME)
+
+While an input method (Japanese, Chinese, Korean) is converting text, the keys
+that confirm or cancel the conversion belong to it. Enter, Escape and Tab
+pressed during a composition do not commit or cancel a cell edit, close the
+filter panel or clear the quick filter, and the enterprise text fields (the
+formula editor, the set filter and tool panel search, the chart title, the AI
+prompt) behave the same way. The filter panel and the quick filter wait for the
+conversion to end before they filter, so rows do not flicker through the
+unconverted kana; typing without an IME filters as before.
+
+#### Typed numbers
+
+A number typed or pasted into a numeric column (`number`, `currency`,
+`rating`, `progress`) is read as a person writes it, in the filter panel, in
+enterprise paste and the advanced filter, and by `min` / `max`:
+
+- full-width digits and signs from an IME in full-width mode (`１２３`, `－５`,
+  `１，２００．５`);
+- grouping and the decimal separator of the column's `locale`, or of the
+  runtime locale without one (`1,200`; `1.234,5` under `de-DE`);
+- a leading or trailing `¥`, `$`, `€`, `円`, or the symbol of the column's
+  `currency`.
+
+Only the full-width forms an IME types are folded: `10²` and `①` are not
+numbers. A `%` is not read here (`12.5%` stays text, as before), because its
+meaning depends on the column's scale; enterprise paste reads it in a
+`progress` column only, against that column's `max`.
+
+A plain ASCII decimal (`-5`, `.5`, `1e3`) reads exactly as before in every
+locale, so `1.500` is still 1.5 under `de-DE` when typed in the filter panel.
+Enterprise paste is the exception where the column names its `locale`: there
+the column's own grouping wins, so `1.000` pasted into a `de-DE` column is
+1000, like `1.000.000` and `1.000 €` beside it. The cell editor of a number
+column is a native number input, and the browser folds full-width digits there
+itself.
 
 ### Spreadsheet coordinates
 

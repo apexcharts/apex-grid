@@ -152,6 +152,55 @@ export function isFunctionName(name: string): boolean {
   return WORD.exec(name)?.[0] === name && !/^(?:IF|TRUE|FALSE)$/i.test(name);
 }
 
+/**
+ * What a Japanese (or other CJK) IME types in place of the ASCII a formula is
+ * written in: the full-width forms U+FF01-U+FF5E (`＝（）：，＋－＊／`, `Ａ１`,
+ * `１２`), the ideographic space, and the minus, comma and full stop it types
+ * in kana mode (`ー`, `−`, `、`, `。`). The full-width quote is not one: a
+ * string literal is delimited by the ASCII `"` only.
+ */
+const FULL_WIDTH = /[\uFF01\uFF03-\uFF5E\u3000\u3001\u3002\u2212\u30FC]/;
+
+function foldChar(char: string): string {
+  const code = char.charCodeAt(0);
+  if (code >= 0xff01 && code <= 0xff5e && code !== 0xff02)
+    return String.fromCharCode(code - 0xfee0);
+  switch (char) {
+    case '\u3000':
+      return ' ';
+    case '\u3001':
+      return ',';
+    case '\u3002':
+      return '.';
+    case '\u2212':
+    case '\u30FC':
+      return '-';
+    default:
+      return char;
+  }
+}
+
+/**
+ * `src` with the full-width forms an IME types ({@link FULL_WIDTH}) folded to
+ * ASCII outside string literals, so `＝ＳＵＭ（Ａ１：Ａ３）＊２` reads as
+ * `=SUM(A1:A3)*2`. Text inside `"..."` is kept exactly as typed. Each folded
+ * character is one UTF-16 unit, as is its ASCII form, so a position in the
+ * result is the same position in `src`. Returns `src` itself when there is
+ * nothing to fold.
+ */
+export function foldFullWidth(src: string): string {
+  if (!FULL_WIDTH.test(src)) return src;
+  let out = '';
+  let quoted = false;
+  for (let i = 0; i < src.length; i++) {
+    const char = src[i];
+    // `""` inside a literal closes and reopens it, which leaves it inside.
+    if (char === '"') quoted = !quoted;
+    out += quoted ? char : foldChar(char);
+  }
+  return out;
+}
+
 function tokenize(input: string, from: number): Token[] {
   const tokens: Token[] = [];
   let i = from;
@@ -452,11 +501,14 @@ class Parser {
 
 /**
  * Parse formula text into an AST. A leading `=` (the spreadsheet convention) is
- * tolerated and stripped. Throws {@link ParseError} on malformed input, with
+ * tolerated and stripped. Full-width forms typed with an IME read as their
+ * ASCII forms outside string literals ({@link foldFullWidth}), so a leading
+ * `＝` counts as `=`. Throws {@link ParseError} on malformed input, with
  * the character position in `input` itself (the `=` and any leading
  * whitespace count), so it points at what the user typed.
  */
-export function parseFormula(input: string): FormulaAst {
+export function parseFormula(source: string): FormulaAst {
+  const input = foldFullWidth(source);
   let start = input.length - input.trimStart().length;
   if (input[start] === '=') {
     start++;

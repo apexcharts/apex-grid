@@ -13,12 +13,12 @@
  * and a rejected commit keeps the editor open with the stored formula intact.
  */
 
-import { ApexGrid, registerComponent } from 'apex-grid/internal';
+import { ApexGrid, isComposing, registerComponent, trackCompositions } from 'apex-grid/internal';
 import { css, html, LitElement, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { type CoercibleColumn, coerceText } from './coerce.js';
 import { ParseError } from './errors.js';
-import { type FormulaAst, parseFormula } from './parser.js';
+import { type FormulaAst, foldFullWidth, parseFormula } from './parser.js';
 import { type CellRefFlags, formatCell, parseCellRef } from './refs.js';
 import type { FormulaController } from './store.js';
 
@@ -257,6 +257,11 @@ export class FormulaCellEditor extends LitElement {
     this.#opened = this.text.trim();
   }
 
+  public override connectedCallback(): void {
+    super.connectedCallback();
+    trackCompositions();
+  }
+
   public override firstUpdated(): void {
     this.#input?.focus();
     // Caret at the END (not select-all): a fully-selected field made
@@ -372,6 +377,7 @@ export class FormulaCellEditor extends LitElement {
         aria-activedescendant=${open ? `suggestion-${this.activeSuggestion}` : nothing}
         aria-describedby=${error ? 'formula-error' : nothing}
         @input=${this.#onInput}
+        @compositionend=${this.#onInput}
         @keydown=${this.#onKeydown}
         @click=${this.#dismissSuggestions}
         @blur=${this.#onBlur}
@@ -399,6 +405,20 @@ export class FormulaCellEditor extends LitElement {
     return this.renderRoot?.querySelector('input') ?? null;
   }
 
+  /**
+   * The text as formula source: the full-width forms an IME types folded to
+   * ASCII outside string literals (`＝Ａ１＋１` reads as `=A1+1`). Folding
+   * keeps every position, so an index into it is an index into {@link text}.
+   */
+  get #source(): string {
+    return foldFullWidth(this.text);
+  }
+
+  /** Whether the text is a formula: it starts with `=` (or the full-width `＝`). */
+  get #isFormula(): boolean {
+    return this.#source.trim().startsWith('=');
+  }
+
   #label(): string {
     return this.controller?.localize?.('formula.editorLabel') ?? 'Formula';
   }
@@ -423,16 +443,21 @@ export class FormulaCellEditor extends LitElement {
     }
     const input = event.target as HTMLInputElement;
     this.text = input.value;
+    // Mid-composition the text is unconverted kana: the suggestions, errors
+    // and highlights wait for the composition's end, which calls this again.
+    if (isComposing(event)) return;
     this.error = '';
-    const trimmed = this.text.trim();
-    if (trimmed.startsWith('=')) {
-      this.error = this.#parseError(trimmed) ?? '';
+    if (this.#isFormula) {
+      this.error = this.#parseError(this.text.trim()) ?? '';
     }
     this.#updateSuggestions(input.selectionStart ?? this.text.length);
     this.#updateHighlights();
   };
 
   #onKeydown = (event: KeyboardEvent): void => {
+    // Keys of an IME composition (Enter picks a candidate, Escape backs out of
+    // it, arrows move through the candidates) belong to the input method.
+    if (isComposing(event)) return;
     // While suggestions are open, the arrow / accept / dismiss keys drive the
     // list rather than the edit, so they never reach commit / cancel.
     if (this.suggestions.length) {
@@ -468,7 +493,7 @@ export class FormulaCellEditor extends LitElement {
     }
 
     // F4 cycles the absolute/relative `$` markers on the reference at the caret.
-    if (event.key === 'F4' && this.text.trim().startsWith('=')) {
+    if (event.key === 'F4' && this.#isFormula) {
       event.preventDefault();
       event.stopPropagation();
       this.#cycleAbsolute();
@@ -533,10 +558,10 @@ export class FormulaCellEditor extends LitElement {
    * `null` when not in formula mode or there is no such fragment.
    */
   #partialNameBefore(caret: number): string | null {
-    if (!this.text.trim().startsWith('=')) {
+    if (!this.#isFormula) {
       return null;
     }
-    const match = /([A-Za-z]+)$/.exec(this.text.slice(0, caret));
+    const match = /([A-Za-z]+)$/.exec(this.#source.slice(0, caret));
     return match ? match[1] : null;
   }
 
@@ -643,7 +668,7 @@ export class FormulaCellEditor extends LitElement {
    * opens its own editor while a formula is being authored.
    */
   #onGridClickCapture = (event: MouseEvent): void => {
-    const hit = this.text.trim().startsWith('=') && this.#cellFromEvent(event);
+    const hit = this.#isFormula && this.#cellFromEvent(event);
     if (!hit || !this.#referable(hit)) {
       return;
     }
@@ -652,7 +677,7 @@ export class FormulaCellEditor extends LitElement {
   };
 
   #onGridPointerDown = (event: PointerEvent): void => {
-    if (!this.controller?.referenceFor || !this.text.trim().startsWith('=')) {
+    if (!this.controller?.referenceFor || !this.#isFormula) {
       return;
     }
     const hit = this.#cellFromEvent(event);
@@ -733,7 +758,8 @@ export class FormulaCellEditor extends LitElement {
    */
   #referenceSpanAt(caret: number): { start: number; end: number } | null {
     const pattern = /\$?[A-Za-z]+\$?[0-9]+(?::\$?[A-Za-z]+\$?[0-9]+)?/g;
-    for (let match = pattern.exec(this.text); match; match = pattern.exec(this.text)) {
+    const source = this.#source;
+    for (let match = pattern.exec(source); match; match = pattern.exec(source)) {
       const start = match.index;
       const end = start + match[0].length;
       if (caret >= start && caret <= end) {
@@ -824,7 +850,8 @@ export class FormulaCellEditor extends LitElement {
   #cycleAbsolute(): void {
     const caret = this.#input?.selectionStart ?? this.text.length;
     const pattern = /\$?[A-Za-z]+\$?[0-9]+/g;
-    for (let match = pattern.exec(this.text); match; match = pattern.exec(this.text)) {
+    const source = this.#source;
+    for (let match = pattern.exec(source); match; match = pattern.exec(source)) {
       const start = match.index;
       const end = start + match[0].length;
       if (caret < start || caret > end) {
@@ -870,7 +897,7 @@ export class FormulaCellEditor extends LitElement {
    * longer toggles them — that avoided a jarring layout shift on each edit.
    */
   #updateHighlights(): void {
-    const text = this.text.trim();
+    const text = this.#source.trim();
     this.controller?.highlightReferences?.(text.startsWith('=') ? text : null);
   }
 
@@ -886,7 +913,10 @@ export class FormulaCellEditor extends LitElement {
       ctx.cancel();
       return;
     }
-    const src = text.startsWith('=') ? text : undefined;
+    // A formula typed in full-width is stored in its ASCII form; a literal is
+    // kept as typed.
+    const source = foldFullWidth(text);
+    const src = source.startsWith('=') ? source : undefined;
     if (src !== undefined) {
       const parseError = this.#parseError(src);
       if (parseError) {

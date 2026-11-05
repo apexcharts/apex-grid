@@ -34,13 +34,18 @@ import { build } from 'esbuild';
  * 20 KB gzip, because the barrel imports it statically. The Ignite UI add-on
  * joined at 3010 bytes (plan 36, 2026-11-08), with its registry on a shared
  * globalThis slot; on top of core define it adds about 2500.
+ *
+ * Core define (lit external) and both enterprise entries were re-baselined at
+ * 69594, 141649 and 165118 bytes (2026-11-09) for the IME composition guards
+ * and the full-width and grouped number input: about 1.75 KB in core and
+ * 2.2 KB in enterprise, which the Ignite UI work had left no headroom for.
  */
 const BUDGETS = {
-  'core define (lit external)': 69_500,
+  'core define (lit external)': 72_000,
   'core define (lit bundled)': 86_500,
-  'enterprise define entry': 140_000,
+  'enterprise define entry': 146_000,
   'enterprise lazy chunks': 20_000,
-  'enterprise index entry': 164_500,
+  'enterprise index entry': 170_500,
   'core ignite-ui add-on': 3_500,
 };
 

@@ -1,5 +1,5 @@
 // GENERATED FROM custom-elements.json - do not edit by hand.
-// Manifest hash: 36848a51d293
+// Manifest hash: 31488b9abeab
 // Regenerate with `npm run generate`.
 
 export { ApexGrid } from './apex-grid.js';

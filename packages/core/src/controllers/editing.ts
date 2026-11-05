@@ -402,6 +402,7 @@ export class EditingController<T extends object> implements ReactiveController {
       column,
       data: row,
       rowIndex,
+      localize: (key, params) => this.host.localize(key, params),
     } as ValidatorContext<T>);
   }
 

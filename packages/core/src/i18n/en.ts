@@ -48,6 +48,8 @@ export const EN_LOCALE = {
   'filter.conditionList': 'Filter condition',
   'filter.changeCondition': 'Change filter condition',
   'filter.inputPlaceholder': 'Add filter value',
+  'filter.and': 'and',
+  'filter.or': 'or',
 
   // Rows: selection / expansion
   'row.select': 'Select row',
@@ -64,6 +66,7 @@ export const EN_LOCALE = {
   'toolbar.export': 'Export',
   'toolbar.exportOptions': 'Export options',
   'toolbar.createChart': 'Create chart',
+  'toolbar.exportCsv': 'Export CSV',
   'toolbar.exportXlsx': 'Export XLSX',
   'toolbar.askAI': 'Ask AI',
 
@@ -78,8 +81,19 @@ export const EN_LOCALE = {
   'header.columnMenu': 'Column menu',
   'header.autosizeColumn': 'Autosize column',
 
+  // Cells
+  'cell.rating': '{value} of {max}',
+  'cell.true': 'true',
+  'cell.false': 'false',
+
   // Editors
   'editor.rating': 'Rating',
+
+  // Built-in validators (`required`, `min`, `max`, `pattern`)
+  'validation.required': 'This field is required',
+  'validation.min': 'Must be at least {limit}',
+  'validation.max': 'Must be at most {limit}',
+  'validation.pattern': 'Invalid format',
 
   // Live-region announcements
   'announce.sortedAscending': 'Sorted by {label} ascending',
@@ -129,6 +143,8 @@ export const EN_LOCALE = {
   'filterBuilder.removeGroup': 'Remove group',
   'filterBuilder.apply': 'Apply',
   'filterBuilder.clear': 'Clear',
+  'filterBuilder.true': 'true',
+  'filterBuilder.false': 'false',
 
   // Enterprise: status bar
   'statusBar.selectRange': 'Select a range of cells',
@@ -165,6 +181,10 @@ export const EN_LOCALE = {
   'contextMenu.unpin': 'Unpin',
   'contextMenu.hideColumn': 'Hide column',
   'contextMenu.copy': 'Copy',
+  'contextMenu.groupBy': 'Group by this column',
+  'contextMenu.ungroupAll': 'Un-group all',
+  'contextMenu.expandGroups': 'Expand all groups',
+  'contextMenu.collapseGroups': 'Collapse all groups',
 
   // Enterprise: charts
   'chart.close': 'Close',

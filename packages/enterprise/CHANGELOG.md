@@ -6,6 +6,44 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- Needs the `apex-grid` release published with it. The IME guard, the number
+  parser and the new locale keys come from core, so with an older `apex-grid`
+  the enterprise modules fail to load.
+- The filter builder's value field is a text input for numeric columns too, as
+  in the core filter panel, so the column's `locale` reads the term (a number
+  input let the browser rewrite `1.234,5` or drop `1,000`). It no longer has a
+  spinner or arrow-key stepping.
+
+### Fixed
+- Typing with an input method (IME) no longer trips the enterprise text
+  fields. The Enter and Escape that confirm or cancel a conversion do not
+  commit or leave the formula editor, close the chart dialog or end a chart
+  title rename, or send or close the AI prompt, and the formula suggestions,
+  set filter search and tool panel search wait for the conversion to end.
+- A formula typed in full-width mode works: a leading `＝` counts as `=`, and
+  full-width letters, digits and operators (`（）：，＋－＊／`) read as their ASCII
+  forms outside string literals, so `＝ＳＵＭ（Ａ１：Ａ３）` is stored as
+  `=SUM(A1:A3)`. Text inside quotes and plain values are kept as typed.
+- Pasting `¥1,200` or `１，２００` into a numeric column stores 1200. Before,
+  the text was written into the cell as a string. Paste, the advanced filter
+  and the filter builder read numbers as the core filter panel does
+  (full-width digits, grouping in the column's `locale`, a currency mark).
+  Paste reads a column's own `locale` first, so `1.000` pasted into a `de-DE`
+  column is 1000 like `1.000.000` beside it. A percent is read only in a
+  `progress` column, against its `max` (`50%` is 0.5 with `max: 1`); in a
+  number or currency column `12.5%` is kept as text, as before.
+- The filter builder's operator lists use the `filter.operator.*` locale keys
+  the header filter panel uses, so `localeText` and `esLocale` translate
+  them, and its true / false value list uses `filterBuilder.true` /
+  `filterBuilder.false`. An operator the column type does not offer (from a
+  saved model) shows its `filter.operator.*` label, when it has one, instead
+  of its id. English operator text is unchanged.
+- The header menu's grouping items (`contextMenu.groupBy`,
+  `contextMenu.ungroupAll`, `contextMenu.expandGroups`,
+  `contextMenu.collapseGroups`) are in the typed locale dictionary, so a
+  `localeText` map sets them without a cast and `esLocale` translates them.
+
 ## [0.9.0-beta.2] - 2026-11-08
 
 A second pre-release of 0.9.0, under the `next` npm tag alongside apex-grid

@@ -3,6 +3,7 @@ import { html, LitElement, nothing } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
 import { gridStateContext, type StateController } from '../controllers/state.js';
 import { renderIcon } from '../internal/icons.js';
+import { isComposing, trackCompositions } from '../internal/ime.js';
 import { registerComponent } from '../internal/register.js';
 import { GRID_TOOLBAR_TAG } from '../internal/tags.js';
 import { styles } from '../styles/toolbar/toolbar.css.js';
@@ -98,8 +99,17 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
 
   #debounceHandle: ReturnType<typeof setTimeout> | null = null;
 
+  /**
+   * The text a composition just ended with, applied on `compositionend`. A
+   * browser that follows the end with one more `input` event carrying the
+   * same text does not apply it a second time. The next real keystroke
+   * forgets it.
+   */
+  #composed: string | null = null;
+
   public override connectedCallback(): void {
     super.connectedCallback();
+    trackCompositions();
     document.addEventListener('pointerdown', this.#handleOutsidePointer, true);
     document.addEventListener('keydown', this.#handleDocumentKey, true);
   }
@@ -107,11 +117,16 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
   public override disconnectedCallback(): void {
     document.removeEventListener('pointerdown', this.#handleOutsidePointer, true);
     document.removeEventListener('keydown', this.#handleDocumentKey, true);
+    this.#cancelPending();
+    super.disconnectedCallback();
+  }
+
+  /** Drops a search still waiting out the debounce window. */
+  #cancelPending() {
     if (this.#debounceHandle) {
       clearTimeout(this.#debounceHandle);
       this.#debounceHandle = null;
     }
-    super.disconnectedCallback();
   }
 
   #emit(value: string) {
@@ -131,8 +146,30 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
 
   #handleInput = (event: Event) => {
     event.stopPropagation();
+    // Text still being converted by an IME is not the search yet: it is
+    // applied once the composition ends. A search still pending from before
+    // the composition is dropped too: applying it would write the older text
+    // over the reading being converted, and the end schedules the full text.
+    if (isComposing(event)) {
+      this.#cancelPending();
+      return;
+    }
     const next = (event.target as HTMLInputElement).value ?? '';
-    if (this.#debounceHandle) clearTimeout(this.#debounceHandle);
+    const composed = this.#composed;
+    this.#composed = null;
+    if (next === composed) return;
+    this.#schedule(next);
+  };
+
+  #handleCompositionEnd = (event: CompositionEvent) => {
+    const next = (event.target as HTMLInputElement).value ?? '';
+    this.#composed = next;
+    this.#schedule(next);
+  };
+
+  /** Applies `next` after the debounce window, superseding a pending value. */
+  #schedule(next: string) {
+    this.#cancelPending();
 
     if (this.debounce <= 0) {
       this.#emit(next);
@@ -143,18 +180,18 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
       this.#debounceHandle = null;
       this.#emit(next);
     }, this.debounce);
-  };
+  }
 
   #handleKeydown = (event: KeyboardEvent) => {
     // Don't let arrow keys bubble into the grid navigation controller.
     event.stopPropagation();
+    // Escape during an IME conversion cancels the conversion, not the search.
+    if (isComposing(event)) return;
+    this.#composed = null;
     if (event.key === 'Escape' && this.input.value) {
       event.preventDefault();
       this.input.value = '';
-      if (this.#debounceHandle) {
-        clearTimeout(this.#debounceHandle);
-        this.#debounceHandle = null;
-      }
+      this.#cancelPending();
       this.#emit('');
     }
   };
@@ -181,7 +218,7 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
   };
 
   #handleDocumentKey = (event: KeyboardEvent) => {
-    if (!this.exportMenuOpen) return;
+    if (!this.exportMenuOpen || isComposing(event)) return;
     if (event.key === 'Escape') {
       event.stopPropagation();
       this.#closeExportMenu(true);
@@ -246,6 +283,7 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
           placeholder=${this.searchPlaceholder}
           .value=${this.value}
           @input=${this.#handleInput}
+          @compositionend=${this.#handleCompositionEnd}
           @keydown=${this.#handleKeydown}
         />
       </label>

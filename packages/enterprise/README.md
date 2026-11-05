@@ -326,6 +326,13 @@ so it round-trips through storage, and `getState()` / `setState()` save and rest
 it (changing it fires `stateChanged`).
 The pure evaluator (`filterRows`, `isEmptyModel`) is exported for headless use.
 
+The operator lists use the `filter.operator.*` locale keys the header filter
+panel uses, and the true / false value list uses `filterBuilder.true` /
+`filterBuilder.false`, so one `localeText` translates both. The value field is
+a text input for every column type, so a number value is read as typed rather
+than by the browser (full-width digits, grouping in the column's `locale`, a
+currency mark; see "Typed numbers" in the `apex-grid` README).
+
 ## Columns tool panel
 
 A drag-and-drop side panel that turns the advanced features into a no-code
@@ -366,7 +373,12 @@ line break or a quote are quoted, as spreadsheets do). Ctrl/Cmd+V, `pasteText`,
 the fill handle and `fillTo` write only into cells the user could edit by hand,
 so they need `editing.enabled` and `editable: true` on the target columns.
 Pasted text is converted to the column type the way the cell editor commits it,
-and fill extends a numeric series in numeric columns (and in untyped or `string`
+with numbers read as a person writes them (full-width digits, grouping in the
+column's `locale`, a currency mark), so a pasted `¥1,200` or `１，２００` stores
+1200 rather than text. A column that names its `locale` reads its own grouping
+first, so `1.000` pasted into a `de-DE` column is 1000. A percent is read only
+in a `progress` column, against its `max` (`50%` is 0.5 with `max: 1`); in other
+numeric columns `12.5%` stays text. Fill extends a numeric series in numeric columns (and in untyped or `string`
 columns whose values are numbers), tiling everything else.
 
 ```ts
@@ -658,7 +670,9 @@ events; menu pins go through `pinColumn`, so `columnPinning` and `columnPinned` 
 A right-click inside a master-detail child grid opens that grid's own menu, and one
 inside a text field of a cell editor keeps the browser's menu. On header
 targets, when the grouping module is present, the menu also offers **group by this
-column**, **un-group all**, and **expand / collapse all groups**. When you leave
+column**, **un-group all**, and **expand / collapse all groups** (the
+`contextMenu.groupBy`, `contextMenu.ungroupAll`, `contextMenu.expandGroups` and
+`contextMenu.collapseGroups` locale keys). When you leave
 `contextMenu` at its default (rather than supplying your own `items`), the menu also
 appends a **"Chart range"** submenu whose entries (Column, Bar, Line, Area, Pie, Donut,
 Combo, Auto) chart the current cell-range selection in the chart dialog.
@@ -943,6 +957,13 @@ grid.getFormula(grid.data[0], 'total'); // '=B1*C1'
 grid.clearFormula(grid.data[0], 'total');
 grid.recalculateFormulas();
 ```
+
+A formula typed with an input method in full-width mode works too: a leading
+`＝` counts as `=`, and full-width letters, digits and operators (`（）：，＋－＊／`)
+read as their ASCII forms outside string literals, so `＝ＳＵＭ（Ａ１：Ａ３）＊２` is
+stored as `=SUM(A1:A3)*2`. Text inside `"..."` and plain values are kept as
+typed. Enter and Escape that confirm or cancel a conversion do not commit or
+leave the edit.
 
 ### References (A1 over the data)
 

@@ -3,6 +3,8 @@ import type ApexGridCell from '../components/cell.js';
 import type { ApexGrid } from '../components/grid.js';
 import type ApexGridHeader from '../components/header.js';
 import type ApexGridRow from '../components/row.js';
+import type { GridLocaleKey } from '../i18n/en.js';
+import type { LocaleParams } from '../i18n/localize.js';
 import type { SortComparer } from '../operations/sort/types.js';
 
 export type GridHost<T extends object> = ReactiveControllerHost & ApexGrid<T>;
@@ -368,13 +370,23 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
   alt?: string;
   /**
    * ISO 4217 currency code for `type: 'currency'` columns (e.g. `'USD'`,
-   * `'EUR'`). Defaults to `'USD'`. Has no effect on columns with another
-   * `type`.
+   * `'EUR'`). Defaults to `'USD'`. Its symbol is also accepted around a
+   * number typed into the filter or pasted into the column. Has no effect on
+   * the display of columns with another `type`.
    */
   currency?: string;
   /**
    * BCP 47 locale for `type: 'currency'` number formatting. Defaults to the
-   * runtime locale. Has no effect on columns with another `type`.
+   * runtime locale.
+   *
+   * @remarks
+   * On any numeric column (`number`, `currency`, `rating`, `progress`) it also
+   * names the grouping and decimal separators a typed or pasted number is
+   * read with, so `1.234,5` filters as 1234.5 under `'de-DE'`. Full-width
+   * digits and a `¥`, `$` or `€` mark are read in every locale. A plain
+   * decimal keeps its plain reading where typed (`1.000` filters as 1 under
+   * `'de-DE'`), while enterprise paste reads the column's grouping first
+   * (`1.000` pasted is 1000).
    */
   locale?: string;
   /**
@@ -449,6 +461,14 @@ export interface ValidatorContext<T extends object, K extends Keys<T> = Keys<T>>
    * a record on another page).
    */
   rowIndex: number;
+  /**
+   * Resolves a locale key through the grid's {@link ApexGrid.localeText}, as
+   * {@link ApexGrid.localize} does. The built-in validators read their default
+   * messages (the `validation.*` keys) through it, and a custom validator can
+   * too. Absent when a validator is called outside a grid, where the built-ins
+   * use the English defaults.
+   */
+  localize?: (key: GridLocaleKey, params?: LocaleParams) => string;
 }
 
 /**

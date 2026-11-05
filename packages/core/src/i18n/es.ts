@@ -9,7 +9,7 @@ import type { GridLocaleText } from './en.js';
  * spread it to override individual strings:
  *
  * ```ts
- * import { esLocale } from '@apexcharts/grid';
+ * import { esLocale } from 'apex-grid';
  *
  * grid.localeText = esLocale;
  * // or, with a tweak:
@@ -53,6 +53,8 @@ export const esLocale: GridLocaleText = {
   'filter.conditionList': 'Condición de filtro',
   'filter.changeCondition': 'Cambiar condición de filtro',
   'filter.inputPlaceholder': 'Añadir valor de filtro',
+  'filter.and': 'y',
+  'filter.or': 'o',
 
   // Filas: selección / expansión
   'row.select': 'Seleccionar fila',
@@ -69,6 +71,7 @@ export const esLocale: GridLocaleText = {
   'toolbar.export': 'Exportar',
   'toolbar.exportOptions': 'Opciones de exportación',
   'toolbar.createChart': 'Crear gráfico',
+  'toolbar.exportCsv': 'Exportar CSV',
   'toolbar.exportXlsx': 'Exportar XLSX',
   'toolbar.askAI': 'Preguntar a la IA',
 
@@ -83,8 +86,19 @@ export const esLocale: GridLocaleText = {
   'header.columnMenu': 'Menú de columna',
   'header.autosizeColumn': 'Autoajustar columna',
 
+  // Celdas
+  'cell.rating': '{value} de {max}',
+  'cell.true': 'verdadero',
+  'cell.false': 'falso',
+
   // Editores
   'editor.rating': 'Calificación',
+
+  // Validadores integrados (`required`, `min`, `max`, `pattern`)
+  'validation.required': 'Este campo es obligatorio',
+  'validation.min': 'Debe ser como mínimo {limit}',
+  'validation.max': 'Debe ser como máximo {limit}',
+  'validation.pattern': 'Formato no válido',
 
   // Anuncios de región activa
   'announce.sortedAscending': 'Ordenado por {label} ascendente',
@@ -135,6 +149,8 @@ export const esLocale: GridLocaleText = {
   'filterBuilder.removeGroup': 'Eliminar grupo',
   'filterBuilder.apply': 'Aplicar',
   'filterBuilder.clear': 'Borrar',
+  'filterBuilder.true': 'verdadero',
+  'filterBuilder.false': 'falso',
 
   // Enterprise: barra de estado
   'statusBar.selectRange': 'Seleccione un rango de celdas',
@@ -171,6 +187,10 @@ export const esLocale: GridLocaleText = {
   'contextMenu.unpin': 'Desfijar',
   'contextMenu.hideColumn': 'Ocultar columna',
   'contextMenu.copy': 'Copiar',
+  'contextMenu.groupBy': 'Agrupar por esta columna',
+  'contextMenu.ungroupAll': 'Desagrupar todo',
+  'contextMenu.expandGroups': 'Expandir todos los grupos',
+  'contextMenu.collapseGroups': 'Contraer todos los grupos',
 
   // Enterprise: gráficos
   'chart.close': 'Cerrar',

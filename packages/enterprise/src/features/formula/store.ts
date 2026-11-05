@@ -34,6 +34,7 @@ import { evaluate, type FormulaContext } from './evaluator.js';
 import { createFunctionRegistry, type FormulaFn } from './functions.js';
 import {
   type FormulaAst,
+  foldFullWidth,
   formulaReferences,
   isFunctionName,
   mapReferences,
@@ -1017,7 +1018,7 @@ export class FormulaController<T extends object> implements ReactiveController, 
    * non-formula clears. Drives the {@link decorateCell} seam.
    */
   public highlightReferences(src: string | null): void {
-    const text = src?.trim() ?? '';
+    const text = foldFullWidth(src?.trim() ?? '');
     if (!text.startsWith('=')) {
       this.#setHighlights(null);
       return;

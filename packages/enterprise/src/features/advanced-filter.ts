@@ -6,7 +6,7 @@ import {
   NumberOperands,
   StringOperands,
 } from 'apex-grid';
-import { StateController } from 'apex-grid/internal';
+import { parseNumberInput, StateController } from 'apex-grid/internal';
 
 /** How a group's children combine. */
 export type AdvancedFilterJoin = 'and' | 'or';
@@ -72,11 +72,20 @@ export function defaultOperator(type: DataType | undefined): string {
   return operatorsForType(type)[0]?.name ?? 'contains';
 }
 
-/** Coerce a text input value to the type the operand expects. */
-function coerce(type: DataType | undefined, value: unknown): unknown {
+/**
+ * Coerce a text input value to the type the operand expects. A number is read
+ * as typed (full-width digits, grouping and a currency mark in the column's
+ * locale), and otherwise as `Number()` reads it.
+ */
+function coerce<T extends object>(
+  column: ColumnConfiguration<T> | undefined,
+  value: unknown
+): unknown {
   if (typeof value !== 'string') return value;
+  const type = column?.type;
   if (isNumericType(type)) {
-    const parsed = Number(value);
+    const typed = parseNumberInput(value, column?.locale, column?.currency);
+    const parsed = Number.isNaN(typed) ? Number(value) : typed;
     return Number.isNaN(parsed) ? value : parsed;
   }
   if (type === 'boolean') return value === 'true';
@@ -115,7 +124,7 @@ function compile<T extends object>(
     if (!operand.unary && (node.value === undefined || node.value === '')) return null;
     const key = node.column;
     const logic = operand.logic;
-    const term = coerce(column?.type, node.value);
+    const term = coerce(column, node.value);
     // The core filter row's expression, verbatim (FilterController), so a
     // `filter: null` column is tolerated there and here alike.
     const caseSensitive =

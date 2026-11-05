@@ -9,8 +9,8 @@ import { custom, max, min, pattern, required, runValidators } from '../src/inter
 import GridTestFixture from './utils/grid-fixture.js';
 import data, { type TestData } from './utils/test-data.js';
 
-// Minimal context for the pure-function tests — the built-in validators never
-// read it.
+// Minimal context for the pure-function tests. Only min / max read it, for
+// the column's locale, and fall back to the runtime locale without one.
 const CTX = {} as ValidatorContext<TestData>;
 
 describe('Built-in validators', () => {
@@ -25,23 +25,40 @@ describe('Built-in validators', () => {
     expect(validate(false, CTX)).to.be.null;
   });
 
-  it('min rejects values below the limit, passes empty / non-numeric', () => {
+  it('min rejects values below the limit and non-numeric values, passes empty', () => {
     const validate = min<TestData>(10);
     expect(validate(9, CTX)).to.be.a('string');
     expect(validate(10, CTX)).to.be.null;
     expect(validate(11, CTX)).to.be.null;
     expect(validate('', CTX)).to.be.null;
     expect(validate(null, CTX)).to.be.null;
-    expect(validate('abc', CTX)).to.be.null;
+    expect(validate('abc', CTX)).to.equal('Must be at least 10');
+    expect(validate(Number.NaN, CTX)).to.equal('Must be at least 10');
   });
 
-  it('max rejects values above the limit, passes empty / non-numeric', () => {
+  it('max rejects values above the limit and non-numeric values, passes empty', () => {
     const validate = max<TestData>(5);
     expect(validate(6, CTX)).to.be.a('string');
     expect(validate(5, CTX)).to.be.null;
     expect(validate(4, CTX)).to.be.null;
     expect(validate('', CTX)).to.be.null;
-    expect(validate('abc', CTX)).to.be.null;
+    expect(validate('abc', CTX)).to.equal('Must be at most 5');
+    expect(validate(Number.NaN, CTX)).to.equal('Must be at most 5');
+  });
+
+  it('min / max read typed text as the shared number parser does', () => {
+    // Full-width digits and a grouped amount are numbers, not text that slips
+    // past the bounds.
+    expect(max<TestData>(100)('１２３', CTX)).to.equal('Must be at most 100');
+    expect(max<TestData>(2000)('１２３', CTX)).to.be.null;
+    expect(min<TestData>(1500)('¥1,200', CTX)).to.equal('Must be at least 1500');
+    expect(min<TestData>(1000)('¥1,200', CTX)).to.be.null;
+    // Plain text keeps its old reading: '0x10' is 16 to Number().
+    expect(max<TestData>(10)('0x10', CTX)).to.equal('Must be at most 10');
+    // The column's locale decides the separators.
+    const de = { column: { key: 'id', locale: 'de-DE' } } as unknown as ValidatorContext<TestData>;
+    expect(max<TestData>(2)('1,5', de)).to.be.null;
+    expect(max<TestData>(1)('1,5', de)).to.equal('Must be at most 1');
   });
 
   it('pattern rejects non-matching strings, passes empty', () => {

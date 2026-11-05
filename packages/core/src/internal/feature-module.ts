@@ -10,7 +10,7 @@ import type { ColumnConfiguration, GridHost } from './types.js';
  *
  * A feature module contributes a {@link ReactiveController} that is constructed
  * alongside the grid's built-in controllers (see {@link StateController}). It is
- * the seam used by the first-party `@apexcharts/grid-enterprise` package; it is
+ * the seam used by the first-party `apex-grid-enterprise` package; it is
  * intentionally minimal and additive so the community `<apex-grid>` element is
  * unaffected (it registers zero modules).
  *

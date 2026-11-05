@@ -5,7 +5,12 @@ import {
   type LocaleParams,
   localize,
 } from 'apex-grid';
-import { registerComponent, registerFilterOperand } from 'apex-grid/internal';
+import {
+  isComposing,
+  registerComponent,
+  registerFilterOperand,
+  trackCompositions,
+} from 'apex-grid/internal';
 import { css, html, LitElement, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { OverlayTheme } from './features/carry-theme.js';
@@ -252,9 +257,20 @@ export class ApexGridSetFilter extends LitElement {
   #t = (key: GridLocaleKey, params?: LocaleParams): string =>
     localize(this.grid?.localeText, key, params);
 
+  public override connectedCallback(): void {
+    super.connectedCallback();
+    trackCompositions();
+  }
+
   protected override willUpdate(changed: Map<PropertyKey, unknown>): void {
     if (changed.has('grid') || changed.has('column')) this.#computeValues();
   }
+
+  /** Searches as typed; text an IME is still converting waits for the conversion's end. */
+  #onSearch = (event: Event): void => {
+    if (event.type === 'input' && isComposing(event)) return;
+    this.search = (event.target as HTMLInputElement).value;
+  };
 
   /** Distinct values listed for the active column. */
   public get distinctValues(): ReadonlyArray<SetFilterValue> {
@@ -391,9 +407,8 @@ export class ApexGridSetFilter extends LitElement {
         placeholder=${this.#t('setFilter.searchPlaceholder')}
         aria-label=${this.#t('setFilter.searchPlaceholder')}
         .value=${this.search}
-        @input=${(event: Event) => {
-          this.search = (event.target as HTMLInputElement).value;
-        }}
+        @input=${this.#onSearch}
+        @compositionend=${this.#onSearch}
       />
       <ul part="list">
         ${

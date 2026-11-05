@@ -6,6 +6,51 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Locale keys for text that used to be English whatever `localeText` said:
+  `toolbar.exportCsv` (the CSV export menu item), `filter.and` / `filter.or`
+  (the filter panel's join toggles), `cell.rating` (a rating's accessible name,
+  `{value} of {max}`), `cell.true` / `cell.false` (a boolean cell's accessible
+  name) and `validation.required`, `validation.min`, `validation.max` and
+  `validation.pattern` (the built-in validators' default messages). The
+  dictionary also gains the keys `apex-grid-enterprise` reads for its filter
+  builder (`filterBuilder.true` / `filterBuilder.false`) and header menu
+  (`contextMenu.groupBy`, `contextMenu.ungroupAll`, `contextMenu.expandGroups`,
+  `contextMenu.collapseGroups`). Each English default is the text shown
+  before, and `esLocale` translates them all.
+- `ValidatorContext.localize(key, params?)`, which resolves a locale key
+  through the grid's `localeText`. The built-in validators read their default
+  messages through it, and a custom validator can too.
+
+### Changed
+- `min()` and `max()` fail a value that is not a number. Before, `'abc'` (or
+  any text `Number()` could not read) passed both.
+
+### Fixed
+- Typing Japanese, Chinese or Korean with an input method (IME) no longer
+  trips the grid. The Enter, Escape and Tab that confirm or cancel a
+  conversion are left to the IME: they do not commit or cancel a cell edit,
+  close the filter panel or clear the quick filter. The filter panel and the
+  quick filter apply the text once the conversion ends, instead of filtering
+  by the unconverted kana on every keystroke, and a quick filter search still
+  waiting out its debounce is dropped when a conversion starts, so it cannot
+  overwrite the reading being typed. Typing without an IME filters as before.
+- A number typed in the filter panel, or checked by `min()` and `max()`, is
+  read as a person writes it: full-width digits and signs (`１２３`, `－５`),
+  grouping and the decimal separator of the column's `locale` (or the runtime
+  locale), and a leading or trailing `¥`, `$`, `€`, `円` or the column
+  currency's symbol. Before, `１２３` did not filter at all and `1,000`
+  filtered by 1. A plain ASCII decimal reads as before in every locale, and
+  text that was not a number before (`12.5%`, `10²`) still is not. The column
+  `locale` now applies to number parsing on every numeric column, not only to
+  currency display. The filter panel keeps the text as typed while it reads
+  it, so typing `1,234,567` or `1.234,5` key by key is not rewritten to the
+  number read so far.
+- A filter chip for a condition with no value shows the operator's
+  `filter.operator.*` label ("Not empty") instead of its id (`notEmpty`).
+- The `localeText` and `esLocale` examples import from `apex-grid`, not
+  `@apexcharts/grid`.
+
 ## [4.0.0-beta.2] - 2026-11-08
 
 A second pre-release of 4.0.0, under the `next` npm tag. It adds opt-in

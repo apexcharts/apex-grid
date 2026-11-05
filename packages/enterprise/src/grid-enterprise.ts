@@ -1452,11 +1452,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     const items: ContextMenuItem<T>[] = [
       {
         id: 'group-by',
-        label: this.localize(
-          'contextMenu.groupBy' as GridLocaleKey,
-          undefined,
-          'Group by this column'
-        ),
+        label: this.localize('contextMenu.groupBy'),
         separatorBefore: true,
         disabled: this.groupBy.includes(key),
         run: () => {
@@ -1470,31 +1466,19 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       items.push(
         {
           id: 'ungroup-all',
-          label: this.localize(
-            'contextMenu.ungroupAll' as GridLocaleKey,
-            undefined,
-            'Un-group all'
-          ),
+          label: this.localize('contextMenu.ungroupAll'),
           run: () => {
             this.groupBy = [];
           },
         },
         {
           id: 'expand-groups',
-          label: this.localize(
-            'contextMenu.expandGroups' as GridLocaleKey,
-            undefined,
-            'Expand all groups'
-          ),
+          label: this.localize('contextMenu.expandGroups'),
           run: () => grouping.expandAllGroups(),
         },
         {
           id: 'collapse-groups',
-          label: this.localize(
-            'contextMenu.collapseGroups' as GridLocaleKey,
-            undefined,
-            'Collapse all groups'
-          ),
+          label: this.localize('contextMenu.collapseGroups'),
           run: () => grouping.collapseAllGroups(),
         }
       );

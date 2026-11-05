@@ -152,7 +152,7 @@ describe('adv-filter: numeric column types (ent-filter-builder-2)', () => {
     ).to.eql(['a']);
   });
 
-  it('the builder renders a number input and number operators for a currency column', async () => {
+  it('the builder renders a text input and number operators for a currency column', async () => {
     ApexGridEnterprise.use(...enterpriseModules);
     ApexGridEnterprise.register();
     ApexGridFilterBuilder.register();
@@ -171,7 +171,8 @@ describe('adv-filter: numeric column types (ent-filter-builder-2)', () => {
       });
       await builder.updateComplete;
       const input = builder.renderRoot.querySelector<HTMLInputElement>('input[part="val"]')!;
-      expect(input.type).to.equal('number');
+      // Text, so the column's locale reads the term rather than the browser's.
+      expect(input.type).to.equal('text');
       const ops = [
         ...builder.renderRoot.querySelectorAll<HTMLOptionElement>('[part="op"] option'),
       ].map((o) => o.value);
@@ -556,8 +557,9 @@ describe('adv-filter: builder model ownership (ent-filter-builder-3, -4, -8)', (
     expect(col.value).to.equal('amount');
     const op = builder.renderRoot.querySelector<HTMLSelectElement>('[part="op"]')!;
     expect(op.value).to.equal('greaterThan');
-    expect(builder.renderRoot.querySelector<HTMLInputElement>('input[part="val"]')!.type).to.equal(
-      'number'
+    // The number operators, so the term is read as a number on apply.
+    expect([...op.options].map((o) => o.value)).to.eql(
+      operatorsForType('number').map((o) => o.name)
     );
     // New conditions still only offer visible columns.
     builder.renderRoot.querySelectorAll<HTMLButtonElement>('[part="adders"] button')[0].click();

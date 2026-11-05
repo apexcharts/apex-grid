@@ -1,5 +1,5 @@
 import { type GridLocaleKey, localize } from 'apex-grid';
-import { registerComponent } from 'apex-grid/internal';
+import { isComposing, registerComponent, trackCompositions } from 'apex-grid/internal';
 import { css, html, LitElement, nothing, type PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { AIMode, AIResult, Plan } from './features/ai/index.js';
@@ -339,6 +339,11 @@ export class ApexGridAI extends LitElement {
   #t = (key: GridLocaleKey, fallback?: string): string =>
     localize(this.grid?.localeText, key, undefined, fallback);
 
+  public override connectedCallback(): void {
+    super.connectedCallback();
+    trackCompositions();
+  }
+
   public override disconnectedCallback(): void {
     // Leaving the page (its grid parked the dialog) retires the turn quietly, with no notice.
     this.#retire();
@@ -379,7 +384,8 @@ export class ApexGridAI extends LitElement {
   }
 
   #onKeydown = (event: KeyboardEvent): void => {
-    if (this.mode !== 'dialog' || !this.open) return;
+    // Escape in an IME conversion in the prompt cancels the conversion.
+    if (this.mode !== 'dialog' || !this.open || isComposing(event)) return;
     if (event.key === 'Escape') {
       event.stopPropagation();
       this.close();
@@ -412,8 +418,9 @@ export class ApexGridAI extends LitElement {
   }
 
   #onInputKeydown = (event: KeyboardEvent): void => {
-    // Cmd/Ctrl + Enter sends, matching common prompt-box conventions.
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+    // Cmd/Ctrl + Enter sends, matching common prompt-box conventions; never
+    // the Enter that confirms an IME conversion.
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !isComposing(event)) {
       event.preventDefault();
       void this.#send();
     }

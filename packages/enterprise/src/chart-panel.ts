@@ -1,5 +1,5 @@
 import { type GridLocaleKey, localize } from 'apex-grid';
-import { designSystemName, registerComponent } from 'apex-grid/internal';
+import { designSystemName, isComposing, registerComponent, trackCompositions } from 'apex-grid/internal';
 import type { default as ApexCharts, ApexOptions } from 'apexcharts';
 import { html, LitElement, nothing, svg } from 'lit';
 import { property, state } from 'lit/decorators.js';
@@ -457,6 +457,7 @@ export class ApexGridChart extends LitElement {
 
   public override connectedCallback(): void {
     super.connectedCallback();
+    trackCompositions();
     // A moved panel was torn down on disconnect: rebind, which also redraws. The first connect
     // binds from willUpdate.
     if (this.hasUpdated) this.#attach();
@@ -532,6 +533,9 @@ export class ApexGridChart extends LitElement {
    * dialog panel; Tab cycles focus within the dialog.
    */
   #onKeydown = (event: KeyboardEvent): void => {
+    // Escape and Tab in an IME conversion (the heading, a calculated field)
+    // belong to the input method, not to the popover or the dialog.
+    if (isComposing(event)) return;
     if (event.key === 'Escape' && this.#closePopover(event.target as Element)) {
       event.stopPropagation();
       return;
@@ -2080,6 +2084,11 @@ export class ApexGridChart extends LitElement {
   /** Enter commits and Escape cancels, both returning focus to the heading; Tab reaches the trap. */
   #onHeadingKeydown = (event: KeyboardEvent): void => {
     if (event.key !== 'Enter' && event.key !== 'Escape') return;
+    // Confirming or backing out of an IME conversion keeps the rename open.
+    if (isComposing(event)) {
+      event.stopPropagation();
+      return;
+    }
     event.stopPropagation(); // don't let Escape bubble to the dialog's close handler
     if (event.key === 'Enter') this.#commitHeading(event);
     else this.headingEditing = false;

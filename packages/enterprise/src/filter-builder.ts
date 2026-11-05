@@ -10,7 +10,6 @@ import {
   copyAdvancedFilter,
   defaultOperator,
   emptyAdvancedFilter,
-  isNumericType,
   operandsForType,
   operatorsForType,
 } from './features/advanced-filter.js';
@@ -192,6 +191,14 @@ export class ApexGridFilterBuilder extends LitElement {
   #t = (key: GridLocaleKey, fallback: string): string =>
     localize(this.grid?.localeText, key) || fallback;
 
+  /**
+   * An operator's label through the `filter.operator.*` keys the core filter
+   * panel uses, else `label` (a custom operand's own, or the name of one the
+   * column type does not offer).
+   */
+  #operatorLabel = (name: string, label: string): string =>
+    localize(this.grid?.localeText, `filter.operator.${name}` as GridLocaleKey, undefined, label);
+
   /** The columns a new condition can pick (visible ones). */
   #columns(): Array<ColumnConfiguration<any>> {
     return (this.grid?.columns ?? []).filter((column) => !column.hidden && column.key != null);
@@ -276,7 +283,7 @@ export class ApexGridFilterBuilder extends LitElement {
     return html`<div part="condition">
       <select
         part="col"
-        aria-label=${this.#t('filterBuilder.column' as GridLocaleKey, 'Column')}
+        aria-label=${this.#t('filterBuilder.column', 'Column')}
         .value=${condition.column}
         @change=${(e: Event) => this.#setColumn(condition, (e.target as HTMLSelectElement).value)}
       >
@@ -292,7 +299,7 @@ export class ApexGridFilterBuilder extends LitElement {
       </select>
       <select
         part="op"
-        aria-label=${this.#t('filterBuilder.operator' as GridLocaleKey, 'Operator')}
+        aria-label=${this.#t('filterBuilder.operator', 'Operator')}
         @change=${(e: Event) => {
           condition.operator = (e.target as HTMLSelectElement).value;
           this.requestUpdate();
@@ -304,7 +311,7 @@ export class ApexGridFilterBuilder extends LitElement {
           operand
             ? nothing
             : html`<option value=${condition.operator} disabled .selected=${live(true)}>
-                ${condition.operator}
+                ${this.#operatorLabel(condition.operator, condition.operator)}
               </option>`
         }
         ${
@@ -314,7 +321,7 @@ export class ApexGridFilterBuilder extends LitElement {
           operators.map(
             (op) =>
               html`<option value=${op.name} .selected=${live(op.name === condition.operator)}>
-              ${op.label}
+              ${this.#operatorLabel(op.name, op.label)}
             </option>`
           )
         }
@@ -325,20 +332,24 @@ export class ApexGridFilterBuilder extends LitElement {
           : type === 'boolean'
             ? html`<select
                 part="val"
-                aria-label=${this.#t('filterBuilder.value' as GridLocaleKey, 'Value')}
+                aria-label=${this.#t('filterBuilder.value', 'Value')}
                 .value=${String(condition.value ?? 'true')}
                 @change=${(e: Event) => {
                   condition.value = (e.target as HTMLSelectElement).value;
                   this.requestUpdate();
                 }}
               >
-                <option value="true">true</option>
-                <option value="false">false</option>
+                <option value="true">${this.#t('filterBuilder.true', 'true')}</option>
+                <option value="false">${this.#t('filterBuilder.false', 'false')}</option>
               </select>`
-            : html`<input
+            : // A text input for numbers too, as in the core filter panel:
+              // a number input would sanitize `1.234,5` or `1,000` before
+              // the column's locale reads it. (No decimal inputmode: that
+              // keyboard has no minus key on some phones.)
+              html`<input
                 part="val"
-                type=${isNumericType(type) ? 'number' : 'text'}
-                aria-label=${this.#t('filterBuilder.value' as GridLocaleKey, 'Value')}
+                type="text"
+                aria-label=${this.#t('filterBuilder.value', 'Value')}
                 .value=${String(condition.value ?? '')}
                 @input=${(e: Event) => {
                   condition.value = (e.target as HTMLInputElement).value;
@@ -348,8 +359,8 @@ export class ApexGridFilterBuilder extends LitElement {
       <button
         part="remove"
         type="button"
-        aria-label=${this.#t('filterBuilder.remove' as GridLocaleKey, 'Remove')}
-        title=${this.#t('filterBuilder.remove' as GridLocaleKey, 'Remove')}
+        aria-label=${this.#t('filterBuilder.remove', 'Remove')}
+        title=${this.#t('filterBuilder.remove', 'Remove')}
         @click=${() => this.#remove(parent, index)}
       >
         ✕
@@ -375,14 +386,14 @@ export class ApexGridFilterBuilder extends LitElement {
             aria-pressed=${group.join === 'and' ? 'true' : 'false'}
             @click=${() => setJoin('and')}
           >
-            ${this.#t('filterBuilder.and' as GridLocaleKey, 'AND')}
+            ${this.#t('filterBuilder.and', 'AND')}
           </button>
           <button
             type="button"
             aria-pressed=${group.join === 'or' ? 'true' : 'false'}
             @click=${() => setJoin('or')}
           >
-            ${this.#t('filterBuilder.or' as GridLocaleKey, 'OR')}
+            ${this.#t('filterBuilder.or', 'OR')}
           </button>
         </span>
         ${
@@ -391,8 +402,8 @@ export class ApexGridFilterBuilder extends LitElement {
             : html`<button
                 part="remove"
                 type="button"
-                aria-label=${this.#t('filterBuilder.removeGroup' as GridLocaleKey, 'Remove group')}
-                title=${this.#t('filterBuilder.removeGroup' as GridLocaleKey, 'Remove group')}
+                aria-label=${this.#t('filterBuilder.removeGroup', 'Remove group')}
+                title=${this.#t('filterBuilder.removeGroup', 'Remove group')}
                 @click=${() => parent && this.#remove(parent, index)}
               >
                 ✕
@@ -406,10 +417,10 @@ export class ApexGridFilterBuilder extends LitElement {
       )}
       <div part="adders">
         <button type="button" @click=${() => this.#addCondition(group)}>
-          + ${this.#t('filterBuilder.addCondition' as GridLocaleKey, 'Condition')}
+          + ${this.#t('filterBuilder.addCondition', 'Condition')}
         </button>
         <button type="button" @click=${() => this.#addGroup(group)}>
-          + ${this.#t('filterBuilder.addGroup' as GridLocaleKey, 'Group')}
+          + ${this.#t('filterBuilder.addGroup', 'Group')}
         </button>
       </div>
     </div>`;
@@ -427,10 +438,10 @@ export class ApexGridFilterBuilder extends LitElement {
       ${this.#renderGroup(this.model, null, 0)}
       <div part="actions">
         <button part="clear" type="button" @click=${() => this.#clear()}>
-          ${this.#t('filterBuilder.clear' as GridLocaleKey, 'Clear')}
+          ${this.#t('filterBuilder.clear', 'Clear')}
         </button>
         <button part="apply" type="button" @click=${() => this.#apply()}>
-          ${this.#t('filterBuilder.apply' as GridLocaleKey, 'Apply')}
+          ${this.#t('filterBuilder.apply', 'Apply')}
         </button>
       </div>
     </div>`;
