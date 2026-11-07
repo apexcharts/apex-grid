@@ -1,9 +1,9 @@
 import { type GridLocaleKey, localize } from 'apex-grid';
-import { registerComponent } from 'apex-grid/internal';
-import type ApexCharts from 'apexcharts';
+import { designSystemName, registerComponent } from 'apex-grid/internal';
+import type { default as ApexCharts, ApexOptions } from 'apexcharts';
 import { html, LitElement, nothing, svg } from 'lit';
 import { property, state } from 'lit/decorators.js';
-import { carryGridTheme } from './features/carry-theme.js';
+import { carryGridTheme, watchGridTheme } from './features/carry-theme.js';
 import {
   buildValueAxes,
   type CalculatedField,
@@ -13,6 +13,7 @@ import {
   type ChartFormat,
   type ChartModel,
   type ChartType,
+  chartDesignSystemLoaded,
   chartModelToApexOptions,
   formatToApexOptions,
   linearForecast,
@@ -91,6 +92,23 @@ const PALETTE_TOKENS = [
   '--_ag-gold-text',
 ];
 
+/** What a `theme="grid"` chart's look depends on besides the palette (see `#themeSignature`). */
+const THEME_SIGNATURE_TOKENS = [
+  '--_ag-surface',
+  '--_ag-surface-elevated',
+  '--_ag-text-body',
+  '--_ag-text-muted',
+  '--_ag-hairline',
+  '--_ag-overlay-font',
+  '--ag-text-body',
+  '--ag-dark-text-body',
+  '--ag-brand',
+  '--ig-theme-variant',
+  '--ig-primary-500',
+  '--ig-gray-800',
+  '--ig-font-family',
+];
+
 // Chrome for a forced theme="dark": the grid's built in dark palette, so the panel matches the
 // ApexCharts dark mode the chart draws in, whatever the bound grid looks like. A forced "light"
 // sets nothing and lets the stylesheet's light literals apply.
@@ -106,6 +124,121 @@ const FORCED_DARK_CHROME: Readonly<Record<string, string>> = {
   hairline: 'rgb(255 255 255 / 12%)',
   'pin-line': 'rgb(255 255 255 / 28%)',
 };
+
+/** The words of a grid's `theme` attribute (`dark`, `light`, `tinted`). */
+function themeWords(grid: Element): string[] {
+  return (grid.getAttribute('theme') ?? '').split(/\s+/);
+}
+
+/** The tokens whose presence means an Ignite UI theme is on the page (the commons adapter's probe). */
+const IGNITE_UI_PROBE = ['--ig-primary-seed', '--ig-primary-500'];
+
+/** Whether ApexCharts options turn the chart's design-system layer off (`theme.designSystem`). */
+function layerOff(options: unknown): boolean {
+  const theme = (options as { theme?: { designSystem?: unknown; tokens?: unknown } } | undefined)
+    ?.theme;
+  return theme?.designSystem === false || theme?.tokens === false;
+}
+
+/**
+ * Whether a `theme="grid"` chart reads the theme itself: the page loaded the grid's design-system
+ * add-on (`apex-grid/ignite-ui`) and ApexCharts' own (`apexcharts/features/ignite-ui`), an Ignite
+ * UI theme reaches the grid, the grid follows it (neither `design-system="off"` nor
+ * `tokens="off"`), and the chart does too (no `theme.designSystem: false` or `theme.tokens:
+ * false`, page-wide in `window.Apex` or in the panel's `apexOptions`). Otherwise the panel hands
+ * the chart the grid's resolved colours, as it does without the add-on.
+ */
+function followsLayer(grid: Element, cs: CSSStyleDeclaration, apexOptions?: unknown): boolean {
+  return (
+    !layerOff(apexOptions) &&
+    !layerOff((globalThis as { Apex?: unknown }).Apex) &&
+    designSystemName() === 'igniteui' &&
+    chartDesignSystemLoaded() &&
+    grid.getAttribute('design-system') !== 'off' &&
+    grid.getAttribute('tokens') !== 'off' &&
+    IGNITE_UI_PROBE.some((name) => cs.getPropertyValue(name).trim() !== '')
+  );
+}
+
+/**
+ * Whether a grid that {@link followsLayer} draws dark: its `theme` attribute, else the Ignite UI
+ * variant in effect where it sits, as the add-on's rules decide it.
+ */
+function layerDark(grid: Element, cs: CSSStyleDeclaration): boolean {
+  const words = themeWords(grid);
+  if (words.includes('dark')) return true;
+  if (words.includes('light')) return false;
+  return cs.getPropertyValue('--ig-theme-variant').trim() === 'dark';
+}
+
+/**
+ * A colour the page set on the grid, as a concrete colour, or '' when the page set none. With the
+ * add-on loaded the colour tokens it follows have no root default (`--ag-brand` never has one), so
+ * a value means the page set it, on the grid or an ancestor.
+ */
+function pageSetColor(cs: CSSStyleDeclaration, name: string): string {
+  const value = cs.getPropertyValue(name).trim();
+  return value ? chartColor(value) : '';
+}
+
+/**
+ * Theme options for `theme="grid"` when the chart {@link followsLayer}: the chart takes the theme
+ * itself, as a chart beside the grid does, so the panel passes only what the page set on the grid.
+ * That is its mode when its `theme` attribute names one (left unset, ApexCharts follows the Ignite
+ * UI variant as the grid does) and its text colour when the page set one (`--ag-text-body`,
+ * `--ag-dark-text-body` on a dark grid). A brand the page set reaches the chart as its
+ * `--apx-accent` (see `#forwardBrand`): series 1, with the theme's palette after it. A key the
+ * page did not set is left out, never written as `undefined`: ApexCharts would copy that over its
+ * own default and the layer would never fill it. An update cannot take a key back, so the panel
+ * redraws from scratch when the keys it passes change (see `#themeShape`). The colours the page
+ * set for the chart (`apexOptions.colors`, the Format popover) are layered over these.
+ */
+function layerThemeOptions(
+  grid: Element,
+  cs: CSSStyleDeclaration
+): Partial<NonNullable<RenderChartOptions['apexOptions']>> {
+  const words = themeWords(grid);
+  const prefix = layerDark(grid, cs) ? '--ag-dark-' : '--ag-';
+  const foreColor = pageSetColor(cs, `${prefix}text-body`);
+  const mode = words.includes('dark') ? 'dark' : words.includes('light') ? 'light' : '';
+  return {
+    ...(mode ? { theme: { mode } } : {}),
+    chart: { background: 'transparent', ...(foreColor ? { foreColor } : {}) },
+  };
+}
+
+/**
+ * The switches for a chart that does not {@link followsLayer} while the page loaded ApexCharts'
+ * add-on, so the panel matches its grid: off Ignite UI (`designSystem: false`) unless the grid
+ * follows it, and off the family tokens too (`tokens: false`) with `tokens="off"`. Only a switch
+ * turned off is written: both are on by default, and writing `true` would override a page-wide
+ * `window.Apex` setting. ApexCharts releases without the add-on never get here.
+ */
+function chartSwitches(grid: Element | null): Record<string, boolean> {
+  if (!chartDesignSystemLoaded()) return {};
+  const tokensOff = grid?.getAttribute('tokens') === 'off';
+  const followsGrid =
+    !!grid && designSystemName() === 'igniteui' && grid.getAttribute('design-system') !== 'off';
+  return {
+    ...(tokensOff || !followsGrid ? { designSystem: false } : {}),
+    ...(tokensOff ? { tokens: false } : {}),
+  };
+}
+
+/**
+ * The option paths a theme hands ApexCharts (`theme.mode`, `chart.foreColor`, ...). An update
+ * merges into the drawn config and cannot remove one, so a change here redraws from scratch.
+ */
+function optionShape(options: object): string {
+  return Object.entries(options)
+    .flatMap(([key, value]) =>
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? Object.keys(value).map((inner) => `${key}.${inner}`)
+        : [key]
+    )
+    .sort()
+    .join();
+}
 
 /** The deepest focused element across shadow boundaries (so focus restore lands where it was). */
 function deepActiveElement(): HTMLElement | null {
@@ -290,6 +423,8 @@ export class ApexGridChart extends LitElement {
   #lastWidth = 0;
   #lastHeight = 0;
   #boundGrid: HTMLElement | null = null;
+  /** Stops the theme watcher of the bound grid (see `#onThemeChanged`). */
+  #stopThemeWatch: (() => void) | null = null;
   /**
    * The cross-filter this panel installed: the grid and column it went on, the category, and the
    * condition object, so only that expression is removed (a user filter on the column stays).
@@ -788,12 +923,20 @@ export class ApexGridChart extends LitElement {
     if (this.type === 'auto') this.#autoType = type;
     // Trend/forecast overlays augment the series set + force combo rendering, so fold them in first.
     const { model: renderModel, options } = this.#withOverlays(model, this.#options(type));
+    // Read with the options, synchronously: what this draw hands over and depends on.
+    const themeShape = this.#themeShape;
+    const themeSignature = this.#themeSignature();
     // A type switch (including any cartesian↔circular move) tears down and rebuilds rather than
     // mutating in place: ApexCharts' updateOptions is unreliable across those transitions,
     // another source of the "sometimes blank" chart.
     const resolvedType = options.type as ChartType;
     // A type switch OR a format edit rebuilds from scratch (see updated() for why format does).
-    if (this.#chart && (resolvedType !== this.#renderedType || this.#formatDirty))
+    if (
+      this.#chart &&
+      (resolvedType !== this.#renderedType ||
+        this.#formatDirty ||
+        themeShape !== this.#drawnThemeShape)
+    )
       this.#destroyChart();
     this.#formatDirty = false;
     try {
@@ -815,6 +958,8 @@ export class ApexGridChart extends LitElement {
       return;
     }
     this.#renderedType = resolvedType;
+    this.#drawnThemeShape = themeShape;
+    this.#drawnThemeSignature = themeSignature;
     // Open swatches show the drawn colors, which exist only now.
     if (this.formatOpen) this.requestUpdate();
     this.#ensureResizeObserver();
@@ -857,6 +1002,7 @@ export class ApexGridChart extends LitElement {
     if (!grid) return;
     grid.addEventListener(RANGE_CHANGED_EVENT, this.#onRangeChanged);
     grid.addEventListener(VIEW_CHANGED_EVENT, this.#onViewChanged);
+    this.#stopThemeWatch = watchGridTheme(grid, this.#onThemeChanged);
     this.#boundGrid = grid;
     this.#refreshFields();
     this.#scheduleRefresh();
@@ -865,6 +1011,8 @@ export class ApexGridChart extends LitElement {
   #detach(): void {
     this.#boundGrid?.removeEventListener(RANGE_CHANGED_EVENT, this.#onRangeChanged);
     this.#boundGrid?.removeEventListener(VIEW_CHANGED_EVENT, this.#onViewChanged);
+    this.#stopThemeWatch?.();
+    this.#stopThemeWatch = null;
     this.#boundGrid = null;
   }
 
@@ -1178,24 +1326,67 @@ export class ApexGridChart extends LitElement {
     return !!active && active.grid.filterExpressions.some((e) => e.condition === active.condition);
   }
 
+  /**
+   * The option paths the last {@link #themeOptions} call handed over (see `optionShape`). A draw
+   * whose shape differs from the drawn one rebuilds the chart: an update cannot take a key back (a
+   * `colors` list, a `foreColor`, a `designSystem: false`).
+   */
+  #themeShape = '';
+  #drawnThemeShape = '';
+
   /** Derive ApexCharts theme options from the grid's tokens (or a forced light/dark mode). */
   #themeOptions(): Partial<NonNullable<RenderChartOptions['apexOptions']>> {
+    const options = this.#readThemeOptions();
+    this.#themeShape = optionShape(options);
+    return options;
+  }
+
+  #readThemeOptions(): Partial<NonNullable<RenderChartOptions['apexOptions']>> {
     const grid = this.grid as unknown as HTMLElement | null;
     // Re-sync on every draw so the chrome follows a grid theme change along with the chart.
     this.#syncChrome();
-    if (this.theme !== 'grid') return { theme: { mode: this.theme } };
+    if (this.theme !== 'grid') {
+      const theme = { mode: this.theme, ...chartSwitches(grid) };
+      return { theme: theme as NonNullable<ApexOptions['theme']> };
+    }
     if (!grid) return {};
     const cs = getComputedStyle(grid);
+    if (followsLayer(grid, cs, this.apexOptions)) return layerThemeOptions(grid, cs);
     const read = (name: string) => cs.getPropertyValue(name).trim();
     // As concrete colors: ApexCharts misreads oklch(), color-mix() and the like (hex passes as is).
     const colors = PALETTE_TOKENS.map(read).filter(Boolean).map(chartColor);
     const foreColor = chartColor(read('--_ag-text-body'));
+    const mode = isDark(read('--_ag-surface')) ? 'dark' : 'light';
     return {
       ...(colors.length ? { colors } : {}),
-      theme: { mode: isDark(read('--_ag-surface')) ? 'dark' : 'light' },
+      theme: { mode, ...chartSwitches(grid) } as NonNullable<ApexOptions['theme']>,
       chart: { background: 'transparent', ...(foreColor ? { foreColor } : {}) },
     };
   }
+
+  /**
+   * What the chart's theme depends on, read from the grid: the tokens the chrome carries, the
+   * palette, the Ignite UI variant and the layer state. The theme watcher redraws only when it
+   * changes, so an unrelated style or class change on the page costs one read, not a redraw.
+   */
+  #themeSignature(): string {
+    const grid = this.grid as unknown as Element | null;
+    if (this.theme !== 'grid' || !grid) return this.theme;
+    const cs = getComputedStyle(grid);
+    const names = [...THEME_SIGNATURE_TOKENS, ...PALETTE_TOKENS];
+    const values = names.map((name) => cs.getPropertyValue(name).trim());
+    const layer = followsLayer(grid, cs, this.apexOptions);
+    return [layer, chartDesignSystemLoaded(), ...values].join('|');
+  }
+
+  #drawnThemeSignature = '';
+
+  /** The grid's theme can have changed (see `watchGridTheme`): redraw when it did. */
+  #onThemeChanged = (): void => {
+    if (this.theme !== 'grid' || this.#themeSignature() === this.#drawnThemeSignature) return;
+    this.#syncChrome();
+    if (this.#chart) this.#scheduleRefresh();
+  };
 
   /**
    * Point the chrome's var(--_ag-*) tokens at the same theme the chart draws in. The panel often
@@ -1217,6 +1408,32 @@ export class ApexGridChart extends LitElement {
         style.setProperty(`--_ag-${name}`, value);
       }
     }
+    this.#forwardBrand();
+  }
+
+  /** The `--apx-accent` this panel set on itself, so it never removes one the page set. */
+  #forwardedAccent = '';
+
+  /**
+   * When the chart reads the theme itself ({@link followsLayer}), a brand the page set on the grid
+   * (`--ag-brand`) reaches it as its family accent, `--apx-accent` on this panel: the chart's first
+   * series then matches the grid's brand, and the theme's palette fills the rest.
+   */
+  #forwardBrand(): void {
+    const grid = this.grid as unknown as Element | null;
+    const cs = this.theme === 'grid' && grid ? getComputedStyle(grid) : null;
+    const accent =
+      grid && cs && followsLayer(grid, cs, this.apexOptions) ? pageSetColor(cs, '--ag-brand') : '';
+    const style = this.style;
+    if (accent) {
+      style.setProperty('--apx-accent', accent);
+    } else if (
+      this.#forwardedAccent &&
+      style.getPropertyValue('--apx-accent') === this.#forwardedAccent
+    ) {
+      style.removeProperty('--apx-accent');
+    }
+    this.#forwardedAccent = accent;
   }
 
   #destroyChart(): void {
@@ -1275,7 +1492,7 @@ export class ApexGridChart extends LitElement {
     return html`<style>
       apex-grid-chart {
         display: block;
-        font: 0.8rem/1.4 system-ui, sans-serif;
+        font: 0.8rem/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
         color: var(--_ag-text-body, #1f2328);
       }
       apex-grid-chart[mode='dialog'] {

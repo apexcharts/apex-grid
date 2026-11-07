@@ -14,6 +14,7 @@ import {
   operandsForType,
   operatorsForType,
 } from './features/advanced-filter.js';
+import { OverlayTheme } from './features/carry-theme.js';
 import type { ApexGridEnterprise, ApexGridEnterpriseHost } from './grid-enterprise.js';
 
 export const FILTER_BUILDER_TAG = 'apex-grid-filter-builder';
@@ -48,24 +49,32 @@ export class ApexGridFilterBuilder extends LitElement {
   }
 
   public static override styles = css`
+    /* Popup tokens (carried from the bound grid): unset, the controls keep
+       the browser's own colours. */
+    :where(button, input, select, textarea) {
+      color: var(--_ag-overlay-text, revert);
+    }
+    :where(input:not([type='checkbox'], [type='radio']), select, textarea) {
+      background-color: var(--_ag-overlay, revert);
+    }
     :host {
       display: block;
       box-sizing: border-box;
       inline-size: 460px;
-      font: 0.85rem/1.4 system-ui, sans-serif;
-      color: #1f2328;
-      background: #fff;
-      border: 1px solid #d8dade;
+      font: 0.85rem/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
+      color: var(--_ag-overlay-text, #1f2328);
+      background: var(--_ag-overlay, #fff);
+      border: 1px solid var(--_ag-overlay-line, #d8dade);
       border-radius: 6px;
       box-shadow: 0 6px 16px rgb(0 0 0 / 12%);
       padding: 10px;
     }
     [part='group'] {
-      border: 1px solid #e4e6ea;
+      border: 1px solid var(--_ag-overlay-line, #e4e6ea);
       border-radius: 6px;
       padding: 8px;
       margin-block-start: 6px;
-      background: #fbfbfc;
+      background: var(--_ag-overlay-hover, #fbfbfc);
     }
     [part='group'][data-root] {
       margin-block-start: 0;
@@ -81,19 +90,19 @@ export class ApexGridFilterBuilder extends LitElement {
     }
     [part='join'] {
       display: inline-flex;
-      border: 1px solid #d0d3d7;
+      border: 1px solid var(--_ag-overlay-line, #d0d3d7);
       border-radius: 4px;
       overflow: hidden;
     }
     [part='join'] button {
       font: inherit;
       border: 0;
-      background: #fff;
+      background: var(--_ag-overlay, #fff);
       padding: 2px 10px;
       cursor: pointer;
     }
     [part='join'] button[aria-pressed='true'] {
-      background: #2563eb;
+      background: var(--_ag-overlay-accent, #2563eb);
       color: #fff;
     }
     [part='condition'] {
@@ -106,7 +115,7 @@ export class ApexGridFilterBuilder extends LitElement {
     input {
       font: inherit;
       padding: 3px 5px;
-      border: 1px solid #d0d3d7;
+      border: 1px solid var(--_ag-overlay-line, #d0d3d7);
       border-radius: 4px;
       min-inline-size: 0;
     }
@@ -123,7 +132,7 @@ export class ApexGridFilterBuilder extends LitElement {
       border: 0;
       background: none;
       cursor: pointer;
-      color: #6b7280;
+      color: var(--_ag-overlay-muted, #6b7280);
       font-size: 1rem;
       line-height: 1;
       padding: 2px 4px;
@@ -137,8 +146,8 @@ export class ApexGridFilterBuilder extends LitElement {
     [part='actions'] button {
       font: inherit;
       padding: 3px 10px;
-      border: 1px solid #d0d3d7;
-      background: #fff;
+      border: 1px solid var(--_ag-overlay-line, #d0d3d7);
+      background: var(--_ag-overlay, #fff);
       border-radius: 4px;
       cursor: pointer;
     }
@@ -147,19 +156,25 @@ export class ApexGridFilterBuilder extends LitElement {
       justify-content: flex-end;
       gap: 6px;
       margin-block-start: 10px;
-      border-block-start: 1px solid #eceef1;
+      border-block-start: 1px solid var(--_ag-overlay-line, #eceef1);
       padding-block-start: 8px;
     }
     [part='apply'] {
-      background: #2563eb !important;
+      background: var(--_ag-overlay-accent, #2563eb) !important;
       color: #fff;
-      border-color: #2563eb !important;
+      border-color: var(--_ag-overlay-accent, #2563eb) !important;
     }
   `;
 
   /** The enterprise grid to filter. */
   @property({ attribute: false })
   public grid: ApexGridEnterpriseHost | null = null;
+
+  constructor() {
+    super();
+    // The bound grid's popup colours (`--ag-overlay`, Ignite UI), carried onto this element.
+    this.addController(new OverlayTheme(this));
+  }
 
   /**
    * The editable root group. An empty builder given a `grid` that already has

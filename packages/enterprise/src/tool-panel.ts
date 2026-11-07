@@ -3,6 +3,7 @@ import { getDisplayColumns, registerComponent } from 'apex-grid/internal';
 import { css, html, LitElement, nothing, type TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { AggregationFn } from './features/aggregation.js';
+import { OverlayTheme } from './features/carry-theme.js';
 import type { ApexGridEnterpriseHost } from './grid-enterprise.js';
 import { GridLink } from './status-bar.js';
 
@@ -40,28 +41,36 @@ export class ApexGridToolPanel extends LitElement {
   }
 
   public static override styles = css`
+    /* Popup tokens (carried from the bound grid): unset, the controls keep
+       the browser's own colours. */
+    :where(button, input, select, textarea) {
+      color: var(--_ag-overlay-text, revert);
+    }
+    :where(input:not([type='checkbox'], [type='radio']), select, textarea) {
+      background-color: var(--_ag-overlay, revert);
+    }
     :host {
       display: block;
       box-sizing: border-box;
       inline-size: 270px;
-      font: 0.85rem/1.4 system-ui, sans-serif;
-      color: #1f2328;
-      background: #f6f7f8;
-      border: 1px solid #d8dade;
+      font: 0.85rem/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
+      color: var(--_ag-overlay-text, #1f2328);
+      background: var(--_ag-overlay, #f6f7f8);
+      border: 1px solid var(--_ag-overlay-line, #d8dade);
       border-radius: 6px;
       overflow: auto;
     }
     [part='header'] {
       padding: 8px 10px;
       font-weight: 600;
-      border-block-end: 1px solid #e4e6e9;
+      border-block-end: 1px solid var(--_ag-overlay-line, #e4e6e9);
     }
     [part='search'] {
       inline-size: calc(100% - 20px);
       margin: 8px 10px;
       padding: 4px 6px;
       font: inherit;
-      border: 1px solid #d0d3d7;
+      border: 1px solid var(--_ag-overlay-line, #d0d3d7);
       border-radius: 4px;
     }
     [part='list'] {
@@ -78,7 +87,7 @@ export class ApexGridToolPanel extends LitElement {
       cursor: grab;
     }
     [part='item']:hover {
-      background: #eceef0;
+      background: var(--_ag-overlay-hover, #eceef0);
     }
     [part='label'] {
       flex: 1;
@@ -104,10 +113,10 @@ export class ApexGridToolPanel extends LitElement {
       border-radius: 4px;
       background: transparent;
       cursor: pointer;
-      color: #57606a;
+      color: var(--_ag-overlay-muted, #57606a);
     }
     button:hover {
-      background: #dfe2e5;
+      background: var(--_ag-overlay-hover, #dfe2e5);
     }
     button:disabled {
       opacity: 0.4;
@@ -115,26 +124,26 @@ export class ApexGridToolPanel extends LitElement {
       background: transparent;
     }
     button[aria-pressed='true'] {
-      background: #1f6feb;
+      background: var(--_ag-overlay-accent, #1f6feb);
       color: #fff;
     }
     [part='pivot-toggle'] {
       padding: 6px 10px;
-      border-block-start: 1px solid #e4e6e9;
+      border-block-start: 1px solid var(--_ag-overlay-line, #e4e6e9);
     }
     [part='zone'] {
       margin: 6px 10px;
       padding: 6px;
-      border: 1px dashed #c4c8cd;
+      border: 1px dashed var(--_ag-overlay-line, #c4c8cd);
       border-radius: 5px;
-      background: #fbfbfc;
+      background: var(--_ag-overlay-hover, #fbfbfc);
     }
     [part='zone-title'] {
       font-size: 0.72rem;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.03em;
-      color: #6a737d;
+      color: var(--_ag-overlay-muted, #6a737d);
       margin-block-end: 4px;
     }
     [part='chips'] {
@@ -145,14 +154,14 @@ export class ApexGridToolPanel extends LitElement {
     }
     [part='zone-empty'] {
       font-size: 0.78rem;
-      color: #9aa1a8;
+      color: var(--_ag-overlay-muted, #9aa1a8);
     }
     [part='chip'] {
       display: inline-flex;
       align-items: center;
       gap: 4px;
       padding: 1px 4px 1px 7px;
-      background: #1f6feb;
+      background: var(--_ag-overlay-accent, #1f6feb);
       color: #fff;
       border-radius: 10px;
       font-size: 0.78rem;
@@ -172,6 +181,12 @@ export class ApexGridToolPanel extends LitElement {
    */
   @property({ attribute: false })
   public grid: ApexGridEnterpriseHost | null | undefined = null;
+
+  constructor() {
+    super();
+    // The bound grid's popup colours (`--ag-overlay`, Ignite UI), carried onto this element.
+    this.addController(new OverlayTheme(this));
+  }
 
   @state()
   private search = '';

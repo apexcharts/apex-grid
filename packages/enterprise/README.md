@@ -64,6 +64,13 @@ built-in feature module and registers the grid plus its companion elements
 see the [`apex-grid` README](https://www.npmjs.com/package/apex-grid) for column
 configuration, theming, and events.
 
+The companion popups (tool panel, status bar, set filter, filter builder, AI panel)
+take their colours from the grid they are bound to: `--ag-overlay` and
+`--ag-overlay-text` (`--ag-dark-overlay`, `--ag-dark-overlay-text` on a dark grid)
+set on the grid or an ancestor, and, with the grid's `apex-grid/ignite-ui` add-on, the
+Ignite UI theme. Unset, each keeps its built-in colours. They follow a theme change live,
+as the grid does.
+
 Body rows are recycled by default, as in `apex-grid` (`rowRecycling`, see Row
 recycling in the `apex-grid` README for the template rules). Set
 `row-recycling="false"` on `<apex-grid-enterprise>` to keep record-keyed rows.
@@ -449,6 +456,20 @@ chart.source = 'selection'; // 'auto' (default) | 'selection' | 'view'
 chart.type = 'column';      // gallery-switchable; 'auto' uses the recommended type
 chart.theme = 'grid';       // 'grid' (sync palette to grid theme) | 'light' | 'dark'
 ```
+
+With `theme = 'grid'` the chart takes the grid's colours and mode, and follows a live
+theme change. To have the chart read an Ignite UI theme itself, as a chart beside the
+grid does (the theme's series palette, tooltips and menus), load both add-ons:
+
+```ts
+import 'apex-grid/ignite-ui';
+import 'apexcharts/features/ignite-ui'; // ApexCharts releases that ship it
+```
+
+The panel then passes on only what you set on the grid: the mode its `theme` attribute
+names, `--ag-text-body` and `--ag-brand`. The grid never loads the ApexCharts add-on
+itself: it themes every chart on the page, so that is the page's choice. With only the
+grid's add-on, the chart takes the grid's colours, which follow the theme.
 
 With `source="view"` the panel becomes a **live companion**: it charts the whole
 current view and redraws automatically as you sort, filter, or edit the grid, with no

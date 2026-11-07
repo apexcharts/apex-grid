@@ -8,6 +8,7 @@ import {
 import { registerComponent, registerFilterOperand } from 'apex-grid/internal';
 import { css, html, LitElement, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
+import { OverlayTheme } from './features/carry-theme.js';
 import type { ApexGridEnterpriseHost } from './grid-enterprise.js';
 
 export const SET_FILTER_TAG = 'apex-grid-set-filter';
@@ -130,14 +131,22 @@ export class ApexGridSetFilter extends LitElement {
   }
 
   public static override styles = css`
+    /* Popup tokens (carried from the bound grid): unset, the controls keep
+       the browser's own colours. */
+    :where(button, input, select, textarea) {
+      color: var(--_ag-overlay-text, revert);
+    }
+    :where(input:not([type='checkbox'], [type='radio']), select, textarea) {
+      background-color: var(--_ag-overlay, revert);
+    }
     :host {
       display: block;
       box-sizing: border-box;
       inline-size: 230px;
-      font: 0.85rem/1.4 system-ui, sans-serif;
-      color: #1f2328;
-      background: #fff;
-      border: 1px solid #d8dade;
+      font: 0.85rem/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
+      color: var(--_ag-overlay-text, #1f2328);
+      background: var(--_ag-overlay, #fff);
+      border: 1px solid var(--_ag-overlay-line, #d8dade);
       border-radius: 6px;
       box-shadow: 0 6px 16px rgb(0 0 0 / 12%);
     }
@@ -147,7 +156,7 @@ export class ApexGridSetFilter extends LitElement {
       margin: 8px;
       padding: 4px 6px;
       font: inherit;
-      border: 1px solid #d0d3d7;
+      border: 1px solid var(--_ag-overlay-line, #d0d3d7);
       border-radius: 4px;
     }
     [part='list'] {
@@ -158,7 +167,7 @@ export class ApexGridSetFilter extends LitElement {
       overflow: auto;
     }
     [part~='select-all'] {
-      border-block-end: 1px solid #eceef1;
+      border-block-end: 1px solid var(--_ag-overlay-line, #eceef1);
       font-weight: 600;
     }
     [part~='option'] {
@@ -170,7 +179,7 @@ export class ApexGridSetFilter extends LitElement {
       cursor: pointer;
     }
     [part~='option']:hover {
-      background: #f3f4f6;
+      background: var(--_ag-overlay-hover, #f3f4f6);
     }
     [part='option-label'] {
       flex: 1;
@@ -190,18 +199,18 @@ export class ApexGridSetFilter extends LitElement {
       justify-content: flex-end;
       gap: 6px;
       padding: 6px 8px;
-      border-block-start: 1px solid #eceef1;
+      border-block-start: 1px solid var(--_ag-overlay-line, #eceef1);
     }
     [part='clear'] {
       font: inherit;
       padding: 3px 10px;
-      border: 1px solid #d0d3d7;
-      background: #fff;
+      border: 1px solid var(--_ag-overlay-line, #d0d3d7);
+      background: var(--_ag-overlay, #fff);
       border-radius: 4px;
       cursor: pointer;
     }
     [part='clear']:hover {
-      background: #f3f4f6;
+      background: var(--_ag-overlay-hover, #f3f4f6);
     }
     [part='empty'],
     [part='more'] {
@@ -213,6 +222,12 @@ export class ApexGridSetFilter extends LitElement {
   /** The enterprise grid to filter. */
   @property({ attribute: false })
   public grid: ApexGridEnterpriseHost | null = null;
+
+  constructor() {
+    super();
+    // The bound grid's popup colours (`--ag-overlay`, Ignite UI), carried onto this element.
+    this.addController(new OverlayTheme(this));
+  }
 
   /** The column key whose distinct values are listed. */
   @property({ type: String })

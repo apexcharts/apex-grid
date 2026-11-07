@@ -594,3 +594,22 @@ export async function renderApexChart(
   await chart.render();
   return chart;
 }
+
+/** ApexCharts' feature registry: a versioned `globalThis` slot every copy of ApexCharts shares. */
+const APEXCHARTS_FEATURES = '__apexcharts_features_v1__';
+
+/**
+ * Whether the page loaded ApexCharts' Ignite UI add-on (`apexcharts/features/ignite-ui`), so
+ * charts read the Ignite UI theme themselves. The add-on registers in ApexCharts' feature
+ * registry, which this reads. The grid never loads it: it themes every chart on the page, so only
+ * the page opts in, with its own import beside `apex-grid/ignite-ui`.
+ *
+ * @returns Whether charts can read the Ignite UI theme themselves.
+ */
+export function chartDesignSystemLoaded(): boolean {
+  const registry = (globalThis as Record<string, unknown>)[APEXCHARTS_FEATURES];
+  if (!(registry instanceof Map)) return false;
+  return (
+    (registry.get('designSystemStyles') as { name?: unknown } | undefined)?.name === 'igniteui'
+  );
+}

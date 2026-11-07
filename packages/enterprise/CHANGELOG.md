@@ -9,6 +9,31 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 - `ApexGridEnterpriseHost`, the grid type the companion elements accept, and
   the `ParseError`, `FormulaAst` and `FormulaExportOptions` exports.
+- The filter builder, set filter, AI panel, tool panel and status bar take the
+  grid's new popup tokens, `--ag-overlay` and `--ag-overlay-text`
+  (`--ag-dark-overlay`, `--ag-dark-overlay-text` on a dark grid), carried from
+  the grid they are bound to. Unset, each keeps its built-in colours. With the
+  `apex-grid/ignite-ui` add-on they also follow the Ignite UI theme: dark
+  under a dark one, and its lines, accent and font. They follow a theme
+  change live (a swapped stylesheet, the grid's `theme` attribute, a late
+  add-on import), as the grid does, with no re-render of their own; so does
+  the chart panel.
+- When the page loads both Ignite UI add-ons, the grid's
+  (`apex-grid/ignite-ui`) and ApexCharts' own (`apexcharts/features/ignite-ui`,
+  in ApexCharts releases that ship it), a `theme="grid"` chart panel lets the
+  chart read the Ignite UI theme itself, as a chart beside the grid does: the
+  theme's series palette, tooltips and menus, and its light or dark variant.
+  The panel then passes on only what the page set on the grid: the mode its
+  `theme` attribute names, its text colour (`--ag-text-body`) and its brand
+  (`--ag-brand`, as the chart's `--apx-accent`). The grid never loads the
+  ApexCharts add-on itself, since that themes every chart on the page. With
+  no Ignite UI theme on the page, with `design-system="off"` or `tokens="off"`
+  on the grid, with `theme.designSystem: false` in `window.Apex` or the
+  panel's `apexOptions`, or with only one of the two add-ons, it passes the
+  grid's colours as before (and, where ApexCharts' add-on is loaded for other
+  charts, keeps the panel chart off Ignite UI like its grid).
+- With the `apex-grid/ignite-ui` add-on, the chart panel and the context menu
+  take the grid's font from the theme; without it they keep `system-ui`.
 
 ### Changed
 - `ChartSeries.data` is typed `readonly (number | null)[]`, matching the null

@@ -69,7 +69,7 @@ const MENU_CSS = `
   border: 1px solid var(--_ag-pin-line, #d8dade);
   border-radius: 6px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
-  font: 0.8rem/1.4 system-ui, sans-serif;
+  font: 0.8rem/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
   color: var(--_ag-text-body, #1f2328);
 }
 .apex-grid-context-menu .agcm-item {

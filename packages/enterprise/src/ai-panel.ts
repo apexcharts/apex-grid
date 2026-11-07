@@ -3,6 +3,7 @@ import { registerComponent } from 'apex-grid/internal';
 import { css, html, LitElement, nothing, type PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { AIMode, AIResult, Plan } from './features/ai/index.js';
+import { OverlayTheme } from './features/carry-theme.js';
 import { captureFocus, type FocusReturn, returnFocus } from './features/focus-return.js';
 import type { ApexGridEnterprise, ApexGridEnterpriseHost } from './grid-enterprise.js';
 
@@ -82,10 +83,18 @@ export class ApexGridAI extends LitElement {
   }
 
   public static override styles = css`
+    /* Popup tokens (carried from the bound grid): unset, the controls keep
+       the browser's own colours. */
+    :where(button, input, select, textarea) {
+      color: var(--_ag-overlay-text, revert);
+    }
+    :where(input:not([type='checkbox'], [type='radio']), select, textarea) {
+      background-color: var(--_ag-overlay, revert);
+    }
     :host {
       display: block;
-      font: 0.8rem/1.4 system-ui, sans-serif;
-      color: #1f2328;
+      font: 0.8rem/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
+      color: var(--_ag-overlay-text, #1f2328);
     }
     :host([mode='dialog']) {
       position: fixed;
@@ -97,8 +106,8 @@ export class ApexGridAI extends LitElement {
     }
     [part='panel'] {
       box-sizing: border-box;
-      background: #fff;
-      border: 1px solid #d8dade;
+      background: var(--_ag-overlay, #fff);
+      border: 1px solid var(--_ag-overlay-line, #d8dade);
       border-radius: 8px;
     }
     :host([mode='dialog']) [part='panel'] {
@@ -114,7 +123,7 @@ export class ApexGridAI extends LitElement {
       justify-content: space-between;
       gap: 8px;
       padding: 8px 12px;
-      border-block-end: 1px solid #eef0f4;
+      border-block-end: 1px solid var(--_ag-overlay-line, #eef0f4);
       cursor: move;
       touch-action: none;
       font-weight: 600;
@@ -125,7 +134,7 @@ export class ApexGridAI extends LitElement {
       background: none;
       font-size: 16px;
       line-height: 1;
-      color: #6b7280;
+      color: var(--_ag-overlay-muted, #6b7280);
       min-width: 24px;
       min-height: 24px;
     }
@@ -143,15 +152,15 @@ export class ApexGridAI extends LitElement {
       font: inherit;
       font-size: 0.75rem;
       padding: 4px 10px;
-      border: 1px solid #d0d5dd;
-      background: #fff;
+      border: 1px solid var(--_ag-overlay-line, #d0d5dd);
+      background: var(--_ag-overlay, #fff);
       border-radius: 4px;
       cursor: pointer;
     }
     [part='mode-button'][aria-pressed='true'] {
-      background: #1f2328;
-      color: #fff;
-      border-color: #1f2328;
+      background: var(--_ag-overlay-text, #1f2328);
+      color: var(--_ag-overlay, #fff);
+      border-color: var(--_ag-overlay-text, #1f2328);
     }
     [part='input'] {
       font: inherit;
@@ -160,7 +169,7 @@ export class ApexGridAI extends LitElement {
       min-block-size: 60px;
       resize: vertical;
       padding: 6px 8px;
-      border: 1px solid #d0d5dd;
+      border: 1px solid var(--_ag-overlay-line, #d0d5dd);
       border-radius: 4px;
     }
     .actions {
@@ -171,9 +180,9 @@ export class ApexGridAI extends LitElement {
     [part='send'] {
       font: inherit;
       padding: 5px 14px;
-      border: 1px solid #1f2328;
-      background: #1f2328;
-      color: #fff;
+      border: 1px solid var(--_ag-overlay-text, #1f2328);
+      background: var(--_ag-overlay-text, #1f2328);
+      color: var(--_ag-overlay, #fff);
       border-radius: 4px;
       cursor: pointer;
       min-height: 24px;
@@ -187,15 +196,15 @@ export class ApexGridAI extends LitElement {
     }
     [part='abstention'] {
       font-size: 0.78rem;
-      color: #475467;
+      color: var(--_ag-overlay-muted, #475467);
     }
     [part='undo'] {
       font: inherit;
       font-size: 0.75rem;
       margin-block-start: 6px;
       padding: 3px 10px;
-      border: 1px solid #d0d5dd;
-      background: #fff;
+      border: 1px solid var(--_ag-overlay-line, #d0d5dd);
+      background: var(--_ag-overlay, #fff);
       border-radius: 4px;
       cursor: pointer;
       min-height: 24px;
@@ -209,7 +218,7 @@ export class ApexGridAI extends LitElement {
       margin-block-start: 4px;
     }
     [part='notice'] {
-      color: #888;
+      color: var(--_ag-overlay-muted, #888);
       font-style: italic;
     }
     [part='error'] {
@@ -218,9 +227,9 @@ export class ApexGridAI extends LitElement {
     [part='preview-button'] {
       font: inherit;
       padding: 5px 12px;
-      border: 1px solid #d0d5dd;
-      background: #fff;
-      color: #1f2328;
+      border: 1px solid var(--_ag-overlay-line, #d0d5dd);
+      background: var(--_ag-overlay, #fff);
+      color: var(--_ag-overlay-text, #1f2328);
       border-radius: 4px;
       cursor: pointer;
       min-height: 24px;
@@ -232,9 +241,9 @@ export class ApexGridAI extends LitElement {
     [part='source'] {
       font-size: 0.68rem;
       font-weight: 600;
-      color: #57606a;
-      background: #f3f4f6;
-      border: 1px solid #e5e7eb;
+      color: var(--_ag-overlay-muted, #57606a);
+      background: var(--_ag-overlay-hover, #f3f4f6);
+      border: 1px solid var(--_ag-overlay-line, #e5e7eb);
       border-radius: 10px;
       padding: 0 7px;
       vertical-align: middle;
@@ -242,11 +251,11 @@ export class ApexGridAI extends LitElement {
     }
     [part='preview'] {
       font-size: 0.78rem;
-      color: #475467;
+      color: var(--_ag-overlay-muted, #475467);
     }
     [part='history'] {
       margin-block-start: 4px;
-      border-block-start: 1px solid #eef0f4;
+      border-block-start: 1px solid var(--_ag-overlay-line, #eef0f4);
       padding-block-start: 6px;
     }
     .history-head {
@@ -255,14 +264,14 @@ export class ApexGridAI extends LitElement {
       justify-content: space-between;
       font-weight: 600;
       font-size: 0.72rem;
-      color: #6b7280;
+      color: var(--_ag-overlay-muted, #6b7280);
     }
     [part='clear-history'] {
       font: inherit;
       font-size: 0.7rem;
       border: none;
       background: none;
-      color: #6b7280;
+      color: var(--_ag-overlay-muted, #6b7280);
       cursor: pointer;
       text-decoration: underline;
     }
@@ -276,7 +285,7 @@ export class ApexGridAI extends LitElement {
       font-weight: 600;
     }
     .hist-summary {
-      color: #6b7280;
+      color: var(--_ag-overlay-muted, #6b7280);
     }
     ul {
       margin: 4px 0 0;
@@ -292,6 +301,12 @@ export class ApexGridAI extends LitElement {
    */
   @property({ attribute: false })
   public grid: ApexGridEnterpriseHost | null = null;
+
+  constructor() {
+    super();
+    // The bound grid's popup colours (`--ag-overlay`, Ignite UI), carried onto this element.
+    this.addController(new OverlayTheme(this));
+  }
 
   /** `'inline'` renders in place; `'dialog'` (default) is a floating, draggable panel. */
   @property({ reflect: true })

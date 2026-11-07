@@ -9,6 +9,7 @@ import {
   type ReactiveControllerHost,
 } from 'lit';
 import { property, state } from 'lit/decorators.js';
+import { OverlayTheme } from './features/carry-theme.js';
 import {
   RANGE_CHANGED_EVENT,
   type RangeChangedDetail,
@@ -101,10 +102,10 @@ export class ApexGridStatusBar extends LitElement {
     :host {
       display: block;
       box-sizing: border-box;
-      font: 0.8rem/1.4 system-ui, sans-serif;
-      color: #3a3f45;
-      background: #f6f7f8;
-      border: 1px solid #d8dade;
+      font: 0.8rem/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
+      color: var(--_ag-overlay-text, #3a3f45);
+      background: var(--_ag-overlay, #f6f7f8);
+      border: 1px solid var(--_ag-overlay-line, #d8dade);
       border-radius: 6px;
     }
     [part='status-bar'] {
@@ -133,13 +134,19 @@ export class ApexGridStatusBar extends LitElement {
     [part='stat-value'] {
       font-weight: 600;
       font-variant-numeric: tabular-nums;
-      color: #1f2328;
+      color: var(--_ag-overlay-text, #1f2328);
     }
   `;
 
   /** The enterprise grid to summarize. Setting it (re)binds the listener. */
   @property({ attribute: false })
   public grid: ApexGridEnterpriseHost | null = null;
+
+  constructor() {
+    super();
+    // The bound grid's popup colours (`--ag-overlay`, Ignite UI), carried onto this element.
+    this.addController(new OverlayTheme(this));
+  }
 
   @state()
   private stats: RangeStats | null = null;
