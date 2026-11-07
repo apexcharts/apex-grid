@@ -1,0 +1,43 @@
+// ─────────────────────────────────────────────────────────────────────────
+// The add-on's rules for a dark Ignite UI variant. The add-on wraps them in
+// `@container style(--ig-theme-variant: dark)`, so each grid follows the
+// variant in effect where it sits, live; where the browser has no style
+// queries it applies them while the document's variant is dark.
+//  - A grid without `theme="light"` or `theme="dark"` takes the dark block,
+//    with every Ignite UI step: its mode follows the variant.
+//  - `theme="light"` keeps the light block without the gated steps (the
+//    dark theme's gray 800 is light text).
+//  - `theme="dark"` takes every Ignite UI step, now that they match.
+//  - With `design-system="off"` the mode still follows the variant, with the
+//    built-in dark values. `tokens="off"` turns the variant off too.
+// Following the variant, the enterprise popups also go dark (`--_ag-overlay`
+// from the 7.5 surface role, else the built-in dark header colour).
+// ─────────────────────────────────────────────────────────────────────────
+@use '../token-blocks' as tb;
+
+$on: ":not([design-system='off']):not([tokens='off'])";
+$follows: ":not([theme~='light'])";
+
+:host(#{$on}) {
+    @include tb.light-block(tb.$ignite-ungated, $full: false);
+}
+
+:host(#{$follows}#{$on}) {
+    @include tb.dark-block(tb.$ignite, $follow: true);
+}
+
+:host([theme~='tinted']#{$on}) {
+    @include tb.tinted-block(tb.$ignite-ungated);
+}
+
+:host([theme~='tinted']#{$follows}#{$on}) {
+    @include tb.dark-tinted-block(tb.$ignite);
+}
+
+:host([design-system='off']#{$follows}:not([tokens='off'])) {
+    @include tb.dark-block(tb.$core, $follow: true);
+}
+
+:host([design-system='off'][theme~='tinted']#{$follows}:not([tokens='off'])) {
+    @include tb.dark-tinted-block(tb.$core);
+}

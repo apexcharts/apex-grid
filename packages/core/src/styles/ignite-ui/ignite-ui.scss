@@ -1,0 +1,34 @@
+// ─────────────────────────────────────────────────────────────────────────
+// The Ignite UI add-on (`apex-grid/ignite-ui`), adopted into every grid's
+// shadow root after the grid's own stylesheet. Each block is the grid's own
+// block (`_token-blocks.scss`) with the Ignite UI step added to its chains,
+// so an explicit `--ag-*` token and the family `--apx-*` tokens still win.
+// This sheet assumes a light (or no) Ignite UI variant: a dark grid keeps its
+// built-in text, lines and surfaces and takes only the brand, state colours
+// and font. `ignite-ui-dark.scss` covers a dark variant.
+// Two switches on the host, each matching none of these rules:
+//  - `design-system="off"`: no Ignite UI colours or font for this grid; the
+//    variant still picks its mode (see `ignite-ui-dark.scss`).
+//  - `tokens="off"`: neither the family `--apx-*` tokens nor Ignite UI, the
+//    variant included. The grid's own sheet blanks the family tokens on such
+//    a host (`_tokens.scss`), with or without the add-on.
+// ─────────────────────────────────────────────────────────────────────────
+@use '../token-blocks' as tb;
+
+$on: ":not([design-system='off']):not([tokens='off'])";
+
+:host(#{$on}) {
+    @include tb.light-block(tb.$ignite, $full: false);
+}
+
+:host([theme~='dark']#{$on}) {
+    @include tb.dark-block(tb.$ignite-ungated, $full: false);
+}
+
+:host([theme~='tinted']#{$on}) {
+    @include tb.tinted-block(tb.$ignite);
+}
+
+:host([theme~='dark'][theme~='tinted']#{$on}) {
+    @include tb.dark-tinted-block(tb.$ignite-ungated);
+}

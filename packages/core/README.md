@@ -29,7 +29,7 @@ A Lit-based, framework-agnostic web component data grid. Ships as a single custo
 - **CSV export**: programmatic method plus an optional toolbar dropdown. (Excel/XLSX export is in `apex-grid-enterprise`.)
 - **Toolbar**: opt-in `<apex-grid-toolbar>` with debounced quick filter and export menu.
 - **Templating**: slot-based templates for cells, headers, editors, and detail panels.
-- **Theming**: styled out-of-the-box; fully customizable through `--ag-*` CSS custom properties (no theme import or build step). Auto-tints to an Ignite UI host app's palette when one is present, with no dependency on it.
+- **Theming**: styled out-of-the-box; fully customizable through `--ag-*` CSS custom properties (no theme import or build step), and follows the `--apx-*` tokens shared by every Apex product. One import (`apex-grid/ignite-ui`) makes it follow an Ignite UI theme, light or dark.
 - **Accessibility**: WCAG 2.2 AA semantics (`role="grid"` / `role="treegrid"`, `aria-rowcount`, `aria-colcount`, focus + keyboard navigation).
 - **Provenance-signed npm releases** with OIDC trusted publishing.
 
@@ -130,11 +130,14 @@ See [`src/styles/_token-values.scss`](src/styles/_token-values.scss) for the ful
 import 'apex-grid/tokens.css';
 ```
 
-The grid renders the same without the sheet; it carries the defaults as fallbacks. Three groups have no root default, so page CSS reading them needs its own fallback:
+The grid renders the same without the sheet; it carries the defaults as fallbacks. Four groups have no root default, so page CSS reading them needs its own fallback:
 
-- `--ag-brand` and `--ag-brand-strong`, so an Ignite UI palette set on any ancestor keeps tinting the grid (see below).
-- `--ag-font`, so an Ignite UI font set on any ancestor still reaches the grid (see below).
+- `--ag-brand` and `--ag-brand-strong`, so a family `--apx-accent` (or, with the Ignite UI add-on, an Ignite UI palette) set on any ancestor still reaches the grid (see below).
+- `--ag-font`, for the same reason (`--apx-font-family`, an Ignite UI font).
+- `--ag-overlay` and `--ag-overlay-text` (and `--ag-dark-overlay`, `--ag-dark-overlay-text`): unset, the enterprise popups keep their own colours (see below).
 - The derived washes `--ag-brand-soft`, `--ag-brand-softer`, `--ag-brand-line`, `--ag-row-hover` and `--ag-surface-alt`. The grid mixes them from the brand and surface in effect, so they follow a brand set on an ancestor. Set them only to override the mix.
+
+The root defaults of the text, line and surface tokens are written as their family chain (`--ag-text: var(--apx-fore, #111827)`), so they follow a family token set on `:root` (see below).
 
 **Dark mode.** `theme="dark"` reads its own colour inputs, `--ag-dark-*` (`--ag-dark-surface`, `--ag-dark-text`, `--ag-dark-hairline`, `--ag-dark-shadow-card`, and so on), so a light palette set on a shared ancestor never puts a white surface under the dark theme's light text. Sizing, typography, motion, the brand and the base state colours are shared by both modes. To theme both from one place, set both palettes:
 
@@ -156,7 +159,34 @@ apex-grid[theme~='dark'] { --ag-grid-shadow: var(--ag-dark-shadow-card); } /* th
 apex-grid { --ag-grid-shadow: none; }                                      /* remove the edge entirely */
 ```
 
-If you embed the grid in an Ignite UI app, the brand tokens automatically re-tint from its palette, wherever it is declared: they read `--ig-primary-500` with the grid's own default as the fallback. The font follows `--ig-font-family` the same way. A `--ag-brand`, `--ag-brand-strong` or `--ag-font` you set still wins over the Ignite UI value. That is a plain CSS variable lookup, so the grid neither depends on nor bundles Ignite UI.
+**Enterprise popups.** `--ag-overlay` and `--ag-overlay-text` colour the popups of `apex-grid-enterprise` (filter builder, set filter, AI panel, tool panel, status bar); dark grids read `--ag-dark-overlay` and `--ag-dark-overlay-text`. Set both: the popup lines, muted text and hover wash are mixed from the two. Unset, each popup keeps its built-in colours.
+
+**Family tokens (`--apx-*`).** The grid also reads the tokens every Apex product shares, ranked below its own: `--apx-accent` (brand), `--apx-fore` (text), `--apx-grid` (gridlines, row borders, header separator), `--apx-surface` (card and row background), `--apx-font-family` and `--apx-radius-factor`. An `--ag-*` or `--ag-dark-*` token you set wins over them, and they apply to light and dark grids alike. The brand, font and radius factor reach the grid from any ancestor. Text, lines and surface have root defaults, which resolve on `:root`: they follow a family token set on `:root` (or, with the Ignite UI add-on, which lifts those defaults, on any ancestor). `--apx-radius-factor` scales `--ag-radius`, `--ag-radius-sm` and `--ag-radius-xs` while it is set; at 1 nothing changes, the pill shape stays round, and a multi-value radius (`--ag-radius: 12px 12px 0 0`) works only without a factor.
+
+`tokens="off"` on a grid (or `grid.tokens = false`) keeps it off the family tokens and the content it renders too. One limit without the Ignite UI add-on: an `--apx-fore`, `--apx-grid` or `--apx-surface` set on `:root` has already resolved into the text, line and surface root defaults there, which every grid reads, so that grid still shows it; set the matching `--ag-*` tokens on it, or set the family tokens on the elements they are meant for.
+
+```css
+:root {
+  --apx-accent: #7c3aed;
+  --apx-font-family: 'Source Sans 3', sans-serif;
+  --apx-radius-factor: 0.5;
+}
+```
+
+**Ignite UI.** To follow an Ignite UI theme, import the add-on once:
+
+```ts
+import 'apex-grid/ignite-ui';
+```
+
+Every grid on the page, in the document or in any shadow root, then follows the Ignite UI theme the page loads, including grids that connected before the import: the brand (`--ig-primary-*`), text and muted text, gridlines and the pinned-column edge (the gray ramp), the header (`--ig-surface-raised`, Ignite UI 7.5 and later), the state colours, the font, and the enterprise popups (`--ig-surface-overlay` on 7.5 and later, else the grid's own popup colours). The card and row surfaces keep the grid's own light or dark background. Without the add-on the grid reads no `--ig-*` token, and an Ignite UI stylesheet changes nothing.
+
+- **Ranking:** an `--ag-*` token you set, then the family `--apx-*` tokens, then Ignite UI, then the built-in values.
+- **Mode:** a grid without `theme="dark"` or `theme="light"` follows the Ignite UI variant (`--ig-theme-variant`) declared on `:root` or any ancestor (as Ignite UI themes do), and a theme swap live. `theme="light"` keeps a grid light (text and lines then keep the built-in values, since a dark theme's grays are light) and `theme="dark"` keeps it dark. Where the browser has no container style queries, grids follow the document's variant.
+- **Per grid:** `design-system="off"` (the `designSystem` property set to `false`) turns the Ignite UI colours and font off (the variant still picks the mode); `tokens="off"` (`tokens = false`) turns off the family tokens and Ignite UI, the variant included, for the grid and the content it renders.
+- **Root defaults:** while the add-on is loaded, the tokens that follow Ignite UI (text, lines, surfaces, header, state colours, pinned edge) leave the root defaults, as `--ag-brand` and `--ag-font` always have, so page CSS that reads one gives its own fallback: `var(--ag-text, #111827)`.
+- **Other products:** each takes its own add-on. For the `apex-grid-enterprise` chart panel to read the theme itself, also import `apexcharts/features/ignite-ui` (ApexCharts releases that ship it); the grid never loads it, since it themes every chart on the page. Without it the panel chart takes the grid's colours, which follow the theme.
+- **Bundles:** the add-on registers on a shared `globalThis` slot, so it reaches every grid even when the grid and the add-on come from separately built bundles.
 
 ### 4. Size the host
 
@@ -590,7 +620,7 @@ Search input has a `debounce` attribute (default `200`ms).
 
 ### Theming
 
-The grid styles itself through `--ag-*` CSS custom properties; override them on `apex-grid` or any ancestor (shadow hosts included) to rebrand, and use `--ag-dark-*` for dark grids. See [Customize the look](#3-optional-customize-the-look) and [`src/styles/_token-values.scss`](src/styles/_token-values.scss) for the full list. Where an Ignite UI palette is present, the brand tokens auto-tint from `--ig-primary-500`.
+The grid styles itself through `--ag-*` CSS custom properties; override them on `apex-grid` or any ancestor (shadow hosts included) to rebrand, and use `--ag-dark-*` for dark grids. See [Customize the look](#3-optional-customize-the-look) and [`src/styles/_token-values.scss`](src/styles/_token-values.scss) for the full list. The grid also follows the family `--apx-*` tokens, and an Ignite UI theme with the opt-in `apex-grid/ignite-ui` add-on (both under Customize the look).
 
 Style with CSS parts on the grid, paginator, and toolbar:
 
@@ -728,6 +758,8 @@ See [`demo/state-persistence.html`](../../demo/state-persistence.html) for a sav
 | `coordinateHints` | `boolean` | `false` | Show a row-number gutter + A / B / C header chips (spreadsheet look). Attr `coordinate-hints` |
 | `columnMenu` | `boolean` | `true` | Show the always-visible column-menu (kebab) button on headers; `false` hides it |
 | `showHeader` | `boolean` | `true` | `false` hides the header rows (kept for screen readers). Attr `show-header="false"` |
+| `designSystem` | `boolean` | `true` | With the `apex-grid/ignite-ui` add-on, `false` turns the Ignite UI colours and font off for this grid (the variant still picks the mode). Reflected as `design-system="off"` |
+| `tokens` | `boolean` | `true` | `false` turns the family `--apx-*` tokens (and, with the add-on, Ignite UI) off for this grid and its content. Reflected as `tokens="off"` |
 | `rowRecycling` | `boolean` | `true` | Re-binds body row elements across records on scroll, sort and filter; `false` restores record-keyed rows. See [Row recycling](#row-recycling). Attr `row-recycling="false"` |
 | `rowId` | `(row: T) => string \| number` |  | Durable row identity for `getState` / `setState` |
 | `localeText` | `GridLocaleText` |  | Override map for built-in strings (e.g. `esLocale`) |
@@ -818,7 +850,7 @@ Programmatic `sort()` / `filter()` calls are silent; only UI-initiated changes e
 
 ### Attributes
 
-`auto-generate`, `quick-filter`, `show-quick-filter`, `show-export`, `column-reordering`, `coordinate-hints`, `show-header`, `row-recycling`.
+`auto-generate`, `quick-filter`, `show-quick-filter`, `show-export`, `column-reordering`, `coordinate-hints`, `show-header`, `row-recycling`. Theming: `theme` (`dark`, `light`, `tinted`), `tokens="off"` and, with the `apex-grid/ignite-ui` add-on, `design-system="off"` (see [Customize the look](#3-optional-customize-the-look)).
 
 ### CSS parts
 

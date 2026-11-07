@@ -3,17 +3,24 @@ import { expect, type Page, test } from '@playwright/test';
 import { buildSync } from 'esbuild';
 
 // The shipped core bundle (define.js) never calls setup(), so R4 bundles the
-// package index (which exports setup) in memory.
-let coreSetupBundle: string | null = null;
-function coreSetup(): string {
-  coreSetupBundle ??= buildSync({
-    entryPoints: [fileURLToPath(new URL('../packages/core/dist/index.js', import.meta.url))],
-    bundle: true,
-    format: 'iife',
-    globalName: 'apexGridCore',
-    write: false,
-  }).outputFiles[0].text;
-  return coreSetupBundle;
+// package index (which exports setup) in memory. With `ignite`, the same bundle
+// also imports the opt-in Ignite UI add-on (one copy of the grid for both).
+const coreSetupBundles = new Map<boolean, string>();
+function coreSetup(ignite = false): string {
+  let bundle = coreSetupBundles.get(ignite);
+  if (bundle === undefined) {
+    const dist = fileURLToPath(new URL('../packages/core/dist/', import.meta.url));
+    const contents = `export * from './index.js';${ignite ? "import './ignite-ui.js';" : ''}`;
+    bundle = buildSync({
+      stdin: { contents, resolveDir: dist, loader: 'js' },
+      bundle: true,
+      format: 'iife',
+      globalName: 'apexGridCore',
+      write: false,
+    }).outputFiles[0].text;
+    coreSetupBundles.set(ignite, bundle);
+  }
+  return bundle;
 }
 
 // Shadow DOM audit, wave 1 (plans/34 in apexcharts-js). Mounts the same grid
@@ -29,10 +36,13 @@ type Mode = (typeof MODES)[number];
 
 const BRAND = 'rgb(220, 38, 38)';
 const SURFACE = 'rgb(10, 20, 30)';
-const THEME = `--ig-primary-500: ${BRAND}; --ag-brand: ${BRAND}; --ag-surface: ${SURFACE};`;
+const THEME = `--apx-accent: ${BRAND}; --ag-brand: ${BRAND}; --ag-surface: ${SURFACE};`;
 
-function harness(mode: Mode, bundle: 'enterprise' | 'core', opts: { rowDrag?: boolean; noHeight?: boolean }) {
-  const src = bundle === 'core' ? '/__core-setup.js' : '/apex-grid-enterprise.min.js';
+type HarnessOptions = { rowDrag?: boolean; noHeight?: boolean; ignite?: boolean };
+
+function harness(mode: Mode, bundle: 'enterprise' | 'core', opts: HarnessOptions) {
+  const core = opts.ignite ? '/__core-setup-ignite.js' : '/__core-setup.js';
+  const src = bundle === 'core' ? core : '/apex-grid-enterprise.min.js';
   const tag = bundle === 'core' ? 'apex-grid' : 'apex-grid-enterprise';
   return `<!doctype html><html><head><meta charset="utf-8">
 <style>body{margin:0;padding:24px;font:14px system-ui}</style>
@@ -79,10 +89,13 @@ window.deepActive = () => { let e = document.activeElement; while (e && e.shadow
 </script></body></html>`;
 }
 
-async function open(page: Page, mode: Mode, bundle: 'enterprise' | 'core' = 'enterprise', opts = {}) {
+async function open(page: Page, mode: Mode, bundle: 'enterprise' | 'core' = 'enterprise', opts: HarnessOptions = {}) {
   const html = harness(mode, bundle, opts);
   await page.route('**/__shadow.html*', (route) => route.fulfill({ contentType: 'text/html', body: html }));
   await page.route('**/__core-setup.js', (route) => route.fulfill({ contentType: 'text/javascript', body: coreSetup() }));
+  await page.route('**/__core-setup-ignite.js', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: coreSetup(true) })
+  );
   await page.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, (route) => route.abort());
   await page.goto(`/__shadow.html?mode=${mode}`);
   await expect(page.locator('apex-grid-cell').first()).toBeVisible({ timeout: 15_000 });
@@ -147,10 +160,40 @@ async function chartSelection(page: Page) {
 for (const mode of MODES) {
   test.describe(`[${mode}]`, () => {
     // --- theme reaches the grid itself ------------------------------------
-    test('T0 an Ignite palette on the outermost host tints the brand (no --ag-brand set)', async ({ page }) => {
+    test('T0 a family accent on the outermost host tints the brand (no --ag-brand set)', async ({ page }) => {
       await open(page, mode);
-      await setVars(page, { '--ag-brand': null, '--ig-primary-500': 'rgb(1, 2, 3)' });
+      await setVars(page, { '--ag-brand': null, '--apx-accent': 'rgb(1, 2, 3)' });
       expect(await gridVar(page, '--_ag-brand')).toBe('rgb(1, 2, 3)');
+    });
+
+    test('T0b without the Ignite UI add-on, an Ignite palette on the outermost host changes nothing', async ({ page }) => {
+      await open(page, mode);
+      await setVars(page, { '--ag-brand': null, '--apx-accent': null, '--ig-primary-500': 'rgb(1, 2, 3)' });
+      expect(await gridVar(page, '--_ag-brand')).toBe('#0d6fd3');
+    });
+
+    test('T0c with the Ignite UI add-on, an Ignite theme on the outermost host reaches the grid', async ({ page }) => {
+      await open(page, mode, 'core', { ignite: true });
+      await setVars(page, {
+        '--ag-brand': null,
+        '--apx-accent': null,
+        '--ag-surface': null,
+        '--ig-primary-500': 'rgb(1, 2, 3)',
+        '--ig-gray-800': 'rgb(4, 5, 6)',
+      });
+      expect(await gridVar(page, '--_ag-brand')).toBe('rgb(1, 2, 3)');
+      expect(await gridVar(page, '--_ag-text')).toBe('rgb(4, 5, 6)');
+      // A dark variant where the grid sits turns it dark (a container style query, which reads
+      // an ancestor: in [light] the tokens sit on the grid itself, so the variant goes on :root).
+      await setVars(page, { '--ig-gray-800': 'rgb(240, 240, 240)' });
+      await page.evaluate(() => {
+        const w = window as any;
+        const at = w.outer === w.grid ? document.documentElement : w.outer;
+        at.style.setProperty('--ig-theme-variant', 'dark');
+      });
+      await settle(page);
+      expect(await gridVar(page, '--_ag-surface')).toBe('#0f172a');
+      expect(await gridVar(page, '--_ag-text')).toBe('rgb(240, 240, 240)');
     });
 
     test('X1 --ag-surface set on the outermost host paints the grid body', async ({ page }) => {
@@ -179,6 +222,7 @@ for (const mode of MODES) {
           },
           [names, prefix]
         );
+      // The radii are scaled by the family radius factor only while it is set; unset here.
       for (const [n, v] of await read('--ag-')) expect(v, n).toBe(`tok${n.slice(1)}`);
       await page.evaluate(() => (window as any).grid.setAttribute('theme', 'dark'));
       await settle(page);

@@ -5,20 +5,23 @@
 //    grid adopts into the document, also shipped as `apex-grid/tokens.css`).
 //    That makes `var(--ag-*)` readable anywhere on the page and lets any
 //    ancestor override it, because a value declared lower down always wins.
-//  - `_tokens.scss` uses it as the literal fallback of the grid's private
-//    `--_ag-*` copy, so a grid still renders styled without the root sheet.
+//    A token with a family role (`$roles`) is published as the family
+//    token's chain, `var(--apx-fore, #111827)`, resolved on the root.
+//  - `_token-blocks.scss` uses it as the literal fallback of the grid's
+//    private `--_ag-*` copy, so a grid still renders styled without the root
+//    sheet.
 // Left out on purpose:
-//  - `--ag-brand` / `--ag-brand-strong`: the grid falls back to an Ignite UI
-//    `--ig-primary-*` palette set on any ancestor. A root default would win
-//    over a palette scoped below `:root`, so the brand stays unset there.
-//  - `--ag-font`, for the same reason: the grid falls back to an Ignite UI
-//    `--ig-font-family` set on any ancestor. Its default still lives in
-//    `$light` below; `$no-root-default` keeps it off the root.
+//  - `--ag-brand` / `--ag-brand-strong`: the grid falls back to the family
+//    `--apx-accent` set on any ancestor. A root default would win over a
+//    token scoped below `:root`, so the brand stays unset there.
+//  - `--ag-font`, for the same reason (`--apx-font-family`). Its default
+//    still lives in `$light` below; `$no-root-default` keeps it off the root.
+//  - `--ag-overlay` / `--ag-overlay-text` (and their `--ag-dark-*` twins):
+//    unset, the enterprise popups keep their own built-in colours.
 //  - Derived tokens (brand washes, row hover, alternate surface): they are
 //    mixed from other tokens on the grid host. Resolved on `:root` they would
 //    freeze there and never follow a brand or surface set lower down.
 // ─────────────────────────────────────────────────────────────────────────
-@use 'sass:list';
 
 // Light palette plus every non-colour token (typography, sizing, motion).
 // Light grids read `--ag-<name>`.
@@ -108,21 +111,34 @@ $dark: (
     'shadow-card': (0 16px 38px rgb(0 0 0 / 55%), 0 0 0 1px rgb(255 255 255 / 6%), 0 1px 0 rgb(255 255 255 / 4%) inset),
 );
 
-// `$light` tokens left off the root (see above). `_tokens.scss` resolves each
-// one on the host with its Ignite UI fallback instead.
+// `$light` tokens left off the root (see above). `_token-blocks.scss`
+// resolves each one on the host instead.
 $no-root-default: ('font',);
 
-// The public defaults, at zero specificity so any declaration beats them.
-@mixin root-defaults {
-    :where(:root) {
-        @each $name, $value in $light {
-            @if not list.index($no-root-default, $name) {
-                --ag-#{$name}: #{$value};
-            }
-        }
-
-        @each $name, $value in $dark {
-            --ag-dark-#{$name}: #{$value};
-        }
-    }
-}
+// The family role of each token that follows the ApexCharts family tokens
+// (`--apx-*`) and, with the `apex-grid/ignite-ui` add-on, an Ignite UI theme
+// (`--ig-*`). The roles and their steps come from apex-commons
+// (`apex-commons/css/igniteui`), the mapping every Apex product shares: text
+// is `fore` (`--apx-fore`, Ignite UI gray 800), muted text is `muted` (gray
+// 600), lines are `grid` (`--apx-grid`, gray 300), the pinned-column edge is
+// `guide` (gray 400), the header is `raised`, the card is `surface`
+// (`--apx-surface`; no Ignite UI step) and the state colours are the success,
+// warn and error seeds. Dark grids map their `--ag-dark-*` twins the same way.
+// `--ag-brand` is `accent` and `--ag-font` is `font`; both live in
+// `_token-blocks.scss`, as they have no root default.
+$roles: (
+    'grid-bg': 'surface',
+    'surface': 'surface',
+    'surface-elevated': 'raised',
+    'hairline': 'grid',
+    'border': 'grid',
+    'header-separator': 'grid',
+    'pin-line': 'guide',
+    'text': 'fore',
+    'text-body': 'fore',
+    'text-muted': 'muted',
+    'text-subtle': 'muted',
+    'good': 'positive',
+    'watch': 'caution',
+    'risk': 'negative',
+);

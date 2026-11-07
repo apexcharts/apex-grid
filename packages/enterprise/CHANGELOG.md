@@ -29,11 +29,10 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   named, comma `rgb()`, `hsl()` and `hwb()` tokens (with or without `calc()`
   inside), including every default, are passed on exactly as before; a
   relative `hsl(from ...)` is converted like the other modern syntaxes.
-- With an Ignite UI theme whose palette shades are relative colors (the 6.x
-  Bootstrap, Material and Fluent themes), every chart series now draws at the
-  usual fill opacity. Before, the second series, which takes
-  `--ig-primary-700` (`--ig-primary-400` in dark mode), drew fully opaque.
-  Themes with hex shades are unchanged.
+- With brand tokens written as relative colors, as the shades of the Ignite UI
+  6.x Bootstrap, Material and Fluent palettes are, every chart series now
+  draws at the usual fill opacity. Before, the second series, which takes
+  `--ag-brand-strong`, drew fully opaque. Hex shades are unchanged.
 - The `grid` property of the chart panel, status bar, tool panel, AI panel,
   filter builder and set filter accepts a grid typed with your own row
   interface or type alias without a cast.

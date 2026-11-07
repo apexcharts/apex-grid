@@ -22,11 +22,15 @@
       "types": "./internal/index.d.ts",
       "default": "./internal/index.js"
     },
+    "./ignite-ui": {
+      "types": "./ignite-ui.d.ts",
+      "default": "./ignite-ui.js"
+    },
     "./styles.css": "./styles.css",
     "./tokens.css": "./tokens.css"
   },
   "type": "module",
-  "sideEffects": ["./define.js", "./styles.css", "./tokens.css"],
+  "sideEffects": ["./define.js", "./ignite-ui.js", "./styles.css", "./tokens.css"],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/apexcharts/apex-grid.git"

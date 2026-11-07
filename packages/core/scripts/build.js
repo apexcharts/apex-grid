@@ -22,9 +22,13 @@ const DELIBERATE_MANIFEST_DIFFERENCES = {
   // body's rows directive relies on its private members.)
   'dependencies.@lit/context': { workspace: '^1.1.5', published: '~1.1.5' },
   // The workspace manifest omits the field, so in-repo consumers keep every
-  // module. Published, only define.js (registers <apex-grid>) and the two
-  // stylesheets have side effects, so apps that import 'apex-grid/define' keep it.
-  sideEffects: { workspace: undefined, published: ['./define.js', './styles.css', './tokens.css'] },
+  // module. Published, only define.js (registers <apex-grid>), ignite-ui.js
+  // (registers the Ignite UI add-on) and the two stylesheets have side effects,
+  // so apps that import 'apex-grid/define' or 'apex-grid/ignite-ui' keep them.
+  sideEffects: {
+    workspace: undefined,
+    published: ['./define.js', './ignite-ui.js', './styles.css', './tokens.css'],
+  },
 };
 
 async function writeDistPackageJson() {
@@ -51,7 +55,8 @@ async function cleanDist() {
 async function writeTokensCss() {
   const { css } = await sass.compileAsync('src/styles/document-tokens.scss', {
     style: 'expanded',
-    loadPaths: ['src'],
+    // The family chains come from apex-commons' generated SCSS (build time only).
+    loadPaths: ['src', 'node_modules', '../../node_modules'],
   });
   const header = [
     '/*',

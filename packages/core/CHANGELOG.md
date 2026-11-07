@@ -6,16 +6,63 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **`apex-grid/ignite-ui`, the Ignite UI add-on.** `import 'apex-grid/ignite-ui'`
+  once and every grid on the page follows the Ignite UI theme the page loads:
+  brand, text and muted text, gridlines and the pinned-column edge, the header
+  (`--ig-surface-raised`, Ignite UI 7.5 and later), state colours, font and the
+  enterprise popups (`--ig-surface-overlay` on 7.5 and later). A grid without
+  `theme="dark"` or `theme="light"` follows the Ignite UI variant, live, with
+  a JS fallback where the browser has no container style queries;
+  `theme="light"` keeps a grid light. Ranking: an `--ag-*` token you set, then
+  the family `--apx-*` tokens, then Ignite UI, then the built-in values. Per
+  grid, `design-system="off"` turns the Ignite UI colours and font off (the
+  variant still picks the mode) and `tokens="off"` turns off the family tokens
+  and Ignite UI, variant included (both also as the reflected `designSystem`
+  and `tokens` properties). It registers on a shared `globalThis` slot, so it
+  reaches the grids of a separately built bundle too. While the add-on is
+  loaded, the tokens that follow Ignite UI (text, lines, surfaces, header,
+  state colours, pinned edge) leave the root defaults, so page CSS that reads
+  one needs its own fallback. It adds about 2.5 KB gzip to an app, and only
+  where it is imported.
+- **The family `--apx-*` tokens** shared by every Apex product: `--apx-accent`
+  (brand), `--apx-fore` (text), `--apx-grid` (gridlines, row borders, header
+  separator), `--apx-surface` (card and row background), `--apx-font-family`
+  and `--apx-radius-factor`, each ranked below the matching `--ag-*` token.
+  The text, line and surface root defaults are now written as their family
+  chain (`--ag-text: var(--apx-fore, #111827)` in `:where(:root)` and
+  `apex-grid/tokens.css`), so they follow a family token set on `:root`.
+- `--apx-radius-factor` scales `--ag-radius`, `--ag-radius-sm` and
+  `--ag-radius-xs` while it is set. Unset or 1, every radius is unchanged
+  (a multi-value radius too, without a factor); the pill stays round.
+- `tokens="off"` (or `grid.tokens = false`) keeps one grid, and the content it
+  renders, off the family tokens, with or without the add-on. Without the
+  add-on, an `--apx-fore`, `--apx-grid` or `--apx-surface` set on `:root` still
+  reaches that grid through the root defaults, which resolve there.
+- `--ag-overlay` and `--ag-overlay-text` (dark grids: `--ag-dark-overlay`,
+  `--ag-dark-overlay-text`) colour the `apex-grid-enterprise` popups. They have
+  no default: unset, each popup keeps its built-in colours.
+
+### Changed
+- **Breaking: the grid no longer reads Ignite UI tokens by itself.** Before,
+  an Ignite UI theme on the page re-tinted the brand (`--ig-primary-500`,
+  `--ig-primary-700`) and replaced the font (`--ig-font-family`) with no
+  import. Now an Ignite UI stylesheet changes nothing until you import
+  `apex-grid/ignite-ui`, which brings the brand and font back along with the
+  rest of the theme.
+- The grid now follows the family `--apx-*` tokens (above). A page that sets
+  them for its charts, on `:root` for example, sees the grid follow them too.
+  Set the matching `--ag-*` tokens to keep the grid as it was, or set the
+  family tokens on the elements they are meant for.
+
 ### Fixed
-- An explicit `--ag-font` now wins over an Ignite UI `--ig-font-family`, the
+- An explicit `--ag-font` now wins over the family and Ignite UI fonts, the
   same order the brand tokens use. Before, an Ignite UI theme on the page
   replaced the grid font even when `--ag-font` was set on the grid itself. The
-  Ignite UI font still applies when `--ag-font` is not set, and the default
-  Inter stack is unchanged. To keep that fallback reachable, `--ag-font` no
-  longer has a root default (it is gone from `:where(:root)` and
-  `apex-grid/tokens.css`), so page CSS that reads `var(--ag-font)` needs its
-  own fallback, as with `--ag-brand`. A copy of the old root defaults in your
-  own CSS now sets the font explicitly and overrides the Ignite UI font.
+  default Inter stack is unchanged. To keep the family and Ignite UI fonts
+  reachable, `--ag-font` no longer has a root default (it is gone from
+  `:where(:root)` and `apex-grid/tokens.css`), so page CSS that reads
+  `var(--ag-font)` needs its own fallback, as with `--ag-brand`.
 
 ## [4.0.0-beta.1] - 2026-10-29
 

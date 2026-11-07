@@ -824,20 +824,24 @@ describe('ApexGridChart Format and Data controls', () => {
   });
 
   // An Ignite UI 6 Bootstrap, Material or Fluent theme writes its darker and lighter shades as
-  // relative colors (the formulas below are igniteui-webcomponents 6.1.2's). The second series
-  // used to reach ApexCharts as that string and draw fully opaque; an Indigo-style hex shade
-  // still passes through as written.
+  // relative colors (the formulas below are igniteui-webcomponents 6.1.2's), and a page that hands
+  // them to the grid's brand tokens gets the same values. The second series used to reach
+  // ApexCharts as that string and draw fully opaque; an Indigo-style hex shade still passes
+  // through as written. (Without the `apex-grid/ignite-ui` add-on the grid reads no `--ig-*`
+  // token, so the page sets `--ag-brand` itself; with it, the chart reads the theme on its own:
+  // `chart-ignite-ui.test.ts`.)
   const IGNITE_500 = '#0d6efd';
-  const igniteParent = (grid: unknown, tokens: Record<string, string>) => {
+  const brandParent = (grid: unknown, tokens: Record<string, string>) => {
     const parent = (grid as HTMLElement).parentElement!;
     for (const [name, value] of Object.entries(tokens)) parent.style.setProperty(name, value);
   };
 
   it('draws an Ignite UI 6 relative shade at the usual fill opacity', async () => {
     const grid = await mountWide();
-    igniteParent(grid, {
-      '--ig-primary-500': IGNITE_500,
-      '--ig-primary-700': 'hsl(from var(--ig-primary-500) h calc(s * 1.26) calc(l * 0.81))',
+    brandParent(grid, {
+      '--x-primary-500': IGNITE_500,
+      '--ag-brand': 'var(--x-primary-500)',
+      '--ag-brand-strong': 'hsl(from var(--x-primary-500) h calc(s * 1.26) calc(l * 0.81))',
     });
     const panel = await mountChart(grid);
     expect(drawn(panel).w.config.colors.slice(0, 2)).to.eql([IGNITE_500, '#0052f1']);
@@ -847,9 +851,10 @@ describe('ApexGridChart Format and Data controls', () => {
   it('draws an Ignite UI 6 dark relative shade at the usual fill opacity', async () => {
     const grid = await mountWide();
     (grid as unknown as HTMLElement).setAttribute('theme', 'dark');
-    igniteParent(grid, {
-      '--ig-primary-500': IGNITE_500,
-      '--ig-primary-400': 'hsl(from var(--ig-primary-500) h calc(s * 0.875) calc(l * 1.08))',
+    brandParent(grid, {
+      '--x-primary-500': IGNITE_500,
+      '--ag-brand': 'var(--x-primary-500)',
+      '--ag-brand-strong': 'hsl(from var(--x-primary-500) h calc(s * 0.875) calc(l * 1.08))',
     });
     await grid.updateComplete;
     const panel = await mountChart(grid);
@@ -858,7 +863,7 @@ describe('ApexGridChart Format and Data controls', () => {
 
   it('passes an Ignite UI hex shade through as written', async () => {
     const grid = await mountWide();
-    igniteParent(grid, { '--ig-primary-500': '#3f51b5', '--ig-primary-700': '#333d83' });
+    brandParent(grid, { '--ag-brand': '#3f51b5', '--ag-brand-strong': '#333d83' });
     const panel = await mountChart(grid);
     expect(drawn(panel).w.config.colors.slice(0, 2)).to.eql(['#3f51b5', '#333d83']);
     expect(fills(panel)).to.eql(['rgba(63,81,181,0.85)', 'rgba(51,61,131,0.85)']);
@@ -866,12 +871,19 @@ describe('ApexGridChart Format and Data controls', () => {
 
   it('passes an Ignite UI hsl() triplet with calc() through as written', async () => {
     const grid = await mountWide();
-    igniteParent(grid, {
-      '--ig-primary-500': '216deg, calc(98% * 1), calc(52% * 1)',
-      '--ag-brand': 'hsl(var(--ig-primary-500))',
+    brandParent(grid, {
+      '--x-primary-500': '216deg, calc(98% * 1), calc(52% * 1)',
+      '--ag-brand': 'hsl(var(--x-primary-500))',
     });
     const panel = await mountChart(grid);
     expect(drawn(panel).w.config.colors[0]).to.equal('hsl(216deg, calc(98% * 1), calc(52% * 1))');
+  });
+
+  it('ignores an Ignite UI palette without the add-on', async () => {
+    const grid = await mountWide();
+    brandParent(grid, { '--ig-primary-500': '#3f51b5', '--ig-primary-700': '#333d83' });
+    const panel = await mountChart(grid);
+    expect(drawn(panel).w.config.colors.slice(0, 2)).to.eql(['#0d6fd3', '#0a56b8']);
   });
 
   it('toggling a measure keeps a calculated field on the secondary axis', async () => {

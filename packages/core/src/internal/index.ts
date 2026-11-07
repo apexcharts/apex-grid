@@ -22,6 +22,8 @@ export {
   parseDate,
 } from './column-types.js';
 export { PIPELINE } from './constants.js';
+export type { DesignSystemStyles } from './design-system.js';
+export { designSystemName, onDesignSystemRegistered } from './design-system.js';
 export type { ExportCellValue, ExportFormat, ExportOptions } from './export.js';
 export {
   downloadBlob,

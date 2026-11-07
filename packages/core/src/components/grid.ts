@@ -16,6 +16,7 @@ import {
   localize as resolveLocaleText,
 } from '../i18n/index.js';
 import { DEFAULT_COLUMN_CONFIG, PIPELINE, SENTINEL_NODE } from '../internal/constants.js';
+import { connectDesignSystem, disconnectDesignSystem } from '../internal/design-system.js';
 import { adoptGridDocumentStyles } from '../internal/document-styles.js';
 import {
   buildCSV,
@@ -805,6 +806,12 @@ function keyChanged(key: readonly unknown[], previous: readonly unknown[]): bool
   return key.some((value, i) => value !== previous[i]);
 }
 
+/** A theming switch: on unless the attribute says `off`, reflected as `off` or no attribute. */
+const OFF_SWITCH = {
+  fromAttribute: (value: string | null) => value !== 'off',
+  toAttribute: (value: boolean) => (value ? null : 'off'),
+};
+
 /** Report a dropped entry from a property setter (no result object to carry it). */
 function warnDropped(message: string): void {
   // biome-ignore lint/suspicious/noConsole: the setter has no other channel for a dropped entry
@@ -827,17 +834,19 @@ function warnDropped(message: string): void {
  *
  * The grid is styled out of the box through `--ag-*` CSS custom properties —
  * there is no theme to import and no `configureTheme()` call. Override `--ag-*`
- * tokens on the host (or any ancestor) to rebrand; where an Ignite UI palette is
- * present, the brand tokens auto-tint from it. For dark mode, set
- * the `theme="dark"` attribute on the host for the built-in slate dark palette
- * (further `--ag-*` overrides still compose on top). Add `tinted` (e.g.
- * `theme="tinted"` or `theme="dark tinted"`) to mix the brand into the chrome
- * so the grid wears its brand even at rest. See the README "Getting Started"
- * and "Theming" sections for the full example and token list.
+ * tokens on the host (or any ancestor) to rebrand; the family `--apx-*` tokens
+ * (`--apx-accent`, `--apx-fore`, `--apx-grid`, `--apx-surface`,
+ * `--apx-font-family`, `--apx-radius-factor`) apply where no `--ag-*` token is
+ * set. To follow an Ignite UI theme, import the `apex-grid/ignite-ui` add-on.
+ * For dark mode, set the `theme="dark"` attribute on the host for the built-in
+ * slate dark palette (further `--ag-*` overrides still compose on top). Add
+ * `tinted` (e.g. `theme="tinted"` or `theme="dark tinted"`) to mix the brand
+ * into the chrome so the grid wears its brand even at rest. See the README
+ * "Getting Started" and "Theming" sections for the full example and token list.
  *
  * @element apex-grid
  *
- * @attr {string} theme - Space-separated theme flags. `dark` opts into the built-in dark palette; `tinted` mixes `--ag-brand` into the chrome surfaces. Combine as `theme="dark tinted"`.
+ * @attr {string} theme - Space-separated theme flags. `dark` opts into the built-in dark palette; `tinted` mixes `--ag-brand` into the chrome surfaces. Combine as `theme="dark tinted"`. With the `apex-grid/ignite-ui` add-on a grid without `dark` or `light` follows the Ignite UI variant, and `light` keeps it light.
  *
  * @fires sorting - Emitted when sorting is initiated through the UI.
  * @fires sorted - Emitted when a sort operation initiated through the UI has completed.
@@ -890,7 +899,7 @@ function warnDropped(message: string): void {
  * @csspart export-menu - The export dropdown menu.
  * @csspart export-menu-item - An item in the export menu.
  *
- * @cssprop [--ag-brand] - Brand color for selection, focus rings, and accents. Auto-tints from `--ig-primary-500` where an Ignite UI palette is present.
+ * @cssprop [--ag-brand] - Brand color for selection, focus rings, and accents. Falls back to `--apx-accent`, then (with the `apex-grid/ignite-ui` add-on) the Ignite UI primary.
  * @cssprop [--ag-brand-strong] - Brand color for hover / pressed states.
  * @cssprop [--ag-grid-shadow] - Grid edge/shadow override. Default is a flat 1px hairline edge; set to `var(--ag-shadow-card)` (`var(--ag-dark-shadow-card)` on a dark grid) for the elevated card look, or `none` to remove it.
  * @cssprop [--ag-grid-bg] - Host card background. Defaults to a subtle light gradient; override with a flat color (or use `theme="dark"`) for dark themes.
@@ -916,8 +925,12 @@ function warnDropped(message: string): void {
  * @cssprop [--ag-dark-shadow-card] - Elevated card shadow for dark grids (see `--ag-grid-shadow`).
  * @cssprop [--ag-row-h] - Row height.
  * @cssprop [--ag-header-h] - Header height.
- * @cssprop [--ag-radius] - Outer card corner radius.
- * @cssprop [--ag-font] - Grid font family. Wins over an Ignite UI `--ig-font-family`, which the grid falls back to when this is unset.
+ * @cssprop [--ag-radius] - Outer card corner radius. The radii (`--ag-radius`, `-sm`, `-xs`, not the pill) scale with `--apx-radius-factor` while it is set (single lengths only).
+ * @cssprop [--ag-font] - Grid font family. Falls back to `--apx-font-family`, then (with the `apex-grid/ignite-ui` add-on) the Ignite UI `--ig-font-family`.
+ * @cssprop [--ag-overlay] - Background of the enterprise popups (filter builder, set filter, AI panel, tool panel, status bar). Unset, each keeps its built-in colour; set it with `--ag-overlay-text`.
+ * @cssprop [--ag-overlay-text] - Text color of the enterprise popups; their lines, muted text and hover wash are mixed from the two.
+ * @cssprop [--ag-dark-overlay] - Popup background on dark grids.
+ * @cssprop [--ag-dark-overlay-text] - Popup text color on dark grids.
  * @cssprop [--ag-fs-cell] - Cell font size.
  *
  * @see {@link https://github.com/apexcharts/apex-grid/blob/main/packages/core/src/styles/_tokens.scss | _tokens.scss} for the complete `--ag-*` token list.
@@ -952,10 +965,10 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * registry. Idempotent — safe to call more than once.
    *
    * @remarks
-   * Registering the element is only step one of four required for a visible, styled
-   * grid. You must also configure an Ignite UI theme + CSS, give the host a bounded
-   * height, and avoid overriding `display` on the host. See the README
-   * "Getting Started" section for the full setup.
+   * Registering the element is only step one of three required for a visible, styled
+   * grid. You must also give the host a bounded height and avoid overriding
+   * `display` on the host. See the README "Getting Started" section for the
+   * full setup.
    */
   public static register() {
     registerComponent(
@@ -1460,6 +1473,28 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    */
   @property({ attribute: 'show-header', converter: (value) => value !== 'false' })
   public showHeader = true;
+
+  /**
+   * Whether this grid follows the design-system add-on (`apex-grid/ignite-ui`).
+   * `false`, reflected as `design-system="off"`, turns the Ignite UI colours
+   * and font off for this grid; the Ignite UI variant still picks its mode.
+   * Without the add-on it changes nothing.
+   *
+   * @attr design-system
+   */
+  @property({ attribute: 'design-system', reflect: true, converter: OFF_SWITCH })
+  public designSystem = true;
+
+  /**
+   * Whether this grid reads the family `--apx-*` tokens and, with the
+   * `apex-grid/ignite-ui` add-on, Ignite UI (the variant included). `false`,
+   * reflected as `tokens="off"`, turns them off for the grid and the content
+   * it renders, so it keeps the built-in look and the `--ag-*` tokens you set.
+   *
+   * @attr tokens
+   */
+  @property({ attribute: 'tokens', reflect: true, converter: OFF_SWITCH })
+  public tokens = true;
 
   /**
    * Column groups rendered as spanning headers above the column header row.
@@ -2257,12 +2292,19 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     // The `--ag-*` root defaults (and the `setup()` host sizing) live outside
     // the shadow root; see internal/document-styles.ts.
     adoptGridDocumentStyles(this);
+    // A design-system add-on's rules (`apex-grid/ignite-ui`), when one is loaded.
+    connectDesignSystem(this);
     // Before the page's own error listeners run, so they never see the notice.
     quietResizeObserverLoopNotice();
     // The host's labelling names the element with the grid role.
     this.#labelObserver.observe(this, {
       attributeFilter: ['aria-label', 'aria-labelledby', 'aria-describedby'],
     });
+  }
+
+  public override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    disconnectDesignSystem(this);
   }
 
   #labelObserver = new MutationObserver(() => this.requestUpdate());

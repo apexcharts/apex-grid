@@ -22,6 +22,10 @@
       "types": "./dist/internal/index.d.ts",
       "default": "./dist/internal/index.js"
     },
+    "./ignite-ui": {
+      "types": "./dist/ignite-ui.d.ts",
+      "default": "./dist/ignite-ui.js"
+    },
     "./styles.css": "./dist/styles.css",
     "./tokens.css": "./dist/tokens.css"
   },
@@ -67,6 +71,7 @@
     "@web/dev-server-esbuild": "^1.0.4",
     "@web/test-runner": "^0.20.2",
     "@web/test-runner-playwright": "^0.11.1",
+    "apex-commons": "^0.10.0",
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.2.0",
     "globby": "^14.1.0",

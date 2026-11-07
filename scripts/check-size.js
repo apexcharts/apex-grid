@@ -12,6 +12,9 @@
 //   enterprise lazy chunks       the chunks reached only through import(),
 //                                summed
 //   enterprise index entry       `import ... from 'apex-grid-enterprise'`
+//   core ignite-ui add-on        `import 'apex-grid/ignite-ui'` on its own, lit
+//                                external (it counts the small modules it
+//                                shares with core, so it is an upper bound)
 //
 // Budgets are the gzip size at the last re-baseline plus 3 percent, rounded up
 // to the next 500 bytes. A change that crosses one either earns its bytes (raise
@@ -28,7 +31,9 @@ import { build } from 'esbuild';
  * Gzip bytes. Re-baselined on 24a0f33 (2026-11-03), where the bundles were
  * 67320, 83629, 135807, 19064 and 159274 bytes in this order. The index entry
  * includes the AI engine chunk it shares with the lazy import() path, about
- * 20 KB gzip, because the barrel imports it statically.
+ * 20 KB gzip, because the barrel imports it statically. The Ignite UI add-on
+ * joined at 3010 bytes (plan 36, 2026-11-08), with its registry on a shared
+ * globalThis slot; on top of core define it adds about 2500.
  */
 const BUDGETS = {
   'core define (lit external)': 69_500,
@@ -36,6 +41,7 @@ const BUDGETS = {
   'enterprise define entry': 140_000,
   'enterprise lazy chunks': 20_000,
   'enterprise index entry': 164_500,
+  'core ignite-ui add-on': 3_500,
 };
 
 /** Peer dependencies stay external, as they do in an app's bundle. */
@@ -98,6 +104,7 @@ async function measure() {
   const coreBundled = await bundle('packages/core/dist/define.js', ['apexcharts']);
   const entDefine = await bundle('packages/enterprise/dist/define.js', PEERS, true);
   const entIndex = await bundle('packages/enterprise/dist/index.js', PEERS, true);
+  const coreIgnite = await bundle('packages/core/dist/ignite-ui.js', PEERS);
 
   // A chunk the entry imports statically ships with the entry, so it counts
   // toward the entry budget, not the lazy one.
@@ -110,6 +117,7 @@ async function measure() {
     'enterprise define entry': sum(pick(entDefine, true)),
     'enterprise lazy chunks': sum(pick(entDefine, false)),
     'enterprise index entry': sum(pick(entIndex, true)),
+    'core ignite-ui add-on': sum(pick(coreIgnite, true)),
   };
 }
 

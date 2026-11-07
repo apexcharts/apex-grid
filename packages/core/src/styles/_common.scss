@@ -6,11 +6,8 @@
 // runtime dependency of every consumer) bought a three-line px-to-rem helper.
 // It also emitted 55 Sass deprecation warnings per build from its own
 // `if()` usage. Both are gone; `rem()` below is the same conversion.
-// The `--ig-primary-*` / `--ig-font-family` fallbacks in `_tokens.scss` stay:
-// they are plain CSS variable names with defaults, cost nothing when absent, and
-// are how the grid auto-tints inside an Ignite UI host app. The parallel
-// `--igx-*` level was removed — no Ignite UI web-components theme defines that
-// prefix (it is the igniteui-angular convention), so it could never resolve.
+// The grid reads no `--ig-*` token of its own: following an Ignite UI theme is
+// the opt-in `apex-grid/ignite-ui` add-on (`styles/ignite-ui/`).
 // ─────────────────────────────────────────────────────────────────────────
 
 @use 'sass:math';

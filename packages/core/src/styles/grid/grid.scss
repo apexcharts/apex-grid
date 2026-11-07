@@ -3,6 +3,6 @@
 // (`_grid.base.scss`). This replaces the former per-framework theme files
 // (bootstrap / fluent / material / indigo), which had collapsed into thin
 // re-tint shims. The grid now styles itself entirely through `--ag-*` CSS
-// variables; consumers customize by overriding those, and Ignite UI host apps
-// are auto-matched via the `--ig-*` fallbacks baked into `_tokens.scss`.
+// variables; consumers customize by overriding those (or the family `--apx-*`
+// tokens), and Ignite UI host apps opt in with the `apex-grid/ignite-ui` add-on.
 @use 'grid.base';

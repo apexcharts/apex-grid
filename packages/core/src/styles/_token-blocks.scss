@@ -1,0 +1,309 @@
+// ─────────────────────────────────────────────────────────────────────────
+// The grid's token chains and the blocks built from them. Emits no CSS.
+// Shared by the grid's own stylesheet (`_tokens.scss`, through `grid.scss`),
+// the root defaults (`document-tokens.scss`) and the opt-in Ignite UI add-on
+// (`ignite-ui/*.scss`), so the three can never drift apart.
+// Each private `--_ag-*` copy resolves the D5 order, left to right: the
+// public `--ag-*` input (rank 2), the family `--apx-*` token (rank 3), the
+// Ignite UI `--ig-*` chain (rank 5, the add-on only), the built-in default
+// (rank 6). The family and Ignite UI steps come from apex-commons'
+// generated `chain()`, the one mapping every Apex product shares; a token
+// takes them through its role in `token-values.$roles`.
+// `$layers` picks the steps a block takes:
+//  - `ig`: the Ignite UI step at all (the add-on);
+//  - `gated`: the Ignite UI step of the roles that flip with the Ignite UI
+//    variant (gray text and lines, raised and overlay surfaces). They are
+//    only right when the grid's mode matches the variant: a gray 800 that is
+//    dark text in a light theme is light text in a dark one.
+// ─────────────────────────────────────────────────────────────────────────
+@use 'sass:list';
+@use 'sass:map';
+@use 'apex-commons/css/igniteui' as ig;
+@use 'token-values' as tv;
+
+// The grid's own steps: the family tokens, no Ignite UI.
+$core: (ig: false, gated: false);
+
+// The add-on, with the grid in the variant's mode.
+$ignite: (ig: true, gated: true);
+
+// The add-on, with the grid in the other mode: the brand, state colours
+// and font still follow Ignite UI; text, lines and surfaces keep the
+// built-in values of the grid's own mode.
+$ignite-ungated: (ig: true, gated: false);
+
+// The roles whose Ignite UI colour flips with the variant (commons'
+// `GATED`, the same set ApexCharts, ApexTree and ApexGantt gate).
+$gated-roles: (
+    'fore',
+    'muted',
+    'grid',
+    'raised',
+    'overlay',
+    'overlayContrast',
+    'overlayMuted',
+    'overlayBorder',
+    'hover',
+    'guide',
+    'neutral'
+);
+
+// One role's chain: $product, then the role's family and Ignite UI steps as
+// $layers allow, then $default (none: left open, so an unset chain computes
+// as unset and the reader's own fallback applies).
+@function chain($role, $product, $default, $layers: $core, $apx: null, $helper: null) {
+    $ig: map.get($layers, 'ig') and (map.get($layers, 'gated') or not list.index($gated-roles, $role));
+
+    @return ig.chain($role, $product, $default, $design-system: $ig, $apx: $apx, $helper: $helper);
+}
+
+// The private copy of a `$light` token: `--ag-<name>`, its role's steps, the
+// default.
+@function light($name, $layers: $core) {
+    $role: map.get(tv.$roles, $name);
+    $default: map.get(tv.$light, $name);
+
+    @if not $role {
+        @return var(--ag-#{$name}, #{$default});
+    }
+
+    @return chain($role, ('--ag-#{$name}',), $default, $layers);
+}
+
+// The private copy of a `$dark` token: `--ag-dark-<name>`, its role's steps,
+// the dark default.
+@function dark($name, $layers: $core) {
+    $role: map.get(tv.$roles, $name);
+    $default: map.get(tv.$dark, $name);
+
+    @if not $role {
+        @return var(--ag-dark-#{$name}, #{$default});
+    }
+
+    @return chain($role, ('--ag-dark-#{$name}',), $default, $layers);
+}
+
+// `--ag-brand-strong` (hover, pressed): no family token; with the add-on the
+// Ignite UI primary step ($step) the grid has always used.
+@function _brand-strong($step, $default, $layers) {
+    @if map.get($layers, 'ig') {
+        @return var(--ag-brand-strong, var(--ig-primary-#{$step}, #{$default}));
+    }
+
+    @return var(--ag-brand-strong, #{$default});
+}
+
+// The radii follow the family `--apx-radius-factor`. The pill stays fixed.
+// Only while the factor is set: `--_ag-<name>-scaled` reads it with no
+// fallback, so it is unset with the factor, and the private copy is then the
+// public input as before (a multi-value `--ag-radius: 12px 12px 0 0` keeps
+// working; a factor scales single lengths only). At 1 nothing changes.
+$_scaled-radii: ('radius', 'radius-sm', 'radius-xs');
+
+@mixin _scaled-radius($name, $value) {
+    --_ag-#{$name}-scaled: calc(var(--ag-#{$name}, #{$value}) * var(--apx-radius-factor));
+    --_ag-#{$name}: var(--_ag-#{$name}-scaled, var(--ag-#{$name}, #{$value}));
+}
+
+// The family tokens, blanked on a `tokens="off"` host (core, with or without
+// the add-on): the grid's chains then skip the family step, and content the
+// grid renders inherits the blanks too. The add-on's rules match no
+// `tokens="off"` host, so Ignite UI is off with them, the variant included.
+@mixin tokens-off {
+    --apx-accent: initial;
+    --apx-fore: initial;
+    --apx-grid: initial;
+    --apx-surface: initial;
+    --apx-font-family: initial;
+    --apx-radius-factor: initial;
+}
+
+// A root default: the family chain of the token's role, or the value.
+@function _root-default($name, $value) {
+    $role: map.get(tv.$roles, $name);
+
+    @if not $role {
+        @return $value;
+    }
+
+    @return chain($role, (), $value);
+}
+
+// The public defaults on the root, at zero specificity so any declaration
+// beats them. A token with a family role is published as its family chain,
+// resolved there: `var(--ag-text)` anywhere on the page, and every grid,
+// follows an `--apx-fore` set on `:root`.
+@mixin root-defaults {
+    :where(:root) {
+        @each $name, $value in tv.$light {
+            @if not list.index(tv.$no-root-default, $name) {
+                --ag-#{$name}: #{_root-default($name, $value)};
+            }
+        }
+
+        @each $name, $value in tv.$dark {
+            --ag-dark-#{$name}: #{_root-default($name, $value)};
+        }
+    }
+}
+
+// The `$roles` tokens and their dark twins, which leave the root defaults
+// while the add-on is loaded so the grid's own chains reach the family and
+// Ignite UI steps (`ignite-ui-document.scss`).
+@mixin withdrawn-root-defaults {
+    :where(:root) {
+        @each $name, $role in tv.$roles {
+            --ag-#{$name}: initial;
+
+            @if map.has-key(tv.$dark, $name) {
+                --ag-dark-#{$name}: initial;
+            }
+        }
+    }
+}
+
+// The overlay surfaces the enterprise popups take (filter builder, set
+// filter, AI panel, tool panel, status bar). `--_ag-overlay` and
+// `--_ag-overlay-text` stay unset unless the page, a dark default ($bg, $fg)
+// or Ignite UI sets them, and the derived lines, muted text and hover
+// wash are unset with them (a `var()` to an unset copy invalidates the mix),
+// so a popup keeps its own built-in colours.
+@mixin _overlay($input, $layers, $bg: null, $fg: null) {
+    $ig: map.get($layers, 'ig') and map.get($layers, 'gated');
+
+    --_ag-overlay: #{chain('overlay', ('--ag-#{$input}',), $bg, $layers)};
+    --_ag-overlay-text: #{chain('overlayContrast', ('--ag-#{$input}-text',), $fg, $layers)};
+
+    @if $ig {
+        --_ag-overlay-muted-ig: color-mix(in srgb, var(--ig-surface-overlay-contrast) 55%, transparent);
+    }
+
+    --_ag-overlay-muted: #{chain('overlayMuted', (), color-mix(in srgb, var(--_ag-overlay-text) 62%, var(--_ag-overlay)), $layers, $helper: '--_ag-overlay-muted-ig')};
+    --_ag-overlay-line: #{chain('overlayBorder', (), color-mix(in srgb, var(--_ag-overlay-text) 16%, var(--_ag-overlay)), $layers, $apx: false)};
+    --_ag-overlay-hover: #{chain('hover', (), color-mix(in srgb, var(--_ag-overlay-text) 6%, var(--_ag-overlay)), $layers)};
+
+    // With the add-on the popups also take the brand and the font, unset when
+    // nothing sets them.
+    @if map.get($layers, 'ig') {
+        --_ag-overlay-accent: #{chain('accent', ('--ag-brand',), null, $layers)};
+        --_ag-overlay-font: #{chain('font', ('--ag-font',), null, $layers)};
+    }
+}
+
+// ── Light ────────────────────────────────────────────────────────────────
+// $full: false emits only the chains $layers changes (brand, font, the
+// `$roles` tokens and the overlays), for the add-on: its sheet comes after the
+// grid's own, which keeps the rest (the derived washes resolve on the same
+// host, so they follow the new values without being restated).
+@mixin light-block($layers: $core, $full: true) {
+    // ── Brand ── the public input, the family accent (with the add-on, the
+    // Ignite UI primary), then the self-contained blue. `--ag-brand` has no
+    // root default, so a token scoped to any ancestor still reaches this.
+    --_ag-brand: #{chain('accent', ('--ag-brand',), #0d6fd3, $layers)}; /* primary blue */
+    --_ag-brand-strong: #{_brand-strong(700, #0a56b8, $layers)}; /* hover / pressed */
+
+    // ── Font ── the same order: an explicit `--ag-font`, the family font
+    // (with the add-on, the Ignite UI font), then the Inter stack.
+    --_ag-font: #{chain('font', ('--ag-font',), map.get(tv.$light, 'font'), $layers)};
+
+    // Everything else: the public input, its role's steps, or its default.
+    @each $name, $value in tv.$light {
+        @if list.index($_scaled-radii, $name) {
+            @if $full {
+                @include _scaled-radius($name, $value);
+            }
+        } @else if not list.index(tv.$no-root-default, $name) and ($full or map.has-key(tv.$roles, $name)) {
+            --_ag-#{$name}: #{light($name, $layers)};
+        }
+    }
+
+    @if $full {
+        @include _light-derived();
+    }
+
+    @include _overlay('overlay', $layers);
+}
+
+@mixin _light-derived {
+    // ── Derived ──────────────────────────────────────────────────────────
+    // Brand washes are mixed from the resolved brand, so a one-line rebrand
+    // (on the grid or any ancestor) cascades to every tint. With the default
+    // brand these resolve to the spec's exact rgba(13, 111, 211, …) values.
+    // Each still takes an explicit public override.
+    --_ag-brand-soft: var(--ag-brand-soft, color-mix(in srgb, var(--_ag-brand) 10%, transparent)); /* selected row / chip wash */
+    --_ag-brand-softer: var(--ag-brand-softer, color-mix(in srgb, var(--_ag-brand) 7%, transparent)); /* chip / control wash */
+    --_ag-brand-line: var(--ag-brand-line, color-mix(in srgb, var(--_ag-brand) 18%, transparent)); /* chip / search borders */
+    --_ag-surface-alt: var(--ag-surface-alt, var(--_ag-surface)); /* no zebra stripes; rely on hover + hairline borders */
+    --_ag-row-hover: var(--ag-row-hover, color-mix(in srgb, #0f172a 5%, var(--_ag-surface))); /* neutral hover wash (opaque) */
+
+    // ── Built-in renderers ── private only (no public input): the badge text
+    // and the progress track are drawn against the row surface, so the dark
+    // block gives each its own value.
+    --_ag-pill-neutral-text: #4338ca; /* default badge */
+    --_ag-pill-muted-text: #4b5563;
+    --_ag-gold-start: #fff7e6; /* top stop of the gold badge gradient */
+    --_ag-progress-track: rgb(15 23 42 / 8%);
+}
+
+// ── Dark ─────────────────────────────────────────────────────────────────
+// $follow: the block a grid takes from a dark Ignite UI variant (the add-on);
+// its popups get a dark overlay even without a 7.5 surface role. $full as for
+// the light block.
+@mixin dark-block($layers: $core, $follow: false, $full: true) {
+    // ── Brand ── brighter fallbacks so the accent reads on a dark surface.
+    --_ag-brand: #{chain('accent', ('--ag-brand',), #3b82f6, $layers)};
+    --_ag-brand-strong: #{_brand-strong(400, #60a5fa, $layers)};
+
+    @each $name, $value in tv.$dark {
+        @if $full or map.has-key(tv.$roles, $name) {
+            --_ag-#{$name}: #{dark($name, $layers)};
+        }
+    }
+
+    @if $full {
+        @include _dark-derived();
+    }
+
+    @if $follow {
+        @include _overlay('dark-overlay', $layers, map.get(tv.$dark, 'surface-elevated'), map.get(tv.$dark, 'text-body'));
+    } @else {
+        @include _overlay('dark-overlay', $layers);
+    }
+}
+
+@mixin _dark-derived {
+    // ── Derived ── a hover wash that mixes toward white (the light default
+    // mixes toward #0f172a, which is invisible here).
+    --_ag-surface-alt: var(--ag-dark-surface-alt, var(--_ag-surface)); /* no stripes in dark mode either */
+    --_ag-row-hover: var(--ag-dark-row-hover, color-mix(in srgb, #fff 7%, var(--_ag-surface)));
+
+    // ── Built-in renderers ── light text on the dark surface (at least 4.5:1
+    // over the badge wash), a flat gold wash and a track lighter than the row.
+    --_ag-pill-neutral-text: #a5b4fc;
+    --_ag-pill-muted-text: #cbd5e1;
+    --_ag-gold-start: var(--_ag-gold);
+    --_ag-progress-track: rgb(255 255 255 / 12%);
+}
+
+// ── Tinted ───────────────────────────────────────────────────────────────
+// Mixes into whatever the tokens resolve to, with the same steps as the
+// grid's mode block. Row separators are the brand alone, never mixed into a
+// border value: a translucent neutral underneath turns them grey and heavy,
+// so tinted grids ignore `--ag-border`; the tint is the point of the variant.
+@mixin tinted-block($layers: $core) {
+    --_ag-surface-alt: var(--ag-surface-alt, color-mix(in srgb, var(--_ag-brand) 4%, var(--_ag-surface))); /* zebra */
+    --_ag-surface-elevated: color-mix(in srgb, var(--_ag-brand) 11%, #{light('surface-elevated', $layers)}); /* header / footer / toolbar */
+    --_ag-hairline: color-mix(in srgb, var(--_ag-brand) 24%, #{light('hairline', $layers)}); /* gridlines */
+    --_ag-border: color-mix(in srgb, var(--_ag-brand) 12%, transparent); /* row separators */
+    --_ag-row-hover: var(--ag-row-hover, color-mix(in srgb, var(--_ag-brand) 9%, var(--_ag-surface)));
+    --_ag-text-muted: color-mix(in srgb, var(--_ag-brand) 32%, #{light('text-muted', $layers)}); /* header labels pick up the brand */
+}
+
+@mixin dark-tinted-block($layers: $core) {
+    --_ag-surface-alt: var(--ag-dark-surface-alt, color-mix(in srgb, var(--_ag-brand) 10%, var(--_ag-surface)));
+    --_ag-surface-elevated: color-mix(in srgb, var(--_ag-brand) 20%, #{dark('surface-elevated', $layers)});
+    --_ag-hairline: color-mix(in srgb, var(--_ag-brand) 30%, #{dark('hairline', $layers)});
+    --_ag-border: color-mix(in srgb, var(--_ag-brand) 16%, rgb(255 255 255 / 7%)); /* ignores --ag-dark-border, as above */
+    --_ag-row-hover: var(--ag-dark-row-hover, color-mix(in srgb, var(--_ag-brand) 12%, var(--_ag-surface)));
+    --_ag-text-muted: color-mix(in srgb, var(--_ag-brand) 28%, #{dark('text-muted', $layers)});
+}

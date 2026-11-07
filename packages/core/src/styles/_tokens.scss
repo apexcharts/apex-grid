@@ -13,102 +13,33 @@
 //    still renders styled. CSS custom properties inherit across shadow
 //    boundaries, so every child component (`apex-grid-row`, `apex-grid-cell`,
 //    `apex-grid-header`, …) reads the resolved copies.
-// Derived tokens (brand washes, row hover, alternate surface) are mixed HERE
-// and nowhere else: a `var()` inside a custom property resolves where it is
+// The chains themselves live in `_token-blocks.scss`, which the opt-in
+// Ignite UI add-on (`apex-grid/ignite-ui`) builds its blocks from too.
+// Derived tokens (brand washes, row hover, alternate surface) are mixed on the
+// host and nowhere else: a `var()` inside a custom property resolves where it is
 // declared and only the finished value inherits, so a wash mixed on `:root`
 // would never follow a brand set lower down.
 // The built-in variants below (`theme="dark"`, `theme="tinted"`) change only
 // the private copies, so they swap defaults without blocking inherited values.
 // No `!important`, no downstream hardcoded numerics; every rule resolves here.
 // ─────────────────────────────────────────────────────────────────────────
-@use 'sass:list';
-@use 'sass:map';
-@use 'token-values' as tv;
-
-// The public light input with its default as fallback.
-@function light($name) {
-    @return var(--ag-#{$name}, #{map.get(tv.$light, $name)});
-}
-
-// The public dark input with its default as fallback.
-@function dark($name) {
-    @return var(--ag-dark-#{$name}, #{map.get(tv.$dark, $name)});
-}
+@use 'token-blocks' as tb;
 
 :host {
-    // ── Brand ────────────────────────────────────────────────────────────
-    // Re-tints from an Ignite UI palette when its CSS is loaded (so the grid
-    // auto-matches such a host app), and falls back to the self-contained
-    // blue otherwise. `--ig-primary-*` is the whole integration: it is what an
-    // Ignite UI theme actually defines, and reading it costs nothing when
-    // absent. `--ag-brand` has no root default (see `_token-values.scss`), so
-    // a palette scoped to any ancestor still reaches this fallback.
-    --_ag-brand: var(--ag-brand, var(--ig-primary-500, #0d6fd3)); /* primary blue */
-    --_ag-brand-strong: var(--ag-brand-strong, var(--ig-primary-700, #0a56b8)); /* hover / pressed */
-
-    // ── Font ── the same order as the brand: an explicit `--ag-font`, then an
-    // Ignite UI theme's `--ig-font-family`, then the Inter stack. `--ag-font`
-    // has no root default either, or the Ignite UI font could never win.
-    --_ag-font: var(--ag-font, var(--ig-font-family, #{map.get(tv.$light, 'font')}));
-
-    // Everything else: the public input, or its default.
-    @each $name, $value in tv.$light {
-        @if not list.index(tv.$no-root-default, $name) {
-            --_ag-#{$name}: #{light($name)};
-        }
-    }
-
-    // ── Derived ──────────────────────────────────────────────────────────
-    // Brand washes are mixed from the resolved brand, so a one-line rebrand
-    // (on the grid or any ancestor) cascades to every tint. With the default
-    // brand these resolve to the spec's exact rgba(13, 111, 211, …) values.
-    // Each still takes an explicit public override.
-    --_ag-brand-soft: var(--ag-brand-soft, color-mix(in srgb, var(--_ag-brand) 10%, transparent)); /* selected row / chip wash */
-    --_ag-brand-softer: var(--ag-brand-softer, color-mix(in srgb, var(--_ag-brand) 7%, transparent)); /* chip / control wash */
-    --_ag-brand-line: var(--ag-brand-line, color-mix(in srgb, var(--_ag-brand) 18%, transparent)); /* chip / search borders */
-    --_ag-surface-alt: var(--ag-surface-alt, var(--_ag-surface)); /* no zebra stripes; rely on hover + hairline borders */
-    --_ag-row-hover: var(--ag-row-hover, color-mix(in srgb, #0f172a 5%, var(--_ag-surface))); /* neutral hover wash (opaque) */
-
-    // ── Built-in renderers ── private only (no public input): the badge text
-    // and the progress track are drawn against the row surface, so the dark
-    // block below gives each its own value.
-    --_ag-pill-neutral-text: #4338ca; /* default badge */
-    --_ag-pill-muted-text: #4b5563;
-    --_ag-gold-start: #fff7e6; /* top stop of the gold badge gradient */
-    --_ag-progress-track: rgb(15 23 42 / 8%);
+    @include tb.light-block();
 }
 
 // ─────────────────────────────────────────────────────────────────────────
 // Built-in dark theme. Opt in with `<apex-grid theme="dark">`.
 // Only colour tokens flip, to a neutral slate palette; geometry, typography,
-// motion and the brand hue (which still auto-tints from the Ignite UI palette
-// when present) stay shared with the light block above.
+// motion and the brand hue stay shared with the light block above.
 // The dark colours read their own public inputs (`--ag-dark-surface`, …), so
 // a light palette set on an ancestor never lands on a dark grid (a white
 // surface under the dark theme's light text). `theme~='dark'` matches a
 // space-separated word so `theme="dark tinted"` keeps working.
 // ─────────────────────────────────────────────────────────────────────────
 :host([theme~='dark']) {
-    // ── Brand ── brighter fallbacks so the accent reads on a dark surface;
-    // still re-tints from an Ignite UI palette first when it is present.
-    --_ag-brand: var(--ag-brand, var(--ig-primary-500, #3b82f6));
-    --_ag-brand-strong: var(--ag-brand-strong, var(--ig-primary-400, #60a5fa));
-
-    @each $name, $value in tv.$dark {
-        --_ag-#{$name}: #{dark($name)};
-    }
-
-    // ── Derived ── a hover wash that mixes toward white (the light default
-    // mixes toward #0f172a, which is invisible here).
-    --_ag-surface-alt: var(--ag-dark-surface-alt, var(--_ag-surface)); /* no stripes in dark mode either */
-    --_ag-row-hover: var(--ag-dark-row-hover, color-mix(in srgb, #fff 7%, var(--_ag-surface)));
-
-    // ── Built-in renderers ── light text on the dark surface (at least 4.5:1
-    // over the badge wash), a flat gold wash and a track lighter than the row.
-    --_ag-pill-neutral-text: #a5b4fc;
-    --_ag-pill-muted-text: #cbd5e1;
-    --_ag-gold-start: var(--_ag-gold);
-    --_ag-progress-track: rgb(255 255 255 / 12%);
+    @include tb.dark-block();
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -119,31 +50,27 @@
 // little brand into the surfaces, gridlines and muted text so the grid wears
 // its brand even at rest. It mixes into whatever those tokens resolve to
 // (the defaults, or values set on the grid or an ancestor); row separators are
-// the brand alone. Every value follows the
-// brand in effect, including the Ignite UI auto-tint, with no per-brand CSS.
-// The dark variant (higher specificity, so it wins under `theme="dark
+// the brand alone. Every value follows the brand in effect, with no per-brand
+// CSS. The dark variant (higher specificity, so it wins under `theme="dark
 // tinted"`) mixes into the dark inputs. Body row surface stays untinted for
 // legibility.
 // ─────────────────────────────────────────────────────────────────────────
 :host([theme~='tinted']) {
-    --_ag-surface-alt: var(--ag-surface-alt, color-mix(in srgb, var(--_ag-brand) 4%, var(--_ag-surface))); /* zebra */
-    --_ag-surface-elevated: color-mix(in srgb, var(--_ag-brand) 11%, #{light('surface-elevated')}); /* header / footer / toolbar */
-    --_ag-hairline: color-mix(in srgb, var(--_ag-brand) 24%, #{light('hairline')}); /* gridlines */
-    // Row separators are the brand alone, never mixed into a border value: a
-    // translucent neutral underneath turns them grey and heavy. So tinted grids
-    // ignore `--ag-border`; the tint is the point of the variant.
-    --_ag-border: color-mix(in srgb, var(--_ag-brand) 12%, transparent); /* row separators */
-    --_ag-row-hover: var(--ag-row-hover, color-mix(in srgb, var(--_ag-brand) 9%, var(--_ag-surface)));
-    --_ag-text-muted: color-mix(in srgb, var(--_ag-brand) 32%, #{light('text-muted')}); /* header labels pick up the brand */
+    @include tb.tinted-block();
 }
 
 :host([theme~='dark'][theme~='tinted']) {
-    --_ag-surface-alt: var(--ag-dark-surface-alt, color-mix(in srgb, var(--_ag-brand) 10%, var(--_ag-surface)));
-    --_ag-surface-elevated: color-mix(in srgb, var(--_ag-brand) 20%, #{dark('surface-elevated')});
-    --_ag-hairline: color-mix(in srgb, var(--_ag-brand) 30%, #{dark('hairline')});
-    --_ag-border: color-mix(in srgb, var(--_ag-brand) 16%, rgb(255 255 255 / 7%)); /* ignores --ag-dark-border, as above */
-    --_ag-row-hover: var(--ag-dark-row-hover, color-mix(in srgb, var(--_ag-brand) 12%, var(--_ag-surface)));
-    --_ag-text-muted: color-mix(in srgb, var(--_ag-brand) 28%, #{dark('text-muted')});
+    @include tb.dark-tinted-block();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// `tokens="off"`: the family `--apx-*` tokens stop at this grid (and, with
+// the `apex-grid/ignite-ui` add-on, Ignite UI too). A family token set on
+// `:root` still reaches the text, line and surface root defaults, which
+// resolve there; with the add-on those defaults are lifted, so it does not.
+// ─────────────────────────────────────────────────────────────────────────
+:host([tokens='off']) {
+    @include tb.tokens-off();
 }
 
 // ─────────────────────────────────────────────────────────────────────────

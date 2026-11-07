@@ -1,0 +1,11 @@
+// ─────────────────────────────────────────────────────────────────────────
+// The add-on's rules for the grid's document, adopted after the `--ag-*`
+// root defaults. A root default stands in front of every step after it: the
+// grid would read `--ag-text` from the root and never reach `--apx-fore` set
+// lower down or the Ignite UI gray. So, while the add-on is loaded, the
+// tokens with a family role leave the root, as `--ag-brand` and `--ag-font`
+// always have, and each grid resolves them on its own host. Page CSS that
+// reads one of them gives its own fallback: `var(--ag-text, #111827)`.
+// ─────────────────────────────────────────────────────────────────────────
+@use '../token-blocks' as tb;
+@include tb.withdrawn-root-defaults();
