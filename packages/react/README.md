@@ -80,6 +80,38 @@ Column, event, and configuration types all come from `apex-grid` directly:
 import type { ColumnConfiguration, ApexRowSelectedEvent } from 'apex-grid';
 ```
 
+## Using with Ignite UI
+
+From the next `apex-grid` release (after 4.0.0-beta.1, which does not ship
+the add-on), the grid can follow an Ignite UI theme on the page. Import the
+core's add-on once, anywhere in the app:
+
+```ts
+import 'apex-grid/ignite-ui';
+```
+
+Every grid then follows the Ignite UI theme the page loads. A grid whose
+`theme` attribute has neither `dark` nor `light` follows the theme's variant,
+light or dark; `theme="light"` or `theme="dark"` keeps that mode. The card and row surfaces keep the grid's own
+background. The add-on is free and needs no licence key. Without it the grid
+reads no `--ig-*` token; the `--ag-*` and family `--apx-*` tokens work either
+way. The add-on is an ES module entry, so load it through your bundler (there
+is no script-tag build).
+
+To turn it off for one grid, pass the element's switches as props:
+
+```tsx
+// Ignite UI colours and font off (the Ignite UI variant still picks the mode)
+<ApexGrid designSystem={false} data={rows} columns={columns} style={{ height: 480 }} />;
+
+// Family --apx-* tokens and Ignite UI both off, for the grid and its content
+<ApexGrid tokens={false} data={rows} columns={columns} style={{ height: 480 }} />;
+```
+
+They reflect as `design-system="off"` and `tokens="off"`, and both are typed
+from the element, like every other prop. Ranking, the tokens the theme reaches
+and the root-default note are in the `apex-grid` README (Customize the look).
+
 ## Next.js / server-side rendering
 
 The wrapper is a **client component** and the package's entry points are marked
