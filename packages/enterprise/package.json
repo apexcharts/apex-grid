@@ -33,7 +33,7 @@
     "test:watch": "wtr --group default --watch"
   },
   "dependencies": {
-    "apex-commons": "^0.8.0",
+    "apex-commons": "^0.10.0",
     "apex-grid": "^4.0.0-beta.1"
   },
   "devDependencies": {
