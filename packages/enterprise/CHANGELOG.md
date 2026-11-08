@@ -6,6 +6,12 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.0-beta.2] - 2026-11-08
+
+A second pre-release of 0.9.0, under the `next` npm tag alongside apex-grid
+4.0.0-beta.2, which it needs. The popups and the chart panel follow the
+grid's theme, and with `apex-grid/ignite-ui` the Ignite UI theme.
+
 ### Added
 - `ApexGridEnterpriseHost`, the grid type the companion elements accept, and
   the `ParseError`, `FormulaAst` and `FormulaExportOptions` exports.

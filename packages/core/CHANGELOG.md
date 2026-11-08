@@ -6,6 +6,14 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [4.0.0-beta.2] - 2026-11-08
+
+A second pre-release of 4.0.0, under the `next` npm tag. It adds opt-in
+Ignite UI theming (`apex-grid/ignite-ui`) and the family `--apx-*` tokens.
+Breaking against 4.0.0-beta.1 and 3.x: an Ignite UI stylesheet no longer
+re-tints the brand or replaces the font until you import the add-on, and
+`--ag-font` has no root default any more (see Changed and Fixed).
+
 ### Added
 - **`apex-grid/ignite-ui`, the Ignite UI add-on.** `import 'apex-grid/ignite-ui'`
   once and every grid on the page follows the Ignite UI theme the page loads:
