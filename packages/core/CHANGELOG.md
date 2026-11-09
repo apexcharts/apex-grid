@@ -6,6 +6,15 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [4.0.0-beta.3] - 2026-11-09
+
+A third pre-release of 4.0.0, under the `next` npm tag. Japanese (and any
+IME) input works in the cell editor, the filter panel and the quick filter,
+numbers typed in full width or with the column locale's grouping read as
+numbers, and the text that stayed English whatever `localeText` said moves
+into locale keys. One behaviour change against 4.0.0-beta.2: `min()` and
+`max()` now fail a value that is not a number (see Changed).
+
 ### Added
 - Locale keys for text that used to be English whatever `localeText` said:
   `toolbar.exportCsv` (the CSV export menu item), `filter.and` / `filter.or`

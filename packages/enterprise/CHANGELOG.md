@@ -6,6 +6,14 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.0-beta.3] - 2026-11-09
+
+A third pre-release of 0.9.0, under the `next` npm tag alongside apex-grid
+4.0.0-beta.3, which it needs. The formula editor, chart dialog, AI prompt
+and search fields work with Japanese (and any IME) input, full-width
+formulas and pasted numbers read as their ASCII forms, and the filter
+builder and header menu text moves into locale keys.
+
 ### Changed
 - Needs the `apex-grid` release published with it. The IME guard, the number
   parser and the new locale keys come from core, so with an older `apex-grid`
