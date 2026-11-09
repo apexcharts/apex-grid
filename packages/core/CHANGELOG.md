@@ -6,6 +6,40 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-11-09
+
+The first stable 4.0 release, now under the `latest` npm tag. The code is
+4.0.0-beta.3's. This entry lists what to check when upgrading from 3.6.0;
+the three pre-release sections below have the details.
+
+Changes that can break existing code:
+
+- **Body rows are recycled by default** (`rowRecycling`). A row element and
+  its cells can show another record after a scroll, sort or filter. Set
+  `rowRecycling = false` (or `row-recycling="false"`) to keep record-keyed
+  rows, or read `ctx.data` in templates instead of `ctx.row`.
+- **The grid role moved off the host** to the inner `[part~="table"]`
+  element, with `aria-rowcount`, `aria-colcount`, `aria-multiselectable` and
+  the accessible name.
+- **An Ignite UI theme does nothing until you import `apex-grid/ignite-ui`.**
+  In 3.x the grid took the brand colour and font from an Ignite UI theme on
+  the page by itself. `--ag-font` has no root default any more.
+- **Pagination:** pinned rows no longer count toward `totalItems` and the
+  pages, a local page change no longer calls custom sort and filter hooks,
+  and `DataPipelineConfiguration.pagination` and the `'pagination'` value of
+  `DataPipelineParams.type` are removed.
+- **`min()` and `max()` fail a value that is not a number.**
+- **Smaller type and DOM changes:** `ctx.data` is a required field of the
+  cell context, `ApexGridPaginator.pageSizeOptions` is `readonly number[]`,
+  the paginator's previous button id is `prev`, and the protected
+  `ApexGrid.headerRowCount` and `ApexGridHeaderRow.renderDragGhost` are gone.
+
+New in 4.0: `showHeader`, `selection.isRowSelectable`, the compact
+paginator, `::part()` for every paginator and toolbar part, `ctx.data`,
+opt-in Ignite UI theming with the family `--apx-*` tokens, input method
+(IME) support, numbers typed in full width or with the locale's grouping,
+and locale keys for the text that stayed English.
+
 ## [4.0.0-beta.3] - 2026-11-09
 
 A third pre-release of 4.0.0, under the `next` npm tag. Japanese (and any

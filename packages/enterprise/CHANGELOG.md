@@ -6,6 +6,22 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-09
+
+The stable 0.9 release, now under the `latest` npm tag alongside apex-grid
+4.0.0, which it needs. The code is 0.9.0-beta.3's. Upgrading from 0.8.0,
+apps may notice: body rows are recycled by default (opt out with
+`rowRecycling = false`, which master-detail grids pass on to their detail
+grids), a bulk write fires one `apex-view-changed`, only visible columns
+reach a model or proxy, AI requests and replies are checked more strictly,
+and charts skip blank cells and format numbers for the locale.
+
+New in 0.9: the popups and the chart panel follow the grid's theme (and an
+Ignite UI theme with `apex-grid/ignite-ui`), IME input and full-width
+formulas and numbers, more locale keys, and the `ApexGridEnterpriseHost`,
+`ParseError`, `FormulaAst` and `FormulaExportOptions` exports. The three
+pre-release sections below have the details.
+
 ## [0.9.0-beta.3] - 2026-11-09
 
 A third pre-release of 0.9.0, under the `next` npm tag alongside apex-grid

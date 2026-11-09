@@ -82,9 +82,8 @@ import type { ColumnConfiguration, ApexRowSelectedEvent } from 'apex-grid';
 
 ## Using with Ignite UI
 
-From the next `apex-grid` release (after 4.0.0-beta.1, which does not ship
-the add-on), the grid can follow an Ignite UI theme on the page. Import the
-core's add-on once, anywhere in the app:
+With `apex-grid` 4.0.0 or later, the grid can follow an Ignite UI theme on
+the page. Import the core's add-on once, anywhere in the app:
 
 ```ts
 import 'apex-grid/ignite-ui';
