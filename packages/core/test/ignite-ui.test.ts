@@ -49,6 +49,45 @@ function igFont(): string {
 const igSurface = () => ig('--ig-surface-base, var(--ig-surface-500)');
 
 /**
+ * The dark header the add-on derives where the theme has no raised surface
+ * (every 7.4 dark theme): the card lifted 6% toward the theme's text.
+ */
+const derivedHeader = () =>
+  color(
+    'color-mix(in srgb, var(--ig-gray-800, #fff) 6%, var(--ig-surface-base, var(--ig-surface-500)))'
+  );
+
+/** A computed colour's sRGB channels, 0 to 255 (`rgb()` or `color(srgb ...)`). */
+function channels(value: string): number[] {
+  const nums = (value.match(/-?[\d.]+/g) ?? []).map(Number);
+  return value.startsWith('color(srgb') ? nums.slice(0, 3).map((n) => n * 255) : nums.slice(0, 3);
+}
+
+/** WCAG relative luminance of a computed colour. */
+function luminance(value: string): number {
+  const [r, g, b] = channels(value).map((c) => {
+    const s = c / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * A header that reads as raised over the card, about the built-in pair's
+ * step (`#0f172a` card, `#1e2532` header: 1.16:1), and as neutral as the
+ * card: no more blue than it.
+ */
+function expectRaisedOver(header: string, card: string): void {
+  expect(header).not.to.equal(card);
+  expect(header).not.to.equal(color('#1e2532'));
+  const step = (luminance(header) + 0.05) / (luminance(card) + 0.05);
+  expect(step, 'contrast step').to.be.within(1.1, 1.25);
+  const [hr, , hb] = channels(header);
+  const [cr, , cb] = channels(card);
+  expect(hb - hr, 'blue tint').to.be.at.most(cb - cr + 2);
+}
+
+/**
  * Whether the grid took its dark block. The surface no longer tells (a dark
  * theme paints its own), so this reads a private colour only the dark block
  * sets: the default badge text.
@@ -67,6 +106,9 @@ describe('Ignite UI add-on', () => {
       '--apx-surface',
       '--apx-radius-factor',
       '--ig-surface-base',
+      '--ig-surface-raised',
+      '--ig-surface-500',
+      '--ig-gray-800',
     ]) {
       root.style.removeProperty(name);
     }
@@ -156,8 +198,33 @@ describe('Ignite UI add-on', () => {
         expect(token(grid, '--_ag-row-hover')).to.equal(
           color(`color-mix(in srgb, #fff 7%, ${surface})`)
         );
+        // 7.4 has no raised role either: the header lifts the card toward the
+        // theme's text, a neutral step above it, never the built-in slate.
+        const header = token(grid, '--_ag-surface-elevated');
+        expect(header).to.equal(derivedHeader());
+        expectRaisedOver(header, surface);
       });
     }
+
+    for (const sheet of LIGHT_SHEETS) {
+      it(`keeps the built-in light header under ${sheet}${where}`, async () => {
+        await loadSheet(sheet);
+        const grid = await mount({ shadow });
+        // The header separator parts the header from the body there.
+        expect(token(grid, '--_ag-surface-elevated')).to.equal(color('#f8f9fb'));
+      });
+    }
+
+    it(`keeps the 7.5 raised surface for the header${where}`, async () => {
+      await loadSheet('next-dark-material');
+      const grid = await mount({ shadow });
+      const raised = ig('--ig-surface-raised');
+      expect(raised).not.to.equal(derivedHeader());
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(raised);
+      // Without the raised role, the header derives from the card.
+      root.style.setProperty('--ig-surface-raised', 'initial');
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(derivedHeader());
+    });
 
     it(`takes the 7.5 base surface for the card${where}`, async () => {
       await loadSheet('next-dark-material');
@@ -228,6 +295,53 @@ describe('Ignite UI add-on', () => {
       expect(token(grid, '--_ag-surface')).to.equal(igSurface());
     });
 
+    it('an --ag-dark-surface-elevated beats the 7.5 raised surface, which beats the derived header', async () => {
+      await loadSheet('next-dark-material');
+      const grid = await mount({ ancestor: '--ag-dark-surface-elevated: rgb(50, 51, 52);' });
+      expect(token(grid, '--_ag-surface-elevated')).to.equal('rgb(50, 51, 52)');
+      // A light --ag-surface-elevated never lands on the dark grid.
+      grid.style.setProperty('--ag-surface-elevated', 'rgb(250, 250, 250)');
+      expect(token(grid, '--_ag-surface-elevated')).to.equal('rgb(50, 51, 52)');
+      // Each dropped in turn, the next step applies.
+      (grid.parentElement as HTMLElement).style.removeProperty('--ag-dark-surface-elevated');
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(ig('--ig-surface-raised'));
+      root.style.setProperty('--ig-surface-raised', 'initial');
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(derivedHeader());
+    });
+
+    it('an --ag-dark-surface-elevated beats the derived header on a 7.4 theme', async () => {
+      await loadSheet('dark-indigo');
+      const grid = await mount({ ancestor: '--ag-dark-surface-elevated: rgb(50, 51, 52);' });
+      expect(token(grid, '--_ag-surface-elevated')).to.equal('rgb(50, 51, 52)');
+    });
+
+    it('derives the header from the card surface only, toward white without the gray', async () => {
+      await loadSheet('dark-material');
+      const grid = await mount();
+      // No gray 800: the lift goes toward white.
+      root.style.setProperty('--ig-gray-800', 'initial');
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(
+        color(`color-mix(in srgb, #fff 6%, ${igSurface()})`)
+      );
+      root.style.removeProperty('--ig-gray-800');
+      // No surface token at all: no derivation, the built-in header and card.
+      root.style.setProperty('--ig-surface-500', 'initial');
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(color('#1e2532'));
+      expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.dark.surface);
+      // A 7.5 base surface alone is enough.
+      root.style.setProperty('--ig-surface-base', 'rgb(40, 41, 42)');
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(
+        color(`color-mix(in srgb, ${ig('--ig-gray-800')} 6%, rgb(40, 41, 42))`)
+      );
+    });
+
+    it('keeps the built-in dark header on a dark variant with no surface tokens', async () => {
+      const grid = await mount({ ancestor: '--ig-theme-variant: dark;' });
+      expect(isDarkGrid(grid)).to.be.true;
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(color('#1e2532'));
+      expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.dark.surface);
+    });
+
     it('an --ag-surface beats the Ignite UI card on a light grid', async () => {
       await loadSheet('light-bootstrap');
       const grid = await mount({ ancestor: '--ag-surface: rgb(250, 251, 252);' });
@@ -254,6 +368,8 @@ describe('Ignite UI add-on', () => {
       // The dark theme's surface never lands on the light grid.
       expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.light.surface);
       expect(getComputedStyle(grid).backgroundColor).to.equal(BUILT_IN.light.surface);
+      // Nor is a header derived from it.
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(color('#f8f9fb'));
       // The variant-independent roles still follow Ignite UI.
       expect(token(grid, '--_ag-brand')).to.equal(primary());
     });
@@ -266,6 +382,7 @@ describe('Ignite UI add-on', () => {
       // The light theme's surface never lands on the dark grid.
       expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.dark.surface);
       expect(getComputedStyle(grid).backgroundColor).to.equal(BUILT_IN.dark.surface);
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(color('#1e2532'));
       expect(token(grid, '--_ag-brand')).to.equal(primary());
       // No dark overlay default: the popups look as they do without the add-on.
       expect(getComputedStyle(grid).getPropertyValue('--_ag-overlay').trim()).to.equal('');
@@ -290,6 +407,10 @@ describe('Ignite UI add-on', () => {
       expect(isDarkGrid(dark)).to.be.true;
       expect(token(dark, '--_ag-hairline')).to.equal(
         color(`color-mix(in srgb, ${primary()} 30%, ${ig('--ig-gray-300')})`)
+      );
+      // The tinted header mixes the brand into the derived header.
+      expect(token(dark, '--_ag-surface-elevated')).to.equal(
+        color(`color-mix(in srgb, ${primary()} 20%, ${derivedHeader()})`)
       );
     });
 
@@ -348,7 +469,7 @@ describe('Ignite UI add-on', () => {
       expect(token(dark, '--_ag-overlay')).to.equal(color('#1e2532'));
     });
 
-    it('design-system="off" restores the built-in card in both modes', async () => {
+    it('design-system="off" restores the built-in card and header in both modes', async () => {
       await loadSheet('light-bootstrap');
       const light = await mount({ attrs: { 'design-system': 'off' } });
       expect(token(light, '--_ag-surface')).to.equal(BUILT_IN.light.surface);
@@ -361,26 +482,33 @@ describe('Ignite UI add-on', () => {
       expect(token(dark, '--_ag-grid-bg')).to.equal(BUILT_IN.dark.surface);
       expect(token(dark, '--_ag-surface-alt')).to.equal(BUILT_IN.dark.surface);
       expect(getComputedStyle(dark).backgroundColor).to.equal(BUILT_IN.dark.surface);
-      // Flipped back on at runtime, the theme's card applies at once.
+      // The header too.
+      expect(token(dark, '--_ag-surface-elevated')).to.equal(color('#1e2532'));
+      // Flipped back on at runtime, the theme's card and header apply at once.
       dark.removeAttribute('design-system');
       expect(token(dark, '--_ag-surface')).to.equal(igSurface());
+      expect(token(dark, '--_ag-surface-elevated')).to.equal(derivedHeader());
     });
 
-    it('the designSystem and tokens properties restore the built-in card too', async () => {
+    it('the designSystem and tokens properties restore the built-in card and header too', async () => {
       await loadSheet('dark-material');
       const grid = await mount();
       expect(token(grid, '--_ag-surface')).to.equal(igSurface());
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(derivedHeader());
       grid.designSystem = false;
       await elementUpdated(grid);
       expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.dark.surface);
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(color('#1e2532'));
       grid.designSystem = true;
       grid.tokens = false;
       await elementUpdated(grid);
       // tokens="off" turns the variant off too: the built-in light card.
       expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.light.surface);
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(color('#f8f9fb'));
       expect(getComputedStyle(grid).backgroundColor).to.equal(BUILT_IN.light.surface);
       grid.setAttribute('theme', 'dark');
       expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.dark.surface);
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(color('#1e2532'));
     });
 
     it('design-system="off" leaves the Ignite UI tokens to the grid content', async () => {

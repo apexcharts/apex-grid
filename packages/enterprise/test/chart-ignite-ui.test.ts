@@ -147,6 +147,17 @@ describe('chart panel with the Ignite UI add-on', () => {
     const surface = getComputedStyle(grid as unknown as Element).getPropertyValue('--_ag-surface');
     expect(rgbOf(surface)).to.equal(rgbOf(resolveColor('var(--ig-surface-500)')));
     expect(rgbOf(surface)).not.to.equal(rgbOf('#0f172a'));
+    // And its header: 7.4 has no raised surface, so the card lifted toward the theme's text,
+    // neither the card itself nor the built-in slate.
+    const header = resolveColor(
+      getComputedStyle(grid as unknown as Element).getPropertyValue('--_ag-surface-elevated')
+    );
+    expect(header).to.equal(
+      resolveColor('color-mix(in srgb, var(--ig-gray-800) 6%, var(--ig-surface-500))')
+    );
+    expect(header).not.to.equal(resolveColor(surface));
+    expect(header).not.to.equal(resolveColor('#1e2532'));
+    expect(resolveColor(panel.style.getPropertyValue('--_ag-surface-elevated'))).to.equal(header);
   });
 
   it('keeps theme="light" light under a dark theme', async () => {

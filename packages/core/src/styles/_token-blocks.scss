@@ -72,6 +72,24 @@ $_card-steps: ('--ig-surface-base', '--ig-surface-500');
     @return $out;
 }
 
+// The dark header's derived Ignite UI step, the grid's own: a dark theme
+// before Ignite UI 7.5 has no `--ig-surface-raised`, so a header that kept
+// the built-in slate would sit blue-tinted over the theme's neutral card.
+// The helper lifts the card's Ignite UI surface 6% toward the theme's text
+// (gray 800, light in a dark theme), about the built-in pair's step
+// (`#0f172a` card, `#1e2532` header). It reads the surface with no fallback,
+// so with neither surface token it is invalid at computed-value time and the
+// chain falls through to the built-in header. It sits after
+// `--ig-surface-raised`, so a 7.5 theme keeps its own raised surface. Dark
+// and gated only: a light theme's header separator already parts the header
+// from the body.
+$_raised-helper: '--_ag-surface-elevated-ig';
+$_raised-lift: 6%;
+
+@function _derives-raised($layers) {
+    @return map.get($layers, 'ig') and map.get($layers, 'gated');
+}
+
 // One role's chain: $product, then the role's family and Ignite UI steps as
 // $layers allow, then $default (none: left open, so an unset chain computes
 // as unset and the reader's own fallback applies).
@@ -100,10 +118,14 @@ $_card-steps: ('--ig-surface-base', '--ig-surface-500');
 }
 
 // The private copy of a `$dark` token: `--ag-dark-<name>`, its role's steps,
-// the dark default.
+// the dark default (the header: the derived step first, see above).
 @function dark($name, $layers: $core) {
     $role: map.get(tv.$roles, $name);
     $default: map.get(tv.$dark, $name);
+
+    @if $name == 'surface-elevated' and _derives-raised($layers) {
+        $default: var(#{$_raised-helper}, #{$default});
+    }
 
     @if not $role {
         @return var(--ag-dark-#{$name}, #{$default});
@@ -282,6 +304,12 @@ $_scaled-radii: ('radius', 'radius-sm', 'radius-xs');
     // ── Brand ── brighter fallbacks so the accent reads on a dark surface.
     --_ag-brand: #{chain('accent', ('--ag-brand',), #3b82f6, $layers)};
     --_ag-brand-strong: #{_brand-strong(400, #60a5fa, $layers)};
+
+    // The derived header step `dark('surface-elevated')` reads (see above).
+    // The tinted block mixes from the same chain on the same host.
+    @if _derives-raised($layers) {
+        #{$_raised-helper}: color-mix(in srgb, var(--ig-gray-800, #fff) #{$_raised-lift}, var(--ig-surface-base, var(--ig-surface-500)));
+    }
 
     @each $name, $value in tv.$dark {
         @if $full or map.has-key(tv.$roles, $name) {
