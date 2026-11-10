@@ -30,7 +30,7 @@ describe('Ignite UI add-on imported late', () => {
     expect(designSystemName()).to.equal('igniteui');
     for (const grid of [light, shadowed]) {
       expect(token(grid, '--_ag-brand')).to.equal(ig('--ig-primary-seed'));
-      expect(token(grid, '--_ag-surface')).to.equal('rgb(15, 23, 42)');
+      expect(token(grid, '--_ag-surface')).to.equal(ig('--ig-surface-500'));
       expect(token(grid, '--_ag-text')).to.equal(ig('--ig-gray-800'));
     }
   });

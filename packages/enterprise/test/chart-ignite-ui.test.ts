@@ -143,9 +143,10 @@ describe('chart panel with the Ignite UI add-on', () => {
     const part = panel.querySelector<HTMLElement>('[part="panel"]') ?? panel;
     expect(getComputedStyle(part).fontFamily).to.contain('Titillium Web');
     expect(rgbOf(drawn(panel).w.globals.colors[0])).to.equal(rgbOf('#09f'));
-    // The panel chrome carries the grid's dark surface.
+    // The panel chrome carries the grid's dark surface: the theme's card, not the built-in slate.
     const surface = getComputedStyle(grid as unknown as Element).getPropertyValue('--_ag-surface');
-    expect(rgbOf(surface)).to.equal(rgbOf('#0f172a'));
+    expect(rgbOf(surface)).to.equal(rgbOf(resolveColor('var(--ig-surface-500)')));
+    expect(rgbOf(surface)).not.to.equal(rgbOf('#0f172a'));
   });
 
   it('keeps theme="light" light under a dark theme', async () => {
@@ -209,7 +210,9 @@ describe('chart panel with the Ignite UI add-on', () => {
       'the chart never followed the swap'
     );
     // The chrome follows too.
-    expect(panel.style.getPropertyValue('--_ag-surface')).to.equal('#0f172a');
+    expect(rgbOf(panel.style.getPropertyValue('--_ag-surface'))).to.equal(
+      rgbOf(resolveColor('var(--ig-surface-500)'))
+    );
   });
 
   it('honours a page-wide window.Apex opt-out, handing over the grid colours', async () => {

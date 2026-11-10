@@ -12,9 +12,9 @@
 // `$layers` picks the steps a block takes:
 //  - `ig`: the Ignite UI step at all (the add-on);
 //  - `gated`: the Ignite UI step of the roles that flip with the Ignite UI
-//    variant (gray text and lines, raised and overlay surfaces). They are
-//    only right when the grid's mode matches the variant: a gray 800 that is
-//    dark text in a light theme is light text in a dark one.
+//    variant (gray text and lines, the card, raised and overlay surfaces).
+//    They are only right when the grid's mode matches the variant: a gray
+//    800 that is dark text in a light theme is light text in a dark one.
 // ─────────────────────────────────────────────────────────────────────────
 @use 'sass:list';
 @use 'sass:map';
@@ -48,11 +48,40 @@ $gated-roles: (
     'neutral'
 );
 
+// The card's Ignite UI step, the grid's own: the family `surface` role has
+// none, as a chart never paints the page, but a grid is an opaque card and
+// takes the theme's surface (`--ig-surface-base` from Ignite UI 7.5, else
+// `--ig-surface-500`). Both are opaque. Gated like the raised and overlay
+// surfaces: a light theme's surface never lands on a dark grid.
+$_card-steps: ('--ig-surface-base', '--ig-surface-500');
+
+// `var(--a, var(--b, $last))`, for the card step.
+@function _nest($names, $last) {
+    $out: $last;
+
+    @for $i from list.length($names) through 1 {
+        $name: list.nth($names, $i);
+
+        @if not $out {
+            $out: var(#{$name});
+        } @else {
+            $out: var(#{$name}, #{$out});
+        }
+    }
+
+    @return $out;
+}
+
 // One role's chain: $product, then the role's family and Ignite UI steps as
 // $layers allow, then $default (none: left open, so an unset chain computes
 // as unset and the reader's own fallback applies).
 @function chain($role, $product, $default, $layers: $core, $apx: null, $helper: null) {
     $ig: map.get($layers, 'ig') and (map.get($layers, 'gated') or not list.index($gated-roles, $role));
+
+    // The card step sits after the family token, before the built-in value.
+    @if $role == 'surface' and map.get($layers, 'ig') and map.get($layers, 'gated') {
+        $default: _nest($_card-steps, $default);
+    }
 
     @return ig.chain($role, $product, $default, $design-system: $ig, $apx: $apx, $helper: $helper);
 }

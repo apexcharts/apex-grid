@@ -2,8 +2,8 @@
  * `apex-grid/ignite-ui`: the Ignite UI add-on.
  *
  * Import it once and every grid on the page follows the Ignite UI theme the
- * page loads: brand, text, lines, header and popup surfaces, state colours,
- * font, light or dark. Without it the grid reads no `--ig-*` token, and an
+ * page loads: brand, text, lines, the card, header and popup surfaces, state
+ * colours, font, light or dark. Without it the grid reads no `--ig-*` token, and an
  * Ignite UI stylesheet changes nothing.
  *
  * ```ts

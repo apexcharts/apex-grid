@@ -122,8 +122,10 @@ $no-root-default: ('font',);
 // is `fore` (`--apx-fore`, Ignite UI gray 800), muted text is `muted` (gray
 // 600), lines are `grid` (`--apx-grid`, gray 300), the pinned-column edge is
 // `guide` (gray 400), the header is `raised`, the card is `surface`
-// (`--apx-surface`; no Ignite UI step) and the state colours are the success,
-// warn and error seeds. Dark grids map their `--ag-dark-*` twins the same way.
+// (`--apx-surface`; the family role has no Ignite UI step, so the grid adds
+// its own, `--ig-surface-base` else `--ig-surface-500`, in `_token-blocks.scss`)
+// and the state colours are the success, warn and error seeds. Dark grids map
+// their `--ag-dark-*` twins the same way.
 // `--ag-brand` is `accent` and `--ag-font` is `font`; both live in
 // `_token-blocks.scss`, as they have no root default.
 $roles: (

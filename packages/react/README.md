@@ -91,8 +91,8 @@ import 'apex-grid/ignite-ui';
 
 Every grid then follows the Ignite UI theme the page loads. A grid whose
 `theme` attribute has neither `dark` nor `light` follows the theme's variant,
-light or dark; `theme="light"` or `theme="dark"` keeps that mode. The card and row surfaces keep the grid's own
-background. The add-on is free and needs no licence key. Without it the grid
+light or dark; `theme="light"` or `theme="dark"` keeps that mode. The card and row surfaces take the theme's
+surface (apex-grid 4.0.1 and later). The add-on needs no extra licence key. Without it the grid
 reads no `--ig-*` token; the `--ag-*` and family `--apx-*` tokens work either
 way. The add-on is an ES module entry, so load it through your bundler (there
 is no script-tag build).

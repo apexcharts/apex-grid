@@ -45,14 +45,29 @@ function igFont(): string {
   return out;
 }
 
+/** The card: the 7.5 base surface, else surface 500. */
+const igSurface = () => ig('--ig-surface-base, var(--ig-surface-500)');
+
+/**
+ * Whether the grid took its dark block. The surface no longer tells (a dark
+ * theme paints its own), so this reads a private colour only the dark block
+ * sets: the default badge text.
+ */
 function isDarkGrid(grid: Grid): boolean {
-  return token(grid, '--_ag-surface') === BUILT_IN.dark.surface;
+  return token(grid, '--_ag-pill-neutral-text') === color('#a5b4fc');
 }
 
 describe('Ignite UI add-on', () => {
   afterEach(async () => {
     await loadSheet(null);
-    for (const name of ['--apx-accent', '--apx-fore', '--apx-grid', '--apx-radius-factor']) {
+    for (const name of [
+      '--apx-accent',
+      '--apx-fore',
+      '--apx-grid',
+      '--apx-surface',
+      '--apx-radius-factor',
+      '--ig-surface-base',
+    ]) {
       root.style.removeProperty(name);
     }
     fixtureCleanup();
@@ -110,8 +125,10 @@ describe('Ignite UI add-on', () => {
         expect(token(grid, '--_ag-good')).to.equal(ig('--ig-success-seed'));
         expect(token(grid, '--_ag-watch')).to.equal(ig('--ig-warn-seed'));
         expect(token(grid, '--_ag-risk')).to.equal(ig('--ig-error-seed'));
-        // Opaque paper stays the grid's own (no surface role painted in 7.4).
-        expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.light.surface);
+        // The card is the theme's surface, opaque.
+        expect(token(grid, '--_ag-surface')).to.equal(ig('--ig-surface-500'));
+        expect(token(grid, '--_ag-grid-bg')).to.equal(ig('--ig-surface-500'));
+        expect(getComputedStyle(grid).backgroundColor).to.equal(ig('--ig-surface-500'));
         expect(getComputedStyle(grid).fontFamily).to.equal(igFont());
         // The cells inherit it.
         expect(getComputedStyle(grid).color).to.equal(ig('--ig-gray-800'));
@@ -129,9 +146,31 @@ describe('Ignite UI add-on', () => {
         // 7.4 has no overlay role: the popups take the built-in dark header colour.
         expect(token(grid, '--_ag-overlay')).to.equal(color('#1e2532'));
         expect(token(grid, '--_ag-overlay-text')).to.equal(color('#e2e8f0'));
-        expect(getComputedStyle(grid).backgroundColor).to.equal(BUILT_IN.dark.surface);
+        // 7.4 has no base role: the card is surface 500, never the built-in slate.
+        const surface = ig('--ig-surface-500');
+        expect(surface).not.to.equal(BUILT_IN.dark.surface);
+        expect(token(grid, '--_ag-surface')).to.equal(surface);
+        expect(token(grid, '--_ag-grid-bg')).to.equal(surface);
+        expect(getComputedStyle(grid).backgroundColor).to.equal(surface);
+        // The row hover mixes from it.
+        expect(token(grid, '--_ag-row-hover')).to.equal(
+          color(`color-mix(in srgb, #fff 7%, ${surface})`)
+        );
       });
     }
+
+    it(`takes the 7.5 base surface for the card${where}`, async () => {
+      await loadSheet('next-dark-material');
+      root.style.setProperty('--ig-surface-base', 'rgb(40, 41, 42)');
+      const grid = await mount({ shadow });
+      expect(isDarkGrid(grid)).to.be.true;
+      // The base role wins over surface 500.
+      expect(token(grid, '--_ag-surface')).to.equal('rgb(40, 41, 42)');
+      expect(getComputedStyle(grid).backgroundColor).to.equal('rgb(40, 41, 42)');
+      // As published, the base role is surface 500.
+      root.style.removeProperty('--ig-surface-base');
+      expect(token(grid, '--_ag-surface')).to.equal(ig('--ig-surface-500'));
+    });
 
     it(`takes the 7.5 overlay surface for the popups${where}`, async () => {
       await loadSheet('next-dark-material');
@@ -171,6 +210,31 @@ describe('Ignite UI add-on', () => {
       expect(token(grid, '--_ag-brand')).to.equal('rgb(1, 1, 1)');
     });
 
+    it('an --ag-dark-surface beats the family surface, which beats the Ignite UI card', async () => {
+      await loadSheet('dark-material');
+      root.style.setProperty('--apx-surface', 'rgb(20, 21, 22)');
+      const grid = await mount({ ancestor: '--ag-dark-surface: rgb(30, 31, 32);' });
+      expect(token(grid, '--_ag-surface')).to.equal('rgb(30, 31, 32)');
+      // --ag-dark-grid-bg is not set: the family surface is next, and the host paints it.
+      expect(token(grid, '--_ag-grid-bg')).to.equal('rgb(20, 21, 22)');
+      expect(getComputedStyle(grid).backgroundColor).to.equal('rgb(20, 21, 22)');
+      // A light --ag-surface never lands on the dark grid.
+      grid.style.setProperty('--ag-surface', 'rgb(250, 250, 250)');
+      expect(token(grid, '--_ag-surface')).to.equal('rgb(30, 31, 32)');
+      // Each dropped in turn, the next step applies.
+      (grid.parentElement as HTMLElement).style.removeProperty('--ag-dark-surface');
+      expect(token(grid, '--_ag-surface')).to.equal('rgb(20, 21, 22)');
+      root.style.removeProperty('--apx-surface');
+      expect(token(grid, '--_ag-surface')).to.equal(igSurface());
+    });
+
+    it('an --ag-surface beats the Ignite UI card on a light grid', async () => {
+      await loadSheet('light-bootstrap');
+      const grid = await mount({ ancestor: '--ag-surface: rgb(250, 251, 252);' });
+      expect(token(grid, '--_ag-surface')).to.equal('rgb(250, 251, 252)');
+      expect(token(grid, '--_ag-grid-bg')).to.equal(igSurface());
+    });
+
     it('an --ag-font beats the family font, which beats the Ignite UI font', async () => {
       await loadSheet('light-material');
       const grid = await mount({ ancestor: '--apx-font-family: Georgia, serif;' });
@@ -187,15 +251,21 @@ describe('Ignite UI add-on', () => {
       expect(isDarkGrid(grid)).to.be.false;
       expect(token(grid, '--_ag-text')).to.equal(BUILT_IN.light.text);
       expect(token(grid, '--_ag-hairline')).to.equal(color('rgb(15 23 42 / 8%)'));
+      // The dark theme's surface never lands on the light grid.
+      expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.light.surface);
+      expect(getComputedStyle(grid).backgroundColor).to.equal(BUILT_IN.light.surface);
       // The variant-independent roles still follow Ignite UI.
       expect(token(grid, '--_ag-brand')).to.equal(primary());
     });
 
     it('theme="dark" under a light sheet keeps the built-in dark text', async () => {
-      await loadSheet('light-material');
+      await loadSheet('light-bootstrap');
       const grid = await mount({ theme: 'dark' });
       expect(isDarkGrid(grid)).to.be.true;
       expect(token(grid, '--_ag-text')).to.equal(BUILT_IN.dark.text);
+      // The light theme's surface never lands on the dark grid.
+      expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.dark.surface);
+      expect(getComputedStyle(grid).backgroundColor).to.equal(BUILT_IN.dark.surface);
       expect(token(grid, '--_ag-brand')).to.equal(primary());
       // No dark overlay default: the popups look as they do without the add-on.
       expect(getComputedStyle(grid).getPropertyValue('--_ag-overlay').trim()).to.equal('');
@@ -205,6 +275,7 @@ describe('Ignite UI add-on', () => {
       await loadSheet('dark-fluent');
       const grid = await mount({ theme: 'dark' });
       expect(token(grid, '--_ag-text')).to.equal(ig('--ig-gray-800'));
+      expect(token(grid, '--_ag-surface')).to.equal(igSurface());
     });
 
     it('theme="tinted" mixes the brand into the Ignite UI lines, and follows the variant', async () => {
@@ -222,14 +293,35 @@ describe('Ignite UI add-on', () => {
       );
     });
 
+    it('mixes the alternate rows from the Ignite UI card', async () => {
+      await loadSheet('dark-fluent');
+      const plain = await mount();
+      expect(token(plain, '--_ag-surface-alt')).to.equal(igSurface());
+      const tinted = await mount({ theme: 'tinted' });
+      expect(isDarkGrid(tinted)).to.be.true;
+      expect(token(tinted, '--_ag-surface')).to.equal(igSurface());
+      expect(token(tinted, '--_ag-surface-alt')).to.equal(
+        color(`color-mix(in srgb, ${primary()} 10%, ${igSurface()})`)
+      );
+      fixtureCleanup();
+      await loadSheet('light-bootstrap');
+      const light = await mount({ theme: 'tinted' });
+      expect(isDarkGrid(light)).to.be.false;
+      expect(token(light, '--_ag-surface-alt')).to.equal(
+        color(`color-mix(in srgb, ${primary()} 4%, ${igSurface()})`)
+      );
+    });
+
     it('follows a theme swap live, without a reconnect', async () => {
       await loadSheet('light-bootstrap');
       const grid = await mount();
       expect(isDarkGrid(grid)).to.be.false;
       await loadSheet('dark-bootstrap');
       expect(isDarkGrid(grid)).to.be.true;
+      expect(token(grid, '--_ag-surface')).to.equal(color('#212529'));
       await loadSheet('light-bootstrap');
       expect(isDarkGrid(grid)).to.be.false;
+      expect(token(grid, '--_ag-surface')).to.equal(color('#f8f9fa'));
     });
 
     it('follows a variant scoped to an ancestor', async () => {
@@ -254,6 +346,41 @@ describe('Ignite UI add-on', () => {
       expect(token(dark, '--_ag-brand')).to.equal(BUILT_IN.dark.brand);
       // The popups still go dark with the grid.
       expect(token(dark, '--_ag-overlay')).to.equal(color('#1e2532'));
+    });
+
+    it('design-system="off" restores the built-in card in both modes', async () => {
+      await loadSheet('light-bootstrap');
+      const light = await mount({ attrs: { 'design-system': 'off' } });
+      expect(token(light, '--_ag-surface')).to.equal(BUILT_IN.light.surface);
+      expect(getComputedStyle(light).backgroundColor).to.equal(BUILT_IN.light.surface);
+      fixtureCleanup();
+      await loadSheet('dark-material');
+      const dark = await mount({ attrs: { 'design-system': 'off' } });
+      expect(isDarkGrid(dark)).to.be.true;
+      expect(token(dark, '--_ag-surface')).to.equal(BUILT_IN.dark.surface);
+      expect(token(dark, '--_ag-grid-bg')).to.equal(BUILT_IN.dark.surface);
+      expect(token(dark, '--_ag-surface-alt')).to.equal(BUILT_IN.dark.surface);
+      expect(getComputedStyle(dark).backgroundColor).to.equal(BUILT_IN.dark.surface);
+      // Flipped back on at runtime, the theme's card applies at once.
+      dark.removeAttribute('design-system');
+      expect(token(dark, '--_ag-surface')).to.equal(igSurface());
+    });
+
+    it('the designSystem and tokens properties restore the built-in card too', async () => {
+      await loadSheet('dark-material');
+      const grid = await mount();
+      expect(token(grid, '--_ag-surface')).to.equal(igSurface());
+      grid.designSystem = false;
+      await elementUpdated(grid);
+      expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.dark.surface);
+      grid.designSystem = true;
+      grid.tokens = false;
+      await elementUpdated(grid);
+      // tokens="off" turns the variant off too: the built-in light card.
+      expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.light.surface);
+      expect(getComputedStyle(grid).backgroundColor).to.equal(BUILT_IN.light.surface);
+      grid.setAttribute('theme', 'dark');
+      expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.dark.surface);
     });
 
     it('design-system="off" leaves the Ignite UI tokens to the grid content', async () => {
