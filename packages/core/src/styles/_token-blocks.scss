@@ -72,22 +72,47 @@ $_card-steps: ('--ig-surface-base', '--ig-surface-500');
     @return $out;
 }
 
-// The dark header's derived Ignite UI step, the grid's own: a dark theme
-// before Ignite UI 7.5 has no `--ig-surface-raised`, so a header that kept
-// the built-in slate would sit blue-tinted over the theme's neutral card.
-// The helper lifts the card's Ignite UI surface 6% toward the theme's text
-// (gray 800, light in a dark theme), about the built-in pair's step
-// (`#0f172a` card, `#1e2532` header). It reads the surface with no fallback,
-// so with neither surface token it is invalid at computed-value time and the
-// chain falls through to the built-in header. It sits after
-// `--ig-surface-raised`, so a 7.5 theme keeps its own raised surface. Dark
-// and gated only: a light theme's header separator already parts the header
-// from the body.
+// The header's derived Ignite UI step, the grid's own: a theme before
+// Ignite UI 7.5 has no `--ig-surface-raised`, so a header that kept the
+// built-in value would sit beside the theme's card rather than above it: a
+// blue-tinted slate over a neutral dark card, or the light `#f8f9fb` level
+// with an off-white card (Bootstrap `#f8f9fa`, Indigo `#f8f8fa`). The helper
+// lifts the card's Ignite UI surface toward the theme's text (gray 800:
+// light in a dark theme, dark in a light one). On dark, 6%, about the
+// built-in pair's step (`#0f172a` card, `#1e2532` header, 1.16:1). On
+// light, 2% (about 1.035:1, the built-in pair is 1.05:1): the toolbar and
+// paginator set muted text (gray 600) on the header, and more would take
+// Indigo's below 4.5:1. Without the gray it mixes toward white or black. It reads the surface with no fallback, so with neither
+// surface token it is invalid at computed-value time and the chain falls
+// through to the built-in header. It sits after `--ig-surface-raised`, so a
+// 7.5 theme keeps its own raised surface. Gated: only a grid whose mode
+// matches the variant derives one.
 $_raised-helper: '--_ag-surface-elevated-ig';
-$_raised-lift: 6%;
+$_raised-lift: (
+    'light': (2%, #000),
+    'dark': (6%, #fff),
+);
 
 @function _derives-raised($layers) {
     @return map.get($layers, 'ig') and map.get($layers, 'gated');
+}
+
+// The helper's declaration, for the $mode block.
+@mixin _raised-step($mode, $layers) {
+    @if _derives-raised($layers) {
+        $lift: map.get($_raised-lift, $mode);
+
+        #{$_raised-helper}: color-mix(in srgb, var(--ig-gray-800, #{list.nth($lift, 2)}) #{list.nth($lift, 1)}, var(--ig-surface-base, var(--ig-surface-500)));
+    }
+}
+
+// The header's built-in value behind the derived step.
+@function _raised-default($name, $default, $layers) {
+    @if $name == 'surface-elevated' and _derives-raised($layers) {
+        @return var(#{$_raised-helper}, #{$default});
+    }
+
+    @return $default;
 }
 
 // One role's chain: $product, then the role's family and Ignite UI steps as
@@ -105,10 +130,10 @@ $_raised-lift: 6%;
 }
 
 // The private copy of a `$light` token: `--ag-<name>`, its role's steps, the
-// default.
+// default (the header: the derived step first, see above).
 @function light($name, $layers: $core) {
     $role: map.get(tv.$roles, $name);
-    $default: map.get(tv.$light, $name);
+    $default: _raised-default($name, map.get(tv.$light, $name), $layers);
 
     @if not $role {
         @return var(--ag-#{$name}, #{$default});
@@ -121,11 +146,7 @@ $_raised-lift: 6%;
 // the dark default (the header: the derived step first, see above).
 @function dark($name, $layers: $core) {
     $role: map.get(tv.$roles, $name);
-    $default: map.get(tv.$dark, $name);
-
-    @if $name == 'surface-elevated' and _derives-raised($layers) {
-        $default: var(#{$_raised-helper}, #{$default});
-    }
+    $default: _raised-default($name, map.get(tv.$dark, $name), $layers);
 
     @if not $role {
         @return var(--ag-dark-#{$name}, #{$default});
@@ -257,6 +278,10 @@ $_scaled-radii: ('radius', 'radius-sm', 'radius-xs');
     // (with the add-on, the Ignite UI font), then the Inter stack.
     --_ag-font: #{chain('font', ('--ag-font',), map.get(tv.$light, 'font'), $layers)};
 
+    // The derived header step `light('surface-elevated')` reads (see above).
+    // The tinted block mixes from the same chain on the same host.
+    @include _raised-step('light', $layers);
+
     // Everything else: the public input, its role's steps, or its default.
     @each $name, $value in tv.$light {
         @if list.index($_scaled-radii, $name) {
@@ -307,9 +332,7 @@ $_scaled-radii: ('radius', 'radius-sm', 'radius-xs');
 
     // The derived header step `dark('surface-elevated')` reads (see above).
     // The tinted block mixes from the same chain on the same host.
-    @if _derives-raised($layers) {
-        #{$_raised-helper}: color-mix(in srgb, var(--ig-gray-800, #fff) #{$_raised-lift}, var(--ig-surface-base, var(--ig-surface-500)));
-    }
+    @include _raised-step('dark', $layers);
 
     @each $name, $value in tv.$dark {
         @if $full or map.has-key(tv.$roles, $name) {

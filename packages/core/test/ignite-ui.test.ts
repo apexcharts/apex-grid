@@ -57,6 +57,11 @@ const derivedHeader = () =>
     'color-mix(in srgb, var(--ig-gray-800, #fff) 6%, var(--ig-surface-base, var(--ig-surface-500)))'
   );
 
+/** The light header it derives the same way: 2% toward the theme's dark text. */
+const LIGHT_HEADER_MIX =
+  'color-mix(in srgb, var(--ig-gray-800, #000) 2%, var(--ig-surface-base, var(--ig-surface-500)))';
+const derivedLightHeader = () => color(LIGHT_HEADER_MIX);
+
 /** A computed colour's sRGB channels, 0 to 255 (`rgb()` or `color(srgb ...)`). */
 function channels(value: string): number[] {
   const nums = (value.match(/-?[\d.]+/g) ?? []).map(Number);
@@ -74,14 +79,18 @@ function luminance(value: string): number {
 
 /**
  * A header that reads as raised over the card, about the built-in pair's
- * step (`#0f172a` card, `#1e2532` header: 1.16:1), and as neutral as the
- * card: no more blue than it.
+ * step (dark: `#0f172a` card, `#1e2532` header, 1.16:1; light: `#fff` card,
+ * `#f8f9fb` header, 1.05:1), and as neutral as the card: no more blue than
+ * it.
  */
-function expectRaisedOver(header: string, card: string): void {
+function expectRaisedOver(header: string, card: string, mode: 'light' | 'dark' = 'dark'): void {
   expect(header).not.to.equal(card);
-  expect(header).not.to.equal(color('#1e2532'));
-  const step = (luminance(header) + 0.05) / (luminance(card) + 0.05);
-  expect(step, 'contrast step').to.be.within(1.1, 1.25);
+  expect(header).not.to.equal(color(mode === 'dark' ? '#1e2532' : '#f8f9fb'));
+  const [lo, hi] = mode === 'dark' ? [1.1, 1.25] : [1.03, 1.08];
+  const step =
+    (Math.max(luminance(header), luminance(card)) + 0.05) /
+    (Math.min(luminance(header), luminance(card)) + 0.05);
+  expect(step, 'contrast step').to.be.within(lo, hi);
   const [hr, , hb] = channels(header);
   const [cr, , cb] = channels(card);
   expect(hb - hr, 'blue tint').to.be.at.most(cb - cr + 2);
@@ -145,6 +154,7 @@ describe('Ignite UI add-on', () => {
     expect(out.font).to.equal('Inter, -apple-system, blinkmacsystemfont, sans-serif');
     expect(out.radius).to.equal('8px');
     expect(out['--_ag-overlay']).to.equal('');
+    expect(token(grid, '--_ag-surface-elevated')).to.equal(color('#f8f9fb'));
     expect(out['--_ag-overlay-accent']).to.equal('');
     expect(out['--_ag-overlay-font']).to.equal('');
   });
@@ -208,11 +218,23 @@ describe('Ignite UI add-on', () => {
     }
 
     for (const sheet of LIGHT_SHEETS) {
-      it(`keeps the built-in light header under ${sheet}${where}`, async () => {
+      it(`lowers the light header from the card under ${sheet}${where}`, async () => {
         await loadSheet(sheet);
         const grid = await mount({ shadow });
-        // The header separator parts the header from the body there.
-        expect(token(grid, '--_ag-surface-elevated')).to.equal(color('#f8f9fb'));
+        // 7.4 has no raised role: the header is the card moved toward the
+        // theme's text, a step below a white or an off-white card alike.
+        const header = token(grid, '--_ag-surface-elevated');
+        expect(header).to.equal(derivedLightHeader());
+        expectRaisedOver(header, ig('--ig-surface-500'), 'light');
+        // Muted text (the toolbar and paginator) that met 4.5:1 on the card
+        // still meets it on the header.
+        const muted = ig('--ig-gray-600');
+        const ratio = (a: string, b: string) =>
+          (Math.max(luminance(a), luminance(b)) + 0.05) /
+          (Math.min(luminance(a), luminance(b)) + 0.05);
+        if (ratio(muted, ig('--ig-surface-500')) >= 4.5) {
+          expect(ratio(muted, header), 'muted on header').to.be.at.least(4.5);
+        }
       });
     }
 
@@ -351,6 +373,27 @@ describe('Ignite UI add-on', () => {
       expect(token(grid, '--_ag-overlay')).to.equal(color('#1e2532'));
     });
 
+    it('an --ag-surface-elevated beats the derived light header, which needs a surface', async () => {
+      await loadSheet('light-indigo');
+      const grid = await mount({ ancestor: '--ag-surface-elevated: rgb(240, 241, 242);' });
+      expect(token(grid, '--_ag-surface-elevated')).to.equal('rgb(240, 241, 242)');
+      (grid.parentElement as HTMLElement).style.removeProperty('--ag-surface-elevated');
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(derivedLightHeader());
+      // A 7.5 raised surface wins over the derived step.
+      root.style.setProperty('--ig-surface-raised', 'rgb(230, 231, 232)');
+      expect(token(grid, '--_ag-surface-elevated')).to.equal('rgb(230, 231, 232)');
+      root.style.removeProperty('--ig-surface-raised');
+      // No gray 800: the step goes toward black.
+      root.style.setProperty('--ig-gray-800', 'initial');
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(
+        color(`color-mix(in srgb, #000 2%, ${igSurface()})`)
+      );
+      root.style.removeProperty('--ig-gray-800');
+      // No surface token: the built-in header.
+      root.style.setProperty('--ig-surface-500', 'initial');
+      expect(token(grid, '--_ag-surface-elevated')).to.equal(color('#f8f9fb'));
+    });
+
     it('an --ag-surface beats the Ignite UI card on a light grid', async () => {
       await loadSheet('light-bootstrap');
       const grid = await mount({ ancestor: '--ag-surface: rgb(250, 251, 252);' });
@@ -379,6 +422,7 @@ describe('Ignite UI add-on', () => {
       expect(getComputedStyle(grid).backgroundColor).to.equal(BUILT_IN.light.surface);
       // Nor is a header derived from it.
       expect(token(grid, '--_ag-surface-elevated')).to.equal(color('#f8f9fb'));
+      expect(token(grid, '--_ag-surface-elevated')).not.to.equal(derivedLightHeader());
       // The variant-independent roles still follow Ignite UI.
       expect(token(grid, '--_ag-brand')).to.equal(primary());
     });
@@ -409,6 +453,10 @@ describe('Ignite UI add-on', () => {
       const light = await mount({ theme: 'tinted' });
       expect(token(light, '--_ag-hairline')).to.equal(
         color(`color-mix(in srgb, ${primary()} 24%, ${ig('--ig-gray-300')})`)
+      );
+      // The light tinted header mixes the brand into the derived header too.
+      expect(token(light, '--_ag-surface-elevated')).to.equal(
+        color(`color-mix(in srgb, ${primary()} 11%, ${LIGHT_HEADER_MIX})`)
       );
       fixtureCleanup();
       await loadSheet('dark-indigo');
@@ -482,6 +530,7 @@ describe('Ignite UI add-on', () => {
       await loadSheet('light-bootstrap');
       const light = await mount({ attrs: { 'design-system': 'off' } });
       expect(token(light, '--_ag-surface')).to.equal(BUILT_IN.light.surface);
+      expect(token(light, '--_ag-surface-elevated')).to.equal(color('#f8f9fb'));
       expect(getComputedStyle(light).backgroundColor).to.equal(BUILT_IN.light.surface);
       fixtureCleanup();
       await loadSheet('dark-material');
