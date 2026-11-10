@@ -185,8 +185,9 @@ describe('Ignite UI add-on', () => {
         expect(token(grid, '--_ag-brand')).to.equal(primary());
         expect(token(grid, '--_ag-text')).to.equal(ig('--ig-gray-800'));
         expect(token(grid, '--_ag-hairline')).to.equal(ig('--ig-gray-300'));
-        // 7.4 has no overlay role: the popups take the built-in dark header colour.
-        expect(token(grid, '--_ag-overlay')).to.equal(color('#1e2532'));
+        // 7.4 has no overlay role: the popups take the grid's dark header
+        // colour, the derived step below, so they match the header.
+        expect(token(grid, '--_ag-overlay')).to.equal(derivedHeader());
         expect(token(grid, '--_ag-overlay-text')).to.equal(color('#e2e8f0'));
         // 7.4 has no base role: the card is surface 500, never the built-in slate.
         const surface = ig('--ig-surface-500');
@@ -313,6 +314,11 @@ describe('Ignite UI add-on', () => {
       await loadSheet('dark-indigo');
       const grid = await mount({ ancestor: '--ag-dark-surface-elevated: rgb(50, 51, 52);' });
       expect(token(grid, '--_ag-surface-elevated')).to.equal('rgb(50, 51, 52)');
+      // The popups keep the derived colour, as they kept the built-in one
+      // before; their own --ag-dark-overlay sets them.
+      expect(token(grid, '--_ag-overlay')).to.equal(derivedHeader());
+      grid.style.setProperty('--ag-dark-overlay', 'rgb(60, 61, 62)');
+      expect(token(grid, '--_ag-overlay')).to.equal('rgb(60, 61, 62)');
     });
 
     it('derives the header from the card surface only, toward white without the gray', async () => {
@@ -328,6 +334,8 @@ describe('Ignite UI add-on', () => {
       root.style.setProperty('--ig-surface-500', 'initial');
       expect(token(grid, '--_ag-surface-elevated')).to.equal(color('#1e2532'));
       expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.dark.surface);
+      // The popups fall back with the header.
+      expect(token(grid, '--_ag-overlay')).to.equal(color('#1e2532'));
       // A 7.5 base surface alone is enough.
       root.style.setProperty('--ig-surface-base', 'rgb(40, 41, 42)');
       expect(token(grid, '--_ag-surface-elevated')).to.equal(
@@ -340,6 +348,7 @@ describe('Ignite UI add-on', () => {
       expect(isDarkGrid(grid)).to.be.true;
       expect(token(grid, '--_ag-surface-elevated')).to.equal(color('#1e2532'));
       expect(token(grid, '--_ag-surface')).to.equal(BUILT_IN.dark.surface);
+      expect(token(grid, '--_ag-overlay')).to.equal(color('#1e2532'));
     });
 
     it('an --ag-surface beats the Ignite UI card on a light grid', async () => {

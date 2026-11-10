@@ -321,8 +321,17 @@ $_scaled-radii: ('radius', 'radius-sm', 'radius-xs');
         @include _dark-derived();
     }
 
+    // Following the variant, the popups default to the dark header colour:
+    // the derived step where the header takes it (so the tool panel and
+    // status bar beside the grid match its header), else the built-in one.
     @if $follow {
-        @include _overlay('dark-overlay', $layers, map.get(tv.$dark, 'surface-elevated'), map.get(tv.$dark, 'text-body'));
+        $popup-bg: map.get(tv.$dark, 'surface-elevated');
+
+        @if _derives-raised($layers) {
+            $popup-bg: var(#{$_raised-helper}, #{$popup-bg});
+        }
+
+        @include _overlay('dark-overlay', $layers, $popup-bg, map.get(tv.$dark, 'text-body'));
     } @else {
         @include _overlay('dark-overlay', $layers);
     }

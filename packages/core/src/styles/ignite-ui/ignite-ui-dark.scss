@@ -10,10 +10,11 @@
 //  - `theme="dark"` takes every Ignite UI step, now that they match.
 //  - With `design-system="off"` the mode still follows the variant, with the
 //    built-in dark values. `tokens="off"` turns the variant off too.
-// Following the variant, the enterprise popups also go dark (`--_ag-overlay`
-// from the 7.5 surface role, else the built-in dark header colour).
 // The grid's header takes the 7.5 raised role, else the theme's card lifted
 // toward its text (`_token-blocks.scss`), else the built-in dark header.
+// Following the variant, the enterprise popups also go dark (`--_ag-overlay`
+// from the 7.5 overlay role, else the same derived header colour, else the
+// built-in one).
 // ─────────────────────────────────────────────────────────────────────────
 @use '../token-blocks' as tb;
 

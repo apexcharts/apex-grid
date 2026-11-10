@@ -43,6 +43,21 @@ async function mountGrid(attrs: Record<string, string> = {}) {
   return grid;
 }
 
+/**
+ * The dark header the grid derives on a 7.4 dark theme (no raised or overlay
+ * role): its card lifted toward the theme's text. The popups default to it.
+ */
+const DERIVED_HEADER =
+  'color-mix(in srgb, var(--ig-gray-800, #fff) 6%, var(--ig-surface-base, var(--ig-surface-500)))';
+
+/** The grid's resolved header surface. */
+const gridHeader = (grid: ApexGridEnterprise<Row>) =>
+  resolveColor(
+    getComputedStyle(grid as unknown as Element)
+      .getPropertyValue('--_ag-surface-elevated')
+      .trim()
+  );
+
 const entries = (popups: Popups) => Object.entries(popups) as [keyof Popups, HTMLElement][];
 
 describe('companion popups with the Ignite UI add-on', () => {
@@ -65,12 +80,17 @@ describe('companion popups with the Ignite UI add-on', () => {
     fixtureCleanup();
   });
 
-  it('go dark with the grid under a dark 7.4 theme, on the grid dark popup colours', async () => {
+  it('go dark with the grid under a dark 7.4 theme, on the grid dark header colour', async () => {
     await loadIgniteSheet('dark-material');
-    const popups = await mountPopups(await mountGrid());
+    const grid = await mountGrid();
+    const popups = await mountPopups(grid);
+    const header = gridHeader(grid);
+    // The header the grid derives from the theme's card, never the built-in slate.
+    expect(header).to.equal(resolveColor(DERIVED_HEADER));
+    expect(header).not.to.equal(resolveColor('#1e2532'));
     for (const [name, el] of entries(popups)) {
       const look = popupLook(el);
-      expect(look.background, name).to.equal(resolveColor('#1e2532'));
+      expect(look.background, name).to.equal(header);
       expect(look.color, name).to.equal(resolveColor('#e2e8f0'));
       expect(look.font, name).to.contain('Titillium Web');
     }
@@ -124,7 +144,7 @@ describe('companion popups with the Ignite UI add-on', () => {
     await nextFrame();
     await nextFrame();
     for (const [name, el] of entries(popups)) {
-      expect(popupLook(el).background, name).to.equal(resolveColor('#1e2532'));
+      expect(popupLook(el).background, name).to.equal(resolveColor(DERIVED_HEADER));
     }
     await loadIgniteSheet('light-material');
     await nextFrame();
@@ -136,7 +156,7 @@ describe('companion popups with the Ignite UI add-on', () => {
     await loadIgniteSheet('dark-material');
     const grid = await mountGrid();
     const popups = await mountPopups(grid);
-    expect(popupLook(popups.statusBar).background).to.equal(resolveColor('#1e2532'));
+    expect(popupLook(popups.statusBar).background).to.equal(resolveColor(DERIVED_HEADER));
     (grid as unknown as HTMLElement).setAttribute('theme', 'light');
     await nextFrame();
     await nextFrame();
