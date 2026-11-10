@@ -6,6 +6,39 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-11-10
+
+A patch for the Ignite UI add-on. Without `apex-grid/ignite-ui` nothing
+changes.
+
+### Fixed
+- With the add-on, the grid's card and rows take the Ignite UI theme's
+  surface (`--ig-surface-base` on Ignite UI 7.5, else `--ig-surface-500`).
+  Before, a grid on a dark theme painted its own slate `#0f172a`, a
+  blue-tinted block on the theme's neutral page. The alternate-row, hover and
+  tinted washes mix from the new surface. A light theme whose surface is not
+  white (Bootstrap `#f8f9fa`, Indigo `#f8f8fa`) now shows it too.
+- A grid whose mode differs from the theme's variant (`theme="light"` under a
+  dark theme, `theme="dark"` under a light one) keeps its built-in surface, as
+  it keeps its built-in text and lines. An `--ag-surface`, `--ag-dark-surface`
+  or `--apx-surface` you set still wins, and `design-system="off"` and
+  `tokens="off"` turn the step off with the rest of the add-on.
+- On a theme with no raised surface (every Ignite UI 7.4 theme), the
+  header, toolbar and paginator are the theme's surface moved slightly
+  toward its text, a neutral step apart from the card. Before, a dark
+  theme kept the built-in slate `#1e2532`, a blue-tinted header over the
+  neutral card, and on light Bootstrap and Indigo the built-in `#f8f9fb`
+  header would have matched the new off-white card. On light Material and
+  Fluent the header moves from `#f8f9fb` to a neutral `#fbfbfb`. The
+  theme's `--ig-surface-raised` (Ignite UI 7.5) and an
+  `--ag-surface-elevated` or `--ag-dark-surface-elevated` you set still
+  win.
+- On those dark themes the enterprise popups (filter builder, set filter,
+  AI panel, tool panel, status bar) take the same derived header colour,
+  so the tool panel and status bar beside the grid match its header as
+  they did in 4.0.0. The theme's `--ig-surface-overlay` (Ignite UI 7.5)
+  and an `--ag-dark-overlay` you set still win.
+
 ## [4.0.0] - 2026-11-09
 
 The first stable 4.0 release, now under the `latest` npm tag. The code is
