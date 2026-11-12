@@ -15,9 +15,9 @@
  *   src/generated/apex-grid-paginator.ts
  *   src/generated/index.ts             // re-exports
  *
- * Determinism: event keys are sorted and the banner carries the source manifest's
- * content hash (not a timestamp), canonicalized so the analyzer's module ordering
- * cannot move it, so identical input yields byte-identical output.
+ * Determinism: event keys are sorted and the banner carries a content hash of
+ * the manifest entries this generator reads (not a timestamp), so identical input
+ * yields byte-identical output.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -78,25 +78,24 @@ function onProp(eventName) {
 }
 
 function banner(hash) {
-  return `// GENERATED FROM custom-elements.json - do not edit by hand.\n// Manifest hash: ${hash}\n// Regenerate with \`npm run generate\`.\n`;
+  return `// GENERATED FROM custom-elements.json - do not edit by hand.\n// Manifest input hash: ${hash}\n// Regenerate with \`npm run generate\`.\n`;
 }
 
 /**
- * Content hash of the manifest, immune to the order the analyzer emits modules in.
+ * Content hash of what this generator reads from the manifest: the resolved
+ * element entries (tag, class name, event map type, sorted event names), never
+ * the manifest as a whole.
  *
- * Hashing the raw file looked reproducible and was not: the analyzer walks the
- * source glob in filesystem order, so the same sources yield the same 64 modules
- * in a different sequence from run to run, and the drift check then failed on a
- * banner hash that had changed while every wrapper body stayed identical. Sorting
- * the modules by path and stringifying with sorted keys hashes what the manifest
- * *says* rather than the order it happened to say it in.
+ * Hashing the whole manifest made the banner move on any core change: a JSDoc
+ * edit to an unrelated module changed the hash, the drift check then reported
+ * every wrapper out of date with byte-identical bodies, and the fix was a
+ * banner-only regeneration commit. Hashing the resolved entries ties the banner
+ * to the inputs that shape the output. They are built in ELEMENTS order with
+ * sorted events, and stringified with sorted keys, so the analyzer's module
+ * order cannot move the hash either.
  */
-function manifestHashOf(manifest) {
-  const modules = [...(manifest.modules ?? [])].sort((a, b) =>
-    String(a.path).localeCompare(String(b.path))
-  );
-  const canonical = stableStringify({ ...manifest, modules });
-  return createHash('sha256').update(canonical).digest('hex').slice(0, 12);
+function inputHashOf(entries) {
+  return createHash('sha256').update(stableStringify(entries)).digest('hex').slice(0, 12);
 }
 
 /** JSON.stringify with object keys sorted at every depth. */
@@ -116,7 +115,6 @@ function stableStringify(value) {
 const manifestPath = findManifest();
 const raw = readFileSync(manifestPath, 'utf-8');
 const manifest = JSON.parse(raw);
-const hash = manifestHashOf(manifest);
 
 const byTag = new Map();
 for (const mod of manifest.modules ?? []) {
@@ -134,6 +132,7 @@ const resolved = ELEMENTS.map((entry) => {
     .sort();
   return { ...entry, className: decl.name, events };
 });
+const hash = inputHashOf(resolved);
 
 // --- Emit src/events.ts -----------------------------------------------------
 function emitEvents() {
@@ -229,8 +228,6 @@ export function collectOutputs() {
   ];
 }
 
-export const manifestHash = hash;
-
 // --- Write when run directly ------------------------------------------------
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
@@ -240,6 +237,6 @@ if (isMain) {
   }
   const total = resolved.reduce((n, e) => n + e.events.length, 0);
   console.log(
-    `✓ Generated wrappers for ${resolved.length} elements (${total} events) from manifest ${hash}.`
+    `✓ Generated wrappers for ${resolved.length} elements (${total} events), input hash ${hash}.`
   );
 }
