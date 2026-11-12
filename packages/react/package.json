@@ -33,7 +33,7 @@
     "build": "node scripts/clean-dist.js && npm run generate && tsc -p tsconfig.build.json && node scripts/pack-dist.js"
   },
   "peerDependencies": {
-    "apex-grid": "^3.4.0 || ^4.0.0",
+    "apex-grid": "^3.5.0 || ^4.0.0",
     "react": ">=18",
     "react-dom": ">=18"
   },

@@ -5,9 +5,8 @@ framework-agnostic web component data grid. You get declarative `on<Event>`
 handlers, full TypeScript types for props and events, and a `ref` typed to the
 grid element, all generated from the element's Custom Elements Manifest.
 
-Enterprise features light up automatically when the consumer also loads
-`apex-grid-enterprise` alongside; this wrapper is tier-agnostic and holds no
-license gate.
+The wrappers render the community `<apex-grid>` element. For the enterprise
+grid, see [Using apex-grid-enterprise](#using-apex-grid-enterprise).
 
 ## Install
 
@@ -67,22 +66,99 @@ export function Users({ users }: { users: User[] }) {
 `ApexGrid` is the loosely typed base wrapper: `data` / `columns` are typed as
 `object`. Good for JavaScript or quick usage.
 
-`ApexGridToolbar` and `ApexGridPaginator` are deprecated and will be removed in
-react-apex-grid 0.2.0. They render nothing on their own: the grid renders its
-own toolbar and paginator, configured through its props (`showQuickFilter`,
-`showExport`, `pagination`).
-
 ```tsx
 import { ApexGrid } from 'react-apex-grid';
 
 <ApexGrid data={rows} columns={columns} style={{ height: 480 }} />;
 ```
 
+`ApexGridToolbar` and `ApexGridPaginator` are deprecated and will be removed in
+react-apex-grid 0.2.0. They render nothing on their own: the grid renders its
+own toolbar and paginator, configured through its props (`showQuickFilter`,
+`showExport`, `pagination`).
+
 Column, event, and configuration types all come from `apex-grid` directly:
 
 ```ts
 import type { ColumnConfiguration, ApexRowSelectedEvent } from 'apex-grid';
 ```
+
+## Using apex-grid-enterprise
+
+The components in this package render the community `<apex-grid>`. Loading
+`apex-grid-enterprise` does not change them: enterprise features live on a
+separate element, `<apex-grid-enterprise>`, so `ApexGrid` and
+`createApexGrid<T>()` stay community grids. Wrap the enterprise element with
+`@lit/react`, the same way this package wraps the community one:
+
+```sh
+npm install apex-grid-enterprise apex-grid @lit/react
+```
+
+Install `@lit/react` as a dependency of your app even though `react-apex-grid`
+already depends on it: strict installers (pnpm by default) do not let your code
+import a dependency of a dependency.
+
+```tsx
+'use client';
+
+import { createComponent, type EventName } from '@lit/react';
+import { ApexGridEnterprise, type ApexGridEnterpriseEventMap } from 'apex-grid-enterprise';
+// Opts into every enterprise feature module and registers the enterprise
+// elements (the grid, tool panel, status bar, set filter, chart panel...).
+import 'apex-grid-enterprise/define';
+import * as React from 'react';
+
+export interface Employee {
+  id: number;
+  name: string;
+  department: string;
+}
+
+type Events = ApexGridEnterpriseEventMap<Employee>;
+
+export const EnterpriseGrid = createComponent({
+  react: React,
+  tagName: 'apex-grid-enterprise',
+  // The element class typed to your row shape, so `data`, `columns` and the
+  // event details are checked against Employee.
+  elementClass: ApexGridEnterprise as new () => ApexGridEnterprise<Employee>,
+  events: {
+    // Community events: list the ones you handle, named as on ApexGrid.
+    onRowSelected: 'rowSelected' as EventName<Events['rowSelected']>,
+    onSorted: 'sorted' as EventName<Events['sorted']>,
+    // Enterprise events.
+    onViewChanged: 'apex-view-changed' as EventName<Events['apex-view-changed']>,
+    onRangeChanged: 'apex-range-changed' as EventName<Events['apex-range-changed']>,
+    onContextMenuOpening: 'apex-context-menu-opening' as EventName<
+      Events['apex-context-menu-opening']
+    >,
+    onRowsLoaded: 'apex-rows-loaded' as EventName<Events['apex-rows-loaded']>,
+    onRowsLoadFailed: 'apex-rows-load-failed' as EventName<Events['apex-rows-load-failed']>,
+    onServerRowsLoaded: 'apex-server-rows-loaded' as EventName<Events['apex-server-rows-loaded']>,
+    onServerRowsLoadFailed: 'apex-server-rows-load-failed' as EventName<
+      Events['apex-server-rows-load-failed']
+    >,
+  },
+});
+```
+
+Every enterprise property is then a prop, set on the element as a property:
+
+```tsx
+<EnterpriseGrid
+  data={employees}
+  columns={[{ key: 'name' }, { key: 'department' }]}
+  groupBy={['department']}
+  style={{ height: 480 }}
+  onRangeChanged={(e) => console.log(e.detail)}
+/>
+```
+
+Set the license once at startup with `ApexGridEnterprise.setLicense(key)` (see
+the `apex-grid-enterprise` README). Keep the wrapper in a client component; on
+the server, importing `apex-grid-enterprise/define` evaluates without a DOM, and
+the grid renders on the client after hydration.
 
 ## Using with Ignite UI
 
@@ -96,7 +172,7 @@ import 'apex-grid/ignite-ui';
 Every grid then follows the Ignite UI theme the page loads. A grid whose
 `theme` attribute has neither `dark` nor `light` follows the theme's variant,
 light or dark; `theme="light"` or `theme="dark"` keeps that mode. The card and row surfaces take the theme's
-surface (apex-grid 4.0.1 and later). The add-on needs no extra licence key. Without it the grid
+surface (apex-grid 4.0.1 and later). The add-on needs no extra license key. Without it the grid
 reads no `--ig-*` token; the `--ag-*` and family `--apx-*` tokens work either
 way. The add-on is an ES module entry, so load it through your bundler (there
 is no script-tag build).
