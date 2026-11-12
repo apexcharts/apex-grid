@@ -17,10 +17,6 @@ const RELEASE_FILES = ['LICENSE.md', 'README.md', 'CHANGELOG.md'];
 const DELIBERATE_MANIFEST_DIFFERENCES = {
   // Published as a tilde range on purpose, kept narrower than the workspace.
   'peerDependencies.@lit/context': { workspace: '^1.1.5', published: '~1.1.5' },
-  // The optional AI SDK peer is deliberately not published yet; adding it
-  // is a separate decision.
-  'peerDependencies.@anthropic-ai/sdk': { workspace: '>=0.40.0', published: undefined },
-  'peerDependenciesMeta.@anthropic-ai/sdk': { workspace: { optional: true }, published: undefined },
 };
 
 async function writeDistPackageJson() {
