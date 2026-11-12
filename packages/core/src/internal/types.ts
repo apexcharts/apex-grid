@@ -88,6 +88,10 @@ export type PropertyType<T, K extends Keys<T> = Keys<T>> =
  *   bar; the fill color tiers at ≥80 / ≥65 / below.
  * - `'sparkline'` renders a `number[]` as an inline trend chart with an
  *   optional delta label ({@link BaseColumnConfiguration.showDelta}).
+ * - `'chart'` renders a `number[]`, or an array of `{ data }` series, as an
+ *   ApexCharts chart in the cell, configured with
+ *   {@link BaseColumnConfiguration.chart}. Needs ApexCharts 8.4.1 or later,
+ *   given with `setApexCharts()` or loaded as a global.
  * - `'status'` renders a pill with a leading dot. The state is taken from
  *   {@link BaseColumnConfiguration.statusVariant} or inferred from the value.
  */
@@ -104,7 +108,68 @@ export type DataType =
   | 'badge'
   | 'progress'
   | 'sparkline'
+  | 'chart'
   | 'status';
+
+/**
+ * ApexCharts options for a `type: 'chart'` column: an `ApexOptions` object.
+ * Typed as any object so this package does not depend on the apexcharts
+ * types, and so a value typed `ApexOptions` is accepted as it is.
+ */
+export type ChartColumnOptions = object;
+
+/**
+ * Configures a `type: 'chart'` column. Every field is optional.
+ */
+export interface ColumnChartConfiguration<T extends object, K extends Keys<T> = Keys<T>> {
+  /**
+   * The ApexCharts chart type. Defaults to `'line'`.
+   *
+   * @remarks
+   * An axis chart (`line`, `area`, `bar`, and the rest) takes a `number[]` or
+   * an array of `{ data }` series, in the grid's brand colour. A `pie`,
+   * `donut`, `radialBar` or `polarArea` chart takes a `number[]`, one value per
+   * slice or ring, in the ApexCharts palette. A `chart.type` in `options`,
+   * including one an options function returns for a row, takes precedence.
+   */
+  type?: 'line' | 'area' | 'bar' | (string & {});
+  /**
+   * Chart height in pixels. Defaults to `28`.
+   */
+  height?: number;
+  /**
+   * Chart width: pixels or a CSS length. Defaults to `'100%'` of the cell.
+   */
+  width?: number | string;
+  /**
+   * ApexCharts options merged over the column's defaults (sparkline mode,
+   * no animation, no tooltip, no toolbar, the grid's brand colour). Objects
+   * merge; arrays replace.
+   *
+   * @remarks
+   * A function gets the cell's value and record, for options that differ per
+   * row, such as a colour chosen by value. Each re-bind to another record then
+   * runs a full `updateOptions` instead of the cheaper `updateSeries`. It
+   * builds a new chart instead, which costs more again, when the record's
+   * options leave out a key the previous record's set (a target line on some
+   * rows only), set `yaxis`, or change `chart.type`, so no row keeps another
+   * row's settings. Prefer a plain object when the options are the same for
+   * every row; when they differ, return the same keys for every row and keep
+   * `yaxis` and `chart.type` out of the function.
+   */
+  options?: ChartColumnOptions | ((value: BasePropertyType<T, K>, data: T) => ChartColumnOptions);
+  /**
+   * The accessible name of each cell's chart. Defaults to the `cell.chart`
+   * locale string, `'{count} values, {first} to {last}'` in English
+   * (`'cell.chartOne'` for one value), with the
+   * numbers formatted for the column's {@link BaseColumnConfiguration.locale}.
+   * Several series are each named and joined with `'; '`
+   * (`'cell.chartSeries'`); points with no single number, such as range data,
+   * read `'{count} values'` (`'cell.chartPoints'`). An empty string falls back
+   * to the default.
+   */
+  label?: (value: BasePropertyType<T, K>, data: T) => string;
+}
 
 /** Visual variant for a `type: 'badge'` pill. */
 export type BadgeVariant = 'gold' | 'brand' | 'neutral' | 'muted';
@@ -376,8 +441,9 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    */
   currency?: string;
   /**
-   * BCP 47 locale for `type: 'currency'` number formatting. Defaults to the
-   * runtime locale.
+   * BCP 47 locale for `type: 'currency'` number formatting, and for the
+   * numbers in a `type: 'chart'` cell's default accessible name. Defaults to
+   * the runtime locale.
    *
    * @remarks
    * On any numeric column (`number`, `currency`, `rating`, `progress`) it also
@@ -406,6 +472,11 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    * Defaults to `true`. Has no effect on columns with another `type`.
    */
   showDelta?: boolean;
+  /**
+   * Configures `type: 'chart'` columns: chart type, size, ApexCharts options
+   * and the accessible name. Has no effect on columns with another `type`.
+   */
+  chart?: ColumnChartConfiguration<T, K>;
 }
 
 /**

@@ -39,10 +39,14 @@ import { build } from 'esbuild';
  * 69594, 141649 and 165118 bytes (2026-11-09) for the IME composition guards
  * and the full-width and grouped number input: about 1.75 KB in core and
  * 2.2 KB in enterprise, which the Ignite UI work had left no headroom for.
+ *
+ * Core define (lit bundled) was re-baselined at 87859 bytes (2026-11-12) for
+ * the `type: 'chart'` column: 1970 bytes bundled (85889 to 87859) and 1938
+ * external (69594 to 71532). The bundled row had 611 bytes left.
  */
 const BUDGETS = {
   'core define (lit external)': 72_000,
-  'core define (lit bundled)': 86_500,
+  'core define (lit bundled)': 90_500,
   'enterprise define entry': 146_000,
   'enterprise lazy chunks': 20_000,
   'enterprise index entry': 170_500,

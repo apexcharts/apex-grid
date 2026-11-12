@@ -6,6 +6,57 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- `type: 'chart'`: an ApexCharts chart in every cell of a column, configured
+  with the new `chart` column option (`type`, `height`, `width`, `options`,
+  `label`). For an axis chart (`line`, `area`, `bar` and the rest) a
+  `number[]` value is one series, with `null` entries drawn as gaps, and an
+  array of `{ data }` objects is passed through as the series. A `pie`,
+  `donut`, `radialBar` or `polarArea` chart takes a `number[]`, one value per
+  slice or ring. The type can be set on the column or in `chart.options`,
+  which takes precedence, per row too. `chart.options` merges over the
+  defaults (sparkline mode, no animation, no tooltip, no toolbar, the
+  grid's brand colour on axis charts and the ApexCharts palette on slices
+  and rings) and takes a value typed
+  `ApexOptions`; a function gives options per row.
+- `setApexCharts(ApexCharts)`, exported from `apex-grid`, gives chart columns
+  the constructor to draw with. Without it they use a global
+  `window.ApexCharts` from a script tag, including an `async` or `defer` one
+  that runs after the grid renders: the cells build on the page's `load`
+  event. With neither, the cells stay empty and the grid warns once. Chart
+  columns need ApexCharts 8.4.1 or later, the release that renders inside a
+  shadow root. ApexCharts is not a peer dependency, so an app on an older
+  release installs as before.
+- Locale keys for a chart cell's accessible name: `cell.chart`
+  (`'{count} values, {first} to {last}'`), `cell.chartOne`,
+  `cell.chartPoints`, `cell.chartPointsOne`, `cell.chartSeries` and
+  `cell.chartSeriesUnnamed`, with Spanish strings in `esLocale`. The numbers
+  follow the column's `locale`.
+- Exports for typed code: `ChartColumnOptions`, `ColumnChartConfiguration`,
+  the `ApexGridCellChart` element and its `ChartCellState`, and the
+  `ApexChartsConstructor` and `ApexChartsInstanceLike` shapes.
+- `npm run bench:chart` in `packages/core`, the benchmark behind the figures
+  below.
+
+A chart cell keeps one chart for its element's whole life and re-points it
+with `updateSeries` when a recycled row hands it another record, so a sort or
+a scroll never shows one row's chart on another. It destroys the chart only
+once the element has really left the page, because the virtualizer moves rows
+far more often than it removes them. Per-row options re-point with
+`updateOptions`, and build a new chart when a row's options leave out a key
+the previous row's set, set `yaxis` or change `chart.type`, so no row keeps
+another row's target line, axis or chart type. The chart stays out of the
+accessibility tree, and the cell element is `role="img"` with a label naming
+what it shows, so a grid of charts adds no tab stops.
+
+Measured with `npm run bench:chart` (apexcharts 8.8.1, headless Chromium,
+2026-11-12), 1,000 rows with 46 charts at first paint, then one scroll to the
+bottom and back: the chart column built 82 more charts, with no long tasks
+during the scroll, and at the end every rendered row drew its own data. A
+cell template that builds on connect, wrapped in `keyed(ctx.data, ...)`,
+built 3,079 more with 14 long tasks; without `keyed` it built 1,306 more, and
+at the end every rendered row drew another row's data.
+
 ### Changed
 - Build: the `apex-commons` dev dependency (the Ignite UI token SCSS) moves
   to `^0.11.0`. The shipped bundle is byte-identical.

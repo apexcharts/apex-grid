@@ -1,3 +1,10 @@
+export {
+  type ApexChartsConstructor,
+  type ApexChartsInstanceLike,
+  type ChartCellState,
+  default as ApexGridCellChart,
+  setApexCharts,
+} from './components/chart-cell.js';
 export type {
   ApexCellValidationFailedEvent,
   ApexCellValueChangedEvent,
@@ -76,6 +83,8 @@ export type {
   BaseColumnConfiguration,
   BaseColumnSortConfiguration,
   BasePropertyType,
+  ChartColumnOptions,
+  ColumnChartConfiguration,
   ColumnConfiguration,
   ColumnFilterConfiguration,
   ColumnGroupConfiguration,

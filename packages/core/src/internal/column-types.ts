@@ -2,11 +2,17 @@ import { html, nothing, svg, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import { ref } from 'lit/directives/ref.js';
 import type ApexGridCell from '../components/cell.js';
+import type { ChartCellState } from '../components/chart-cell.js';
 import type ApexGridRow from '../components/row.js';
 import { EN_LOCALE, type GridLocaleKey } from '../i18n/en.js';
 import { interpolate, type LocaleParams } from '../i18n/localize.js';
 import { renderIcon } from './icons.js';
-import type { BadgeVariant, ColumnConfiguration, StatusVariant } from './types.js';
+import type {
+  BadgeVariant,
+  ChartColumnOptions,
+  ColumnConfiguration,
+  StatusVariant,
+} from './types.js';
 
 const RATING_DEFAULT_MAX = 5;
 
@@ -653,6 +659,285 @@ const sparklineType: ColumnTypeRenderer<object> = {
   },
 };
 
+// ── Chart (an ApexCharts chart per cell) ─────────────────────────────────
+
+/** ApexCharts options as the renderer merges them. */
+type Options = Record<string, unknown>;
+
+/** The `chart` settings as the renderer reads them, free of the column's key type. */
+interface ChartColumnConfig {
+  type?: string;
+  height?: number;
+  width?: number | string;
+  options?: ChartColumnOptions | ((value: unknown, data: object) => ChartColumnOptions);
+  label?: (value: unknown, data: object) => string;
+}
+
+/** The column fields a chart cell reads. */
+interface ChartColumn {
+  key?: unknown;
+  headerText?: string;
+  locale?: string;
+  chart?: ChartColumnConfig;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Merges `over` into `base`: objects merge key by key, anything else replaces. */
+function mergeOptions(base: Options, over: Options): Options {
+  const out: Options = { ...base };
+  for (const [key, value] of Object.entries(over)) {
+    const current = out[key];
+    out[key] =
+      isPlainObject(current) && isPlainObject(value) ? mergeOptions(current, value) : value;
+  }
+  return out;
+}
+
+/**
+ * Chart types that take one number per slice or ring as their `series`, not
+ * a list of `{ data }` series.
+ */
+const NON_AXIS_CHART_TYPES = new Set(['pie', 'donut', 'radialBar', 'polarArea']);
+
+/** The `chart.type` an options object sets, if it is a string. */
+function chartTypeOf(options: Options): string | undefined {
+  const type = isPlainObject(options.chart) ? options.chart.type : undefined;
+  return typeof type === 'string' ? type : undefined;
+}
+
+/**
+ * The column's defaults for a chart of `type`, under whatever `chart.options`
+ * adds.
+ */
+function chartDefaults(config: ChartColumnConfig, type: string): Options {
+  const defaults: Options = {
+    chart: {
+      type,
+      height: config.height ?? 28,
+      width: config.width ?? '100%',
+      sparkline: { enabled: true },
+      animations: { enabled: false },
+      toolbar: { show: false },
+      zoom: { enabled: false },
+      parentHeightOffset: 0,
+      // Off the accessibility tree: by default a chart is a role="application"
+      // tab stop, one per row here. The cell element carries the name.
+      accessibility: { enabled: false },
+    },
+    dataLabels: { enabled: false },
+    // The cell clips overflow, so a tooltip would be cut off.
+    tooltip: { enabled: false },
+  };
+  // One brand colour suits an axis chart; slices and rings take the
+  // ApexCharts palette, so each is told apart.
+  if (!NON_AXIS_CHART_TYPES.has(type)) defaults.colors = ['var(--_ag-brand)'];
+  if (type === 'line' || type === 'area') defaults.stroke = { width: 1.5 };
+  if (type === 'radialBar') {
+    // Its own labels ('series-1', the percentage) do not fit a cell, and its
+    // default margins leave no room for the ring at row height.
+    defaults.plotOptions = {
+      radialBar: {
+        dataLabels: { show: false },
+        hollow: { margin: 0, size: '40%' },
+        track: { margin: 1 },
+      },
+    };
+  }
+  return defaults;
+}
+
+/**
+ * Merges `over` onto the defaults for the chart type it ends up with: a
+ * `chart.type` in the options (which wins the merge), else the column's
+ * `chart.type`, else `'line'`.
+ */
+function withDefaults(config: ChartColumnConfig, over: Options): Options {
+  const type = chartTypeOf(over) ?? config.type ?? 'line';
+  return mergeOptions(chartDefaults(config, type), over);
+}
+
+/** Merged options per column config, for the plain-object case. */
+const staticChartOptions = new WeakMap<object, Options>();
+/** Per-row options per record, so a re-render of the same record is not an update. */
+const rowChartOptions = new WeakMap<
+  object,
+  WeakMap<object, { value: unknown; options: Options }>
+>();
+
+/**
+ * The settings of a chart column that has none. Shared, because the options
+ * caches are keyed by this object: a fresh `{}` per render would miss them and
+ * turn every re-bind into a full `updateOptions`.
+ */
+const NO_CHART_CONFIG: ChartColumnConfig = Object.freeze({});
+
+/** What `chart.options` gave, as an object to merge (anything else adds nothing). */
+function asOptions(value: unknown): Options {
+  return isPlainObject(value) ? value : {};
+}
+
+function chartOptions(column: ChartColumn, value: unknown, data: object): Options {
+  const config = column.chart ?? NO_CHART_CONFIG;
+  const over = config.options;
+  if (typeof over !== 'function') {
+    let options = staticChartOptions.get(config);
+    if (!options) {
+      options = withDefaults(config, asOptions(over));
+      staticChartOptions.set(config, options);
+    }
+    return options;
+  }
+  let perRecord = rowChartOptions.get(config);
+  if (!perRecord) {
+    perRecord = new WeakMap();
+    rowChartOptions.set(config, perRecord);
+  }
+  const cached = perRecord.get(data);
+  if (cached && cached.value === value) return cached.options;
+  const options = withDefaults(config, asOptions(over(value, data)));
+  perRecord.set(data, { value, options });
+  return options;
+}
+
+/** A finite number, or `null` for a gap. */
+function chartPoint(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * A chart cell's series. For an axis chart, a `number[]` is one series named
+ * for the column and an array of `{ data }` objects is passed through; in a
+ * `number[]`, `null`, `undefined` and non-finite entries are gaps. A pie,
+ * donut, radial bar or polar area chart takes the `number[]` itself, one value
+ * per slice or ring, with a gap as `0`. Anything else, or series with no
+ * points at all, draws nothing.
+ */
+export function chartSeries(
+  value: unknown,
+  column: { headerText?: string; key?: unknown },
+  type: string | undefined
+): unknown[] {
+  if (!Array.isArray(value) || value.length === 0) return [];
+  const numeric = value.every((v) => v == null || typeof v === 'number');
+  if (NON_AXIS_CHART_TYPES.has(type ?? '')) {
+    if (!numeric || value.every((v) => chartPoint(v) === null)) return [];
+    return value.map((v) => chartPoint(v) ?? 0);
+  }
+  if (numeric) {
+    const data = value.map(chartPoint);
+    if (data.every((v) => v === null)) return [];
+    return [{ name: column.headerText ?? String(column.key ?? ''), data }];
+  }
+  const isSeries = (v: unknown) => isPlainObject(v) && Array.isArray(v.data);
+  if (value.every(isSeries) && value.some((v) => pointCount(v) > 0)) return value;
+  return [];
+}
+
+/** A point with nothing to draw: a gap. */
+function isGap(point: unknown): boolean {
+  const y = Array.isArray(point) ? point[1] : isPlainObject(point) ? point.y : point;
+  return y == null || (typeof y === 'number' && !Number.isFinite(y));
+}
+
+/** The points of a series that are not gaps. */
+function pointCount(series: unknown): number {
+  const data = isPlainObject(series) ? series.data : undefined;
+  return Array.isArray(data) ? data.filter((point) => !isGap(point)).length : 0;
+}
+
+/** The y values of a series' points: numbers, `[x, y]` pairs or `{ y }` objects. */
+function seriesValues(series: unknown): number[] {
+  const data = isPlainObject(series) ? series.data : undefined;
+  if (!Array.isArray(data)) return [];
+  const out: number[] = [];
+  for (const point of data) {
+    const y = Array.isArray(point) ? point[1] : isPlainObject(point) ? point.y : point;
+    if (typeof y === 'number' && Number.isFinite(y)) out.push(y);
+  }
+  return out;
+}
+
+const chartNumberFormatters = new Map<string, Intl.NumberFormat>();
+
+function chartNumberFormatter(locale?: string): Intl.NumberFormat {
+  const key = locale ?? '';
+  let formatter = chartNumberFormatters.get(key);
+  if (!formatter) {
+    try {
+      formatter = new Intl.NumberFormat(locale);
+    } catch {
+      formatter = new Intl.NumberFormat();
+    }
+    chartNumberFormatters.set(key, formatter);
+  }
+  return formatter;
+}
+
+/**
+ * The default accessible name of a chart cell. One series reads
+ * `'{count} values, {first} to {last}'` (one value, `'1 value, {value}'`);
+ * points with no single number (range or candlestick data) read
+ * `'{count} values'`. Several series are each named (`'{name}: …'`, an unnamed
+ * one `'Series 2'`) and joined with `'; '`. The numbers of a pie, donut,
+ * radial bar or polar area chart read as one series.
+ */
+function chartLabel(
+  ctx: ColumnTypeCellContext<object>,
+  series: unknown[],
+  locale: string | undefined
+): string {
+  const format = chartNumberFormatter(locale);
+  const describe = (one: unknown): string => {
+    const values = seriesValues(one);
+    if (!values.length) {
+      const count = pointCount(one);
+      return count === 1
+        ? localizeCell(ctx, 'cell.chartPointsOne')
+        : localizeCell(ctx, 'cell.chartPoints', { count: format.format(count) });
+    }
+    if (values.length === 1) {
+      return localizeCell(ctx, 'cell.chartOne', { value: format.format(values[0]) });
+    }
+    return localizeCell(ctx, 'cell.chart', {
+      count: format.format(values.length),
+      first: format.format(values[0]),
+      last: format.format(values[values.length - 1]),
+      min: format.format(Math.min(...values)),
+      max: format.format(Math.max(...values)),
+    });
+  };
+  // A pie, donut, radial bar or polar area series is the numbers themselves.
+  if (series.every((one) => typeof one === 'number')) return describe({ data: series });
+  if (series.length === 1) return describe(series[0]);
+  return series
+    .map((one, i) => {
+      const named = isPlainObject(one) && typeof one.name === 'string' ? one.name : '';
+      const name =
+        named || localizeCell(ctx, 'cell.chartSeriesUnnamed', { index: format.format(i + 1) });
+      return localizeCell(ctx, 'cell.chartSeries', { name, label: describe(one) });
+    })
+    .join('; ');
+}
+
+const chartType: ColumnTypeRenderer<object> = {
+  display(ctx) {
+    const column = ctx.column as unknown as ChartColumn;
+    const options = chartOptions(column, ctx.value, ctx.data);
+    // The series shape follows the type ApexCharts will draw.
+    const series = chartSeries(ctx.value, column, chartTypeOf(options));
+    if (!series.length) return nothing;
+    // A label callback that returns '' gets the default, so the cell's
+    // role="img" always has a name.
+    const label =
+      column.chart?.label?.(ctx.value, ctx.data) || chartLabel(ctx, series, column.locale);
+    const state: ChartCellState = { series, options, label };
+    return html`<apex-grid-cell-chart .state=${state}></apex-grid-cell-chart>`;
+  },
+};
+
 const statusType: ColumnTypeRenderer<object> = {
   display(ctx) {
     const value = ctx.value;
@@ -681,6 +966,7 @@ const BUILTIN_TYPES: Record<string, ColumnTypeRenderer<object>> = {
   badge: badgeType,
   progress: progressType,
   sparkline: sparklineType,
+  chart: chartType,
   status: statusType,
 };
 

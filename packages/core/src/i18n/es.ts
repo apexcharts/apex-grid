@@ -90,6 +90,12 @@ export const esLocale: GridLocaleText = {
   'cell.rating': '{value} de {max}',
   'cell.true': 'verdadero',
   'cell.false': 'falso',
+  'cell.chart': '{count} valores, de {first} a {last}',
+  'cell.chartOne': '1 valor, {value}',
+  'cell.chartPoints': '{count} valores',
+  'cell.chartPointsOne': '1 valor',
+  'cell.chartSeries': '{name}: {label}',
+  'cell.chartSeriesUnnamed': 'Serie {index}',
 
   // Editores
   'editor.rating': 'Calificación',

@@ -1,13 +1,14 @@
-import { exec as _exec } from 'node:child_process';
+import { exec as _exec, execFile as _execFile } from 'node:child_process';
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import * as sass from 'sass-embedded';
 import { checkDistManifest } from '../../../scripts/check-dist-manifest.js';
 import { buildComponents } from './sass.js';
 
 const exec = promisify(_exec);
+const execFile = promisify(_execFile);
 const PKG_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEST_DIR = path.join.bind(null, PKG_DIR, 'dist');
 const RELEASE_FILES = ['custom-elements.json', 'LICENSE.md', 'README.md', 'CHANGELOG.md'];
@@ -71,6 +72,27 @@ async function writeTokensCss() {
   await writeFile(DEST_DIR('tokens.css'), `${header}${css}\n`);
 }
 
+// Apps import the grid while rendering on a server (Next.js, Astro, the React
+// wrapper), where there is no DOM. Every entry must evaluate there; only
+// defining and creating elements needs a browser. Each import runs in a fresh
+// Node process, so nothing a browser would provide is there.
+const SERVER_IMPORT_ENTRIES = ['index.js', 'define.js', 'ignite-ui.js'];
+
+async function checkServerImport() {
+  for (const entry of SERVER_IMPORT_ENTRIES) {
+    const url = pathToFileURL(DEST_DIR(entry)).href;
+    try {
+      await execFile(process.execPath, [
+        '--input-type=module',
+        '-e',
+        `await import(${JSON.stringify(url)})`,
+      ]);
+    } catch (error) {
+      throw new Error(`dist/${entry} throws when imported without a DOM:\n${error.stderr}`);
+    }
+  }
+}
+
 async function build() {
   await cleanDist();
   await buildComponents();
@@ -82,6 +104,7 @@ async function build() {
     ...RELEASE_FILES.map((file) => copyFile(file, DEST_DIR(file))),
   ]);
   await checkDistManifest({ pkgDir: PKG_DIR, deliberate: DELIBERATE_MANIFEST_DIFFERENCES });
+  await checkServerImport();
 }
 
 build();

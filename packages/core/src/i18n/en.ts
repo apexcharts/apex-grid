@@ -85,6 +85,12 @@ export const EN_LOCALE = {
   'cell.rating': '{value} of {max}',
   'cell.true': 'true',
   'cell.false': 'false',
+  'cell.chart': '{count} values, {first} to {last}',
+  'cell.chartOne': '1 value, {value}',
+  'cell.chartPoints': '{count} values',
+  'cell.chartPointsOne': '1 value',
+  'cell.chartSeries': '{name}: {label}',
+  'cell.chartSeriesUnnamed': 'Series {index}',
 
   // Editors
   'editor.rating': 'Rating',

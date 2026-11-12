@@ -14,6 +14,7 @@ import type {
   PropertyType,
 } from '../internal/types.js';
 import { styles } from '../styles/body-cell/body-cell.css.js';
+import ApexGridCellChart from './chart-cell.js';
 import type ApexGridRow from './row.js';
 
 /**
@@ -124,7 +125,7 @@ export default class ApexGridCell<T extends object> extends LitElement {
   public static override styles = styles;
 
   public static register(): void {
-    registerComponent(ApexGridCell);
+    registerComponent(ApexGridCell, ApexGridCellChart);
   }
 
   /**

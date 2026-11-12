@@ -696,7 +696,9 @@ grid.localeText = { 'pagination.summary': '{total}件中 {start}～{end}件' };
 
 Besides the labels you see, the keys cover screen-reader text (`announce.*`,
 `header.*`, `cell.rating` "{value} of {max}", `cell.true` / `cell.false` for a
-boolean cell), the filter panel's chips (`filter.and` / `filter.or`, and the
+boolean cell, `cell.chart` "{count} values, {first} to {last}" and
+`cell.chartOne`, `cell.chartPoints`, `cell.chartPointsOne`, `cell.chartSeries`,
+`cell.chartSeriesUnnamed` for a chart cell), the filter panel's chips (`filter.and` / `filter.or`, and the
 `filter.operator.*` labels on a chip with no value), the CSV export menu item
 (`toolbar.exportCsv`), and the default validator messages (`validation.*`).
 

@@ -165,6 +165,13 @@
     color: var(--_ag-risk-text);
 }
 
+// ── Chart (an ApexCharts chart, `type: 'chart'`) ─────────────────────────
+apex-grid-cell-chart {
+    display: block;
+    inline-size: 100%;
+    min-inline-size: 0;
+}
+
 // ── Status badge (pill with dot) ─────────────────────────────────────────
 [part~='status'] {
     display: inline-flex;
