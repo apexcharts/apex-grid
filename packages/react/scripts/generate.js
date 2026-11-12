@@ -39,8 +39,16 @@ const GENERATED = path.join(SRC, 'generated');
  */
 const ELEMENTS = [
   { tag: 'apex-grid', eventMapType: 'ApexGridEventMap' },
-  { tag: 'apex-grid-toolbar' },
-  { tag: 'apex-grid-paginator' },
+  {
+    tag: 'apex-grid-toolbar',
+    deprecated:
+      'Renders nothing outside `<apex-grid>`: the toolbar reads its state from the grid that hosts it, and the grid renders its own. Configure it through the grid props instead (`showQuickFilter`, `showExport`). This export will be removed in react-apex-grid 0.2.0.',
+  },
+  {
+    tag: 'apex-grid-paginator',
+    deprecated:
+      'Renders nothing outside `<apex-grid>`: the paginator reads its state from the grid that hosts it, and the grid renders its own. Configure it through the grid `pagination` prop instead. This export will be removed in react-apex-grid 0.2.0.',
+  },
 ];
 
 // --- Locate the manifest shipped by the resolved `apex-grid` package --------

@@ -64,9 +64,13 @@ export function Users({ users }: { users: User[] }) {
 
 ### Base component
 
-`ApexGrid` (and `ApexGridToolbar`, `ApexGridPaginator`) are the loosely typed
-base wrappers: `data` / `columns` are typed as `object`. Good for JavaScript or
-quick usage.
+`ApexGrid` is the loosely typed base wrapper: `data` / `columns` are typed as
+`object`. Good for JavaScript or quick usage.
+
+`ApexGridToolbar` and `ApexGridPaginator` are deprecated and will be removed in
+react-apex-grid 0.2.0. They render nothing on their own: the grid renders its
+own toolbar and paginator, configured through its props (`showQuickFilter`,
+`showExport`, `pagination`).
 
 ```tsx
 import { ApexGrid } from 'react-apex-grid';

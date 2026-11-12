@@ -9,9 +9,10 @@ export {
 /**
  * react-apex-grid: React wrappers for the apex-grid web component.
  *
- * - `ApexGrid` / `ApexGridToolbar` / `ApexGridPaginator`: generated base
- *   components (loosely typed, `data`/`columns` as `object`). Good for JS and
- *   quick usage.
+ * - `ApexGrid`: the generated base component (loosely typed, `data`/`columns`
+ *   as `object`). Good for JS and quick usage.
+ * - `ApexGridToolbar` / `ApexGridPaginator`: deprecated, they render nothing
+ *   outside the grid; removed in 0.2.0.
  * - `createApexGrid<T>()`: the recommended path for typed apps, a row-typed
  *   `<apex-grid>` with typed props, events, and ref.
  *
