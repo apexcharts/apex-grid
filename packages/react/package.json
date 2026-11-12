@@ -28,7 +28,7 @@
     "generate": "node scripts/generate.js",
     "check:generated": "node scripts/check-generated.js",
     "pretest": "node scripts/build-tests.js",
-    "test": "wtr",
+    "test": "node scripts/check-ssr.js && wtr",
     "typecheck": "tsc --noEmit",
     "build": "npm run generate && tsc -p tsconfig.build.json && node scripts/pack-dist.js"
   },
