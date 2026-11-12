@@ -30,7 +30,7 @@
     "pretest": "node scripts/build-tests.js",
     "test": "node scripts/check-ssr.js && wtr",
     "typecheck": "tsc --noEmit",
-    "build": "npm run generate && tsc -p tsconfig.build.json && node scripts/pack-dist.js"
+    "build": "node scripts/clean-dist.js && npm run generate && tsc -p tsconfig.build.json && node scripts/pack-dist.js"
   },
   "peerDependencies": {
     "apex-grid": "^3.4.0 || ^4.0.0",
