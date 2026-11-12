@@ -467,7 +467,7 @@ describe('ApexGridChart panel', () => {
     await panel.updateComplete;
     const container = panel.querySelector('[part="panel"]')!;
     expect(container.getAttribute('role')).to.equal('dialog');
-    expect(container.getAttribute('aria-modal')).to.equal('true');
+    expect(container.hasAttribute('aria-modal')).to.equal(false);
     expect(container.getAttribute('aria-label')).to.equal('Revenue');
   });
 

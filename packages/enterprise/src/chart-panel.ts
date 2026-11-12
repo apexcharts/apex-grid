@@ -30,7 +30,13 @@ import {
 } from './features/chart.js';
 import { isValidChartFormula } from './features/chart-calc.js';
 import { chartColor, isDark, toHex } from './features/chart-color.js';
-import { captureFocus, type FocusReturn, returnFocus } from './features/focus-return.js';
+import {
+  captureFocus,
+  type FocusReturn,
+  focusGrid,
+  isPanelCycleKey,
+  returnFocus,
+} from './features/focus-return.js';
 import { indexToColumnLetter } from './features/formula/refs.js';
 import { RANGE_CHANGED_EVENT } from './features/range-selection.js';
 import { type ApexGridEnterpriseHost, VIEW_CHANGED_EVENT } from './grid-enterprise.js';
@@ -225,13 +231,6 @@ function optionShape(options: object): string {
     .join();
 }
 
-/** The deepest focused element across shadow boundaries (so focus restore lands where it was). */
-function deepActiveElement(): HTMLElement | null {
-  let el: Element | null = document.activeElement;
-  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
-  return el instanceof HTMLElement ? el : null;
-}
-
 /** The toolbar popovers, each a `[part=<name>]` wrapper holding `<name>-button` and `<name>-menu`. */
 const POPOVERS = ['export', 'format', 'data'] as const;
 
@@ -252,6 +251,10 @@ const forecastPeriods = (value: unknown): number =>
  * floating, draggable panel — append it to `document.body` and call {@link show}. ApexCharts is
  * dynamically imported, so registering the element costs nothing until a chart is drawn.
  *
+ * The dialog is non-modal: it floats beside the live grid, so Tab moves on out of it in document
+ * order. Escape closes it and returns focus to where it came from; F6 or the header's "Back to
+ * grid" button moves focus to the grid's active cell, and F6 in the grid comes back.
+ *
  * Unlike the other companion elements, this one renders in **light DOM**: ApexCharts injects global
  * styles and measures layout and cannot render inside a shadow root.
  *
@@ -263,6 +266,7 @@ const forecastPeriods = (value: unknown): number =>
  *
  * @csspart panel - The panel container.
  * @csspart header - Dialog header (drag handle + title + close).
+ * @csspart back-to-grid - Dialog header button that moves focus to the grid.
  * @csspart toolbar - The type gallery / theme switcher row.
  * @csspart type-button - A chart-type button in the gallery.
  * @csspart canvas - The light-DOM element ApexCharts renders into.
@@ -515,11 +519,12 @@ export class ApexGridChart extends LitElement {
 
   /**
    * Escape closes an open toolbar popover first (focus back on its toggle), else dismisses an open
-   * dialog panel; Tab cycles focus within the dialog.
+   * dialog panel. The dialog is non-modal, so Tab is left alone and F6 moves to the grid (a grid
+   * that opened the panel handles F6 first, to cycle through its open panels).
    */
   #onKeydown = (event: KeyboardEvent): void => {
-    // Escape and Tab in an IME conversion (the heading, a calculated field)
-    // belong to the input method, not to the popover or the dialog.
+    // Escape in an IME conversion (the heading, a calculated field)
+    // belongs to the input method, not to the popover or the dialog.
     if (isComposing(event)) return;
     if (event.key === 'Escape' && this.#closePopover(event.target as Element)) {
       event.stopPropagation();
@@ -529,8 +534,8 @@ export class ApexGridChart extends LitElement {
     if (event.key === 'Escape') {
       event.stopPropagation();
       this.close();
-    } else if (event.key === 'Tab') {
-      this.#trapFocus(event);
+    } else if (isPanelCycleKey(event) && !event.defaultPrevented && focusGrid(this.grid)) {
+      event.preventDefault();
     }
   };
 
@@ -545,29 +550,6 @@ export class ApexGridChart extends LitElement {
     for (const name of own ? [own] : open) this[`${name}Open`] = false;
     this.renderRoot.querySelector<HTMLElement>(`[part="${own ?? open[0]}-button"]`)?.focus();
     return true;
-  }
-
-  /** Keep Tab / Shift+Tab cycling inside the dialog (wrap last to first, first to last). */
-  #trapFocus(event: KeyboardEvent): void {
-    const focusables = [
-      ...this.renderRoot.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      ),
-    ].filter(
-      (el) =>
-        !el.hasAttribute('disabled') && (el.offsetParent !== null || el.getClientRects().length > 0)
-    );
-    if (focusables.length === 0) return;
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    const active = deepActiveElement();
-    if (event.shiftKey && active === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
-    }
   }
 
   /** The live ApexCharts instance, or `null`. */
@@ -1554,6 +1536,19 @@ export class ApexGridChart extends LitElement {
         border-radius: 4px;
         color: var(--_ag-text-body, #1f2328);
       }
+      apex-grid-chart [part='back-to-grid'] {
+        margin-inline-start: auto;
+        padding: 2px 8px;
+        border: 1px solid var(--_ag-pin-line, #d0d5dd);
+        border-radius: 4px;
+        background: none;
+        font: inherit;
+        font-size: 0.72rem;
+        font-weight: 500;
+        color: var(--_ag-text-body, #1f2328);
+        cursor: pointer;
+        min-height: 24px;
+      }
       apex-grid-chart [part='close'] {
         cursor: pointer;
         border: none;
@@ -2066,7 +2061,7 @@ export class ApexGridChart extends LitElement {
     this.headingEditing = false;
   };
 
-  /** Enter commits and Escape cancels, both returning focus to the heading; Tab reaches the trap. */
+  /** Enter commits and Escape cancels, both returning focus to the heading; Tab moves on. */
   #onHeadingKeydown = (event: KeyboardEvent): void => {
     if (event.key !== 'Enter' && event.key !== 'Escape') return;
     // Confirming or backing out of an IME conversion keeps the rename open.
@@ -2262,16 +2257,22 @@ export class ApexGridChart extends LitElement {
     );
     // Empty: only the Data popover stays, as the mapping itself may be what emptied the chart.
     const dataMenu = this.#renderDataMenu();
+    const dialog = this.mode === 'dialog';
     return html`${this.#renderStyle()}
       <div
         part="panel"
-        role=${this.mode === 'dialog' ? 'dialog' : nothing}
-        aria-modal=${this.mode === 'dialog' ? 'true' : nothing}
-        aria-label=${this.mode === 'dialog' ? this.#effectiveHeading() : nothing}
+        role=${dialog ? 'dialog' : nothing}
+        tabindex=${dialog ? '-1' : nothing}
+        aria-label=${dialog ? this.#effectiveHeading() : nothing}
+        aria-description=${
+          dialog
+            ? this.#t('panel.shortcutHint', 'Press F6 to move between the grid and this panel')
+            : nothing
+        }
         @keydown=${this.#onKeydown}
       >
         ${
-          this.mode === 'dialog'
+          dialog
             ? html`<div
                 part="header"
                 @pointerdown=${this.#onHeaderPointerDown}
@@ -2298,6 +2299,17 @@ export class ApexGridChart extends LitElement {
                         @keydown=${this.#onHeadingTitleKeydown}
                         >${this.#effectiveHeading()}</span
                       >`
+                }
+                ${
+                  this.grid
+                    ? html`<button
+                        part="back-to-grid"
+                        type="button"
+                        @click=${() => focusGrid(this.grid)}
+                      >
+                        ${this.#t('panel.backToGrid', 'Back to grid')}
+                      </button>`
+                    : nothing
                 }
                 <button
                   part="close"

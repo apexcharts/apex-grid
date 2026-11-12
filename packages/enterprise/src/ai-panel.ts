@@ -4,7 +4,13 @@ import { css, html, LitElement, nothing, type PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import type { AIMode, AIResult, Plan } from './features/ai/index.js';
 import { OverlayTheme } from './features/carry-theme.js';
-import { captureFocus, type FocusReturn, returnFocus } from './features/focus-return.js';
+import {
+  captureFocus,
+  type FocusReturn,
+  focusGrid,
+  isPanelCycleKey,
+  returnFocus,
+} from './features/focus-return.js';
 import type { ApexGridEnterprise, ApexGridEnterpriseHost } from './grid-enterprise.js';
 
 export const AI_TAG = 'apex-grid-ai';
@@ -43,6 +49,11 @@ function appliedLabels(applied: readonly string[]): string {
  * default) is a floating, draggable panel. The element holds no API key and never
  * imports an LLM SDK: it only calls the grid, which owns the reasoning.
  *
+ * The dialog is non-modal: it floats beside the live grid, so Tab moves on out
+ * of it in document order. Escape closes it and returns focus to where it came
+ * from; F6 or the header's "Back to grid" button moves focus to the grid's
+ * active cell, and F6 in the grid comes back.
+ *
  * @element apex-grid-ai
  *
  * A **source badge** shows whether each result came from the deterministic rule
@@ -55,6 +66,7 @@ function appliedLabels(applied: readonly string[]): string {
  *
  * @csspart panel - The panel container.
  * @csspart header - Dialog header (drag handle + title + close).
+ * @csspart back-to-grid - Dialog header button that moves focus to the grid.
  * @csspart close - Dialog close button.
  * @csspart body - The prompt + result body.
  * @csspart mode-button - A Control / Ask mode toggle button.
@@ -127,6 +139,18 @@ export class ApexGridAI extends LitElement {
       cursor: move;
       touch-action: none;
       font-weight: 600;
+    }
+    [part='back-to-grid'] {
+      margin-inline-start: auto;
+      padding: 2px 8px;
+      border: 1px solid var(--_ag-overlay-line, #d0d5dd);
+      border-radius: 4px;
+      background: none;
+      font: inherit;
+      font-size: 0.72rem;
+      font-weight: 500;
+      cursor: pointer;
+      min-height: 24px;
     }
     [part='close'] {
       cursor: pointer;
@@ -383,39 +407,20 @@ export class ApexGridAI extends LitElement {
     if (this.mode === 'dialog') returnFocus(previous);
   }
 
+  /**
+   * Escape closes the dialog. It is non-modal, so Tab is left alone and F6 moves to the grid (a
+   * grid that opened the panel handles F6 first, to cycle through its open panels).
+   */
   #onKeydown = (event: KeyboardEvent): void => {
     // Escape in an IME conversion in the prompt cancels the conversion.
     if (this.mode !== 'dialog' || !this.open || isComposing(event)) return;
     if (event.key === 'Escape') {
       event.stopPropagation();
       this.close();
-    } else if (event.key === 'Tab') {
-      this.#trapFocus(event);
+    } else if (isPanelCycleKey(event) && !event.defaultPrevented && focusGrid(this.grid)) {
+      event.preventDefault();
     }
   };
-
-  /** Keep Tab / Shift+Tab cycling inside the dialog (wrap last to first, first to last). */
-  #trapFocus(event: KeyboardEvent): void {
-    const focusables = [
-      ...this.renderRoot.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-      ),
-    ].filter(
-      (el) =>
-        !el.hasAttribute('disabled') && (el.offsetParent !== null || el.getClientRects().length > 0)
-    );
-    if (focusables.length === 0) return;
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    const active = this.shadowRoot?.activeElement ?? null;
-    if (event.shiftKey && active === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
 
   #onInputKeydown = (event: KeyboardEvent): void => {
     // Cmd/Ctrl + Enter sends, matching common prompt-box conventions; never
@@ -711,15 +716,21 @@ export class ApexGridAI extends LitElement {
 
   protected override render() {
     const canSend = !this.busy && this.prompt.trim().length > 0;
+    const dialog = this.mode === 'dialog';
     return html`<div
       part="panel"
-      role=${this.mode === 'dialog' ? 'dialog' : nothing}
-      aria-modal=${this.mode === 'dialog' ? 'true' : nothing}
-      aria-label=${this.mode === 'dialog' ? this.#t('ai.title') : nothing}
+      role=${dialog ? 'dialog' : nothing}
+      tabindex=${dialog ? '-1' : nothing}
+      aria-label=${dialog ? this.#t('ai.title') : nothing}
+      aria-description=${
+        dialog
+          ? this.#t('panel.shortcutHint', 'Press F6 to move between the grid and this panel')
+          : nothing
+      }
       @keydown=${this.#onKeydown}
     >
       ${
-        this.mode === 'dialog'
+        dialog
           ? html`<div
               part="header"
               @pointerdown=${this.#onHeaderPointerDown}
@@ -729,6 +740,17 @@ export class ApexGridAI extends LitElement {
               @lostpointercapture=${this.#onHeaderPointerUp}
             >
               <span>${this.#t('ai.title')}</span>
+              ${
+                this.grid
+                  ? html`<button
+                      part="back-to-grid"
+                      type="button"
+                      @click=${() => focusGrid(this.grid)}
+                    >
+                      ${this.#t('panel.backToGrid', 'Back to grid')}
+                    </button>`
+                  : nothing
+              }
               <button
                 part="close"
                 type="button"

@@ -84,6 +84,7 @@ import {
   type ContextMenuOpeningDetail,
   type ContextMenuTarget,
 } from './features/context-menu.js';
+import { focusGrid, isPanelCycleKey } from './features/focus-return.js';
 import type { FormulaFn } from './features/formula/functions.js';
 import { columnLetterToIndex } from './features/formula/refs.js';
 // The store, not the formula barrel: only the module id is a value here, so
@@ -146,6 +147,10 @@ const AI_PANEL = 'apex-grid-ai';
 /** Whether a panel element is registered; the toolbar offers only those that are. */
 const panelDefined = (tag: string): boolean =>
   typeof customElements !== 'undefined' && !!customElements.get(tag);
+
+/** Focus a floating panel's dialog, which names it and announces its F6 shortcut. */
+const focusPanel = (panel: HTMLElement): void =>
+  (panel.shadowRoot ?? panel).querySelector<HTMLElement>('[part="panel"]')?.focus();
 
 /**
  * Attribute converter for the features that are on by default: the literal
@@ -927,7 +932,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     // charts the selection from the keyboard (Excel-style). RANGE_CHANGED is a custom event not in
     // the grid's typed event map, so listen via the EventTarget interface.
     (this as EventTarget).addEventListener(RANGE_CHANGED_EVENT, this.#updateChartAffordance);
-    this.addEventListener('keydown', this.#onChartShortcut);
+    this.addEventListener('keydown', this.#onShortcut);
     window.addEventListener('scroll', this.#onChartViewportChange, true);
     window.addEventListener('resize', this.#onChartViewportChange);
     // A charted range's outline and chart track the rows under it as the view changes.
@@ -947,6 +952,47 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   #floatingDialogs(): HTMLElement[] {
     return this.#aiDialog ? [...this.#chartDialogs, this.#aiDialog] : [...this.#chartDialogs];
   }
+
+  /** When each floating panel was last opened, so F6 visits the newest first. */
+  #panelOpened = new WeakMap<HTMLElement, number>();
+  #panelSeq = 0;
+
+  /** Note `panel` as the newest floating panel; the first time, route its F6 through the grid. */
+  #trackPanel(panel: HTMLElement): void {
+    if (!this.#panelOpened.has(panel)) {
+      // Capture, so the grid's cycle runs before the panel's own F6 (which only knows the grid).
+      panel.addEventListener('keydown', this.#onPanelKeydown, true);
+    }
+    this.#panelSeq += 1;
+    this.#panelOpened.set(panel, this.#panelSeq);
+  }
+
+  /** The floating panels on the page, newest first. */
+  #openPanels(): HTMLElement[] {
+    const opened = (panel: HTMLElement) => this.#panelOpened.get(panel) ?? 0;
+    return this.#floatingDialogs()
+      .filter((panel) => panel.isConnected)
+      .sort((a, b) => opened(b) - opened(a));
+  }
+
+  /**
+   * F6 in a floating panel: on to the next older panel, and from the oldest back to the grid's
+   * active cell. Shift+F6 goes the other way.
+   */
+  #onPanelKeydown = (event: KeyboardEvent): void => {
+    if (!isPanelCycleKey(event)) return;
+    const panels = this.#openPanels();
+    const at = panels.indexOf(event.currentTarget as HTMLElement);
+    if (at < 0) return;
+    const next = panels[at + (event.shiftKey ? -1 : 1)];
+    if (next) {
+      event.preventDefault();
+      focusPanel(next);
+    } else if (focusGrid(this)) {
+      // A hidden grid takes no focus: then the key is left alone.
+      event.preventDefault();
+    }
+  };
 
   /** Pending frame for {@link #onChartViewportChange}, so a burst of scroll events costs one. */
   #viewportFrame = 0;
@@ -991,7 +1037,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     // server pipeline, columns, cache and in-flight blocks intact.
     this.removeEventListener('cellValueChanged', this.#onCellValueChanged);
     (this as EventTarget).removeEventListener(RANGE_CHANGED_EVENT, this.#updateChartAffordance);
-    this.removeEventListener('keydown', this.#onChartShortcut);
+    this.removeEventListener('keydown', this.#onShortcut);
     window.removeEventListener('scroll', this.#onChartViewportChange, true);
     window.removeEventListener('resize', this.#onChartViewportChange);
     (this as EventTarget).removeEventListener(VIEW_CHANGED_EVENT, this.#repositionChartRanges);
@@ -1032,11 +1078,19 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     return false;
   }
 
-  /** Alt+F1 charts the current selection (a no-op without one, or without the chart panel). */
-  #onChartShortcut = (event: KeyboardEvent): void => {
+  /**
+   * Alt+F1 charts the current selection (a no-op without one, or without the chart panel). F6
+   * moves focus to the newest open floating panel (Shift+F6: the oldest).
+   */
+  #onShortcut = (event: KeyboardEvent): void => {
     if (event.altKey && event.key === 'F1' && this.#canChartSelection()) {
       event.preventDefault();
       this.#openChartDialog({ source: 'selection' });
+    } else if (isPanelCycleKey(event) && !event.defaultPrevented) {
+      const panels = this.#openPanels();
+      if (panels.length === 0) return;
+      event.preventDefault();
+      focusPanel(event.shiftKey ? panels[panels.length - 1] : panels[0]);
     }
   };
 
@@ -2336,6 +2390,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       document.body.appendChild(ai);
       this.#aiDialog = ai;
     }
+    this.#trackPanel(this.#aiDialog);
     this.#aiDialog.show();
   }
 
@@ -2374,6 +2429,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     carryGridTheme(this, chart);
     document.body.appendChild(chart);
     this.#chartDialogs.add(chart);
+    this.#trackPanel(chart);
     chart.show();
     if (linkedBounds) this.#chartRangeManager().link(chart, linkedBounds);
   }

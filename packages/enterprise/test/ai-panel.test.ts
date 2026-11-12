@@ -193,7 +193,7 @@ describe('AI Toolkit — <apex-grid-ai>', () => {
     expect(part(panel, 'history'), 'history cleared').to.not.exist;
   });
 
-  it('exposes aria-modal="true" in dialog mode', async () => {
+  it('is a non-modal dialog in dialog mode (no aria-modal)', async () => {
     const grid = await fixture<ApexGridEnterprise<Row>>(html`<apex-grid-enterprise
       .data=${data}
       .columns=${columns}
@@ -205,7 +205,7 @@ describe('AI Toolkit — <apex-grid-ai>', () => {
     await panel.updateComplete;
     const container = part(panel, 'panel')!;
     expect(container.getAttribute('role')).to.equal('dialog');
-    expect(container.getAttribute('aria-modal')).to.equal('true');
+    expect(container.hasAttribute('aria-modal')).to.equal(false);
   });
 });
 
@@ -395,20 +395,6 @@ describe('AI Toolkit: <apex-grid-ai> turn lifecycle and focus', () => {
     await frames(2);
     expect(part(panel, 'error'), 'no abort error on reopen').to.not.exist;
     expect(label(panel, 'send')).to.equal('Send');
-  });
-
-  it('Tab and Shift+Tab wrap inside the dialog', async () => {
-    const { panel } = await mount('dialog');
-    const close = part<HTMLButtonElement>(panel, 'close')!;
-    const send = part<HTMLButtonElement>(panel, 'send')!;
-    await type(panel, 'sort by amount');
-    const preview = part<HTMLButtonElement>(panel, 'preview-button')!;
-    preview.focus();
-    keydown(preview, 'Tab');
-    expect(active(panel), 'Tab from the last control wraps to the first').to.equal(close);
-    keydown(close, 'Tab', { shiftKey: true });
-    expect(active(panel), 'Shift+Tab from the first wraps to the last').to.equal(preview);
-    expect(send.isConnected).to.be.true;
   });
 
   for (const modifier of ['ctrlKey', 'metaKey'] as const) {

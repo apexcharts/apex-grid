@@ -503,6 +503,26 @@ Ways to start a chart, and a few panel niceties:
   type; **Auto** is a "Suggested" badge. A dialog chart's heading **auto-titles** from
   the mapping ("Revenue by Region") and is **double-click-to-rename**.
 
+### Floating panels and the keyboard
+
+A dialog chart panel and the Ask AI dialog float beside the live grid, so they are
+non-modal: you can keep working in the grid, or in another panel, while one is open.
+
+| Key | In a floating panel | In the grid |
+| --- | --- | --- |
+| **F6** | Moves focus to the next older open panel, and from the oldest back to the grid's active cell | Moves focus to the most recently opened panel |
+| **Shift+F6** | Moves the other way | Moves focus to the oldest open panel |
+| **Escape** | Closes the panel (or its open popover first) and returns focus to where it came from | |
+| **Tab** | Moves on in page order; it does not wrap inside the panel | |
+
+Each panel's header also has a **Back to grid** button that returns focus to the
+grid's active cell, for browsers that keep F6 for their own address bar. Screen
+readers announce the panel as a dialog with its F6 hint. A panel you mount
+yourself in `mode="dialog"` returns to its bound grid on F6, but only panels the
+grid opened (the toolbar buttons, Alt+F1, the context menu) take part in F6 from
+the grid. The two strings are the `panel.backToGrid` and `panel.shortcutHint`
+locale keys.
+
 ### Data mapping
 
 `ChartDefinition` (the panel's `definition` property, or an argument to the model
@@ -925,6 +945,8 @@ document.querySelector('apex-grid-ai').grid = grid;
 `mode="inline"` renders in place; `mode="dialog"` (the default) is a floating,
 draggable panel. The enterprise grid also adds an **"Ask AI"** toolbar button
 that opens the panel in a dialog (the `/define` entry registers the element).
+The dialog is non-modal: see [Floating panels and the keyboard](#floating-panels-and-the-keyboard)
+for F6, Escape and the Back to grid button.
 
 ### How it stays safe
 

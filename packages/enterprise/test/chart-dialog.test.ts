@@ -232,17 +232,6 @@ describe('chart dialog', () => {
         expect(document.activeElement).to.equal(part(panel, 'heading-input'));
       });
     }
-
-    it('Shift+Tab from the rename input stays in the dialog', async () => {
-      const { panel } = await openNamed('Original');
-      part(panel, 'heading').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-      await settle(panel, 1);
-      const input = part(panel, 'heading-input');
-      expect(document.activeElement).to.equal(input);
-      const event = key(input, { key: 'Tab', shiftKey: true });
-      expect(event.defaultPrevented, 'the focus trap handled Shift+Tab').to.equal(true);
-      expect(panel.contains(document.activeElement)).to.equal(true);
-    });
   });
 
   describe('cross-filter', () => {

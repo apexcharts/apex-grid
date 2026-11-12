@@ -67,3 +67,26 @@ export function returnFocus(origin: FocusReturn | null): void {
   // grid's own tab-in path), and keeps it when it is not.
   if (cell.body.isConnected) cell.body.focus({ preventScroll: true });
 }
+
+/**
+ * F6, or Shift+F6 backwards: the key that moves focus between a grid and the
+ * floating chart and Ask AI panels it opened.
+ */
+export function isPanelCycleKey(event: KeyboardEvent): boolean {
+  return (
+    event.key === 'F6' && !event.altKey && !event.ctrlKey && !event.metaKey && !event.isComposing
+  );
+}
+
+/**
+ * Move focus to `grid` from a floating panel: its body takes focus and hands
+ * it on to the active cell (the grid's roving tab stop), the same path Tab
+ * into the grid takes. False when focus did not reach the grid (no grid, or
+ * one that is hidden or inert), so the caller leaves the key alone.
+ */
+export function focusGrid(grid: Element | null | undefined): boolean {
+  const body = grid?.shadowRoot?.querySelector<HTMLElement>('apex-virtualizer');
+  if (!body?.isConnected) return false;
+  body.focus();
+  return body.matches(':focus-within');
+}
