@@ -1,10 +1,10 @@
 /**
  * AI reasoning layer (enterprise).
  *
- * P0 scaffolding: the shared data contracts, the {@link GridApi} boundary, the
- * {@link ContextBuilder}, and {@link Memory}. Later phases add the Tool Registry /
- * Executor (P1), the rule engine (P2), the Engine + Router (P3), and the Claude
- * reasoner (P4). This barrel is internal until P3 wires the engine into the grid.
+ * The public surface of the AI layer, re-exported from the package entry: the
+ * shared data contracts, the {@link GridApi} boundary, the {@link ContextBuilder},
+ * {@link Memory}, the tool registry and executor, the rule engine, the engine and
+ * router, and the LLM reasoners. Everything exported here is public API.
  *
  * @see plans/ai-reasoning-layer-spec.md
  */

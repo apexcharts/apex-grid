@@ -5,8 +5,8 @@
  * View operations funnel through {@link GridApi.applyState} (which reuses the grid's
  * defensive `setState` and the `sanitizePatch` guard); non-state actions are
  * separate, optional, capability-gated methods. `gridApiFor` is the only place that
- * knows the concrete element; `createFakeGridApi` lets every downstream component be
- * unit-tested with no DOM.
+ * knows the concrete element; `createFakeGridApi` (deprecated) lets every downstream
+ * component be unit-tested with no DOM.
  *
  * @see plans/ai-reasoning-layer-spec.md (section 4.1)
  */
@@ -15,13 +15,23 @@ import type { GridLocaleText, GridSchema, GridState, RowRef, SetStateResult } fr
 import type { ApexGridEnterprise } from '../../grid-enterprise.js';
 import type { StatePatch } from '../ai-schema.js';
 
-/** A single cell, addressed by a row reference and a column key. */
+/**
+ * A single cell, addressed by a row reference and a column key.
+ *
+ * @deprecated Will be removed in apex-grid-enterprise 0.10.0: no tool edits
+ * cells through the AI layer.
+ */
 export interface CellTarget {
   row: RowRef;
   column: string;
 }
 
-/** A normalized chart request. Intentionally minimal for now; expanded when the chart tool lands. */
+/**
+ * A normalized chart request.
+ *
+ * @deprecated Will be removed in apex-grid-enterprise 0.10.0: no tool renders
+ * charts through the AI layer.
+ */
 export interface ChartRequest {
   type?: string;
   container?: HTMLElement;
@@ -63,9 +73,18 @@ export interface GridApi<T = unknown> {
 
   /** Export the current view. Present when the grid advertises an export format. */
   export?(format: string, options?: Record<string, unknown>): ActionResult;
-  /** Set a single cell's value. Present when editing is enabled (deferred; see spec 6.6). */
+  /**
+   * Set a single cell's value. No adapter implements it and no tool calls it.
+   *
+   * @deprecated Will be removed in apex-grid-enterprise 0.10.0.
+   */
   editCell?(target: CellTarget, value: unknown): ActionResult;
-  /** Render a chart of the current view / selection. Present when charts are available (deferred). */
+  /**
+   * Render a chart of the current view or selection. No adapter implements it
+   * and no tool calls it.
+   *
+   * @deprecated Will be removed in apex-grid-enterprise 0.10.0.
+   */
   renderChart?(request: ChartRequest): ActionResult;
 }
 
@@ -122,7 +141,12 @@ export function emptyGridState(): GridState {
   };
 }
 
-/** Seed for {@link createFakeGridApi}. */
+/**
+ * Seed for {@link createFakeGridApi}.
+ *
+ * @deprecated Will be removed in apex-grid-enterprise 0.10.0, with
+ * {@link createFakeGridApi}.
+ */
 export interface FakeGridApiInit<T> {
   /** The capability descriptor to report from `getSchema` (its `state` is kept live). */
   schema: GridSchema;
@@ -140,6 +164,9 @@ export interface FakeGridApiInit<T> {
  * A pure, in-memory {@link GridApi} for unit tests: no element, no DOM. `applyState`
  * shallow-merges the patch into a stored state and records every patch on `calls`,
  * so components (ContextBuilder, tools, the executor) can be exercised in isolation.
+ *
+ * @deprecated Will be removed in apex-grid-enterprise 0.10.0. It is a test
+ * double, not grid API: implement {@link GridApi} directly instead.
  */
 export function createFakeGridApi<T = unknown>(
   init: FakeGridApiInit<T>
