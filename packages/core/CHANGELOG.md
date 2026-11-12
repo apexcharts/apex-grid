@@ -21,12 +21,27 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   translations in `esLocale`) for the enterprise floating panels.
 - The README explains the DOM and scroll cost of grids with hundreds of
   columns.
+- Locale keys `chart.title`, `chart.series.trend`, `chart.series.forecast`,
+  `chart.series.forecastUpper`, `chart.series.forecastLower` and
+  `formula.parse.*` (one per formula parse error, plus
+  `formula.parse.position`), with Spanish translations in `esLocale`. The
+  English defaults are the text shown before.
+
+### Changed
+- `esLocale` addresses the user in one register (usted) and calls the grid
+  "tabla" everywhere; seven chart and AI hints change wording in Spanish.
 
 ### Deprecated
 - The toolbar's `placeholder` and `debounce` and the paginator's
   `pageSizeLabel` properties, which the grid never sets. Use the
   `toolbar.searchPlaceholder` and `pagination.rowsPerPage` locale keys
   instead. They keep working and will be removed in 5.0.
+- The unused locale keys `filter.filter`, `chart.placeholder`, `ai.answer`
+  and `formula.error.ref`, `.name`, `.div0`, `.value` and `.cycle`. They
+  still type check in `localeText` objects and will be removed in 5.0.
+  `GridLocaleText` is now mapped over `EN_LOCALE` (it accepts the same
+  objects as before), so editors mark these keys as deprecated in
+  completions.
 
 ### Fixed
 - The grid's chrome (toolbar, paginator, header actions, filter row, column

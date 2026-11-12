@@ -6,6 +6,11 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- `ParseError` gains optional `code` and `params` fields naming the
+  `formula.parse.*` locale key; its `message` stays English. The
+  `ParseErrorCode` and `ParseErrorParams` types are exported.
+
 ### Changed
 - `apex-commons` dependency raised to `^0.11.0`. The grid uses only
   `LicenseManager`, `Watermark` and `isRTL`, which are unchanged.
@@ -19,6 +24,16 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   Escape still closes a panel and returns focus. Inline panels are unchanged.
   The new strings use the `panel.backToGrid` and `panel.shortcutHint` keys
   from the next apex-grid release and fall back to English before it.
+- Group header and grand total aggregate chips read like the status bar:
+  `salary sum: 1234567.50` becomes `Salary Sum: 1,234,567.5`, that is the
+  column's header text (its key when it has none), the localized function
+  name and the number formatted in the browser's locale with at most two
+  decimals. Apps or tests that read the chip text will notice.
+- The set filter's blanks entry is searched and sorted by the localized
+  label it shows, so `(Vacíos)` is found by typing "vac".
+  `distinctValues[].label` for that entry now carries the localized label
+  where it was `(Blanks)` under every locale; match on the
+  `setFilter.blanks` text instead of `(Blanks)`.
 
 ### Deprecated
 - `createFakeGridApi`, `FakeGridApiInit`, `GridApi.editCell`,
@@ -44,6 +59,13 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - The filter builder no longer shows a true/false value list for a boolean
   condition saved with an operator the boolean type does not offer; every
   boolean operator takes no value.
+- The chart dialog's automatic title (heading `Chart` or empty) and the
+  trend and forecast series names follow `localeText`. The `heading`
+  property still defaults to `Chart`.
+- Formula editor parse errors follow `localeText`.
+- Documented that the built-in AI rule engine reads and answers English
+  only; `GridContext.locale` and `getLocaleText` are for custom or LLM
+  reasoners.
 
 
 
