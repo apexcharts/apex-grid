@@ -6,6 +6,10 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- `apex-commons` dependency raised to `^0.11.0`. The grid uses only
+  `LicenseManager`, `Watermark` and `isRTL`, which are unchanged.
+
 ## [0.9.0] - 2026-11-09
 
 The stable 0.9 release, now under the `latest` npm tag alongside apex-grid

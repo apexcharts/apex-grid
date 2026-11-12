@@ -6,6 +6,10 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- Build: the `apex-commons` dev dependency (the Ignite UI token SCSS) moves
+  to `^0.11.0`. The shipped bundle is byte-identical.
+
 ## [4.0.1] - 2026-11-10
 
 A patch for the Ignite UI add-on. Without `apex-grid/ignite-ui` nothing
