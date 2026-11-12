@@ -1,6 +1,5 @@
 import { expect } from '@open-wc/testing';
 import {
-  buildColumnLetters,
   type CellAddress,
   columnLetterToIndex,
   formatA1,
@@ -10,7 +9,6 @@ import {
   normalizeRange,
   offsetAddress,
   ParseError,
-  parseA1,
   parseCellRef,
   type RangeAddress,
   rangeCells,
@@ -48,37 +46,31 @@ describe('formula reference model (F2)', () => {
     });
   });
 
-  describe('parseA1', () => {
+  describe('parseCellRef addresses', () => {
+    const at = (token: string) => parseCellRef(token).address;
+
     it('parses a single cell to a 0-based address', () => {
-      expect(parseA1('A1')).to.deep.equal({ row: 0, col: 0 });
-      expect(parseA1('B2')).to.deep.equal({ row: 1, col: 1 });
-      expect(parseA1('C10')).to.deep.equal({ row: 9, col: 2 });
+      expect(at('A1')).to.deep.equal({ row: 0, col: 0 });
+      expect(at('B2')).to.deep.equal({ row: 1, col: 1 });
+      expect(at('C10')).to.deep.equal({ row: 9, col: 2 });
     });
 
     it('is case-insensitive', () => {
-      expect(parseA1('b2')).to.deep.equal({ row: 1, col: 1 });
-    });
-
-    it('parses a range', () => {
-      expect(parseA1('A1:C3')).to.deep.equal({
-        start: { row: 0, col: 0 },
-        end: { row: 2, col: 2 },
-      });
+      expect(at('b2')).to.deep.equal({ row: 1, col: 1 });
     });
 
     it('rejects malformed input with a ParseError', () => {
-      expect(() => parseA1('A')).to.throw(ParseError);
-      expect(() => parseA1('1A')).to.throw(ParseError);
-      expect(() => parseA1('A0')).to.throw(ParseError); // rows are 1-based
+      expect(() => at('A')).to.throw(ParseError);
+      expect(() => at('1A')).to.throw(ParseError);
+      expect(() => at('A0')).to.throw(ParseError); // rows are 1-based
     });
 
     it('records the position of the offending text', () => {
       try {
-        parseA1('A1:bad', 0);
+        parseCellRef('bad', 3);
         expect.fail('expected a ParseError');
       } catch (error) {
         expect(error).to.be.instanceOf(ParseError);
-        // 'bad' starts after 'A1:' (3 chars).
         expect((error as ParseError).position).to.equal(3);
       }
     });
@@ -92,16 +84,17 @@ describe('formula reference model (F2)', () => {
     });
 
     it('round-trips parse -> format', () => {
-      for (const token of ['A1', 'Z9', 'AA100', 'B2:D8']) {
-        expect(formatA1(parseA1(token))).to.equal(token);
+      for (const token of ['A1', 'Z9', 'AA100']) {
+        expect(formatA1(parseCellRef(token).address)).to.equal(token);
       }
     });
   });
 
   describe('ranges', () => {
     it('isRangeAddress distinguishes cells from ranges', () => {
-      expect(isRangeAddress(parseA1('A1'))).to.be.false;
-      expect(isRangeAddress(parseA1('A1:B2'))).to.be.true;
+      const cell: CellAddress = { row: 0, col: 0 };
+      expect(isRangeAddress(cell)).to.be.false;
+      expect(isRangeAddress({ start: cell, end: { row: 1, col: 1 } })).to.be.true;
     });
 
     it('normalizes reversed corners', () => {
@@ -177,36 +170,9 @@ describe('formula reference model (F2)', () => {
       expect(offsetAddress({ row: 1, col: 1 }, -5, -5)).to.deep.equal({ row: -4, col: -4 });
     });
 
-    it('parseA1 / formatA1 stay relative (no markers) for back-compat', () => {
+    it('formatA1 stays relative (no markers) for back-compat', () => {
       expect(formatCell({ row: 0, col: 0 })).to.equal('A1');
-      expect(formatA1(parseA1('B2'))).to.equal('B2');
-    });
-  });
-
-  describe('buildColumnLetters', () => {
-    const columns = [{ key: 'id' }, { key: 'qty' }, { key: 'price' }];
-
-    it('assigns letters by configuration order', () => {
-      const { toLetter, toKey } = buildColumnLetters(columns);
-      expect(toLetter.get('id')).to.equal('A');
-      expect(toLetter.get('qty')).to.equal('B');
-      expect(toLetter.get('price')).to.equal('C');
-      expect(toKey.get('A')).to.equal('id');
-      expect(toKey.get('C')).to.equal('price');
-    });
-
-    it('lets the recalc layer resolve a parsed column index back to a key', () => {
-      const { toKey } = buildColumnLetters(columns);
-      const address = parseA1('C2') as CellAddress; // col index 2
-      expect(toKey.get(indexToColumnLetter(address.col))).to.equal('price');
-    });
-
-    it('keeps a stable letter for every column including later ones', () => {
-      const many = Array.from({ length: 30 }, (_, i) => ({ key: `c${i}` }));
-      const { toLetter } = buildColumnLetters(many);
-      expect(toLetter.get('c25')).to.equal('Z');
-      expect(toLetter.get('c26')).to.equal('AA');
-      expect(toLetter.get('c27')).to.equal('AB');
+      expect(formatA1(parseCellRef('$B$2').address)).to.equal('B2');
     });
   });
 });

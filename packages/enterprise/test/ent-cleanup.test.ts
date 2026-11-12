@@ -4,6 +4,7 @@ import {
   CONTEXT_MENU_MODULE_ID,
   type ContextMenuController,
 } from '../src/features/context-menu.js';
+import * as refs from '../src/features/formula/refs.js';
 import {
   type AdvancedFilterModel,
   ApexGridChart,
@@ -183,6 +184,32 @@ describe('B68 enterprise cleanup', () => {
       }
       expect(unhandled).to.eql([]);
       expect(said).to.eql([]);
+    });
+  });
+
+  describe('chart type labels (ent-chart-panel-a-9)', () => {
+    it('the gallery labels come from the locale strings', async () => {
+      const grid = await mount();
+      grid.localeText = { 'chart.type.line': 'Linie' };
+      const panel = await fixture<ApexGridChart>(
+        html`<apex-grid-chart mode="inline" .grid=${grid as never}></apex-grid-chart>`
+      );
+      await settle(panel);
+      const labels = [...panel.querySelectorAll('[part="type-label"]')].map((el) =>
+        el.textContent?.trim()
+      );
+      expect(labels).to.include('Linie');
+      expect(labels).to.include(grid.localize('chart.type.column'));
+    });
+  });
+
+  describe('formula refs (ent-formula-refs-6)', () => {
+    it('keeps the live helpers and drops the unused ones', () => {
+      const exported = Object.keys(refs);
+      expect(
+        ['formatA1', 'isRangeAddress', 'parseCellRef'].filter((n) => exported.includes(n))
+      ).to.have.length(3);
+      expect(['buildColumnLetters', 'parseA1'].filter((n) => exported.includes(n))).to.eql([]);
     });
   });
 

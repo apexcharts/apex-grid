@@ -60,10 +60,8 @@ export {
 } from './parser.js';
 // Reference model (F2; $-flags + offsetAddress are Tier 2).
 export {
-  buildColumnLetters,
   type CellAddress,
   type CellRefFlags,
-  type ColumnLetterMaps,
   columnLetterToIndex,
   formatA1,
   formatCell,
@@ -72,7 +70,6 @@ export {
   normalizeRange,
   offsetAddress,
   type ParsedCellRef,
-  parseA1,
   parseCellRef,
   type RangeAddress,
   rangeCells,

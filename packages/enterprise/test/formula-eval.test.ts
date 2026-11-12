@@ -17,7 +17,7 @@ import {
   offsetAddress,
   offsetReferences,
   ParseError,
-  parseA1,
+  parseCellRef,
   parseFormula,
   rangeCells,
   stringifyFormula,
@@ -415,7 +415,10 @@ describe('formula evaluator (audit batch B18)', () => {
         const started = performance.now();
         grid.setFormula(data[0], 'out', '=SUM(A1:A90000000)');
         controllerOf(grid).highlightReferences('=SUM(A1:ZZ1000000)');
-        controllerOf(grid).setPointer(parseA1('A1:ZZ1000000') as never);
+        controllerOf(grid).setPointer({
+          start: parseCellRef('A1').address,
+          end: parseCellRef('ZZ1000000').address,
+        });
         expect(performance.now() - started).to.be.below(1000);
         expect(code(data[0].out as CellValue)).to.equal('#REF!');
         grid.setFormula(data[1], 'out', '=SUM(A1:A2)');

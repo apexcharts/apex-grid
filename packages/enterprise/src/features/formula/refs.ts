@@ -3,16 +3,17 @@
  *
  * A1 column letters are a pure positional bijection with the non-negative
  * integers (`A`=0, `B`=1, ..., `Z`=25, `AA`=26, ...), so converting a letter to
- * a column index needs no knowledge of the grid. The grid's column list is only
- * needed to map a column index back to its data key (`row[key]`), which
- * {@link buildColumnLetters} provides for the recalc layer (F3).
+ * a column index needs no knowledge of the grid. Which data key a column index
+ * reads is decided by the FormulaController alone (`#letterOrder` in
+ * store.ts): column keys in first-seen order, append-only, so a letter
+ * survives column reorder and a removed column keeps its slot.
  *
  * Addresses are 0-based internally (`row` = data-row index, `col` = column
  * index). A1 text is 1-based for rows. References bind to the underlying data
  * (source order), so a formula's meaning is stable across sort, filter, column
  * reorder, and paging.
  *
- * This module is pure (no DOM, no grid knowledge beyond the `{ key }` shape).
+ * This module is pure (no DOM, no grid knowledge).
  */
 import { ParseError } from './errors.js';
 
@@ -45,14 +46,6 @@ export interface CellRefFlags {
 /** A parsed cell reference: its resolved address plus per-axis absoluteness. */
 export interface ParsedCellRef extends CellRefFlags {
   address: CellAddress;
-}
-
-/** Maps between a column's data key and its stable A1 letter. */
-export interface ColumnLetterMaps {
-  /** Column key (stringified) to its A1 letter, e.g. `price` to `C`. */
-  toLetter: Map<string, string>;
-  /** A1 letter to column key, e.g. `C` to `price`. */
-  toKey: Map<string, string>;
 }
 
 const CELL_PATTERN = /^(\$?)([A-Za-z]+)(\$?)([0-9]+)$/;
@@ -110,26 +103,6 @@ export function parseCellRef(token: string, position = 0): ParsedCellRef {
     colAbsolute: match[1] === '$',
     rowAbsolute: match[3] === '$',
   };
-}
-
-function parseCell(token: string, position: number): CellAddress {
-  return parseCellRef(token, position).address;
-}
-
-/**
- * Parse an A1 token into an address. `B2` yields a {@link CellAddress};
- * `A1:C3` yields a {@link RangeAddress}. Throws {@link ParseError} on malformed
- * input. The `position` is recorded on thrown errors so the editor can point at
- * the offending text.
- */
-export function parseA1(token: string, position = 0): CellAddress | RangeAddress {
-  const colonIndex = token.indexOf(':');
-  if (colonIndex === -1) {
-    return parseCell(token, position);
-  }
-  const start = parseCell(token.slice(0, colonIndex), position);
-  const end = parseCell(token.slice(colonIndex + 1), position + colonIndex + 1);
-  return { start, end };
 }
 
 /**
@@ -205,23 +178,4 @@ export function clipRange(range: RangeAddress, rows: number, cols: number): Rang
   const { start, end } = normalizeRange(range);
   const last = { row: Math.min(end.row, rows - 1), col: Math.min(end.col, cols - 1) };
   return start.row > last.row || start.col > last.col ? null : { start, end: last };
-}
-
-/**
- * Build the stable column-key to A1-letter maps from the grid's column list.
- * Letters are assigned by configuration order (`A` = first column, including
- * hidden ones), so a formula's references keep their meaning across reorder,
- * sort, and filter. The recalc layer (F3) uses {@link ColumnLetterMaps.toKey}
- * to resolve a parsed column index to the data key it reads.
- */
-export function buildColumnLetters(columns: readonly { key: PropertyKey }[]): ColumnLetterMaps {
-  const toLetter = new Map<string, string>();
-  const toKey = new Map<string, string>();
-  columns.forEach((column, index) => {
-    const key = String(column.key);
-    const letter = indexToColumnLetter(index);
-    toLetter.set(key, letter);
-    toKey.set(letter, key);
-  });
-  return { toLetter, toKey };
 }

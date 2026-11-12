@@ -11,7 +11,7 @@ import {
   FormulaStore,
   formulaModule,
   isFormulaError,
-  parseA1,
+  parseCellRef,
 } from '../src/features/formula/index.js';
 import { ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 
@@ -33,7 +33,7 @@ function makeHost(rows: number, cols: number) {
   return { grid, host };
 }
 
-const addr = (a1: string): CellAddress => parseA1(a1) as CellAddress;
+const addr = (a1: string): CellAddress => parseCellRef(a1).address;
 const valueAt = (grid: CellValue[][], a1: string): CellValue => {
   const { row, col } = addr(a1);
   return grid[row][col];

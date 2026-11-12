@@ -16,7 +16,7 @@ import {
   createFunctionRegistry,
   type FormulaEngineHost,
   FormulaStore,
-  parseA1,
+  parseCellRef,
 } from '../src/features/formula/index.js';
 import { getGroupMeta } from '../src/features/grouping.js';
 import { ApexGridEnterprise, enterpriseModules } from '../src/index.js';
@@ -211,7 +211,7 @@ describe('No argument spread over large arrays', () => {
       };
       return { cells, store: new FormulaStore(host) };
     }
-    const at = (a1: string) => parseA1(a1) as CellAddress;
+    const at = (a1: string): CellAddress => parseCellRef(a1).address;
 
     it('SUM, COUNT, MIN and MAX over a 250k cell range return a value', () => {
       const { cells, store } = makeStore(N);

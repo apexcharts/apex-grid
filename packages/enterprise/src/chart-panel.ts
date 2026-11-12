@@ -1,5 +1,10 @@
 import { type GridLocaleKey, localize } from 'apex-grid';
-import { designSystemName, isComposing, registerComponent, trackCompositions } from 'apex-grid/internal';
+import {
+  designSystemName,
+  isComposing,
+  registerComponent,
+  trackCompositions,
+} from 'apex-grid/internal';
 import type { default as ApexCharts, ApexOptions } from 'apexcharts';
 import { html, LitElement, nothing, svg } from 'lit';
 import { property, state } from 'lit/decorators.js';
@@ -51,26 +56,6 @@ export interface ChartConfig {
   /** A frozen model, present for snapshot charts (see {@link ApexGridChart.staticModel}). */
   readonly staticModel?: ChartModel | null;
 }
-
-/** The type gallery shown in the panel toolbar (label + friendly type). */
-const TYPE_GALLERY: ReadonlyArray<{ type: ChartType | 'auto'; label: string }> = [
-  { type: 'column', label: 'Column' },
-  { type: 'bar', label: 'Bar' },
-  { type: 'line', label: 'Line' },
-  { type: 'area', label: 'Area' },
-  { type: 'pie', label: 'Pie' },
-  { type: 'donut', label: 'Donut' },
-  { type: 'scatter', label: 'Scatter' },
-  { type: 'radar', label: 'Radar' },
-  { type: 'combo', label: 'Combo' },
-  { type: 'auto', label: 'Auto' },
-];
-
-/** Fallback labels by type (used when a locale key is missing). */
-const TYPE_LABELS = Object.fromEntries(TYPE_GALLERY.map((e) => [e.type, e.label])) as Record<
-  ChartType | 'auto',
-  string
->;
 
 /**
  * The gallery grouped by family, so related types sit together (cartesian, then circular, then the
@@ -2023,7 +2008,7 @@ export class ApexGridChart extends LitElement {
 
   /** A single chart-type button (icon + label) for the gallery. */
   #renderTypeButton(type: ChartType | 'auto') {
-    const label = this.#t(`chart.type.${type}` as GridLocaleKey, TYPE_LABELS[type]);
+    const label = this.#t(`chart.type.${type}` as GridLocaleKey);
     return html`<button
       part="type-button"
       type="button"
