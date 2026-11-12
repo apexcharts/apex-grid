@@ -38,8 +38,9 @@ function tokenOf(value: unknown): string {
   return value === null || value === undefined || value === '' ? BLANK_TOKEN : String(value);
 }
 
-function labelOf(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '(Blanks)';
+/** A value's label; `blank` is the localized label of the blanks entry. */
+function labelOf(value: unknown, blank: string): string {
+  if (value === null || value === undefined || value === '') return blank;
   if (value instanceof Date) {
     // The token keeps the time of day, so the label does too unless it is
     // midnight: two timestamps on one day never share a label.
@@ -49,10 +50,10 @@ function labelOf(value: unknown): string {
   return String(value);
 }
 
-function compareValues(a: unknown, b: unknown): number {
+function compareValues(a: unknown, b: unknown, blank: string): number {
   if (typeof a === 'number' && typeof b === 'number') return a - b;
   if (a instanceof Date && b instanceof Date) return a.getTime() - b.getTime();
-  return labelOf(a).localeCompare(labelOf(b));
+  return labelOf(a, blank).localeCompare(labelOf(b, blank));
 }
 
 const NO_TOKENS: ReadonlySet<string> = new Set();
@@ -326,9 +327,11 @@ export class ApexGridSetFilter extends LitElement {
       const token = tokenOf(raw);
       if (!seen.has(token)) seen.set(token, raw);
     }
+    // The blanks entry sorts and searches by the label it shows.
+    const blank = this.#t('setFilter.blanks');
     this.values = [...seen.entries()]
-      .sort((a, b) => compareValues(a[1], b[1]))
-      .map(([token, value]) => ({ token, value, label: labelOf(value) }));
+      .sort((a, b) => compareValues(a[1], b[1], blank))
+      .map(([token, value]) => ({ token, value, label: labelOf(value, blank) }));
     this.#searchKeys = this.values.map((value) => value.label.toLowerCase());
     // Checked = passes the set expressions applied to the column (all of them
     // when there is none), so the panel never claims a value its rows hide:

@@ -12,6 +12,7 @@ import {
   type AggregationConfig,
   type AggregationResults,
   computeAggregations,
+  renderAggregateChips,
 } from './aggregation.js';
 
 export const GROUPING_MODULE_ID = 'grouping';
@@ -127,10 +128,6 @@ export function readGroupExpansion(
     warn('groupExpand: expected an object of booleans; skipped');
   }
   return out;
-}
-
-function formatNumber(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
 /**
@@ -336,14 +333,7 @@ export class GroupingController<T extends object>
       part="group-aggregates"
       style="margin-inline-start:auto;display:flex;gap:12px;opacity:.85"
     >
-      ${entries.flatMap(([column, fns]) =>
-        Object.entries(fns).map(
-          ([fn, value]) =>
-            html`<span part="group-aggregate"
-              ><b>${column} ${fn}</b>: ${formatNumber(value as number)}</span
-            >`
-        )
-      )}
+      ${renderAggregateChips(this.host, meta.aggregates, 'group-aggregate')}
     </span>`;
   }
 

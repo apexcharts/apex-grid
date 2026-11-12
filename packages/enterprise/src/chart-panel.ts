@@ -345,7 +345,15 @@ export class ApexGridChart extends LitElement {
   @property({ type: Boolean, reflect: true })
   public open = false;
 
-  /** Panel heading (dialog mode). */
+  /**
+   * Panel heading (dialog mode).
+   *
+   * @remarks
+   * The default `'Chart'` and an empty string both mean the automatic title:
+   * the mapped series and category (for example "Revenue by Region"), or the
+   * localized `chart.title` ("Chart" in English) when there is nothing to
+   * chart. Any other text is shown as is.
+   */
   @property()
   public heading = 'Chart';
 
@@ -1100,7 +1108,9 @@ export class ApexGridChart extends LitElement {
     };
 
     const FORECAST_COLOR = '#f59e0b'; // amber — clearly not a data-series blue
-    if (this.format.trendline) pushOverlay('Trend', pad(linearTrend(primary)), '#64748b', 6);
+    if (this.format.trendline) {
+      pushOverlay(this.#t('chart.series.trend', 'Trend'), pad(linearTrend(primary)), '#64748b', 6);
+    }
     if (periods > 0) {
       // Null across history, seeded at the last actual point so the line connects, then the future.
       const project = (future: number[]): (number | null)[] => {
@@ -1109,11 +1119,26 @@ export class ApexGridChart extends LitElement {
         for (let k = 0; k < periods; k += 1) data[n + k] = future[k];
         return data;
       };
-      pushOverlay('Forecast', project(linearForecast(primary, periods)), FORECAST_COLOR, 5);
+      pushOverlay(
+        this.#t('chart.series.forecast', 'Forecast'),
+        project(linearForecast(primary, periods)),
+        FORECAST_COLOR,
+        5
+      );
       if (this.format.forecastBand) {
         const { upper, lower } = linearForecastBand(primary, periods);
-        pushOverlay('Upper', project(upper), FORECAST_COLOR, 2);
-        pushOverlay('Lower', project(lower), FORECAST_COLOR, 2);
+        pushOverlay(
+          this.#t('chart.series.forecastUpper', 'Upper'),
+          project(upper),
+          FORECAST_COLOR,
+          2
+        );
+        pushOverlay(
+          this.#t('chart.series.forecastLower', 'Lower'),
+          project(lower),
+          FORECAST_COLOR,
+          2
+        );
       }
     }
 
@@ -2016,10 +2041,13 @@ export class ApexGridChart extends LitElement {
     </button>`;
   }
 
-  /** Auto-derived title from the mapping (e.g. "Revenue by Region"); series names when no category. */
+  /**
+   * Auto-derived title from the mapping (e.g. "Revenue by Region"); series names when no category,
+   * and the localized `chart.title` when there are no series.
+   */
   #autoHeading(): string {
     const names = this.seriesNames;
-    if (names.length === 0) return this.heading || 'Chart';
+    if (names.length === 0) return this.#t('chart.title', 'Chart');
     const series = names.join(', ');
     // A snapshot chart's category isn't recoverable from the frozen model, so don't guess one.
     if (this.staticModel) return series;

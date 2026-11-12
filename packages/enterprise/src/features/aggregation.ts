@@ -1,5 +1,11 @@
-import type { GridFeatureModule, GridHost } from 'apex-grid/internal';
-import type { ReactiveController } from 'lit';
+import type { GridLocaleKey } from 'apex-grid';
+import {
+  type GridFeatureModule,
+  type GridHost,
+  getColumnLabel,
+  type Keys,
+} from 'apex-grid/internal';
+import { html, type ReactiveController } from 'lit';
 
 /** Supported aggregation functions. */
 export type AggregationFn = 'sum' | 'avg' | 'min' | 'max' | 'count';
@@ -121,6 +127,30 @@ export function computeAggregations<T extends object>(
   }
 
   return results;
+}
+
+/**
+ * The aggregate chips of a group header or of the grand-total row, one per
+ * column and function, such as `Salary Sum: 1,234,567.5`: the column's label
+ * (its `headerText`, else its key, as the header cell and export show it),
+ * the function's localized `chart.agg.*` name and the value in the browser's
+ * locale with at most two decimals, as the status bar shows it. Grouping and
+ * the total row both render through this, so they always read the same.
+ */
+export function renderAggregateChips<T extends object>(
+  host: GridHost<T>,
+  results: AggregationResults,
+  part: string
+) {
+  return Object.entries(results).flatMap(([key, fns]) => {
+    const column = host.getColumn(key as Keys<T>);
+    const label = column ? getColumnLabel(column) : key;
+    return Object.entries(fns).map(([fn, value]) => {
+      const name = host.localize(`chart.agg.${fn}` as GridLocaleKey, undefined, fn);
+      const text = (value as number).toLocaleString(undefined, { maximumFractionDigits: 2 });
+      return html`<span part=${part}><b>${label} ${name}</b>: ${text}</span>`;
+    });
+  });
 }
 
 /**

@@ -9,7 +9,11 @@ import {
   type StateController,
 } from 'apex-grid/internal';
 import { html, type ReactiveController } from 'lit';
-import { type AggregationConfig, computeAggregations } from './aggregation.js';
+import {
+  type AggregationConfig,
+  computeAggregations,
+  renderAggregateChips,
+} from './aggregation.js';
 import { PIVOT_MODULE_ID, type PivotController } from './pivot.js';
 
 export const TOTAL_ROW_MODULE_ID = 'total-row';
@@ -163,7 +167,6 @@ export class TotalRowController<T extends object>
   }
 
   #render(label: string) {
-    const entries = Object.entries(this.#results);
     return html`<div
       part="total-row-content"
       style="display:flex;align-items:center;gap:12px;padding:0 8px;font-weight:600"
@@ -173,14 +176,7 @@ export class TotalRowController<T extends object>
         part="total-row-values"
         style="margin-inline-start:auto;display:flex;gap:12px;font-weight:500"
       >
-        ${entries.flatMap(([column, fns]) =>
-          Object.entries(fns).map(
-            ([fn, value]) =>
-              html`<span part="total-row-value"
-                ><b>${column} ${fn}</b>: ${formatTotal(value as number)}</span
-              >`
-          )
-        )}
+        ${renderAggregateChips(this.host, this.#results, 'total-row-value')}
       </span>
     </div>`;
   }
@@ -189,11 +185,6 @@ export class TotalRowController<T extends object>
   public get totals(): ReturnType<typeof computeAggregations> {
     return this.#results;
   }
-}
-
-/** Matches the grouping feature's aggregate formatting so the two rows agree. */
-function formatTotal(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
 /** Feature module registered on the enterprise grid. */
