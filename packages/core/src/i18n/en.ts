@@ -263,6 +263,10 @@ export const EN_LOCALE = {
   'chart.type.combo': 'Combo',
   'chart.type.auto': 'Auto',
 
+  // Enterprise: floating chart and Ask AI panels
+  'panel.backToGrid': 'Back to grid',
+  'panel.shortcutHint': 'Press F6 to move between the grid and this panel',
+
   // Enterprise: row grouping
   'grouping.blank': '(blank)',
   'grouping.expandGroup': 'Expand group',

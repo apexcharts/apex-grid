@@ -269,6 +269,10 @@ export const esLocale: GridLocaleText = {
   'chart.type.combo': 'Combinado',
   'chart.type.auto': 'Automático',
 
+  // Enterprise: paneles flotantes de gráfico y de IA
+  'panel.backToGrid': 'Volver a la tabla',
+  'panel.shortcutHint': 'Pulse F6 para moverse entre la tabla y este panel',
+
   // Enterprise: agrupación de filas
   'grouping.blank': '(vacío)',
   'grouping.expandGroup': 'Expandir grupo',
