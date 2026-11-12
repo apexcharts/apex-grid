@@ -34,7 +34,8 @@ const GENERATED = path.join(SRC, 'generated');
  * The elements we wrap and, where one exists, the exported event-map type used to
  * type each `on<Event>` handler to its real detail. Elements without a map fall
  * back to a plain `EventName` (a generic `(e: Event) => void` handler). The class
- * name and event list themselves come from the manifest, not this table.
+ * name, event list and attribute-only props come from the manifest, not this
+ * table. `deprecated` becomes an `@deprecated` tag on the exported component.
  */
 const ELEMENTS = [
   { tag: 'apex-grid', eventMapType: 'ApexGridEventMap' },
@@ -75,6 +76,34 @@ function onProp(eventName) {
     .replace(/[^a-zA-Z0-9]+(.)?/g, (_, next) => (next ? next.toUpperCase() : ''))
     .replace(/^[a-z]/, (c) => c.toUpperCase());
   return `on${pascal}`;
+}
+
+/** `rowSelected` -> `rowSelected`; `design-system` -> `'design-system'`. */
+function propKey(name) {
+  return /^[A-Za-z_$][\w$]*$/.test(name) ? name : `'${name}'`;
+}
+
+/** Free text as comment lines of at most `width` characters (a long word stays whole). */
+function wrap(text, width) {
+  const lines = [];
+  let line = '';
+  for (const word of String(text).replaceAll('*/', '*\\/').split(/\s+/).filter(Boolean)) {
+    if (line && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/** A JSDoc block at `indent`; an empty string in `lines` becomes a bare ` *`. */
+function jsdoc(lines, indent = '') {
+  if (lines.length === 1) return `${indent}/** ${lines[0]} */`;
+  const body = lines.map((l) => (l ? `${indent} * ${l}` : `${indent} *`));
+  return [`${indent}/**`, ...body, `${indent} */`].join('\n');
 }
 
 function banner(hash) {
@@ -130,7 +159,14 @@ const resolved = ELEMENTS.map((entry) => {
     .map((e) => e.name)
     .filter(Boolean)
     .sort();
-  return { ...entry, className: decl.name, events };
+  // Attributes the element documents with no backing property (e.g. `theme`):
+  // not instance members, so @lit/react's prop types never include them, yet at
+  // runtime React sets an unknown prop on a custom element as an attribute.
+  const attributeProps = (decl.attributes ?? [])
+    .filter((a) => a.name && !a.fieldName)
+    .map((a) => ({ name: a.name, description: a.description ?? '' }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { ...entry, className: decl.name, events, attributeProps };
 });
 const hash = inputHashOf(resolved);
 
@@ -158,6 +194,17 @@ function emitEvents() {
       lines.push(`  ${onProp(name)}: '${name}' as ${type},`);
     }
     lines.push('} as const;', '');
+    if (el.eventMapType) {
+      // The prop -> event name map as a type: the single naming rule (onProp)
+      // that both the runtime map above and the row-typed handlers of
+      // createApexGrid<T>() derive from.
+      lines.push(
+        `/** Handler prop to event name for \`<${el.tag}>\`, the naming rule the runtime map above uses. */`,
+        `export type ${el.className}EventProps = {`
+      );
+      for (const name of el.events) lines.push(`  ${onProp(name)}: '${name}';`);
+      lines.push('};', '');
+    }
   }
   return lines.join('\n');
 }
@@ -174,10 +221,55 @@ function emitElement(el) {
   // wrapper component we export under the same class name.
   const elementRef = `${el.className}Element`;
   const elementImport = `${el.className} as ${elementRef}`;
-  const doc =
+  const summary =
     el.className === 'ApexGrid'
-      ? '/**\n * React wrapper for `<apex-grid>`. This base component types `data` /\n * `columns` as `object`; use `createApexGrid<T>()` for row-typed props and events.\n */'
-      : `/** React wrapper for \`<${el.tag}>\`. */`;
+      ? [
+          'React wrapper for `<apex-grid>`. This base component types `data` /',
+          '`columns` as `object`; use `createApexGrid<T>()` for row-typed props and events.',
+        ]
+      : [`React wrapper for \`<${el.tag}>\`.`];
+  const deprecated = el.deprecated ? ['', ...wrap(`@deprecated ${el.deprecated}`, 77)] : [];
+  const doc = jsdoc([...summary, ...deprecated]);
+
+  // Attribute-only props widen the component's prop type; React passes them
+  // through as attributes, so the runtime component is unchanged.
+  const attrsType = `${el.className}AttributeProps`;
+  const hasAttrs = el.attributeProps.length > 0;
+  const attrsDecl = hasAttrs
+    ? [
+        `/** Attributes \`<${el.tag}>\` documents without a property; React sets them as attributes. */`,
+        `export interface ${attrsType} {`,
+        ...el.attributeProps.flatMap((a) => [
+          ...(a.description ? [jsdoc(wrap(a.description, 75), '  ')] : []),
+          `  ${propKey(a.name)}?: string;`,
+        ]),
+        '}',
+        '',
+      ]
+    : [];
+  const component = hasAttrs
+    ? [
+        `const ${el.className}Component = createComponent({`,
+        '  react: React,',
+        `  tagName: '${el.tag}',`,
+        `  elementClass: ${elementRef},`,
+        `  events: ${eventsConst},`,
+        '});',
+        '',
+        doc,
+        `export const ${el.className} = ${el.className}Component as React.ForwardRefExoticComponent<`,
+        `  React.ComponentProps<typeof ${el.className}Component> & ${attrsType}`,
+        '>;',
+      ]
+    : [
+        doc,
+        `export const ${el.className} = createComponent({`,
+        '  react: React,',
+        `  tagName: '${el.tag}',`,
+        `  elementClass: ${elementRef},`,
+        `  events: ${eventsConst},`,
+        '});',
+      ];
   return [
     `'use client';`,
     banner(hash),
@@ -193,13 +285,8 @@ function emitElement(el) {
     `  ${elementRef}.register();`,
     '}',
     '',
-    doc,
-    `export const ${el.className} = createComponent({`,
-    '  react: React,',
-    `  tagName: '${el.tag}',`,
-    `  elementClass: ${elementRef},`,
-    `  events: ${eventsConst},`,
-    '});',
+    ...attrsDecl,
+    ...component,
     '',
   ].join('\n');
 }
