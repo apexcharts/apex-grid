@@ -111,7 +111,11 @@ const CHART: ColumnConfiguration<Row>[] = [
   { key: 'trend', headerText: 'Trend', type: 'chart' },
 ];
 
-describe("type: 'chart'", () => {
+describe("type: 'chart'", function () {
+  // Every test draws real ApexCharts charts, some across a 400-row scroll:
+  // well inside the default on a laptop, past it on a CI runner.
+  this.timeout(20000);
+
   afterEach(() => fixtureCleanup());
 
   it('stays empty and warns once without ApexCharts, then builds when it is given', async () => {
