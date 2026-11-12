@@ -18,7 +18,7 @@
  * ({@link isFunctionName}); a word followed by `(` is always a call, so
  * `LOG10(A1)` calls LOG10 while `AB10` stays a cell reference.
  */
-import { ParseError } from './errors.js';
+import { type ParseError, type ParseErrorParams, parseError } from './errors.js';
 import {
   type CellAddress,
   type CellRefFlags,
@@ -235,7 +235,7 @@ function tokenize(input: string, from: number): Token[] {
         i++;
       }
       if (!closed) {
-        throw new ParseError('unterminated string literal', start);
+        throw parseError('unterminatedString', start);
       }
       tokens.push({ type: 'string', value, position: start });
       continue;
@@ -317,7 +317,7 @@ function tokenize(input: string, from: number): Token[] {
       continue;
     }
 
-    throw new ParseError(`unexpected character "${char}"`, i);
+    throw parseError('unexpectedChar', i, { char });
   }
 
   tokens.push({ type: 'eof', value: '', position: len });
@@ -341,10 +341,14 @@ class Parser {
     return this.tokens[this.index++];
   }
 
-  private expect(type: TokenType, label: string): Token {
+  private expect(
+    type: TokenType,
+    code: 'expectedCloseParen' | 'expectedOpenParen' | 'expectedRangeEnd',
+    params?: ParseErrorParams
+  ): Token {
     const token = this.peek();
     if (token.type !== type) {
-      throw new ParseError(`expected ${label}`, token.position);
+      throw parseError(code, token.position, params);
     }
     return this.next();
   }
@@ -353,7 +357,7 @@ class Parser {
     const expression = this.parseComparison();
     const token = this.peek();
     if (token.type !== 'eof') {
-      throw new ParseError(`unexpected token "${token.value}"`, token.position);
+      throw parseError('unexpectedToken', token.position, { token: token.value });
     }
     return expression;
   }
@@ -430,7 +434,7 @@ class Parser {
         this.next();
         const value = Number(token.value);
         if (!Number.isFinite(value)) {
-          throw new ParseError('number out of range', token.position);
+          throw parseError('numberOutOfRange', token.position);
         }
         return { type: 'number', value };
       }
@@ -450,14 +454,13 @@ class Parser {
       case 'lparen': {
         this.next();
         const expression = this.parseComparison();
-        this.expect('rparen', '")"');
+        this.expect('rparen', 'expectedCloseParen');
         return expression;
       }
       default:
-        throw new ParseError(
-          token.type === 'eof' ? 'unexpected end of formula' : `unexpected token "${token.value}"`,
-          token.position
-        );
+        throw token.type === 'eof'
+          ? parseError('unexpectedEnd', token.position)
+          : parseError('unexpectedToken', token.position, { token: token.value });
     }
   }
 
@@ -466,7 +469,7 @@ class Parser {
     const start = parseCellRef(startToken.value, startToken.position);
     if (this.peek().type === 'colon') {
       this.next();
-      const endToken = this.expect('cell', 'a cell reference after ":"');
+      const endToken = this.expect('cell', 'expectedRangeEnd');
       const end = parseCellRef(endToken.value, endToken.position);
       return {
         type: 'range',
@@ -485,7 +488,7 @@ class Parser {
 
   private parseCall(): CallNode {
     const nameToken = this.next();
-    this.expect('lparen', `"(" after "${nameToken.value}"`);
+    this.expect('lparen', 'expectedOpenParen', { name: nameToken.value });
     const args: FormulaAst[] = [];
     if (this.peek().type !== 'rparen') {
       args.push(this.parseComparison());
@@ -494,7 +497,7 @@ class Parser {
         args.push(this.parseComparison());
       }
     }
-    this.expect('rparen', '")"');
+    this.expect('rparen', 'expectedCloseParen');
     return { type: 'call', name: nameToken.value.toUpperCase(), args };
   }
 }
@@ -514,7 +517,7 @@ export function parseFormula(source: string): FormulaAst {
     start++;
   }
   if (input.slice(start).trim() === '') {
-    throw new ParseError('empty formula', 0);
+    throw parseError('empty', 0);
   }
   // Stop at the trimmed end: the tokenizer skips only ASCII whitespace.
   return new Parser(tokenize(input.slice(0, input.trimEnd().length), start)).parse();

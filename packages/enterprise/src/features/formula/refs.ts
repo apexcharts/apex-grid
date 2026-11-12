@@ -15,7 +15,7 @@
  *
  * This module is pure (no DOM, no grid knowledge).
  */
-import { ParseError } from './errors.js';
+import { type ParseError, parseError } from './errors.js';
 
 /** A single cell, 0-based: `row` is the data-row index, `col` the column index. */
 export interface CellAddress {
@@ -92,11 +92,11 @@ export function indexToColumnLetter(index: number): string {
 export function parseCellRef(token: string, position = 0): ParsedCellRef {
   const match = CELL_PATTERN.exec(token);
   if (!match) {
-    throw new ParseError(`invalid cell reference "${token}"`, position);
+    throw parseError('invalidRef', position, { ref: token });
   }
   const row = Number(match[4]) - 1;
   if (row < 0) {
-    throw new ParseError(`invalid row number in "${token}" (rows are 1-based)`, position);
+    throw parseError('invalidRow', position, { ref: token });
   }
   return {
     address: { row, col: columnLetterToIndex(match[2]) },

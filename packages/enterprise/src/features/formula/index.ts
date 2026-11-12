@@ -24,6 +24,8 @@ export {
   isFormulaError,
   nameError,
   ParseError,
+  type ParseErrorCode,
+  type ParseErrorParams,
   refError,
   toBoolean,
   toNumber,

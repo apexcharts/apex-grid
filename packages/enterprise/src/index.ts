@@ -69,6 +69,8 @@ export {
   type FormulaFn,
   formulaModule,
   ParseError,
+  type ParseErrorCode,
+  type ParseErrorParams,
   parseFormula,
   type RangeAddress,
 } from './features/formula/index.js';

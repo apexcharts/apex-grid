@@ -13,6 +13,7 @@
  * and a rejected commit keeps the editor open with the stored formula intact.
  */
 
+import { interpolate, type LocaleParams } from 'apex-grid';
 import { ApexGrid, isComposing, registerComponent, trackCompositions } from 'apex-grid/internal';
 import { css, html, LitElement, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
@@ -964,7 +965,11 @@ export class FormulaCellEditor extends LitElement {
     return accepted;
   }
 
-  /** Parse `src`, returning an error message (with position) or undefined. */
+  /**
+   * Parse `src`, returning an error message (with position) or undefined. The
+   * message reads the error's `formula.parse.*` key through the grid's
+   * `localeText`, so it shows in the grid's language.
+   */
   #parseError(src: string): string | undefined {
     try {
       const ast: FormulaAst = parseFormula(src);
@@ -972,10 +977,26 @@ export class FormulaCellEditor extends LitElement {
       return undefined;
     } catch (error) {
       if (error instanceof ParseError) {
-        return `${error.message} (position ${error.position})`;
+        const message = error.code
+          ? this.#localize(`formula.parse.${error.code}`, error.message, error.params)
+          : error.message;
+        return this.#localize('formula.parse.position', `${message} (position ${error.position})`, {
+          message,
+          position: error.position,
+        });
       }
       return this.controller?.localize?.('formula.invalid') ?? 'Invalid formula';
     }
+  }
+
+  /**
+   * `key` through the controller's localizer with `params` filled in, or
+   * `english` when there is no localizer or it does not know the key (an
+   * apex-grid release older than the key answers with the key itself).
+   */
+  #localize(key: string, english: string, params?: LocaleParams): string {
+    const text = this.controller?.localize?.(key);
+    return text && text !== key ? interpolate(text, params) : english;
   }
 }
 

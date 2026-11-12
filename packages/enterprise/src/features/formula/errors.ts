@@ -65,19 +65,83 @@ export function firstError(values: readonly CellValue[]): FormulaError | undefin
 }
 
 /**
+ * Why a formula did not parse. Each code has a `formula.parse.<code>` locale
+ * key in apex-grid, so a message can be shown in the grid's language.
+ */
+export type ParseErrorCode =
+  | 'empty'
+  | 'unterminatedString'
+  | 'unexpectedChar'
+  | 'unexpectedToken'
+  | 'unexpectedEnd'
+  | 'numberOutOfRange'
+  | 'expectedCloseParen'
+  | 'expectedOpenParen'
+  | 'expectedRangeEnd'
+  | 'invalidRef'
+  | 'invalidRow';
+
+/** Values for the `{placeholder}` tokens of a parse error's message. */
+export type ParseErrorParams = Readonly<Record<string, string>>;
+
+/**
+ * The English message per code, as {@link ParseError.message} carries it.
+ * apex-grid's `formula.parse.*` keys hold the same text (a test keeps the two
+ * equal); this copy is what an apex-grid without those keys falls back to.
+ */
+export const PARSE_ERROR_MESSAGES: Readonly<Record<ParseErrorCode, string>> = {
+  empty: 'empty formula',
+  unterminatedString: 'unterminated string literal',
+  unexpectedChar: 'unexpected character "{char}"',
+  unexpectedToken: 'unexpected token "{token}"',
+  unexpectedEnd: 'unexpected end of formula',
+  numberOutOfRange: 'number out of range',
+  expectedCloseParen: 'expected ")"',
+  expectedOpenParen: 'expected "(" after "{name}"',
+  expectedRangeEnd: 'expected a cell reference after ":"',
+  invalidRef: 'invalid cell reference "{ref}"',
+  invalidRow: 'invalid row number in "{ref}" (rows are 1-based)',
+};
+
+/**
  * Thrown by `parseFormula` when the input is not a well-formed formula. Carries
  * the 0-based character {@link position} of the offending token in the text
  * passed in (counting any leading `=` and whitespace) so the editor can point
  * at it.
+ *
+ * @remarks
+ * `message` is English, for logs and programmatic callers. The parser also
+ * sets {@link code} and {@link params}, which name the `formula.parse.<code>`
+ * locale key and its `{placeholder}` values, so a UI can show the message in
+ * the grid's language. Both are undefined on an error built without them.
  */
 export class ParseError extends Error {
   constructor(
     message: string,
-    public readonly position: number
+    public readonly position: number,
+    public readonly code?: ParseErrorCode,
+    public readonly params?: ParseErrorParams
   ) {
     super(message);
     this.name = 'ParseError';
   }
+}
+
+/**
+ * A {@link ParseError} for `code` at `position`, its English message filled
+ * from `params`. Filled here rather than through apex-grid's `interpolate` so
+ * this module stays free of grid imports.
+ */
+export function parseError(
+  code: ParseErrorCode,
+  position: number,
+  params?: ParseErrorParams
+): ParseError {
+  const message = PARSE_ERROR_MESSAGES[code].replace(
+    /\{(\w+)\}/g,
+    (token, name: string) => params?.[name] ?? token
+  );
+  return new ParseError(message, position, code, params);
 }
 
 /**
