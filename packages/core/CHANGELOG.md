@@ -4,7 +4,11 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [4.1.0] - 2026-11-12
+
+A new column type that draws an ApexCharts chart in every cell. Nothing
+changes for grids that do not use it, and `apexcharts` is not added as a
+dependency.
 
 ### Added
 - `type: 'chart'`: an ApexCharts chart in every cell of a column, configured
