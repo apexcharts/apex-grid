@@ -772,6 +772,17 @@ Set `rowRecycling` to `false` (or the `row-recycling="false"` attribute) to rest
 
 Detail templates are different: their content follows its record into whichever row shows it, and keeps its DOM state (typed text, a nested grid's sort) across a scroll within the rendered rows, a sort or a `moveRow`, so it needs neither `keyed()` nor the opt-out. It is rebuilt when the record leaves the rendered rows or is collapsed, as before. `ctx.parent` in a detail context is the grid itself. A grid created inside a `detailTemplate` has its own `rowRecycling` setting, so set it there too when you opt out.
 
+### Wide grids (many columns)
+
+Rows are virtualized and recycled: only the rows near the viewport are in the DOM. Columns are not: every rendered row renders all of its columns that are not hidden, including the ones scrolled out of view horizontally. DOM size and scroll time therefore grow with the column count. Measured on a desktop Mac with 1,000 rows:
+
+| Visible columns | DOM nodes | Scroll jump |
+|---|---|---|
+| 100 | about 10,500 | about 39 ms |
+| 500 | about 52,000 | about 184 ms |
+
+For grids with hundreds of columns, hide the columns the user does not need (`hidden: true` on the column) and combine related fields into one column with a `cellTemplate`.
+
 ### State & persistence
 
 `getState()` returns a JSON-safe snapshot of the grid's restorable view and `setState()` applies one back. The snapshot covers column layout (order, width, pinning, visibility), sort, filter, quick filter, pagination, selection, expansion, tree expansion, pinned rows, the manual drag-reorder order, and any feature-module state (enterprise grouping / pivot / aggregation / ranges). Functions and templates are never serialized: sort comparers, filter condition functions, and cell/header/editor templates re-bind from the live `columns` config on restore (filter conditions are captured by operand name).
