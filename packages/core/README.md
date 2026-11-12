@@ -808,7 +808,7 @@ See [`demo/state-persistence.html`](../../demo/state-persistence.html) for a sav
 | `columns` | `ColumnConfiguration<T>[]` | `[]` | Column configuration (property only) |
 | `autoGenerate` | `boolean` | `false` | Infer columns from `data[0]` keys. Attr `auto-generate` |
 | `sortConfiguration` | `GridSortConfiguration` | `{ multiple, triState }` | |
-| `dataPipelineConfiguration` | `DataPipelineConfiguration<T>` |  | Custom sort, filter and quick filter hooks |
+| `dataPipelineConfiguration` | `DataPipelineConfiguration<T>` |  | Custom sort, filter and quick filter hooks. `undefined` until assigned: assign a whole object |
 | `pagination` | `PaginationConfiguration` |  | |
 | `quickFilter` | `string` | `''` | Attr `quick-filter` |
 | `showQuickFilter` | `boolean` | `false` | Attr `show-quick-filter` |

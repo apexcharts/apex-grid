@@ -559,8 +559,9 @@ export interface ApexGridEventMap<T extends object> {
    * Emitted before the grid navigates to a new page or applies a new page size.
    *
    * @remarks
-   * Cancellable — calling `preventDefault()` (or returning a falsy result from
-   * `addEventListener` synchronously) aborts the page change.
+   * Cancellable: calling `event.preventDefault()` in a listener aborts the page
+   * change. A listener's return value is ignored, so returning `false` does not
+   * cancel.
    *
    * @event
    */
@@ -1096,6 +1097,13 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
   /**
    * Configuration object which controls remote data operations for the grid.
+   *
+   * @remarks
+   * `undefined` until you assign it: the grid sets no default, so a fresh
+   * grid has no object to write a hook onto. Assign a whole object, for
+   * example `grid.dataPipelineConfiguration = { sort: fetchSorted }`, rather
+   * than setting a field on the current value. Read it with optional
+   * chaining (`grid.dataPipelineConfiguration?.sort`).
    */
   @property({ attribute: false })
   public dataPipelineConfiguration!: DataPipelineConfiguration<T>;
