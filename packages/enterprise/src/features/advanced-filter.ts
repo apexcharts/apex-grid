@@ -88,7 +88,6 @@ function coerce<T extends object>(
     const parsed = Number.isNaN(typed) ? Number(value) : typed;
     return Number.isNaN(parsed) ? value : parsed;
   }
-  if (type === 'boolean') return value === 'true';
   return value;
 }
 

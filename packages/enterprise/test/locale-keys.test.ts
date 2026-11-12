@@ -144,7 +144,7 @@ describe('enterprise i18n: filter builder labels', () => {
       { kind: 'condition', column: 'name', operator: 'notEmpty' },
       { kind: 'condition', column: 'value', operator: 'greaterThanOrEqual', value: 5 },
       // Operators the column type does not offer (a saved model). Every
-      // boolean operand is unary, so only such a condition shows the value list.
+      // boolean operand is unary, so a boolean condition shows no value input.
       { kind: 'condition', column: 'active', operator: 'equals', value: 'true' },
       { kind: 'condition', column: 'value', operator: 'contains', value: 1 },
     ],
@@ -164,12 +164,12 @@ describe('enterprise i18n: filter builder labels', () => {
       selected: conditions.map(
         (c) => (c.querySelector('[part="op"]') as HTMLSelectElement).selectedOptions[0]?.textContent
       ),
-      booleans: texts(conditions[2].querySelector('select[part="val"]')),
+      booleanValue: conditions[2].querySelector('[part="val"]'),
     };
   }
 
-  it('shows the filter.operator.* English text and true / false by default', async () => {
-    const { operators, selected, booleans } = await mountBuilder();
+  it('shows the filter.operator.* English text by default', async () => {
+    const { operators, selected, booleanValue } = await mountBuilder();
     expect(operators[0]).to.deep.equal([
       'Contains',
       'Does not contain',
@@ -190,11 +190,11 @@ describe('enterprise i18n: filter builder labels', () => {
       'Equals',
       'Contains',
     ]);
-    expect(booleans).to.deep.equal(['true', 'false']);
+    expect(booleanValue).to.equal(null);
   });
 
-  it('translates operators and boolean values with esLocale', async () => {
-    const { operators, selected, booleans } = await mountBuilder(esLocale);
+  it('translates operators with esLocale', async () => {
+    const { operators, selected } = await mountBuilder(esLocale);
     expect(operators[0][0]).to.equal('Contiene');
     expect(operators[2]).to.deep.equal([
       'Igual a',
@@ -210,17 +210,11 @@ describe('enterprise i18n: filter builder labels', () => {
       'Igual a',
       'Contiene',
     ]);
-    expect(booleans).to.deep.equal(['verdadero', 'falso']);
   });
 
   it('applies a custom localeText', async () => {
-    const { selected, booleans } = await mountBuilder({
-      'filter.operator.notEmpty': 'Has a value',
-      'filterBuilder.true': 'Yes',
-      'filterBuilder.false': 'No',
-    });
+    const { selected } = await mountBuilder({ 'filter.operator.notEmpty': 'Has a value' });
     expect(selected[0]?.trim()).to.equal('Has a value');
     expect(selected[1]?.trim()).to.equal('Greater than or equal');
-    expect(booleans).to.deep.equal(['Yes', 'No']);
   });
 });

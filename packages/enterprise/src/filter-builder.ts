@@ -327,34 +327,23 @@ export class ApexGridFilterBuilder extends LitElement {
         }
       </select>
       ${
-        unary
+        // Every boolean operator is unary, so a boolean condition never takes
+        // a value, not even under an operator the type does not offer.
+        unary || type === 'boolean'
           ? nothing
-          : type === 'boolean'
-            ? html`<select
-                part="val"
-                aria-label=${this.#t('filterBuilder.value', 'Value')}
-                .value=${String(condition.value ?? 'true')}
-                @change=${(e: Event) => {
-                  condition.value = (e.target as HTMLSelectElement).value;
-                  this.requestUpdate();
-                }}
-              >
-                <option value="true">${this.#t('filterBuilder.true', 'true')}</option>
-                <option value="false">${this.#t('filterBuilder.false', 'false')}</option>
-              </select>`
-            : // A text input for numbers too, as in the core filter panel:
-              // a number input would sanitize `1.234,5` or `1,000` before
-              // the column's locale reads it. (No decimal inputmode: that
-              // keyboard has no minus key on some phones.)
-              html`<input
-                part="val"
-                type="text"
-                aria-label=${this.#t('filterBuilder.value', 'Value')}
-                .value=${String(condition.value ?? '')}
-                @input=${(e: Event) => {
-                  condition.value = (e.target as HTMLInputElement).value;
-                }}
-              />`
+          : // A text input for numbers too, as in the core filter panel:
+            // a number input would sanitize `1.234,5` or `1,000` before
+            // the column's locale reads it. (No decimal inputmode: that
+            // keyboard has no minus key on some phones.)
+            html`<input
+              part="val"
+              type="text"
+              aria-label=${this.#t('filterBuilder.value', 'Value')}
+              .value=${String(condition.value ?? '')}
+              @input=${(e: Event) => {
+                condition.value = (e.target as HTMLInputElement).value;
+              }}
+            />`
       }
       <button
         part="remove"

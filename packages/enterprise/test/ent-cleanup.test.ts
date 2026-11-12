@@ -5,6 +5,7 @@ import {
   type ContextMenuController,
 } from '../src/features/context-menu.js';
 import {
+  type AdvancedFilterModel,
   ApexGridChart,
   ApexGridEnterprise,
   ApexGridFilterBuilder,
@@ -182,6 +183,36 @@ describe('B68 enterprise cleanup', () => {
       }
       expect(unhandled).to.eql([]);
       expect(said).to.eql([]);
+    });
+  });
+
+  describe('filter builder boolean value (ent-filter-builder-9)', () => {
+    async function builderFor(model: AdvancedFilterModel) {
+      const grid = await mount();
+      const builder = await fixture<ApexGridFilterBuilder>(
+        html`<apex-grid-filter-builder .grid=${grid}></apex-grid-filter-builder>`
+      );
+      builder.model = model;
+      await builder.updateComplete;
+      return builder;
+    }
+
+    it('a boolean column with an unknown operator shows no value input', async () => {
+      const builder = await builderFor({
+        kind: 'group',
+        join: 'and',
+        children: [{ kind: 'condition', column: 'done', operator: 'equals', value: 'true' }],
+      });
+      expect(builder.renderRoot.querySelector('[part="val"]')).to.equal(null);
+    });
+
+    it('a text column still shows its value input', async () => {
+      const builder = await builderFor({
+        kind: 'group',
+        join: 'and',
+        children: [{ kind: 'condition', column: 'region', operator: 'contains', value: 'E' }],
+      });
+      expect(builder.renderRoot.querySelector('input[part="val"]')).to.exist;
     });
   });
 });
