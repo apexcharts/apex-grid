@@ -1,12 +1,42 @@
 # Changelog
 
+## Unreleased
+
+- The `apex-grid` peer range is now `^3.5.0 || ^4.0.0`. The 0.1.1 notes said
+  the wrapper installs next to any apex-grid 3.x; it needs 3.5.0 or later,
+  because it imports `ApexGridToolbar` and `ApexGridPaginator`, which apex-grid
+  first exports in 3.5.0. An app on apex-grid 3.4.x failed to bundle; npm now
+  reports the peer conflict at install time instead.
+- The README and the 0.1.0 notes said enterprise features light up when the app
+  also loads `apex-grid-enterprise`. They do not: these components render the
+  community `<apex-grid>`, and enterprise features live on
+  `<apex-grid-enterprise>`. The README now shows how to wrap the enterprise
+  element with `@lit/react`, including its events and the pnpm install step.
+- `theme` is now a typed prop on `ApexGrid` and on `createApexGrid<T>()`
+  components, so `theme="dark"` compiles. At runtime it was already set as the
+  `theme` attribute.
+- `ApexGridToolbar` and `ApexGridPaginator` are deprecated. They render nothing
+  outside the grid, which renders its own toolbar and paginator (configure them
+  with `showQuickFilter`, `showExport` and `pagination`). They will be removed
+  in 0.2.0.
+- The row-typed `on<Event>` props of `createApexGrid<T>()` now come from the
+  same generated prop-to-event map as the runtime wiring. Every prop name is
+  unchanged.
+- Build and tests: the build clears `dist/` first, `npm test` checks that
+  importing the package in Node with no DOM registers no element, and
+  `npm run typecheck` checks the `createApexGrid<T>()` row typing. An unrelated
+  apex-grid documentation change no longer marks the generated wrappers out of
+  date.
+
 ## 0.1.1
 
 The stable release of 0.1.1-beta.1, now under the `latest` npm tag.
 
 - The `apex-grid` peer range is `^3.4.0 || ^4.0.0`, so the wrapper installs
-  next to apex-grid 3.x or 4.x. The wrapper code is unchanged from 0.1.0, and
-  the 4.0 properties such as `rowRecycling` pass through like any other.
+  next to apex-grid 3.x or 4.x. (Corrected later: it needs apex-grid 3.5.0 or
+  later; the range is now `^3.5.0 || ^4.0.0`.) The wrapper code is unchanged
+  from 0.1.0, and the 4.0 properties such as `rowRecycling` pass through like
+  any other.
 
 ## 0.1.1-beta.1
 
@@ -30,4 +60,6 @@ Initial release.
 - SSR / Next.js App Router support: `'use client'` entry points and client-only
   element registration (importing the wrapper in a Server Component is a no-op).
 - Enterprise features activate automatically when the consumer also loads
-  `apex-grid-enterprise`; this wrapper is tier-agnostic.
+  `apex-grid-enterprise`; this wrapper is tier-agnostic. (Corrected later: the
+  components render the community grid only; see the README for the enterprise
+  recipe.)

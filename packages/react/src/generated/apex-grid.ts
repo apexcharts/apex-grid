@@ -1,6 +1,6 @@
 'use client';
 // GENERATED FROM custom-elements.json - do not edit by hand.
-// Manifest hash: 7e06cdfc2662
+// Manifest input hash: 8fcdbabe359a
 // Regenerate with `npm run generate`.
 
 import * as React from 'react';
@@ -15,13 +15,29 @@ if (typeof window !== 'undefined') {
   ApexGridElement.register();
 }
 
-/**
- * React wrapper for `<apex-grid>`. This base component types `data` /
- * `columns` as `object`; use `createApexGrid<T>()` for row-typed props and events.
- */
-export const ApexGrid = createComponent({
+/** Attributes `<apex-grid>` documents without a property; React sets them as attributes. */
+export interface ApexGridAttributeProps {
+  /**
+   * Space-separated theme flags. `dark` opts into the built-in dark palette;
+   * `tinted` mixes `--ag-brand` into the chrome surfaces. Combine as
+   * `theme="dark tinted"`. With the `apex-grid/ignite-ui` add-on a grid without
+   * `dark` or `light` follows the Ignite UI variant, and `light` keeps it
+   * light.
+   */
+  theme?: string;
+}
+
+const ApexGridComponent = createComponent({
   react: React,
   tagName: 'apex-grid',
   elementClass: ApexGridElement,
   events: apexGridEvents,
 });
+
+/**
+ * React wrapper for `<apex-grid>`. This base component types `data` /
+ * `columns` as `object`; use `createApexGrid<T>()` for row-typed props and events.
+ */
+export const ApexGrid = ApexGridComponent as React.ForwardRefExoticComponent<
+  React.ComponentProps<typeof ApexGridComponent> & ApexGridAttributeProps
+>;

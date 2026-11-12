@@ -1,6 +1,6 @@
 'use client';
 // GENERATED FROM custom-elements.json - do not edit by hand.
-// Manifest hash: 7e06cdfc2662
+// Manifest input hash: 8fcdbabe359a
 // Regenerate with `npm run generate`.
 
 import * as React from 'react';
@@ -15,7 +15,14 @@ if (typeof window !== 'undefined') {
   ApexGridToolbarElement.register();
 }
 
-/** React wrapper for `<apex-grid-toolbar>`. */
+/**
+ * React wrapper for `<apex-grid-toolbar>`.
+ *
+ * @deprecated Renders nothing outside `<apex-grid>`: the toolbar reads its
+ * state from the grid that hosts it, and the grid renders its own. Configure it
+ * through the grid props instead (`showQuickFilter`, `showExport`). This export
+ * will be removed in react-apex-grid 0.2.0.
+ */
 export const ApexGridToolbar = createComponent({
   react: React,
   tagName: 'apex-grid-toolbar',

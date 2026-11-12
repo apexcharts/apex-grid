@@ -1,6 +1,6 @@
 'use client';
 // GENERATED FROM custom-elements.json - do not edit by hand.
-// Manifest hash: 7e06cdfc2662
+// Manifest input hash: 8fcdbabe359a
 // Regenerate with `npm run generate`.
 
 import * as React from 'react';
@@ -15,7 +15,14 @@ if (typeof window !== 'undefined') {
   ApexGridPaginatorElement.register();
 }
 
-/** React wrapper for `<apex-grid-paginator>`. */
+/**
+ * React wrapper for `<apex-grid-paginator>`.
+ *
+ * @deprecated Renders nothing outside `<apex-grid>`: the paginator reads its
+ * state from the grid that hosts it, and the grid renders its own. Configure it
+ * through the grid `pagination` prop instead. This export will be removed in
+ * react-apex-grid 0.2.0.
+ */
 export const ApexGridPaginator = createComponent({
   react: React,
   tagName: 'apex-grid-paginator',

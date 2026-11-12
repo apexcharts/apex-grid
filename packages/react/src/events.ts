@@ -1,5 +1,5 @@
 // GENERATED FROM custom-elements.json - do not edit by hand.
-// Manifest hash: 7e06cdfc2662
+// Manifest input hash: 8fcdbabe359a
 // Regenerate with `npm run generate`.
 
 import type { EventName } from '@lit/react';
@@ -37,6 +37,39 @@ export const apexGridEvents = {
   onTreeRowExpanded: 'treeRowExpanded' as EventName<ApexGridEventMap<object>['treeRowExpanded']>,
   onTreeRowExpanding: 'treeRowExpanding' as EventName<ApexGridEventMap<object>['treeRowExpanding']>,
 } as const;
+
+/** Handler prop to event name for `<apex-grid>`, the naming rule the runtime map above uses. */
+export type ApexGridEventProps = {
+  onCellValidationFailed: 'cellValidationFailed';
+  onCellValueChanged: 'cellValueChanged';
+  onCellValueChanging: 'cellValueChanging';
+  onColumnMoved: 'columnMoved';
+  onColumnMoving: 'columnMoving';
+  onColumnPinned: 'columnPinned';
+  onColumnPinning: 'columnPinning';
+  onFiltered: 'filtered';
+  onFiltering: 'filtering';
+  onHistoryChanged: 'historyChanged';
+  onPageChanged: 'pageChanged';
+  onPageChanging: 'pageChanging';
+  onQuickFilterChanged: 'quickFilterChanged';
+  onQuickFilterChanging: 'quickFilterChanging';
+  onRowEditEnded: 'rowEditEnded';
+  onRowEditStarted: 'rowEditStarted';
+  onRowExpanded: 'rowExpanded';
+  onRowExpanding: 'rowExpanding';
+  onRowMoved: 'rowMoved';
+  onRowMoving: 'rowMoving';
+  onRowPinned: 'rowPinned';
+  onRowPinning: 'rowPinning';
+  onRowSelected: 'rowSelected';
+  onRowSelecting: 'rowSelecting';
+  onSorted: 'sorted';
+  onSorting: 'sorting';
+  onStateChanged: 'stateChanged';
+  onTreeRowExpanded: 'treeRowExpanded';
+  onTreeRowExpanding: 'treeRowExpanding';
+};
 
 /** `on<Event>` handler props for `<apex-grid-toolbar>`. */
 export const apexGridToolbarEvents = {
