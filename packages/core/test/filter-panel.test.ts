@@ -399,7 +399,7 @@ describe('Filter panel', () => {
       }
     });
 
-    it('clamps with its rendered width when the root font size is not 16px', async () => {
+    it('keeps its px width on a 20px root and clamps with its rendered width', async () => {
       const root = document.documentElement;
       const previous = root.style.fontSize;
       root.style.fontSize = '20px';
@@ -412,7 +412,17 @@ describe('Filter panel', () => {
         });
         await TDD.waitForUpdate();
         await TDD.open('importance');
-        const rect = TDD.panel.getBoundingClientRect();
+        let rect = TDD.panel.getBoundingClientRect();
+        // Chrome is px, so the root font size does not scale the panel.
+        expect(rect.width).to.equal(240);
+        expect(rect.right).to.be.at.most(window.innerWidth - 8 + 0.5);
+
+        // A wider panel (an app's own styling) clamps by its measured width.
+        TDD.filterRow.close();
+        await TDD.waitForUpdate();
+        TDD.panel.style.inlineSize = '300px';
+        await TDD.open('importance');
+        rect = TDD.panel.getBoundingClientRect();
         expect(rect.width).to.equal(300);
         expect(rect.right).to.be.at.most(window.innerWidth - 8 + 0.5);
       } finally {

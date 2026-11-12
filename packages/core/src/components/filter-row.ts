@@ -392,7 +392,7 @@ export default class ApexFilterRow<T extends object> extends LitElement {
   #position = () => {
     const rect = this.#trigger()?.getBoundingClientRect() ?? this.triggerRect;
     if (!rect) return;
-    // Measured, so a root font size other than 16px still clamps correctly.
+    // Measured, so a width the app sets in its own styles still clamps.
     const width = this.offsetWidth;
     const viewportWidth = window.innerWidth;
     let left = rect.left;

@@ -5,32 +5,33 @@
 // igniteui element, so carrying a whole theming library (and shipping it as a
 // runtime dependency of every consumer) bought a three-line px-to-rem helper.
 // It also emitted 55 Sass deprecation warnings per build from its own
-// `if()` usage. Both are gone; `rem()` below is the same conversion.
+// `if()` usage. Both are gone; `rem()` below now emits px (see its note).
 // The grid reads no `--ig-*` token of its own: following an Ignite UI theme is
 // the opt-in `apex-grid/ignite-ui` add-on (`styles/ignite-ui/`).
 // ─────────────────────────────────────────────────────────────────────────
 
 @use 'sass:math';
 
-/// The root font size `rem()` converts against.
-$base-font-size: 16px !default;
-
-/// Converts a pixel value to root-relative `rem`. Unitless input is read as px.
+/// Normalizes a chrome dimension to px. Unitless input is read as px.
 ///
-/// @param {number} $pixels - The pixel value to convert.
-/// @param {number} $context [$base-font-size] - The base to convert against.
-/// @return {number} The value in `rem`.
+/// The name is historical: this used to convert to root-relative `rem`, which
+/// made every toolbar, paginator, header and filter dimension follow the
+/// page's root font size while the `--ag-*` tokens, text sizes and row
+/// heights stayed in px. On a page with `html { font-size: 62.5% }` the 24px
+/// target sizes shrank to 15px around 13px text. Emitting px keeps all of the
+/// grid's geometry in one unit, so it renders the same on any root font size
+/// (and byte-identically at the usual 16px root). The helper stays so the call
+/// sites read as before and any future unit decision is one edit.
+///
+/// @param {number} $pixels - The pixel value.
+/// @return {number} The value in `px`.
 ///
 /// @example
-///   padding: rem(8px);  // => 0.5rem
-@function rem($pixels, $context: $base-font-size) {
+///   padding: rem(8px);  // => 8px
+@function rem($pixels) {
   @if math.is-unitless($pixels) {
-    $pixels: $pixels * 1px;
+    @return $pixels * 1px;
   }
 
-  @if math.is-unitless($context) {
-    $context: $context * 1px;
-  }
-
-  @return math.div($pixels, $context) * 1rem;
+  @return $pixels;
 }
