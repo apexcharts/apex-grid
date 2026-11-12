@@ -100,6 +100,28 @@ interface CopyRecord<T> {
   source: { rows: T[]; keys: string[]; data: unknown } | null;
 }
 
+/**
+ * One value as copied to the clipboard, the text a range copy writes per
+ * cell: a Date as ISO, a value holding a tab, a line break or a double quote
+ * quoted, and formula-leading text escaped unless `escapeFormulas` is false.
+ */
+export function clipboardCell(value: unknown, escapeFormulas: boolean): string {
+  return escapeCSVCell((escapeFormulas ? escapeFormula(value) : value) as ExportCellValue, '\t');
+}
+
+/**
+ * Writes `text` with the async Clipboard API. Resolves `false` when the API is
+ * unavailable or the write is denied, so no caller leaks a rejection.
+ */
+export async function writeClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The rectangular bounds of a selection, in view coordinates. */
 export interface RangeBounds {
   readonly top: number;
@@ -883,16 +905,7 @@ export class RangeSelectionController<T extends object>
     return this.getRanges()
       .map((bounds) =>
         this.#matrix(bounds)
-          .map((line) =>
-            line
-              .map((value) =>
-                escapeCSVCell(
-                  (escapeFormulas ? escapeFormula(value) : value) as ExportCellValue,
-                  '\t'
-                )
-              )
-              .join('\t')
-          )
+          .map((line) => line.map((value) => clipboardCell(value, escapeFormulas)).join('\t'))
           .join('\n')
       )
       .join('\n\n');
@@ -904,14 +917,9 @@ export class RangeSelectionController<T extends object>
    */
   public async copySelection(): Promise<boolean> {
     const copy = this.#capture();
-    if (!copy) return false;
-    try {
-      await navigator.clipboard.writeText(copy.tsv);
-      this.#copiedHere(copy);
-      return true;
-    } catch {
-      return false;
-    }
+    if (!copy || !(await writeClipboard(copy.tsv))) return false;
+    this.#copiedHere(copy);
+    return true;
   }
 
   /**

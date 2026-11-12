@@ -3,7 +3,6 @@ import type { ColumnConfiguration } from 'apex-grid';
 import {
   ApexGrid,
   type ColumnMenuProvider,
-  escapeFormula,
   type GridFeatureModule,
   type GridHost,
   type StateController,
@@ -12,7 +11,12 @@ import type { ReactiveController } from 'lit';
 import { html, nothing, render } from 'lit';
 import { carryGridTheme } from './carry-theme.js';
 import { captureFocus, type FocusReturn, returnFocus } from './focus-return.js';
-import { RANGE_SELECTION_MODULE_ID, type RangeSelectionController } from './range-selection.js';
+import {
+  clipboardCell,
+  RANGE_SELECTION_MODULE_ID,
+  type RangeSelectionController,
+  writeClipboard,
+} from './range-selection.js';
 
 export const CONTEXT_MENU_MODULE_ID = 'context-menu';
 
@@ -335,6 +339,7 @@ export class ContextMenuController<T extends object>
         id: 'copy',
         label: this.host.localize('contextMenu.copy'),
         separatorBefore: true,
+        // Returned, though typed void, so a caller can await the write.
         run: (t) => this.#copy(t),
       });
     }
@@ -347,13 +352,18 @@ export class ContextMenuController<T extends object>
     );
   }
 
-  #copy(target: ContextMenuTarget<T>): void {
+  /**
+   * Copies the cell as a one-cell range copy would: the same text (ISO dates,
+   * quoting, formula escaping and its opt-out), the same announcement, and a
+   * denied write resolves quietly.
+   */
+  async #copy(target: ContextMenuTarget<T>): Promise<void> {
     if (target.row == null) return;
     const value = (target.row as Record<string, unknown>)[String(target.column.key)];
-    // Formula-leading text gets the range copy's escaping and its opt-out.
     const range = this.state?.module<RangeSelectionController<T>>(RANGE_SELECTION_MODULE_ID);
-    const text = range?.escapeFormulas === false ? value : escapeFormula(value);
-    void navigator.clipboard?.writeText?.(text == null ? '' : String(text));
+    if (await writeClipboard(clipboardCell(value, range?.escapeFormulas !== false))) {
+      this.host.announce(this.host.localize('rangeSelection.copied'));
+    }
   }
 
   // --- menu rendering ------------------------------------------------------

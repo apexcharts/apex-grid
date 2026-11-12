@@ -1,6 +1,10 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration } from 'apex-grid';
 import {
+  CONTEXT_MENU_MODULE_ID,
+  type ContextMenuController,
+} from '../src/features/context-menu.js';
+import {
   ApexGridChart,
   ApexGridEnterprise,
   ApexGridFilterBuilder,
@@ -102,6 +106,82 @@ describe('B68 enterprise cleanup', () => {
       expect(grid.isPivoting).to.equal(false);
       expect(keys(grid)).to.eql(columns.map((c) => String(c.key)));
       expect(grid.pageItems).to.have.length(3);
+    });
+  });
+
+  describe('context menu Copy (ent-context-menu-10)', () => {
+    type Clipboard = { writeText(text: string): Promise<void> };
+
+    /** Runs `body` with `navigator.clipboard` replaced by `clipboard`. */
+    async function withClipboard(clipboard: Clipboard, body: () => unknown): Promise<void> {
+      const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: clipboard });
+      try {
+        await body();
+      } finally {
+        if (original) Object.defineProperty(navigator, 'clipboard', original);
+        else Reflect.deleteProperty(navigator as unknown as Record<string, unknown>, 'clipboard');
+      }
+    }
+
+    function copyItem(grid: ApexGridEnterprise<Row>, key: keyof Row) {
+      const menu = (
+        grid as unknown as {
+          stateController: { module(id: string): ContextMenuController<Row> };
+        }
+      ).stateController.module(CONTEXT_MENU_MODULE_ID);
+      const column = grid.columns.find((c) => c.key === key)!;
+      const target = { kind: 'cell', column, row: grid.data[0], rowIndex: 0 } as const;
+      const item = menu.defaultItems(target).find((candidate) => candidate.id === 'copy')!;
+      return () => item.run?.(target);
+    }
+
+    function recordAnnouncements(grid: ApexGridEnterprise<Row>): string[] {
+      const said: string[] = [];
+      grid.announce = (message: string) => {
+        said.push(message);
+      };
+      return said;
+    }
+
+    it('copies a date as ISO text, as range copy does', async () => {
+      const grid = await mount();
+      const writes: string[] = [];
+      await withClipboard(
+        { writeText: async (text) => void writes.push(text) },
+        copyItem(grid, 'when')
+      );
+      expect(writes).to.eql([WHEN.toISOString()]);
+    });
+
+    it('announces the copy with the range copy message', async () => {
+      const grid = await mount();
+      const said = recordAnnouncements(grid);
+      await withClipboard({ writeText: async () => undefined }, copyItem(grid, 'region'));
+      expect(said).to.eql([grid.localize('rangeSelection.copied')]);
+    });
+
+    it('catches a denied clipboard write: no unhandled rejection, no announcement', async () => {
+      const grid = await mount();
+      const said = recordAnnouncements(grid);
+      const unhandled: unknown[] = [];
+      const onUnhandled = (event: PromiseRejectionEvent) => {
+        unhandled.push(event.reason);
+        event.preventDefault();
+      };
+      window.addEventListener('unhandledrejection', onUnhandled);
+      try {
+        await withClipboard(
+          { writeText: () => Promise.reject(new DOMException('denied', 'NotAllowedError')) },
+          copyItem(grid, 'region')
+        );
+        // Unhandled rejections are reported after the microtask queue drains.
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      } finally {
+        window.removeEventListener('unhandledrejection', onUnhandled);
+      }
+      expect(unhandled).to.eql([]);
+      expect(said).to.eql([]);
     });
   });
 });
