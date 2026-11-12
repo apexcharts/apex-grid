@@ -41,10 +41,8 @@ async function build() {
   await exec('tsc -p scripts/tsconfig.prod.json && tsc -p scripts/tsconfig.dts.prod.json');
   await Promise.all([
     writeDistPackageJson(),
-    ...RELEASE_FILES.map((file) =>
-      // README/LICENSE are optional during early scaffolding.
-      copyFile(file, DEST_DIR(file)).catch(() => {})
-    ),
+    // A missing licence, readme or changelog fails the build, as in core.
+    ...RELEASE_FILES.map((file) => copyFile(file, DEST_DIR(file))),
   ]);
   await checkDistManifest({ pkgDir: PKG_DIR, deliberate: DELIBERATE_MANIFEST_DIFFERENCES });
 }
