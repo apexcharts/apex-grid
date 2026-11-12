@@ -60,7 +60,14 @@ export interface GridApi<T = unknown> {
   getState(): GridState;
   /** The current rows (callers bound the sample they use). */
   getData(): readonly T[];
-  /** The locale override map, for building localized summaries / warnings / answers. */
+  /**
+   * The grid's `localeText` override map.
+   *
+   * @remarks
+   * The built-in rule engine answers in English whatever this holds (it only
+   * parses English prompts). The map is for a custom or LLM reasoner that
+   * wants to write its answers, summaries and warnings in the grid's language.
+   */
   getLocaleText(): GridLocaleText | undefined;
   /**
    * The grid's layout direction, so a physical word ("left", "right") maps to the

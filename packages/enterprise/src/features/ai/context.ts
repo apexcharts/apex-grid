@@ -43,6 +43,14 @@ export interface GridContext<T = unknown> {
     readonly rows?: readonly T[];
   };
   memory: MemorySnapshot;
+  /**
+   * The grid's `localeText` overrides (from {@link GridApi.getLocaleText}).
+   *
+   * @remarks
+   * The built-in rule engine reads English prompts and answers in English,
+   * so it does not use this. It is here for a custom or LLM reasoner that
+   * wants to answer in the grid's language.
+   */
   locale?: GridLocaleText;
   /**
    * The grid's layout direction (from {@link GridApi.getDirection}). Under `'rtl'`

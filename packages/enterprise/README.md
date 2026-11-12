@@ -831,7 +831,10 @@ grid's `getSchema()` / `setState()` foundation.
 The rule engine covers a documented set of commands and questions. Use these and
 they work instantly and offline; anything outside the set escalates to your LLM
 reasoner (if you configured one) or is reported honestly (see below). It never
-guesses silently.
+guesses silently. The rule engine reads English prompts and answers in English
+whatever `localeText` says (the panel itself follows `localeText`), and a custom
+or LLM reasoner gets the grid's `localeText` as `ctx.locale` to answer in the
+grid's language.
 
 - **Sort:** "sort by revenue, highest first", "sort by price high to low", "order by name",
   "reverse the sort".
