@@ -662,8 +662,9 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
    * Column-dimension field(s) for pivoting: their distinct value combinations
    * become columns. Accepts a single field or an ordered list (the first field
    * heads the spanning column-header group). Empty disables pivoting. Requires
-   * {@link pivotRows} and {@link pivotValues}. Pivoting and {@link groupBy} are
-   * mutually exclusive (pivot wins).
+   * {@link pivotRows} and {@link pivotValues} with at least one measure that
+   * has an aggregation function: `{ amount: [] }` alone leaves the grid
+   * unpivoted. Pivoting and {@link groupBy} are mutually exclusive (pivot wins).
    */
   @property({ attribute: false })
   public pivotOn: string | string[] = '';
@@ -672,7 +673,10 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
   @property({ attribute: false })
   public pivotRows: string[] = [];
 
-  /** Measures aggregated into each pivot cell, e.g. `{ salary: ['sum'] }`. */
+  /**
+   * Measures aggregated into each pivot cell, e.g. `{ salary: ['sum'] }`.
+   * Pivoting turns on only when at least one measure lists a function.
+   */
   @property({ attribute: false })
   public pivotValues: AggregationConfig = {};
 
@@ -1713,19 +1717,19 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
     const pivot = this.#pivotController();
     if (!pivot) return;
 
-    const on = Array.isArray(this.pivotOn)
+    pivot.rows = this.pivotRows;
+    pivot.on = Array.isArray(this.pivotOn)
       ? this.pivotOn.filter(Boolean)
       : this.pivotOn
         ? [this.pivotOn]
         : [];
-    const shouldActivate =
-      on.length > 0 && this.pivotRows.length > 0 && Object.keys(this.pivotValues).length > 0;
+    pivot.values = this.pivotValues;
+    pivot.options = this.pivotOptions ?? {};
 
-    if (shouldActivate) {
-      pivot.rows = this.pivotRows;
-      pivot.on = on;
-      pivot.values = this.pivotValues;
-      pivot.options = this.pivotOptions ?? {};
+    // The controller's own predicate decides, so the columns it swaps in and
+    // the rows it transforms never disagree (a measure with no functions is
+    // not a pivot).
+    if (pivot.active) {
       const repivot = this.#pivotActive;
       if (!repivot) {
         this.#savedColumns = this.columns;
