@@ -59,6 +59,10 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
    * @remarks
    * When unset, falls back to the grid's localized `toolbar.searchPlaceholder`
    * text (see {@link ApexGrid.localeText}).
+   *
+   * @deprecated The grid renders this toolbar in its shadow root and never
+   * sets this property. Set the `toolbar.searchPlaceholder` key of the
+   * grid's `localeText` instead. To be removed in apex-grid 5.0.
    */
   @property({ type: String })
   public placeholder = '';
@@ -69,6 +73,11 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
 
   /**
    * Debounce window (ms) before {@link ApexGrid.quickFilter} updates.
+   *
+   * @deprecated The grid renders this toolbar in its shadow root and never
+   * sets this property, so the quick filter always waits 200 ms. Call
+   * the grid's `setQuickFilter()` from your own input to apply a value on
+   * your own schedule. To be removed in apex-grid 5.0.
    */
   @property({ type: Number, attribute: 'debounce' })
   public debounce = 200;
@@ -81,7 +90,10 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
   @property({ attribute: false, type: Boolean })
   public showExport = false;
 
-  /** Optional override filename (without extension) for exports. */
+  /**
+   * The file name, without extension, the export menu downloads to. Bound
+   * from {@link ApexGrid.exportFilename}.
+   */
   @property({ attribute: false, type: String })
   public exportFilename = 'data';
 

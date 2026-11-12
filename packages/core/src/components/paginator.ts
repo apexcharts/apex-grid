@@ -68,6 +68,10 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
    * @remarks
    * When unset, falls back to the grid's localized `pagination.rowsPerPage`
    * text (see {@link ApexGrid.localeText}).
+   *
+   * @deprecated The grid renders this paginator in its shadow root and never
+   * sets this property. Set the `pagination.rowsPerPage` key of the
+   * grid's `localeText` instead. To be removed in apex-grid 5.0.
    */
   @property({ type: String, attribute: 'page-size-label' })
   public pageSizeLabel?: string;

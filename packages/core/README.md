@@ -602,7 +602,7 @@ Toolbar dropdown:
 <apex-grid show-export></apex-grid>
 ```
 
-Renders a download icon in the toolbar's trailing actions area; the menu has an "Export CSV" entry (the `toolbar.exportCsv` locale key; the enterprise grid adds "Export XLSX"). Toolbar `exportFilename` overrides the default `data` filename. Attribute: `show-export`.
+Renders a download icon in the toolbar's trailing actions area; the menu has an "Export CSV" entry (the `toolbar.exportCsv` locale key; the enterprise grid adds "Export XLSX"). The grid's `exportFilename` property (attribute `export-filename`, default `data`) names the file every menu entry downloads. It applies to the menu only: `exportToCSV()` or `exportToXLSX()` called without a `filename` still downloads `data.*`, and a `filename` you pass to `exportToCSV` or `exportAs` names that call's file. Attributes: `show-export`, `export-filename`.
 
 ### Toolbar
 
@@ -622,7 +622,7 @@ Rendered automatically above the header row when at least one of `show-quick-fil
 | `export-menu` | Dropdown panel |
 | `export-menu-item` | Menu item |
 
-Search input has a `debounce` attribute (default `200`ms).
+The search input applies a value 200 ms after the last keystroke; call `setQuickFilter()` from your own input for different timing.
 
 ### Theming
 
@@ -813,6 +813,7 @@ See [`demo/state-persistence.html`](../../demo/state-persistence.html) for a sav
 | `quickFilter` | `string` | `''` | Attr `quick-filter` |
 | `showQuickFilter` | `boolean` | `false` | Attr `show-quick-filter` |
 | `showExport` | `boolean` | `false` | Attr `show-export` |
+| `exportFilename` | `string` | `'data'` | File name (no extension) the toolbar export menu downloads to. Attr `export-filename` |
 | `columnReordering` | `boolean` | `false` | Attr `column-reordering` |
 | `columnGroups` | `ColumnGroupConfiguration[]` |  | Spanning header groups (`column.group` references an `id`) |
 | `editing` | `GridEditingConfiguration` |  | Includes `history` for undo/redo; per-column `validators` |
@@ -916,7 +917,7 @@ Programmatic `sort()` / `filter()` calls are silent; only UI-initiated changes e
 
 ### Attributes
 
-`auto-generate`, `quick-filter`, `show-quick-filter`, `show-export`, `column-reordering`, `coordinate-hints`, `show-header`, `row-recycling`. Theming: `theme` (`dark`, `light`, `tinted`), `tokens="off"` and, with the `apex-grid/ignite-ui` add-on, `design-system="off"` (see [Customize the look](#3-optional-customize-the-look)).
+`auto-generate`, `quick-filter`, `show-quick-filter`, `show-export`, `export-filename`, `column-reordering`, `coordinate-hints`, `show-header`, `row-recycling`. Theming: `theme` (`dark`, `light`, `tinted`), `tokens="off"` and, with the `apex-grid/ignite-ui` add-on, `design-system="off"` (see [Customize the look](#3-optional-customize-the-look)).
 
 ### CSS parts
 

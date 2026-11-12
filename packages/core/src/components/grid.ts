@@ -1182,6 +1182,22 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
   public showExport = false;
 
   /**
+   * The file name, without extension, the toolbar's export menu downloads to.
+   *
+   * @remarks
+   * Applies to every format in the menu (`data.csv`, and `data.xlsx` in the
+   * enterprise grid). An empty value falls back to `data`. It names the
+   * menu's downloads only: {@link ApexGrid.exportToCSV} (and `exportToXLSX`
+   * in the enterprise grid) called without a `filename` still downloads
+   * `data.*`, and a `filename` passed to `exportToCSV` or
+   * {@link ApexGrid.exportAs} names that call's file.
+   *
+   * @attr export-filename
+   */
+  @property({ type: String, attribute: 'export-filename' })
+  public exportFilename = 'data';
+
+  /**
    * Localization overrides for the grid's built-in UI text (pagination, filter
    * operators and controls, row/selection labels, the toolbar, and so on).
    *
@@ -3523,6 +3539,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       .value=${this.quickFilter}
       .showQuickFilter=${this.showQuickFilter}
       .showExport=${this.showExport}
+      .exportFilename=${this.exportFilename || 'data'}
       @apex-quick-filter=${(event: CustomEvent<string>) => {
         event.stopPropagation();
         this.setQuickFilter(event.detail);
