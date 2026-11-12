@@ -10,6 +10,23 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `apex-grid/custom-elements.json` and `apex-grid/package.json` are exported,
   so tools that read the Custom Elements Manifest (Storybook, for one) can
   import it directly. Existing import paths are unchanged.
+- `exportFilename` (attribute `export-filename`, default `data`) names the file
+  the toolbar export menu downloads, for CSV and, in the enterprise grid, XLSX.
+  It applies to the menu only: `exportToCSV()` or `exportToXLSX()` called
+  without a filename still downloads `data.*`, and a filename passed to a call
+  names that call's file.
+- `BadgeVariant`, `StatusVariant`, `ColumnDateFormat`, `ColumnSelectOption`
+  and `ToolbarAction` can be imported as types from `apex-grid`.
+- Locale keys `panel.backToGrid` and `panel.shortcutHint` (with Spanish
+  translations in `esLocale`) for the enterprise floating panels.
+- The README explains the DOM and scroll cost of grids with hundreds of
+  columns.
+
+### Deprecated
+- The toolbar's `placeholder` and `debounce` and the paginator's
+  `pageSizeLabel` properties, which the grid never sets. Use the
+  `toolbar.searchPlaceholder` and `pagination.rowsPerPage` locale keys
+  instead. They keep working and will be removed in 5.0.
 
 ### Fixed
 - The grid's chrome (toolbar, paginator, header actions, filter row, column
@@ -21,6 +38,9 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   its designed size. The most common other root comes from a reader who
   raised the browser's default font size (or zooms text only): the chrome no
   longer grows with that setting, which cells and text already did not.
+- The `pageChanging` docs said returning a falsy value from a listener
+  cancels the change; only `event.preventDefault()` does. The
+  `dataPipelineConfiguration` docs now say it is undefined until assigned.
 
 ## [4.1.0] - 2026-11-12
 

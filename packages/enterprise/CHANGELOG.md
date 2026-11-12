@@ -9,6 +9,16 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Changed
 - `apex-commons` dependency raised to `^0.11.0`. The grid uses only
   `LicenseManager`, `Watermark` and `isRTL`, which are unchanged.
+- The floating chart and Ask AI panels are non-modal dialogs. They no longer
+  set `aria-modal`, and Tab moves on in page order instead of wrapping
+  inside the panel, so screen readers keep the grid available while a panel
+  is open. F6 moves focus between the grid and its open floating panels
+  (from the grid to the most recently opened panel, then on to older ones
+  and back to the grid's active cell; Shift+F6 goes the other way), and each
+  floating panel header has a Back to grid button (part `back-to-grid`).
+  Escape still closes a panel and returns focus. Inline panels are unchanged.
+  The new strings use the `panel.backToGrid` and `panel.shortcutHint` keys
+  from the next apex-grid release and fall back to English before it.
 
 ### Deprecated
 - `createFakeGridApi`, `FakeGridApiInit`, `GridApi.editCell`,
