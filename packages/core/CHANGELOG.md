@@ -4,6 +4,24 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- `apex-grid/custom-elements.json` and `apex-grid/package.json` are exported,
+  so tools that read the Custom Elements Manifest (Storybook, for one) can
+  import it directly. Existing import paths are unchanged.
+
+### Fixed
+- The grid's chrome (toolbar, paginator, header actions, filter row, column
+  menu, expand and tree toggles) is now sized in px, like its text, tokens
+  and row heights. Before, it followed the page's root font size, so on a page
+  with `html { font-size: 62.5% }` the 24px target sizes shrank to 15px and
+  the search field to 19px around 13px text, and a larger root grew them. At
+  the usual 16px root nothing changes; on any other root the chrome now keeps
+  its designed size. The most common other root comes from a reader who
+  raised the browser's default font size (or zooms text only): the chrome no
+  longer grows with that setting, which cells and text already did not.
+
 ## [4.1.0] - 2026-11-12
 
 A new column type that draws an ApexCharts chart in every cell. Nothing

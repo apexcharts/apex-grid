@@ -10,6 +10,33 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `apex-commons` dependency raised to `^0.11.0`. The grid uses only
   `LicenseManager`, `Watermark` and `isRTL`, which are unchanged.
 
+### Deprecated
+- `createFakeGridApi`, `FakeGridApiInit`, `GridApi.editCell`,
+  `GridApi.renderChart`, `CellTarget` and `ChartRequest`. Nothing in the AI
+  layer implements or calls them; they will be removed in 0.10.0.
+
+### Fixed
+- The published manifest declares `@anthropic-ai/sdk` as an optional peer,
+  so an app that imports `apex-grid-enterprise` without the SDK installed
+  builds with Vite and runs under the Vite dev server. This corrects the 0.9.0
+  note that bundling without the SDK no longer fails: that held for esbuild
+  and webpack, not for Vite. Nothing is installed automatically; an SDK older
+  than 0.40.0 now gets a peer range warning.
+- Pivoting turns on only when at least one measure has an aggregation
+  function. Before, `pivotValues` such as `{ amount: [] }` swapped in the
+  pivot columns and cleared `groupBy` while the rows stayed unpivoted.
+  Removing the last function from an active pivot now turns it off and
+  restores the columns.
+- The context menu Copy writes the same text as copying a one-cell range:
+  dates as ISO text, and a value holding a tab, line break or double quote
+  wrapped in quotes. It announces the copy to screen readers, and a clipboard
+  write the browser denies no longer raises an unhandled promise rejection.
+- The filter builder no longer shows a true/false value list for a boolean
+  condition saved with an operator the boolean type does not offer; every
+  boolean operator takes no value.
+
+
+
 ## [0.9.0] - 2026-11-09
 
 The stable 0.9 release, now under the `latest` npm tag alongside apex-grid
