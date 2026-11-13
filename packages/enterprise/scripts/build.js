@@ -8,7 +8,7 @@ import { checkDistManifest } from '../../../scripts/check-dist-manifest.js';
 const exec = promisify(_exec);
 const PKG_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEST_DIR = path.join.bind(null, PKG_DIR, 'dist');
-const RELEASE_FILES = ['LICENSE.md', 'README.md', 'CHANGELOG.md'];
+const RELEASE_FILES = ['custom-elements.json', 'LICENSE.md', 'README.md', 'CHANGELOG.md'];
 
 // Where scripts/_package.json (what consumers install) intentionally differs
 // from package.json (what CI installs). Both sides are pinned so changing
@@ -41,7 +41,8 @@ async function build() {
   await exec('tsc -p scripts/tsconfig.prod.json && tsc -p scripts/tsconfig.dts.prod.json');
   await Promise.all([
     writeDistPackageJson(),
-    // A missing licence, readme or changelog fails the build, as in core.
+    // A missing manifest, licence, readme or changelog fails the build, as in
+    // core. The manifest is written by `npm run analyze` before this script.
     ...RELEASE_FILES.map((file) => copyFile(file, DEST_DIR(file))),
   ]);
   await checkDistManifest({ pkgDir: PKG_DIR, deliberate: DELIBERATE_MANIFEST_DIFFERENCES });

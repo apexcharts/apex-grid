@@ -115,6 +115,8 @@ function isSetExpression(expression: FilterExpression<any>, key: string): boolea
  *
  * @element apex-grid-set-filter
  *
+ * @fires apex-set-filter-changed - After the column's set filter is applied or cleared, with `{ column, selected }`.
+ *
  * @csspart set-filter - The panel container.
  * @csspart search - The search input.
  * @csspart select-all - The "(Select all)" row.

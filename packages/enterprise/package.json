@@ -23,7 +23,9 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "build": "node scripts/build.js",
+    "analyze": "cem analyze --litelement --globs \"src/**/*.ts\"",
+    "cem:check": "node scripts/check-cem-drift.js",
+    "build": "npm run analyze && npm run cem:check && node scripts/build.js",
     "build:tsc": "tsc",
     "lint": "biome lint",
     "start": "vite",
@@ -53,5 +55,6 @@
     "apexcharts": {
       "optional": true
     }
-  }
+  },
+  "customElements": "custom-elements.json"
 }

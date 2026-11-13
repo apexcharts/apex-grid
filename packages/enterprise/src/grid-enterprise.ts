@@ -497,6 +497,21 @@ export interface ApexGridEnterpriseEventMap<T extends object> extends ApexGridEv
   'apex-server-rows-loaded': CustomEvent<ServerRowsLoadedDetail>;
   /** Server-side row model: `getRows` rejected. */
   'apex-server-rows-load-failed': CustomEvent<ServerRowsLoadFailedDetail>;
+  /**
+   * A group is about to expand or collapse; call `preventDefault()` to keep
+   * it as it is. `meta` is `undefined` for a key no group header has yet.
+   */
+  groupExpanding: CustomEvent<{
+    key: string;
+    expanded: boolean;
+    meta: GroupRowMeta<T> | undefined;
+  }>;
+  /** A group expanded or collapsed. */
+  groupExpanded: CustomEvent<{
+    key: string;
+    expanded: boolean;
+    meta: GroupRowMeta<T> | undefined;
+  }>;
 }
 
 /**
@@ -544,10 +559,15 @@ export interface ApexGridEnterprise<T extends object> {
  * column aggregations, row grouping, pivoting, integrated charts, cell range
  * selection, XLSX export, and licensing on top.
  *
+ * @fires apex-view-changed - The rendered view (columns, row count, grouping, pivot, data) changed. No detail.
+ * @fires apex-context-menu-opening - The context menu is about to open, with `{ target, items }` (`ContextMenuOpeningDetail`); edit `items` or call `preventDefault()`.
+ * @fires apex-range-changed - The cell range selection changed, with `{ bounds, ranges, stats }` (`RangeChangedDetail`).
  * @fires apex-rows-loaded - Infinite row model: a block arrived, with `{ rowCount, exact, loadedBlocks, blockSize }`.
  * @fires apex-rows-load-failed - Infinite row model: `getRows` rejected, with `{ startRow, endRow, error, retrying }` (`RowsLoadFailedDetail`).
  * @fires apex-server-rows-loaded - Server-side row model: the flattened tree changed, with `{ rows, loadedGroups }`.
  * @fires apex-server-rows-load-failed - Server-side row model: `getRows` rejected, with `{ groupKeys, startRow?, endRow?, error, retrying }` (`ServerRowsLoadFailedDetail`).
+ * @fires groupExpanding - A group is about to expand or collapse, with `{ key, expanded, meta }` (`meta` is the `GroupRowMeta`); call `preventDefault()` to cancel.
+ * @fires groupExpanded - A group expanded or collapsed, with `{ key, expanded, meta }`.
  *
  * @csspart license-watermark - Non-interactive diagonal watermark overlay shown when no valid license is set. Painted by `apex-commons`' shared `Watermark`, so it matches the other Apex products; this part stays on the node for styling.
  */
