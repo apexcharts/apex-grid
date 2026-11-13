@@ -22,7 +22,6 @@
  * @see plans/ai-reasoning-layer-spec.md (section 4.8)
  */
 
-import type Anthropic from '@anthropic-ai/sdk';
 import { type StatePatch, toJSONSchema } from '../ai-schema.js';
 import type { Reasoner } from './reasoner.js';
 import type { LLMComplete, LLMRequest, LLMResponse } from './reasoner-llm.js';
@@ -83,6 +82,29 @@ export interface ClaudeReasonerConfig {
   score?: number;
 }
 
+/**
+ * The Messages API request body the reasoner builds: exactly the fields it sets.
+ * Declared here rather than imported from `@anthropic-ai/sdk`, so the package's
+ * types compile without that optional peer installed. It matches the non-streaming
+ * `messages.create` params type of SDK releases that know adaptive thinking (0.73.0
+ * and later); an older SDK sends it unchanged at runtime but does not type it.
+ */
+export interface ClaudeRequest {
+  model: string;
+  max_tokens: number;
+  thinking: { type: 'adaptive' };
+  system: string;
+  /** Control mode only: the one patch tool, its input the grid's JSON Schema. */
+  tools?: Array<{
+    name: string;
+    description: string;
+    input_schema: { type: 'object'; [key: string]: unknown };
+  }>;
+  /** Control mode only: the model chooses whether to call the tool. */
+  tool_choice?: { type: 'auto' };
+  messages: Array<{ role: 'user'; content: Array<{ type: 'text'; text: string }> }>;
+}
+
 /** The slice of an Anthropic message the reasoner reads. */
 export interface ClaudeMessage {
   content: ReadonlyArray<{ type: string; text?: string; input?: unknown; name?: string }>;
@@ -92,12 +114,17 @@ export interface ClaudeMessage {
 
 /**
  * Minimal structural view of the Anthropic client (the part the reasoner uses). The
- * second argument carries the `runPrompt` abort signal, as the SDK's request options.
+ * reasoner passes a {@link ClaudeRequest} as `body`; the parameter is typed without
+ * its `thinking` field, which SDK releases before 0.73.0 do not know, so the client
+ * of any SDK in the supported peer range fits, and a wrapper that forwards `body`
+ * to the SDK's own `messages.create` type-checks. A stub that reads `thinking` can
+ * annotate `body` as `ClaudeRequest`. The second argument carries the `runPrompt`
+ * abort signal, as the SDK's request options.
  */
 export interface ClaudeClient {
   messages: {
     create(
-      body: Anthropic.MessageCreateParamsNonStreaming,
+      body: Omit<ClaudeRequest, 'thinking'>,
       options?: { signal?: AbortSignal }
     ): Promise<ClaudeMessage>;
   };
@@ -139,8 +166,8 @@ function contextBlock(request: LLMRequest): string {
  * The user turn: the fenced row sample (if any), then the request. A `<` in the
  * JSON is escaped so a cell cannot close the fence.
  */
-function userContent(request: LLMRequest): Anthropic.TextBlockParam[] {
-  const content: Anthropic.TextBlockParam[] = [];
+function userContent(request: LLMRequest): ClaudeRequest['messages'][number]['content'] {
+  const content: ClaudeRequest['messages'][number]['content'] = [];
   if (request.data?.length) {
     const json = JSON.stringify(request.data).replace(/</g, '\\u003c');
     content.push({ type: 'text', text: `<${ROWS_TAG}>\n${json}\n</${ROWS_TAG}>` });
@@ -174,7 +201,7 @@ function askSystemPrompt(request: LLMRequest, config: ClaudeReasonerConfig): str
 export function buildControlRequest(
   request: LLMRequest,
   config: ClaudeReasonerConfig
-): Anthropic.MessageCreateParamsNonStreaming {
+): ClaudeRequest {
   return {
     model: config.model ?? DEFAULT_MODEL,
     max_tokens: config.maxTokens ?? DEFAULT_MAX_TOKENS,
@@ -185,7 +212,7 @@ export function buildControlRequest(
         name: CONTROL_TOOL_NAME,
         description:
           'Apply a view-state patch to the grid to satisfy the request. Include only the slices you want to change; omit everything else.',
-        input_schema: toJSONSchema(request.schema) as unknown as Anthropic.Tool.InputSchema,
+        input_schema: toJSONSchema(request.schema) as unknown as { type: 'object' },
       },
     ],
     // Not forced: current models reject a forced tool with thinking. The system
@@ -196,10 +223,7 @@ export function buildControlRequest(
 }
 
 /** Build the ask-mode (plain message) request. Exported for testing. */
-export function buildAskRequest(
-  request: LLMRequest,
-  config: ClaudeReasonerConfig
-): Anthropic.MessageCreateParamsNonStreaming {
+export function buildAskRequest(request: LLMRequest, config: ClaudeReasonerConfig): ClaudeRequest {
   return {
     model: config.model ?? DEFAULT_MODEL,
     max_tokens: config.maxTokens ?? DEFAULT_MAX_TOKENS,
@@ -284,7 +308,7 @@ async function proxyRequest(
 
 async function callMessages(
   config: ClaudeReasonerConfig,
-  body: Anthropic.MessageCreateParamsNonStreaming,
+  body: ClaudeRequest,
   signal: AbortSignal | undefined
 ): Promise<ClaudeMessage> {
   if (config.client) return config.client.messages.create(body, { signal });

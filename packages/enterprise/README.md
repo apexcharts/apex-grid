@@ -928,6 +928,14 @@ SDK only when you use the direct transport:
 npm install @anthropic-ai/sdk
 ```
 
+The package's type declarations never reference the SDK, so a TypeScript app
+type-checks without it installed. The `client` option takes the client of any
+SDK version the package supports (`new Anthropic()`), or any object with a
+`messages.create(body, options)` method. `buildControlRequest` /
+`buildAskRequest` return a `ClaudeRequest`, which SDK 0.73.0 and later also
+accept as a `messages.create` body type; older SDK types have no adaptive
+thinking, so passing it to their `messages.create` yourself is a type error.
+
 The AI runtime is loaded on demand, on the first `runPrompt` / `previewPrompt`, so
 a grid that never runs a prompt bundles none of it.
 

@@ -57,7 +57,12 @@ export { createRulePlanner } from './planner.js';
 export type { Reasoner, RuleBasedReasonerDeps } from './reasoner.js';
 export { createRuleBasedReasoner, RuleBasedReasoner, segmentClauses } from './reasoner.js';
 // P4 — LLM reasoners (hybrid seam)
-export type { ClaudeClient, ClaudeMessage, ClaudeReasonerConfig } from './reasoner-claude.js';
+export type {
+  ClaudeClient,
+  ClaudeMessage,
+  ClaudeReasonerConfig,
+  ClaudeRequest,
+} from './reasoner-claude.js';
 export {
   buildAskRequest,
   buildControlRequest,
