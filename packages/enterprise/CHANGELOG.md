@@ -4,7 +4,12 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.9.1] - 2026-11-13
+
+Fixes and accessibility changes on top of 0.9.0, released with apex-grid
+4.2.0 (now the minimum, for the new locale keys). The floating chart and
+Ask AI panels become non-modal, aggregate chips read like the status bar,
+and a Vite build of the package root no longer needs the AI SDK.
 
 ### Added
 - `ParseError` gains optional `code` and `params` fields naming the

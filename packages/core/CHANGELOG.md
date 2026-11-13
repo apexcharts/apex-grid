@@ -4,7 +4,12 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [4.2.0] - 2026-11-13
+
+A minor release from the code-quality pass. The grid chrome keeps its
+designed size on pages whose root font size is not 16px, the toolbar export
+menu takes a filename, and a few unused properties and locale keys are
+deprecated ahead of 5.0. Nothing changes at the usual 16px root.
 
 ### Added
 - `apex-grid/custom-elements.json` and `apex-grid/package.json` are exported,

@@ -1,6 +1,6 @@
 {
   "name": "react-apex-grid",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "React wrapper for apex-grid, the framework-agnostic web component data grid",
   "keywords": [
     "react",

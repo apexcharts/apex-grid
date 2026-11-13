@@ -35,7 +35,7 @@
   },
   "dependencies": {
     "apex-commons": "^0.11.0",
-    "apex-grid": "^4.0.0"
+    "apex-grid": "^4.2.0"
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.40.0",

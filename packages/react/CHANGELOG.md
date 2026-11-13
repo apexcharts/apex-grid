@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.2
 
 - The `apex-grid` peer range is now `^3.5.0 || ^4.0.0`. The 0.1.1 notes said
   the wrapper installs next to any apex-grid 3.x; it needs 3.5.0 or later,
