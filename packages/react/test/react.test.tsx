@@ -82,6 +82,13 @@ async function render(node: ReactNode): Promise<{ container: HTMLElement; root: 
 }
 
 describe('react-apex-grid (audit batch react)', () => {
+  it('exports only the grid wrapper and the typed factory', async () => {
+    // The toolbar and paginator read their state from the grid that hosts
+    // them, so a standalone wrapper rendered an empty element.
+    const entry = await import('../src/index.js');
+    expect(Object.keys(entry).sort()).to.deep.equal(['ApexGrid', 'createApexGrid']);
+  });
+
   it('passes the attribute-only theme prop through as the theme attribute', async () => {
     const { container, root } = await render(
       <>

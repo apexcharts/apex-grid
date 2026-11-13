@@ -72,10 +72,8 @@ import { ApexGrid } from 'react-apex-grid';
 <ApexGrid data={rows} columns={columns} style={{ height: 480 }} />;
 ```
 
-`ApexGridToolbar` and `ApexGridPaginator` are deprecated and will be removed in
-react-apex-grid 0.2.0. They render nothing on their own: the grid renders its
-own toolbar and paginator, configured through its props (`showQuickFilter`,
-`showExport`, `pagination`).
+The grid renders its own toolbar and paginator; configure them through its
+props (`showQuickFilter`, `showExport`, `pagination`).
 
 Column, event, and configuration types all come from `apex-grid` directly:
 

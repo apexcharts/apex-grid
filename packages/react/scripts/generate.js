@@ -11,8 +11,6 @@
  *
  *   src/events.ts                      // on<Event> -> event name maps, typed per element
  *   src/generated/apex-grid.ts         // createComponent(...) base component
- *   src/generated/apex-grid-toolbar.ts
- *   src/generated/apex-grid-paginator.ts
  *   src/generated/index.ts             // re-exports
  *
  * Determinism: event keys are sorted and the banner carries a content hash of
@@ -36,20 +34,13 @@ const GENERATED = path.join(SRC, 'generated');
  * back to a plain `EventName` (a generic `(e: Event) => void` handler). The class
  * name, event list and attribute-only props come from the manifest, not this
  * table. `deprecated` becomes an `@deprecated` tag on the exported component.
+ *
+ * Only elements that work on their own belong here. `<apex-grid-toolbar>` and
+ * `<apex-grid-paginator>` read their state from the grid that hosts them, and
+ * the grid renders its own inside its shadow root, so a wrapper for either
+ * rendered an empty element (removed in react-apex-grid 0.2.0).
  */
-const ELEMENTS = [
-  { tag: 'apex-grid', eventMapType: 'ApexGridEventMap' },
-  {
-    tag: 'apex-grid-toolbar',
-    deprecated:
-      'Renders nothing outside `<apex-grid>`: the toolbar reads its state from the grid that hosts it, and the grid renders its own. Configure it through the grid props instead (`showQuickFilter`, `showExport`). This export will be removed in react-apex-grid 0.2.0.',
-  },
-  {
-    tag: 'apex-grid-paginator',
-    deprecated:
-      'Renders nothing outside `<apex-grid>`: the paginator reads its state from the grid that hosts it, and the grid renders its own. Configure it through the grid `pagination` prop instead. This export will be removed in react-apex-grid 0.2.0.',
-  },
-];
+const ELEMENTS = [{ tag: 'apex-grid', eventMapType: 'ApexGridEventMap' }];
 
 // --- Locate the manifest shipped by the resolved `apex-grid` package --------
 function findManifest() {
@@ -217,7 +208,7 @@ function emitEvents() {
   return lines.join('\n');
 }
 
-/** `ApexGridToolbar` -> `apexGridToolbar`. */
+/** `ApexGrid` -> `apexGrid`. */
 function camel(className) {
   return className.charAt(0).toLowerCase() + className.slice(1);
 }
