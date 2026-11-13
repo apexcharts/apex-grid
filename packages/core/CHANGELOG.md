@@ -15,6 +15,9 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   replaces the name per column; the type `ColumnSparklineConfiguration` is
   exported. Overrides of `cell.sparkline` and `cell.chart` can use `{min}`
   and `{max}`. (#40)
+- Locale keys `panel.move`, `panel.moveHint`, `panel.moved`, `panel.resize`,
+  `panel.resizeHint` and `panel.resized` (translated in `esLocale`) for the
+  enterprise floating panels' keyboard move and resize controls.
 
 ### Changed
 - The visible sparkline delta label is `aria-hidden`, since its change is

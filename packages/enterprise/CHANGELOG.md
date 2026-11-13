@@ -4,6 +4,39 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- The floating chart and Ask AI panels can be moved and resized from the
+  keyboard. Tab to the Move panel button in the header or the Resize panel
+  grip in the bottom corner and use the arrow keys (10px steps, Shift for
+  50px). Left and Right follow the screen in right-to-left pages, where the
+  grip sits bottom left. The new position or size is announced once the keys
+  stop. The controls are the `move-handle` and `resize-handle` CSS parts.
+
+### Changed
+- The chart panel's native CSS resize corner is replaced by the resize grip,
+  which takes the same pointer drag, and the Ask AI panel can be resized too.
+- Dragging either panel by its header stops at the viewport edge, and only
+  the primary mouse button drags.
+- Panels never shrink below 240 by 120px, a percentage max size on the panel
+  part is read against the viewport, and the Ask AI panel is at most 92% of
+  the viewport height, scrolling its body beyond that. A panel switched from
+  `mode="dialog"` to `mode="inline"` drops the position and size it was
+  moved or resized to.
+
+### Fixed
+- The status bar, tool panel, filter builder, set filter, context menu, chart
+  panel and Ask AI panel size their text and spacing in px, like the core
+  chrome since apex-grid 4.2.0. Before, they followed the page's root font
+  size, so they grew or shrank while the grid beside them kept its size. At
+  the usual 16px root nothing changes; on any other root (for example a
+  reader who raised the browser's default font size) they keep their designed
+  size.
+
+
+
+
 ## [0.10.0] - 2026-11-13
 
 Released with apex-grid 5.0.0, now the minimum. Removes the AI names 0.9.1
