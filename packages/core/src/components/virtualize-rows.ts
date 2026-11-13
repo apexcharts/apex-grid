@@ -9,6 +9,7 @@ import {
   setCommittedValue,
 } from 'lit/directive-helpers.js';
 import { repeat } from 'lit/directives/repeat.js';
+import { deepActiveElement } from '../controllers/navigation.js';
 
 /**
  * The body's fork of the upstream `virtualize` directive.
@@ -90,7 +91,8 @@ const SPARE_LIMIT = 32;
  * - Parts whose index left the range take the indexes entering it, moved as
  *   one block to the other end, so a k-row step moves k rows. DOM order stays
  *   index order, which upstream relies on to place the i-th child at index
- *   `first + i`.
+ *   `first + i`. Each renders its new row before it moves, since the move
+ *   reconnects its elements (see `#place`).
  * - When the old and new ranges do not overlap (a jump), and when they are
  *   the same (a sort, a filter that keeps the range), every part is re-bound
  *   where it stands: nothing moves.
@@ -129,13 +131,21 @@ class SlotRowsDirective extends Directive {
     const start = Math.max(first, this.#first);
     const end = Math.min(first + count, this.#first + parts.length);
 
+    // Parts that stay where they stand, which take their values last.
+    let keptFrom: number;
+    let keptTo: number;
     if (end <= start) {
       // No index survives (a jump, or a first render): re-bind in place.
-      const kept = Math.min(parts.length, count);
-      for (let i = 0; i < kept; i++) next[i] = parts[i];
-      for (let i = kept; i < parts.length; i++) this.#setAside(parts[i]);
-      for (let i = kept; i < count; i++) next[i] = this.#take(container, undefined);
+      keptFrom = 0;
+      keptTo = Math.min(parts.length, count);
+      for (let i = 0; i < keptTo; i++) next[i] = parts[i];
+      for (let i = keptTo; i < parts.length; i++) this.#setAside(parts[i]);
+      for (let i = keptTo; i < count; i++) {
+        next[i] = this.#place(container, undefined, this.#spares.pop(), values[i]);
+      }
     } else {
+      keptFrom = start - first;
+      keptTo = end - first;
       for (let index = start; index < end; index++) {
         next[index - first] = parts[index - this.#first];
       }
@@ -148,34 +158,68 @@ class SlotRowsDirective extends Directive {
 
       // Scrolling down: the parts above the range become the rows below it.
       for (let i = 0; i < tail; i++) {
-        const part = leftHead.shift();
-        next[end - first + i] = part
-          ? (insertPart(container, undefined, part) as ChildPart)
-          : this.#take(container, undefined);
+        const index = end - first + i;
+        const part = leftHead.shift() ?? this.#spares.pop();
+        next[index] = this.#place(container, undefined, part, values[index]);
       }
       // Scrolling up: the parts below the range become the rows above it.
       const ref = next[head];
       for (let i = 0; i < head; i++) {
-        const part = leftTail.shift();
-        next[i] = part
-          ? (insertPart(container, ref, part) as ChildPart)
-          : this.#take(container, ref);
+        const part = leftTail.shift() ?? this.#spares.pop();
+        next[i] = this.#place(container, ref, part, values[i]);
       }
       for (const part of leftHead) this.#setAside(part);
       for (const part of leftTail) this.#setAside(part);
     }
 
-    for (let i = 0; i < count; i++) setChildPartValue(next[i], values[i]);
+    for (let i = keptFrom; i < keptTo; i++) setChildPartValue(next[i], values[i]);
     this.#parts = next;
     this.#first = first;
     setCommittedValue(container, next);
     return noChange;
   }
 
-  /** A spare part, or a new one, inserted before `ref` (the end when undefined). */
-  #take(container: ChildPart, ref: ChildPart | undefined): ChildPart {
-    const spare = this.#spares.pop();
-    return insertPart(container, ref, spare) as ChildPart;
+  /**
+   * Inserts `part` (a part that left the range, or a spare) before `ref` (the
+   * end when undefined) showing `value`, or a new part when there is none.
+   *
+   * The move disconnects and reconnects every custom element in the part, so
+   * the part renders `value` first, all the way down: an element that reads
+   * its data in `connectedCallback` sees the record it is about to show, not
+   * the one it leaves (GitHub issue #39).
+   */
+  #place(
+    container: ChildPart,
+    ref: ChildPart | undefined,
+    part: ChildPart | undefined,
+    value: unknown
+  ): ChildPart {
+    if (!part) {
+      // Built straight into the container: its elements connect already set.
+      const created = insertPart(container, ref) as ChildPart;
+      setChildPartValue(created, value);
+      return created;
+    }
+    const focused = deepActiveElement();
+    setChildPartValue(part, value);
+    for (let node = part.startNode?.nextSibling ?? null; node && node !== part.endNode; ) {
+      const following: ChildNode | null = node.nextSibling;
+      if (node instanceof Element) flushUpdates(node);
+      node = following;
+    }
+    // Rendering the new row can focus something in it: an edit still open on
+    // the record resumes its editor. Rendered after the move, as before, it
+    // kept that focus, so it keeps it across the move too. A spare renders
+    // detached, where focus is a no-op: its cell takes it on connect.
+    const gained = deepActiveElement();
+    const keep =
+      gained !== focused && gained instanceof HTMLElement && partContains(part, gained)
+        ? gained
+        : null;
+    if (keep) moveWithFocus(container, ref, part);
+    const placed = insertPart(container, ref, part) as ChildPart;
+    if (keep && deepActiveElement() !== keep) keep.focus({ preventScroll: true });
+    return placed;
   }
 
   /** Keeps a part the range no longer needs as a spare, or removes it. */
@@ -195,6 +239,102 @@ class SlotRowsDirective extends Directive {
 }
 
 const slotRows = directive(SlotRowsDirective);
+
+/** Whether `node` renders inside `part`, through shadow roots. */
+function partContains(part: ChildPart, node: Node): boolean {
+  const top = new Set<Node>();
+  for (let child = part.startNode?.nextSibling ?? null; child && child !== part.endNode; ) {
+    top.add(child);
+    child = child.nextSibling;
+  }
+  for (let current: Node | null = node; current; ) {
+    if (top.has(current)) return true;
+    current = current.parentNode ?? (current instanceof ShadowRoot ? current.host : null);
+  }
+  return false;
+}
+
+type MovingParent = ParentNode & { moveBefore?(node: Node, child: Node | null): void };
+
+/**
+ * Moves the part's nodes to where `insertPart` puts them with `moveBefore`,
+ * which keeps focus and fires no `focusout`; `insertPart` then finds them in
+ * place. Without it (Firefox, WebKit) `insertPart` moves them, which drops
+ * focus without a `focusout` there, and the caller focuses again.
+ */
+function moveWithFocus(container: ChildPart, ref: ChildPart | undefined, part: ChildPart): void {
+  const parent = part.startNode?.parentNode as MovingParent | null | undefined;
+  const refNode = ref ? ref.startNode : container.endNode;
+  if (!parent?.moveBefore || !parent.isConnected || refNode?.parentNode !== parent) return;
+  const stop = part.endNode?.nextSibling ?? null;
+  for (let node: Node | null = part.startNode; node && node !== stop; ) {
+    const following: Node | null = node.nextSibling;
+    parent.moveBefore(node, refNode);
+    node = following;
+  }
+}
+
+/** The part of a Lit element's update cycle {@link flushUpdates} drives. */
+interface UpdatingElement extends Element {
+  isUpdatePending: boolean;
+  hasUpdated: boolean;
+  renderRoot: Element | ShadowRoot;
+  performUpdate(): void;
+}
+
+/**
+ * Whether `element` updates when Lit schedules it, so running its update now
+ * only runs it early. An element that overrides `scheduleUpdate` (to wait a
+ * frame, say) is left to it. Checked by where the method is defined: on the
+ * base class that also defines `addController`, unless a subclass overrides
+ * it. Lit keeps both names in minified builds, and any copy of Lit matches.
+ */
+function schedulesByDefault(element: Element): boolean {
+  let owner: object | null = Object.getPrototypeOf(element);
+  while (owner && !Object.hasOwn(owner, 'scheduleUpdate')) owner = Object.getPrototypeOf(owner);
+  return !!owner && Object.hasOwn(owner, 'addController');
+}
+
+/**
+ * Runs, now, the updates a new value set off in `element` and below it: a row
+ * renders its cells, each cell its content, and so on down. Lit runs them a
+ * microtask later otherwise, after the move that reconnects them.
+ *
+ * Only elements that have rendered before: a new one renders once connected.
+ * Only elements that keep Lit's own update schedule (see
+ * {@link schedulesByDefault}). Only render roots whose host just updated,
+ * since nothing else in them changed. A light-DOM child is always visited,
+ * as its parent may set it.
+ */
+function flushUpdates(element: Element): void {
+  const updating = element as Partial<UpdatingElement>;
+  let root: ParentNode | undefined;
+  if (
+    updating.isUpdatePending &&
+    updating.hasUpdated &&
+    updating.performUpdate &&
+    schedulesByDefault(element)
+  ) {
+    try {
+      updating.performUpdate();
+    } catch (error) {
+      // Reported as Lit reports a failed scheduled update, without stopping
+      // the rows still to render.
+      queueMicrotask(() => {
+        throw error;
+      });
+    }
+    root = updating.renderRoot;
+  }
+  for (let child = element.firstElementChild; child; child = child.nextElementSibling) {
+    flushUpdates(child);
+  }
+  if (root && root !== element) {
+    for (let child = root.firstElementChild; child; child = child.nextElementSibling) {
+      flushUpdates(child);
+    }
+  }
+}
 
 /** What the body virtualizer asks of its rows directive. */
 export interface VirtualizedRows {

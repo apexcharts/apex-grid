@@ -296,6 +296,9 @@ export default class ApexGridCell<T extends object> extends LitElement {
   /** Whether the current update re-binds the cell to another {@link record}. */
   #rebound = false;
 
+  /** A resumed editor's focus, which {@link updated} could not take detached. */
+  #focusOnConnect = false;
+
   public override connectedCallback(): void {
     // A moved row reconnects its cells; the state context consumer then
     // requests an update with nothing changed, which needs no render.
@@ -307,6 +310,12 @@ export default class ApexGridCell<T extends object> extends LitElement {
     this.addEventListener('keydown', this.#handleCellKeydown);
     this.addEventListener('focusout', this.#handleCellFocusOut);
     trackCompositions();
+    if (this.#focusOnConnect && this.isEditing) {
+      const editor = this.editorElement;
+      editor?.getBoundingClientRect();
+      editor?.focus({ preventScroll: true });
+    }
+    this.#focusOnConnect = false;
   }
 
   public override disconnectedCallback(): void {
@@ -496,6 +505,13 @@ export default class ApexGridCell<T extends object> extends LitElement {
       // focus may have left the grid meanwhile: such an editor takes focus
       // only while the body holds it.
       if (resumed && this.#recycledBody && !this.state.navigation.ownsFocus) return;
+      // A recycled row renders a spare part's new record before inserting it,
+      // so its elements connect already holding it (GitHub issue #39). Focus
+      // is a no-op until then: take it on connect.
+      if (resumed && !this.isConnected) {
+        this.#focusOnConnect = true;
+        return;
+      }
       // WebKit scrolls a text input focused before its first layout into view
       // once laid out, `preventScroll` or not: lay it out first.
       if (resumed) editor?.getBoundingClientRect();

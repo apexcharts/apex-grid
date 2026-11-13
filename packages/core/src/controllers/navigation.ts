@@ -19,7 +19,7 @@ const RELATIVE_KEYS = new Set([
 ]);
 
 /** The focused element, through every open shadow root on the way down. */
-function deepActiveElement(): Element | null {
+export function deepActiveElement(): Element | null {
   let el = document.activeElement;
   while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
   return el;
