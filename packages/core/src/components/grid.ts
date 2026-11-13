@@ -1106,7 +1106,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * chaining (`grid.dataPipelineConfiguration?.sort`).
    */
   @property({ attribute: false })
-  public dataPipelineConfiguration!: DataPipelineConfiguration<T>;
+  public dataPipelineConfiguration?: DataPipelineConfiguration<T>;
 
   /**
    * Pagination configuration for the grid.

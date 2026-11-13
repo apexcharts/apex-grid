@@ -863,7 +863,7 @@ export class ApexGridEnterprise<T extends object> extends ApexGrid<T> {
       next = this.#appPipeline;
     }
     this.#ownPipeline = next ?? undefined;
-    if (next !== current) this.dataPipelineConfiguration = next as DataPipelineConfiguration<T>;
+    if (next !== current) this.dataPipelineConfiguration = next ?? undefined;
   }
 
   /**

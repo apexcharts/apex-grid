@@ -17,28 +17,19 @@ export class DataOperationsController<T extends object> implements ReactiveContr
 
   public hostConnected() {}
 
-  protected get hasCustomSort() {
-    return isDefined(this.host.dataPipelineConfiguration?.sort);
-  }
-
-  protected get hasCustomFilter() {
-    return isDefined(this.host.dataPipelineConfiguration?.filter);
-  }
-
-  protected get hasCustomQuickFilter() {
-    return isDefined(this.host.dataPipelineConfiguration?.quickFilter);
-  }
-
-  protected get customFilter() {
-    return this.host.dataPipelineConfiguration!.filter!;
-  }
-
-  protected get customSort() {
-    return this.host.dataPipelineConfiguration!.sort!;
-  }
-
+  /** The app's quick filter hook, or `undefined` for the built-in matcher. */
   protected get customQuickFilter() {
-    return this.host.dataPipelineConfiguration!.quickFilter!;
+    return this.host.dataPipelineConfiguration?.quickFilter;
+  }
+
+  /** The app's filter hook, or `undefined` for the built-in column filter. */
+  protected get customFilter() {
+    return this.host.dataPipelineConfiguration?.filter;
+  }
+
+  /** The app's sort hook, or `undefined` for the built-in sort. */
+  protected get customSort() {
+    return this.host.dataPipelineConfiguration?.sort;
   }
 
   /**
@@ -56,18 +47,25 @@ export class DataOperationsController<T extends object> implements ReactiveContr
     let transformed: T[];
 
     const quickFilterTerm = (this.host.quickFilter ?? '').trim();
-    transformed = this.hasCustomQuickFilter
-      ? await this.customQuickFilter({ data, grid: this.host, type: 'quickFilter' })
+    // Each hook is read at its own step, so a configuration swapped while an
+    // earlier hook is awaited applies to the steps after it. Each hook is still
+    // called with this controller as `this`, so a hook written as a method
+    // that reads `this.host` keeps working.
+    const quickFilterHook = this.customQuickFilter;
+    transformed = isDefined(quickFilterHook)
+      ? await quickFilterHook.call(this, { data, grid: this.host, type: 'quickFilter' })
       : quickFilterTerm
         ? this.quickFiltering.apply(data, quickFilterTerm, this.host.columns)
         : data;
 
-    transformed = this.hasCustomFilter
-      ? await this.customFilter({ data: transformed, grid: this.host, type: 'filter' })
+    const filterHook = this.customFilter;
+    transformed = isDefined(filterHook)
+      ? await filterHook.call(this, { data: transformed, grid: this.host, type: 'filter' })
       : this.filtering.apply(transformed, filtering.state);
 
-    transformed = this.hasCustomSort
-      ? await this.customSort({ data: transformed, grid: this.host, type: 'sort' })
+    const sortHook = this.customSort;
+    transformed = isDefined(sortHook)
+      ? await sortHook.call(this, { data: transformed, grid: this.host, type: 'sort' })
       : this.sorting.apply(transformed, sorting.state);
 
     // Manual row order (drag-reorder) is applied after sort. Identity
