@@ -4,6 +4,40 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- Sparkline columns have an accessible name: the graphic is `role="img"` and
+  reads like "5 values, 12 to 23, up 92%", also with `showDelta: false`. New
+  locale keys `cell.sparkline`, `cell.sparklineUp`, `cell.sparklineDown` and
+  `cell.sparklineFlat` (translated in `esLocale`), and a `sparkline.label`
+  column option (a string, or a function of the value and record) that
+  replaces the name per column; the type `ColumnSparklineConfiguration` is
+  exported. Overrides of `cell.sparkline` and `cell.chart` can use `{min}`
+  and `{max}`. (#40)
+
+### Changed
+- The visible sparkline delta label is `aria-hidden`, since its change is
+  part of the graphic's name.
+- A row that row recycling moves on a scroll step renders its new record
+  synchronously, before it moves, instead of a microtask after; Lit elements
+  in that row update inside the scroll render. A Lit element that overrides
+  `scheduleUpdate` keeps its own schedule. Moved scroll strides measured 3 to
+  6 percent slower in the recycling bench; frame times, jumps, sorts and
+  filters are unchanged.
+
+### Fixed
+- With row recycling, a row moved by a scroll step now shows its new record
+  before its elements reconnect, so a custom element in a cell template that
+  reads its data in `connectedCallback` (a chart, a map, any widget built on
+  connect) builds for the right row. Before, almost every reconnect saw the
+  record of the row it was leaving. An edit kept open on a record scrolled
+  away and back keeps its editor focus. The README's Row recycling section
+  explains how to write a cell element that survives moves. (#39)
+
+
+
+
 ## [5.0.0] - 2026-11-13
 
 A major release that removes what 4.2.0 deprecated, plus one setup option
