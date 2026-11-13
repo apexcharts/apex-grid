@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0
+
+- Removed `ApexGridToolbar` and `ApexGridPaginator`. They rendered an empty
+  element outside the grid, which renders its own toolbar and paginator;
+  configure those with `showQuickFilter`, `showExport`, `pagination` and
+  `toolbarActions`.
+- `ApexGrid` and `createApexGrid<T>()` components accept only the grid's
+  settable properties, the `theme` attribute, `on<Event>` handlers and standard
+  HTML props. Read-only members such as `totalItems`, `pageCount` or
+  `canUndo` and methods such as `sort` or `getState` are now TypeScript errors
+  as props (passing a read-only one used to throw at runtime and unmount the
+  React root). Read or call them through a ref.
+- The `apex-grid` peer range is `^3.5.0 || ^4.0.0 || ^5.0.0`. The prop types
+  only name properties the installed apex-grid has.
+
 ## 0.1.2
 
 - The `apex-grid` peer range is now `^3.5.0 || ^4.0.0`. The 0.1.1 notes said

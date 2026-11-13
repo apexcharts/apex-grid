@@ -4,6 +4,34 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.10.0] - 2026-11-13
+
+Released with apex-grid 5.0.0, now the minimum. Removes the AI names 0.9.1
+deprecated and keeps the AI SDK out of the published type declarations.
+
+### Added
+- The `ClaudeRequest` type, returned by `buildControlRequest` and
+  `buildAskRequest`. SDK 0.73.0 and later accept it as a `messages.create`
+  body; with an older SDK, passing it to `messages.create` directly is a type
+  error (it still works through `createClaudeReasoner`).
+
+### Changed
+- `apex-grid` dependency raised to `^5.0.0`.
+
+### Removed
+- `createFakeGridApi` and `FakeGridApiInit`, an in-memory test double that was
+  exported by mistake. Implement the `GridApi` interface directly instead.
+- `GridApi.editCell`, `GridApi.renderChart` and the `CellTarget` and
+  `ChartRequest` types. No adapter implemented them and no AI tool called them.
+
+### Fixed
+- The published type declarations no longer import `@anthropic-ai/sdk`, so a
+  TypeScript app with `skipLibCheck` off type-checks without the optional SDK
+  installed. The client of any SDK in the supported `>=0.40.0` range still
+  fits the `client` option, and so does a wrapper that forwards the request
+  body to the SDK's own `messages.create`. Reading SDK-only fields off a built
+  request is now a type error.
+
 ## [0.9.1] - 2026-11-13
 
 Fixes and accessibility changes on top of 0.9.0, released with apex-grid

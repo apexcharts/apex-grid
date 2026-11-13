@@ -4,6 +4,41 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [5.0.0] - 2026-11-13
+
+A major release that removes what 4.2.0 deprecated, plus one setup option
+that was due to go in the next major. Nothing else changes: an app that uses
+none of the names below upgrades without edits.
+
+### Upgrading from 4.x
+- Toolbar `placeholder` or `debounce`, paginator `pageSizeLabel`: delete them.
+  Set the `toolbar.searchPlaceholder` and `pagination.rowsPerPage` keys of the
+  grid's `localeText` instead. The quick filter always waits 200 ms.
+- A typed `localeText` object that sets `filter.filter`, `chart.placeholder`,
+  `ai.answer` or a `formula.error.*` key: delete the key. None of them ever
+  changed any text.
+- `setup({ theme })`: delete the option. It did nothing but warn.
+- Code that reads `grid.dataPipelineConfiguration` without a guard: use
+  optional chaining. The type now says what the runtime always did.
+
+### Removed
+- `ApexGridToolbar`'s `placeholder` and `debounce` properties and attributes,
+  and `ApexGridPaginator`'s `pageSizeLabel` property (attribute
+  `page-size-label`). The grid never set them on the toolbar and paginator it
+  renders.
+- The locale keys `filter.filter`, `chart.placeholder`, `ai.answer`,
+  `formula.error.ref`, `formula.error.name`, `formula.error.div0`,
+  `formula.error.value` and `formula.error.cycle`, from `EN_LOCALE`,
+  `esLocale` and `GridLocaleKey`. Nothing rendered them.
+- `ApexGridSetupOptions.theme`. It has done nothing since the Ignite UI
+  dependency was dropped apart from a console warning; a leftover `theme` in
+  JavaScript is now ignored silently.
+
+### Changed
+- `ApexGrid.dataPipelineConfiguration` is typed as optional, matching its
+  runtime default of `undefined`. Hooks are called with the same receiver as
+  before.
+
 ## [4.2.0] - 2026-11-13
 
 A minor release from the code-quality pass. The grid chrome keeps its
