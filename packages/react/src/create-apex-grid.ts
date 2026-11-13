@@ -8,42 +8,24 @@ import {
   ApexGrid as ApexGridBase,
   type ApexGridSettableProp,
 } from './generated/apex-grid.js';
+import type { GridProps } from './grid-props.js';
 
 /** The `<apex-grid>` custom-element instance, row-typed to `T`. */
 export type ApexGridElement<T extends object> = ApexGridElementClass<T>;
 
 /**
- * `on<Event>` handler props for `<apex-grid>`, keyed by the generated
- * prop-to-event map (the same naming rule the runtime wiring uses) and typed
- * from `ApexGridEventMap`, so they carry the row type `T` into every event
- * detail.
+ * Props of the row-typed grid component returned by {@link createApexGrid}:
+ * the grid's settable properties, its `theme` attribute, an `on<Event>`
+ * handler per event typed with the row type `T`, standard HTML props, and a
+ * `ref` to {@link ApexGridElement}. See {@link GridProps} for the rules.
  */
-type ApexGridEventHandlers<T extends object> = {
-  [P in keyof ApexGridEventProps]?: (event: ApexGridEventMap<T>[ApexGridEventProps[P]]) => void;
-};
-
-/**
- * Props of the row-typed grid component returned by {@link createApexGrid}.
- *
- * Element props are limited to the settable properties the manifest lists
- * (`ApexGridSettableProp`): React assigns every prop to the element, so a
- * getter-only member such as `totalItems` would throw during commit and a
- * method name would replace the method on the instance. Standard HTML
- * attributes keep their React types unless the element defines the same name.
- *
- * The list is generated from the manifest of the apex-grid version this
- * package was built against, so it is intersected with the installed
- * element's own keys: on an older apex-grid in the peer range, a property
- * that version lacks drops out instead of breaking the declaration.
- */
-export type ApexGridProps<T extends object> = Omit<
-  React.DetailedHTMLProps<React.HTMLAttributes<ApexGridElement<T>>, ApexGridElement<T>>,
-  keyof ApexGridEventHandlers<T> | Exclude<keyof ApexGridElement<T>, keyof HTMLElement> | 'ref'
-> &
-  Partial<Pick<ApexGridElement<T>, Extract<ApexGridSettableProp, keyof ApexGridElement<T>>>> &
-  ApexGridEventHandlers<T> &
-  ApexGridAttributeProps &
-  React.RefAttributes<ApexGridElement<T>>;
+export type ApexGridProps<T extends object> = GridProps<
+  ApexGridElement<T>,
+  ApexGridEventMap<T>,
+  ApexGridEventProps,
+  ApexGridSettableProp,
+  ApexGridAttributeProps
+>;
 
 /** The row-typed `<apex-grid>` React component type. */
 export type ApexGridComponent<T extends object> = React.ForwardRefExoticComponent<ApexGridProps<T>>;
