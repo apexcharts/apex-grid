@@ -279,6 +279,13 @@ export const esLocale: GridLocaleText = {
   // Enterprise: paneles flotantes de gráfico y de IA
   'panel.backToGrid': 'Volver a la tabla',
   'panel.shortcutHint': 'Pulse F6 para moverse entre la tabla y este panel',
+  'panel.move': 'Mover panel',
+  'panel.moveHint': 'Use las flechas para mover el panel. Mantenga Mayús para pasos más grandes.',
+  'panel.moved': 'Panel movido a {x}, {y}',
+  'panel.resize': 'Cambiar tamaño del panel',
+  'panel.resizeHint':
+    'Use las flechas para cambiar el tamaño del panel. Mantenga Mayús para pasos más grandes.',
+  'panel.resized': 'Panel redimensionado a {width} por {height}',
 
   // Enterprise: agrupación de filas
   'grouping.blank': '(vacío)',

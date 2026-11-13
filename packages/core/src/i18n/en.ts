@@ -275,6 +275,12 @@ export const EN_LOCALE = {
   // Enterprise: floating chart and Ask AI panels
   'panel.backToGrid': 'Back to grid',
   'panel.shortcutHint': 'Press F6 to move between the grid and this panel',
+  'panel.move': 'Move panel',
+  'panel.moveHint': 'Use the arrow keys to move the panel. Hold Shift for larger steps.',
+  'panel.moved': 'Panel moved to {x}, {y}',
+  'panel.resize': 'Resize panel',
+  'panel.resizeHint': 'Use the arrow keys to resize the panel. Hold Shift for larger steps.',
+  'panel.resized': 'Panel resized to {width} by {height}',
 
   // Enterprise: row grouping
   'grouping.blank': '(blank)',
