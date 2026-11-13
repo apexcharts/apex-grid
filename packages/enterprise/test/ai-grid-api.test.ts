@@ -1,7 +1,8 @@
 import { expect, fixture, fixtureCleanup, html, nextFrame } from '@open-wc/testing';
 import type { ColumnConfiguration, GridSchema } from 'apex-grid';
-import { createFakeGridApi, emptyGridState, gridApiFor } from '../src/features/ai/index.js';
+import { emptyGridState, gridApiFor } from '../src/features/ai/index.js';
 import { ApexGridEnterprise, enterpriseModules } from '../src/index.js';
+import { createFakeGridApi } from './helpers/fake-grid-api.js';
 
 interface Row {
   region: string;

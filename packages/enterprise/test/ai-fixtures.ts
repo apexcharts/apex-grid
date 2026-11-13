@@ -3,13 +3,13 @@ import type { ColumnConfiguration, GridSchema, GridState } from 'apex-grid';
 import {
   ConversationMemory,
   createContextBuilder,
-  createFakeGridApi,
   emptyGridState,
   type GridApi,
   type GridContext,
   type Memory,
 } from '../src/features/ai/index.js';
 import type { ApexGridEnterprise } from '../src/grid-enterprise.js';
+import { createFakeGridApi } from './helpers/fake-grid-api.js';
 
 export interface Row {
   region: string;

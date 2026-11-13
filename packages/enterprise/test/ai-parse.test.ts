@@ -2,7 +2,6 @@ import { expect, fixtureCleanup } from '@open-wc/testing';
 import type { ColumnSchema, DataType, GridSchema } from 'apex-grid';
 import {
   createAIEngine,
-  createFakeGridApi,
   createIntentDetector,
   createRuleBasedReasoner,
   emptyGridState,
@@ -19,6 +18,7 @@ import {
   rows,
   STRING_OPERANDS,
 } from './ai-fixtures.js';
+import { createFakeGridApi } from './helpers/fake-grid-api.js';
 
 // Parsing regressions in the deterministic AI rule engine: operators read inside
 // column names, range phrasing, command words inside labels, word-bounded column

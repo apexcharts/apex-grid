@@ -4,7 +4,6 @@ import {
   ConversationMemory,
   createContextBuilder,
   createDefaultRegistry,
-  createFakeGridApi,
   createToolExecutor,
   gridApiFor,
 } from '../src/features/ai/index.js';
@@ -13,6 +12,7 @@ import { toJSONSchema } from '../src/features/ai-schema.js';
 import { formulaModule } from '../src/features/formula/index.js';
 import { ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 import { enterpriseSchema, rows as salesRows } from './ai-fixtures.js';
+import { createFakeGridApi } from './helpers/fake-grid-api.js';
 
 // The AI tools against a live <apex-grid-enterprise>: undo restores only what a
 // turn changed, column and filter tools merge into the live view, export

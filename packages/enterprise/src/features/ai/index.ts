@@ -34,14 +34,8 @@ export type {
 export { createAIEngine } from './engine.js';
 export type { EntityResolver, ResolveResult } from './entities.js';
 export { createEntityResolver } from './entities.js';
-export type {
-  ActionResult,
-  CellTarget,
-  ChartRequest,
-  FakeGridApiInit,
-  GridApi,
-} from './grid-api.js';
-export { createFakeGridApi, emptyGridState, gridApiFor } from './grid-api.js';
+export type { ActionResult, GridApi } from './grid-api.js';
+export { emptyGridState, gridApiFor } from './grid-api.js';
 // P2 — the rule engine
 export type { IntentDetector } from './intent.js';
 export { createIntentDetector } from './intent.js';

@@ -4,7 +4,6 @@ import {
   type AIResult,
   type AnalyticsQuery,
   createAIEngine,
-  createFakeGridApi,
   createRuleBasedReasoner,
   formatAnalyticsAnswer,
   type Plan,
@@ -12,6 +11,7 @@ import {
   runAnalytics,
 } from '../src/features/ai/index.js';
 import { enterpriseSchema, makeApi, mountPersonGrid, type Row } from './ai-fixtures.js';
+import { createFakeGridApi } from './helpers/fake-grid-api.js';
 // Load the grid with the file, not inside the live-grid test's timeout.
 import '../src/index.js';
 

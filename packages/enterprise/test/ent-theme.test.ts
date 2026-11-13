@@ -13,10 +13,10 @@ import {
   ConversationMemory,
   createAIEngine,
   createContextBuilder,
-  createFakeGridApi,
 } from '../src/features/ai/index.js';
 import { ApexGridChart, ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 import { rows as aiRows, enterpriseSchema } from './ai-fixtures.js';
+import { createFakeGridApi } from './helpers/fake-grid-api.js';
 import { settle } from './settle.js';
 
 // Enterprise chrome follows the grid: chart panel and dialog surfaces, the

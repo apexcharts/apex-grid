@@ -3,10 +3,10 @@ import type { GridSchema } from 'apex-grid';
 import {
   ConversationMemory,
   createContextBuilder,
-  createFakeGridApi,
   DEFAULT_MAX_DATA_ROWS,
   emptyGridState,
 } from '../src/features/ai/index.js';
+import { createFakeGridApi } from './helpers/fake-grid-api.js';
 
 interface Row {
   region: string;

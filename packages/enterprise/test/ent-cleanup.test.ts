@@ -10,7 +10,6 @@ import {
   ApexGridChart,
   ApexGridEnterprise,
   ApexGridFilterBuilder,
-  createFakeGridApi,
   enterpriseModules,
 } from '../src/index.js';
 
@@ -241,13 +240,6 @@ describe('B68 enterprise cleanup', () => {
         children: [{ kind: 'condition', column: 'region', operator: 'contains', value: 'E' }],
       });
       expect(builder.renderRoot.querySelector('input[part="val"]')).to.exist;
-    });
-  });
-
-  describe('deprecated AI names (ent-ai-context-api-7, ent-ai-llm-reasoners-10)', () => {
-    it('createFakeGridApi stays exported until 0.10.0', () => {
-      const api = createFakeGridApi({ schema: { columns: [] } as never });
-      expect(api.getData()).to.eql([]);
     });
   });
 });

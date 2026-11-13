@@ -6,7 +6,6 @@ import {
   createAIEngine,
   createContextBuilder,
   createDefaultRegistry,
-  createFakeGridApi,
   createToolExecutor,
   runAnalytics,
 } from '../src/features/ai/index.js';
@@ -21,6 +20,7 @@ import {
 import { getGroupMeta } from '../src/features/grouping.js';
 import { ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 import { type Row as AIRow, enterpriseSchema } from './ai-fixtures.js';
+import { createFakeGridApi } from './helpers/fake-grid-api.js';
 
 // Spreading an array into call arguments (Math.max(...values), push(...rows))
 // throws RangeError past roughly 120k elements. These paths take data-sized

@@ -8,13 +8,13 @@ import {
   ConversationMemory,
   createClaudeReasoner,
   createContextBuilder,
-  createFakeGridApi,
   createLLMReasoner,
   type LLMComplete,
   type LLMRequest,
 } from '../src/features/ai/index.js';
 import { ApexGridEnterprise, enterpriseModules } from '../src/index.js';
 import { enterpriseSchema } from './ai-fixtures.js';
+import { createFakeGridApi } from './helpers/fake-grid-api.js';
 
 /**
  * What leaves the browser when a prompt escalates to an LLM: only visible column

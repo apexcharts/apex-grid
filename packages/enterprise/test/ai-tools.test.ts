@@ -4,13 +4,13 @@ import {
   ConversationMemory,
   createContextBuilder,
   createDefaultRegistry,
-  createFakeGridApi,
   createToolExecutor,
   emptyGridState,
   type GridApi,
   type Plan,
   type ToolContext,
 } from '../src/features/ai/index.js';
+import { createFakeGridApi } from './helpers/fake-grid-api.js';
 
 interface Row {
   region: string;
