@@ -28,7 +28,7 @@ function gridInShadowRoot(): { host: HTMLElement; root: ShadowRoot; grid: ApexGr
 describe('setup()', () => {
   const hosts: HTMLElement[] = [];
   let warnings: unknown[][];
-  // biome-ignore lint/suspicious/noConsole: spying on the theme deprecation warning
+  // biome-ignore lint/suspicious/noConsole: setup() must not warn
   const warn = console.warn;
 
   beforeEach(() => {
@@ -73,13 +73,5 @@ describe('setup()', () => {
 
     expect(sizingSheets(root)).to.have.length(1);
     expect(getComputedStyle(grid).minHeight).to.equal('240px');
-  });
-
-  it('warns once that the theme option is inert', () => {
-    setup({ theme: 'material' });
-    setup({ theme: 'fluent' });
-
-    expect(warnings).to.have.length(1);
-    expect(String(warnings[0][0])).to.contain('setup({ theme })');
   });
 });

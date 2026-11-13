@@ -1,25 +1,7 @@
 import { ApexGrid } from './components/grid.js';
 import { adoptOnce, documentStyleOptions, hostSizingCss } from './internal/document-styles.js';
 
-type ApexGridTheme = 'bootstrap' | 'material' | 'fluent' | 'indigo';
-
 export interface ApexGridSetupOptions {
-  /**
-   * @deprecated Inert, and accepted only so existing calls keep compiling.
-   *
-   * The grid never shipped its own per-framework themes — it styles itself
-   * entirely through `--ag-*` CSS custom properties (see the README's theming
-   * section), so this option never affected its appearance. It used to forward
-   * to `configureTheme()` from `igniteui-webcomponents`, which made a whole
-   * component library a runtime dependency of every consumer for one
-   * pass-through call. The dependency is gone and so is the forwarding.
-   *
-   * If you were relying on that side effect to theme your own Ignite UI
-   * components, call `configureTheme()` yourself. Passing this option now warns
-   * once and does nothing else; it will be removed in the next major version.
-   */
-  theme?: ApexGridTheme;
-
   /**
    * Whether to adopt a default host stylesheet that sets `height: 100%`
    * with a `min-height: 240px` fallback. Set to `false` if you want to
@@ -51,32 +33,17 @@ function adoptHostStyles(): void {
   adoptOnce(document, `host:${ApexGrid.tagName}`, hostSizingCss(ApexGrid.tagName));
 }
 
-let themeWarned = false;
-
-function warnThemeIsInert(): void {
-  if (themeWarned) return;
-  themeWarned = true;
-  // biome-ignore lint/suspicious/noConsole: intentional one-shot deprecation diagnostic
-  console.warn(
-    '[apex-grid] `setup({ theme })` is inert and will be removed. The grid styles ' +
-      'itself through `--ag-*` CSS custom properties; this option only ever forwarded ' +
-      "to igniteui-webcomponents' `configureTheme()`, which is no longer a dependency. " +
-      'Call `configureTheme()` directly if you need it, and drop the option.'
-  );
-}
-
 /**
  * One-call convenience: registers `<apex-grid>` and adopts a default host
  * stylesheet so the virtualizer has a bounded height. The grid is styled
- * out-of-the-box via `--ag-*` CSS custom properties — no theme import needed.
+ * out of the box through `--ag-*` CSS custom properties, with no theme import.
  *
  * @remarks
  * This is an **additive** alternative to the manual setup
- * (`import 'apex-grid/define'` + host CSS). Idempotent — safe to call more
+ * (`import 'apex-grid/define'` + host CSS). Idempotent: safe to call more
  * than once; host styles are adopted only on the first call.
  *
  * Customize the look by overriding `--ag-*` CSS variables (see the README).
- * The deprecated {@link ApexGridSetupOptions.theme} option is inert.
  *
  * @example
  * ```ts
@@ -90,7 +57,7 @@ function warnThemeIsInert(): void {
  * ```
  */
 export function setup(options: ApexGridSetupOptions = {}): void {
-  const { theme, hostStyles = true, tokenStyles = true } = options;
+  const { hostStyles = true, tokenStyles = true } = options;
 
   // Before registering: a grid already in the page connects during register().
   documentStyleOptions.tokens = tokenStyles;
@@ -99,6 +66,4 @@ export function setup(options: ApexGridSetupOptions = {}): void {
   }
 
   ApexGrid.register();
-
-  if (theme !== undefined) warnThemeIsInert();
 }
