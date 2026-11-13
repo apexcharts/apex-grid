@@ -41,6 +41,9 @@ function pagerPart(grid: ApexGrid<Row>, name: string) {
   return paginatorOf(grid)!.renderRoot.querySelector<HTMLElement>(`[part~="${name}"]`)!;
 }
 
+/** Outlasts the toolbar's fixed 200 ms quick-filter debounce. */
+const pastDebounce = () => new Promise((resolve) => setTimeout(resolve, 250));
+
 function toolbarOf(grid: ApexGrid<Row>) {
   return grid.renderRoot.querySelector('apex-grid-toolbar') as ApexGridToolbar<Row>;
 }
@@ -462,7 +465,6 @@ describe('Pagination contract', () => {
     it('core-toolbar-paginator-8: a cancelled quick filter resets the search box', async () => {
       const grid = await mount({ showQuickFilter: true });
       const toolbar = toolbarOf(grid);
-      toolbar.debounce = 0;
       await toolbar.updateComplete;
       let refuse = true;
       grid.addEventListener('quickFilterChanging', (e) => {
@@ -471,6 +473,7 @@ describe('Pagination contract', () => {
       const input = toolbar.renderRoot.querySelector('input')!;
       input.value = 'Row 1';
       input.dispatchEvent(new Event('input'));
+      await pastDebounce();
       await settle(grid);
       expect(grid.quickFilter).to.equal('');
       expect(input.value).to.equal('');
@@ -478,6 +481,7 @@ describe('Pagination contract', () => {
       refuse = false;
       input.value = 'Row 1';
       input.dispatchEvent(new Event('input'));
+      await pastDebounce();
       await settle(grid);
       expect(grid.quickFilter).to.equal('Row 1');
       expect(input.value).to.equal('Row 1');
@@ -486,7 +490,6 @@ describe('Pagination contract', () => {
     it('core-toolbar-paginator-8: a substituted quick filter shows the substitute', async () => {
       const grid = await mount({ showQuickFilter: true });
       const toolbar = toolbarOf(grid);
-      toolbar.debounce = 0;
       await toolbar.updateComplete;
       grid.addEventListener('quickFilterChanging', () => {
         grid.quickFilter = 'Row 2';
@@ -494,6 +497,7 @@ describe('Pagination contract', () => {
       const input = toolbar.renderRoot.querySelector('input')!;
       input.value = 'Row 1';
       input.dispatchEvent(new Event('input'));
+      await pastDebounce();
       await settle(grid);
       expect(grid.quickFilter).to.equal('Row 2');
       expect(input.value).to.equal('Row 2');

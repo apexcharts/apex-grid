@@ -62,20 +62,6 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
   @property({ attribute: false })
   public pageSizeOptions: readonly number[] = DEFAULT_PAGINATION.pageSizeOptions;
 
-  /**
-   * Accessible label for the rows-per-page selector.
-   *
-   * @remarks
-   * When unset, falls back to the grid's localized `pagination.rowsPerPage`
-   * text (see {@link ApexGrid.localeText}).
-   *
-   * @deprecated The grid renders this paginator in its shadow root and never
-   * sets this property. Set the `pagination.rowsPerPage` key of the
-   * grid's `localeText` instead. To be removed in apex-grid 5.0.
-   */
-  @property({ type: String, attribute: 'page-size-label' })
-  public pageSizeLabel?: string;
-
   #resizeObserver?: ResizeObserver;
 
   public override connectedCallback(): void {
@@ -128,8 +114,9 @@ export default class ApexGridPaginator<T extends object> extends LitElement {
     return this.state.pagination;
   }
 
+  /** The rows-per-page label: the grid's localized `pagination.rowsPerPage` text. */
   protected get sizeLabel() {
-    return this.pageSizeLabel ?? this.state.localize('pagination.rowsPerPage');
+    return this.state.localize('pagination.rowsPerPage');
   }
 
   #handleSizeChange = (event: Event) => {

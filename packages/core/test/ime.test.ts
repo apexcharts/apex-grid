@@ -33,6 +33,9 @@ const input = (target: HTMLInputElement, value: string, isComposing = false) => 
   target.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, isComposing }));
 };
 
+/** Outlasts the toolbar's fixed 200 ms quick-filter debounce. */
+const pastDebounce = () => new Promise((resolve) => setTimeout(resolve, 250));
+
 describe('IME composition guard', () => {
   describe('isComposing', () => {
     let control: HTMLInputElement;
@@ -384,7 +387,6 @@ describe('IME composition guard', () => {
 
     beforeEach(async () => {
       await TDD.setUp();
-      TDD.toolbar.debounce = 0;
       changes = [];
       TDD.grid.addEventListener('quickFilterChanging', (e) => changes.push(e.detail.nextValue));
     });
@@ -401,63 +403,61 @@ describe('IME composition guard', () => {
 
       input(search, 'high', true);
       compose(search, 'compositionend', 'high');
+      await pastDebounce();
       await TDD.waitForUpdate();
       expect(changes).to.deep.equal(['high']);
       expect(TDD.grid.totalItems).to.equal(data.filter((d) => d.importance === 'high').length);
 
       input(search, 'high');
+      await pastDebounce();
       await TDD.waitForUpdate();
       expect(changes, 'the trailing input is not applied twice').to.deep.equal(['high']);
     });
 
     it('keeps the debounce for typing without an IME', async () => {
-      TDD.toolbar.debounce = 30;
       input(TDD.search, 'h');
       input(TDD.search, 'hi');
       input(TDD.search, 'high');
       expect(changes, 'nothing before the window ends').to.deep.equal([]);
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await pastDebounce();
       await TDD.waitForUpdate();
       expect(changes).to.deep.equal(['high']);
     });
 
     it('a composition end goes through the same debounce', async () => {
-      TDD.toolbar.debounce = 30;
       input(TDD.search, 'ひ', true);
       compose(TDD.search, 'compositionend', 'ひ');
       expect(changes).to.deep.equal([]);
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await pastDebounce();
       expect(changes).to.deep.equal(['ひ']);
     });
 
     it('a search pending from before a composition does not fire in the middle of it', async () => {
-      TDD.toolbar.debounce = 30;
       const search = TDD.search;
       input(search, '東', true);
       compose(search, 'compositionend', '東');
       // The next reading starts inside the debounce window of the first.
       compose(search, 'compositionstart');
       input(search, '東きょう', true);
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await pastDebounce();
       await TDD.waitForUpdate();
       expect(changes, 'nothing applied mid-composition').to.deep.equal([]);
       expect(search.value, 'the reading is not overwritten').to.equal('東きょう');
 
       input(search, '東京', true);
       compose(search, 'compositionend', '東京');
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await pastDebounce();
       await TDD.waitForUpdate();
       expect(changes).to.deep.equal(['東京']);
       expect(TDD.grid.quickFilter).to.equal('東京');
     });
 
     it('a search pending from ASCII typing does not fire once a composition starts', async () => {
-      TDD.toolbar.debounce = 30;
       const search = TDD.search;
       input(search, 'a');
       compose(search, 'compositionstart');
       input(search, 'aと', true);
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await pastDebounce();
       await TDD.waitForUpdate();
       expect(changes).to.deep.equal([]);
       expect(search.value).to.equal('aと');
@@ -478,6 +478,7 @@ describe('IME composition guard', () => {
       expect(TDD.grid.quickFilter).to.equal('');
 
       input(search, 'h');
+      await pastDebounce();
       await TDD.waitForUpdate();
       expect(TDD.grid.quickFilter).to.equal('h');
     });
@@ -485,6 +486,7 @@ describe('IME composition guard', () => {
     it('Escape during a composition does not clear the search', async () => {
       const search = TDD.search;
       input(search, 'high');
+      await pastDebounce();
       await TDD.waitForUpdate();
       expect(TDD.grid.quickFilter).to.equal('high');
 

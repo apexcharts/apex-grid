@@ -9,7 +9,7 @@ import type {
   StatusVariant,
   ToolbarAction,
 } from '../src/index.js';
-import { ApexGrid, type ApexGridPaginator, type ApexGridToolbar } from '../src/index.js';
+import { ApexGrid, type ApexGridToolbar } from '../src/index.js';
 import type { ColumnConfiguration } from '../src/internal/types.js';
 import data, { type TestData } from './utils/test-data.js';
 
@@ -126,30 +126,6 @@ describe('ApexGrid.exportFilename', () => {
   it('does not change the default name of a programmatic export', async () => {
     const grid = await mount(html`<apex-grid export-filename="users"></apex-grid>`);
     expect(downloads(() => grid.exportToCSV())).to.deep.equal(['data.csv']);
-  });
-});
-
-describe('Deprecated sub-element properties keep working', () => {
-  afterEach(() => fixtureCleanup());
-
-  it('toolbar placeholder still overrides the localized text', async () => {
-    const grid = await mount(html`<apex-grid show-quick-filter></apex-grid>`);
-    const toolbar = grid.renderRoot.querySelector<ApexGridToolbar<TestData>>('apex-grid-toolbar')!;
-    toolbar.placeholder = 'Find';
-    await toolbar.updateComplete;
-    const input = toolbar.renderRoot.querySelector('input')!;
-    expect(input.placeholder).to.equal('Find');
-  });
-
-  it('paginator pageSizeLabel still overrides the localized text', async () => {
-    const grid = await mount(html`<apex-grid></apex-grid>`);
-    grid.pagination = { enabled: true, pageSize: 2 };
-    await grid.updateComplete;
-    const paginator =
-      grid.renderRoot.querySelector<ApexGridPaginator<TestData>>('apex-grid-paginator')!;
-    paginator.pageSizeLabel = 'Per page';
-    await paginator.updateComplete;
-    expect(paginator.shadowRoot!.innerHTML).to.contain('Per page');
   });
 });
 

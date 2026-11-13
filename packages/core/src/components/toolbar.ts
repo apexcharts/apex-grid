@@ -8,6 +8,9 @@ import { registerComponent } from '../internal/register.js';
 import { GRID_TOOLBAR_TAG } from '../internal/tags.js';
 import { styles } from '../styles/toolbar/toolbar.css.js';
 
+/** How long (ms) typing pauses before {@link ApexGrid.quickFilter} updates. */
+const QUICK_FILTER_DEBOUNCE = 200;
+
 /**
  * Toolbar shown above the grid's header row. Hosts opt-in toolbar features
  * such as the quick-filter (global search) input and the export menu. The grid
@@ -54,33 +57,12 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
   public value = '';
 
   /**
-   * The placeholder rendered in the search input.
-   *
-   * @remarks
-   * When unset, falls back to the grid's localized `toolbar.searchPlaceholder`
-   * text (see {@link ApexGrid.localeText}).
-   *
-   * @deprecated The grid renders this toolbar in its shadow root and never
-   * sets this property. Set the `toolbar.searchPlaceholder` key of the
-   * grid's `localeText` instead. To be removed in apex-grid 5.0.
+   * The search input's placeholder and accessible name: the grid's localized
+   * `toolbar.searchPlaceholder` text (see {@link ApexGrid.localeText}).
    */
-  @property({ type: String })
-  public placeholder = '';
-
   protected get searchPlaceholder() {
-    return this.placeholder || this.state?.localize('toolbar.searchPlaceholder') || 'Search…';
+    return this.state?.localize('toolbar.searchPlaceholder') || 'Search…';
   }
-
-  /**
-   * Debounce window (ms) before {@link ApexGrid.quickFilter} updates.
-   *
-   * @deprecated The grid renders this toolbar in its shadow root and never
-   * sets this property, so the quick filter always waits 200 ms. Call
-   * the grid's `setQuickFilter()` from your own input to apply a value on
-   * your own schedule. To be removed in apex-grid 5.0.
-   */
-  @property({ type: Number, attribute: 'debounce' })
-  public debounce = 200;
 
   /** Whether to render the quick-filter input. Driven by the parent grid. */
   @property({ attribute: false, type: Boolean })
@@ -182,16 +164,10 @@ export default class ApexGridToolbar<T extends object> extends LitElement {
   /** Applies `next` after the debounce window, superseding a pending value. */
   #schedule(next: string) {
     this.#cancelPending();
-
-    if (this.debounce <= 0) {
-      this.#emit(next);
-      return;
-    }
-
     this.#debounceHandle = setTimeout(() => {
       this.#debounceHandle = null;
       this.#emit(next);
-    }, this.debounce);
+    }, QUICK_FILTER_DEBOUNCE);
   }
 
   #handleKeydown = (event: KeyboardEvent) => {
