@@ -102,7 +102,7 @@ export class ApexGridStatusBar extends LitElement {
     :host {
       display: block;
       box-sizing: border-box;
-      font: 0.8rem/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
+      font: 12.8px/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
       color: var(--_ag-overlay-text, #3a3f45);
       background: var(--_ag-overlay, #f6f7f8);
       border: 1px solid var(--_ag-overlay-line, #d8dade);
@@ -126,7 +126,7 @@ export class ApexGridStatusBar extends LitElement {
       white-space: nowrap;
     }
     [part='stat-label'] {
-      font-size: 0.72rem;
+      font-size: 11.52px;
       text-transform: uppercase;
       letter-spacing: 0.04em;
       opacity: 0.6;

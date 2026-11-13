@@ -58,7 +58,7 @@ export class ApexGridToolPanel extends LitElement {
       display: block;
       box-sizing: border-box;
       inline-size: 270px;
-      font: 0.85rem/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
+      font: 13.6px/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
       color: var(--_ag-overlay-text, #1f2328);
       background: var(--_ag-overlay, #f6f7f8);
       border: 1px solid var(--_ag-overlay-line, #d8dade);
@@ -144,7 +144,7 @@ export class ApexGridToolPanel extends LitElement {
       background: var(--_ag-overlay-hover, #fbfbfc);
     }
     [part='zone-title'] {
-      font-size: 0.72rem;
+      font-size: 11.52px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.03em;
@@ -158,7 +158,7 @@ export class ApexGridToolPanel extends LitElement {
       min-block-size: 20px;
     }
     [part='zone-empty'] {
-      font-size: 0.78rem;
+      font-size: 12.48px;
       color: var(--_ag-overlay-muted, #9aa1a8);
     }
     [part='chip'] {
@@ -169,7 +169,7 @@ export class ApexGridToolPanel extends LitElement {
       background: var(--_ag-overlay-accent, #1f6feb);
       color: #fff;
       border-radius: 10px;
-      font-size: 0.78rem;
+      font-size: 12.48px;
     }
     [part='chip'] button {
       color: #fff;

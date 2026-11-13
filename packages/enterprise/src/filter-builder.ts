@@ -60,7 +60,7 @@ export class ApexGridFilterBuilder extends LitElement {
       display: block;
       box-sizing: border-box;
       inline-size: 460px;
-      font: 0.85rem/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
+      font: 13.6px/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
       color: var(--_ag-overlay-text, #1f2328);
       background: var(--_ag-overlay, #fff);
       border: 1px solid var(--_ag-overlay-line, #d8dade);
@@ -132,7 +132,7 @@ export class ApexGridFilterBuilder extends LitElement {
       background: none;
       cursor: pointer;
       color: var(--_ag-overlay-muted, #6b7280);
-      font-size: 1rem;
+      font-size: 16px;
       line-height: 1;
       padding: 2px 4px;
     }

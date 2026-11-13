@@ -108,7 +108,7 @@ export class ApexGridAI extends LitElement {
     }
     :host {
       display: block;
-      font: 0.8rem/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
+      font: 12.8px/1.4 var(--_ag-overlay-font, system-ui, sans-serif);
       color: var(--_ag-overlay-text, #1f2328);
     }
     :host([mode='dialog']) {
@@ -191,7 +191,7 @@ export class ApexGridAI extends LitElement {
       border-radius: 4px;
       background: none;
       font: inherit;
-      font-size: 0.72rem;
+      font-size: 11.52px;
       font-weight: 500;
       cursor: pointer;
       min-height: 24px;
@@ -218,7 +218,7 @@ export class ApexGridAI extends LitElement {
     }
     [part='mode-button'] {
       font: inherit;
-      font-size: 0.75rem;
+      font-size: 12px;
       padding: 4px 10px;
       border: 1px solid var(--_ag-overlay-line, #d0d5dd);
       background: var(--_ag-overlay, #fff);
@@ -260,15 +260,15 @@ export class ApexGridAI extends LitElement {
       cursor: default;
     }
     [part='result'] {
-      font-size: 0.78rem;
+      font-size: 12.48px;
     }
     [part='abstention'] {
-      font-size: 0.78rem;
+      font-size: 12.48px;
       color: var(--_ag-overlay-muted, #475467);
     }
     [part='undo'] {
       font: inherit;
-      font-size: 0.75rem;
+      font-size: 12px;
       margin-block-start: 6px;
       padding: 3px 10px;
       border: 1px solid var(--_ag-overlay-line, #d0d5dd);
@@ -307,7 +307,7 @@ export class ApexGridAI extends LitElement {
       cursor: default;
     }
     [part='source'] {
-      font-size: 0.68rem;
+      font-size: 10.88px;
       font-weight: 600;
       color: var(--_ag-overlay-muted, #57606a);
       background: var(--_ag-overlay-hover, #f3f4f6);
@@ -318,7 +318,7 @@ export class ApexGridAI extends LitElement {
       white-space: nowrap;
     }
     [part='preview'] {
-      font-size: 0.78rem;
+      font-size: 12.48px;
       color: var(--_ag-overlay-muted, #475467);
     }
     [part='history'] {
@@ -331,12 +331,12 @@ export class ApexGridAI extends LitElement {
       align-items: center;
       justify-content: space-between;
       font-weight: 600;
-      font-size: 0.72rem;
+      font-size: 11.52px;
       color: var(--_ag-overlay-muted, #6b7280);
     }
     [part='clear-history'] {
       font: inherit;
-      font-size: 0.7rem;
+      font-size: 11.2px;
       border: none;
       background: none;
       color: var(--_ag-overlay-muted, #6b7280);
