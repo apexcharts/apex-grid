@@ -41,7 +41,7 @@ This repository is a monorepo containing the community grid, its commercial ente
 | --- | --- | --- |
 | [`apex-grid`](packages/core) | [![npm](https://img.shields.io/npm/v/apex-grid.svg)](https://www.npmjs.com/package/apex-grid) | The community grid, with everything listed above. |
 | [`apex-grid-enterprise`](packages/enterprise) | [![npm](https://img.shields.io/npm/v/apex-grid-enterprise.svg)](https://www.npmjs.com/package/apex-grid-enterprise) | A drop-in `<apex-grid-enterprise>` that adds the [enterprise features](#enterprise-features--licensing). **Requires a license key for production.** |
-| [`react-apex-grid`](packages/react) | [![npm](https://img.shields.io/npm/v/react-apex-grid.svg)](https://www.npmjs.com/package/react-apex-grid) | React components for `<apex-grid>`, with typed props, `on<Event>` handlers, and a typed `ref`. |
+| [`react-apex-grid`](packages/react) | [![npm](https://img.shields.io/npm/v/react-apex-grid.svg)](https://www.npmjs.com/package/react-apex-grid) | React components for `<apex-grid>`, with typed props, `on<Event>` handlers, and a typed `ref`. `react-apex-grid/enterprise` wraps `<apex-grid-enterprise>` and its companion elements. |
 
 ## Install
 

@@ -20,10 +20,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./enterprise": {
+      "types": "./dist/enterprise/index.d.ts",
+      "default": "./dist/enterprise/index.js"
     }
   },
   "files": ["dist"],
-  "sideEffects": ["**/generated/*.js"],
+  "sideEffects": ["**/generated/*.js", "**/generated/enterprise/*.js"],
   "scripts": {
     "generate": "node scripts/generate.js",
     "check:generated": "node scripts/check-generated.js",
@@ -34,8 +38,14 @@
   },
   "peerDependencies": {
     "apex-grid": "^3.5.0 || ^4.0.0 || ^5.0.0",
+    "apex-grid-enterprise": ">=0.10.0 <1.0.0",
     "react": ">=18",
     "react-dom": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "apex-grid-enterprise": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@lit/react": "^1.0.8"
@@ -47,6 +57,7 @@
     "@web/test-runner": "^0.20.2",
     "@web/test-runner-playwright": "^0.11.1",
     "apex-grid": "*",
+    "apex-grid-enterprise": "*",
     "esbuild": "^0.27.7",
     "playwright": "^1.53.2",
     "react": "^19.2.8",

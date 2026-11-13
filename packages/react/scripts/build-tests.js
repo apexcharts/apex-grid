@@ -8,6 +8,11 @@
  * without resolvable exports. Bundling sidesteps that entirely: esbuild inlines
  * those deps with correct interop and folds `NODE_ENV` via `define`, producing
  * self-contained ESM the runner serves as-is.
+ *
+ * `@anthropic-ai/sdk` stays external: the enterprise entry reaches
+ * apex-grid-enterprise's Claude reasoner, which loads the SDK with a lazy
+ * `import()` only when a prompt runs (never in these tests), and the SDK's
+ * Node credential helpers cannot be bundled for the browser.
  */
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -32,6 +37,7 @@ await build({
   jsx: 'automatic',
   sourcemap: 'inline',
   define: { 'process.env.NODE_ENV': '"development"' },
+  external: ['@anthropic-ai/sdk'],
   logLevel: 'warning',
 });
 

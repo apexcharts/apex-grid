@@ -5,8 +5,10 @@ framework-agnostic web component data grid. You get declarative `on<Event>`
 handlers, full TypeScript types for props and events, and a `ref` typed to the
 grid element, all generated from the element's Custom Elements Manifest.
 
-The wrappers render the community `<apex-grid>` element. For the enterprise
-grid, see [Using apex-grid-enterprise](#using-apex-grid-enterprise).
+The root entry renders the community `<apex-grid>` element. The enterprise
+grid and its companion elements have their own entry,
+`react-apex-grid/enterprise`; see
+[Using apex-grid-enterprise](#using-apex-grid-enterprise).
 
 ## Install
 
@@ -114,80 +116,104 @@ import type { ColumnConfiguration, ApexRowSelectedEvent } from 'apex-grid';
 
 ## Using apex-grid-enterprise
 
-The components in this package render the community `<apex-grid>`. Loading
-`apex-grid-enterprise` does not change them: enterprise features live on a
-separate element, `<apex-grid-enterprise>`, so `ApexGrid` and
-`createApexGrid<T>()` stay community grids. Wrap the enterprise element with
-`@lit/react`, the same way this package wraps the community one:
+`react-apex-grid/enterprise` wraps `<apex-grid-enterprise>` and its six
+companion elements, generated from the enterprise package's Custom Elements
+Manifest like the root entry. `apex-grid-enterprise` is an optional peer
+dependency: install it to use this entry (any 0.x release from 0.10.0 on).
+Community users need nothing else, since the root entry never imports it.
 
 ```sh
-npm install apex-grid-enterprise apex-grid @lit/react
+npm install react-apex-grid apex-grid apex-grid-enterprise
 ```
 
-Install `@lit/react` as a dependency of your app even though `react-apex-grid`
-already depends on it: strict installers (pnpm by default) do not let your code
-import a dependency of a dependency.
+| Component | Element |
+|---|---|
+| `ApexGridEnterprise`, `createApexGridEnterprise<T>()` | `<apex-grid-enterprise>` |
+| `ApexGridToolPanel` | `<apex-grid-tool-panel>` |
+| `ApexGridStatusBar` | `<apex-grid-status-bar>` |
+| `ApexGridSetFilter` | `<apex-grid-set-filter>` |
+| `ApexGridFilterBuilder` | `<apex-grid-filter-builder>` |
+| `ApexGridChart` | `<apex-grid-chart>` |
+| `ApexGridAI` | `<apex-grid-ai>` |
+
+Importing the entry opts the grid into every enterprise feature module and
+registers the seven elements in the browser, as `apex-grid-enterprise/define`
+does. On the server it registers nothing, like the root entry.
+
+`createApexGridEnterprise<T>()` is the row-typed grid, as `createApexGrid<T>()`
+is for the community one: `data` is `T[]`, `columns` is
+`ColumnConfiguration<T>[]`, every enterprise property (`groupBy`,
+`aggregations`, `pivotOn`, `rangeSelection`...) is a prop, and every community
+and enterprise event has a typed `on<Event>` handler. Enterprise event names
+map to props by the same rule: `apex-range-changed` is `onApexRangeChanged`,
+`apex-view-changed` is `onApexViewChanged`.
+
+A companion takes the grid it follows through its `grid` prop. Keep the grid
+element in state with a ref callback, so the companion re-renders with it once
+the grid mounts:
 
 ```tsx
 'use client';
 
-import { createComponent, type EventName } from '@lit/react';
-import { ApexGridEnterprise, type ApexGridEnterpriseEventMap } from 'apex-grid-enterprise';
-// Opts into every enterprise feature module and registers the enterprise
-// elements (the grid, tool panel, status bar, set filter, chart panel...).
-import 'apex-grid-enterprise/define';
-import * as React from 'react';
+import { useState } from 'react';
+import {
+  ApexGridStatusBar,
+  type ApexGridEnterpriseElement,
+  createApexGridEnterprise,
+} from 'react-apex-grid/enterprise';
+import type { ColumnConfiguration } from 'apex-grid';
 
-export interface Employee {
-  id: number;
-  name: string;
-  department: string;
+interface Sale {
+  region: string;
+  product: string;
+  amount: number;
 }
 
-type Events = ApexGridEnterpriseEventMap<Employee>;
+const SalesGrid = createApexGridEnterprise<Sale>();
 
-export const EnterpriseGrid = createComponent({
-  react: React,
-  tagName: 'apex-grid-enterprise',
-  // The element class typed to your row shape, so `data`, `columns` and the
-  // event details are checked against Employee.
-  elementClass: ApexGridEnterprise as new () => ApexGridEnterprise<Employee>,
-  events: {
-    // Community events: list the ones you handle, named as on ApexGrid.
-    onRowSelected: 'rowSelected' as EventName<Events['rowSelected']>,
-    onSorted: 'sorted' as EventName<Events['sorted']>,
-    // Enterprise events.
-    onViewChanged: 'apex-view-changed' as EventName<Events['apex-view-changed']>,
-    onRangeChanged: 'apex-range-changed' as EventName<Events['apex-range-changed']>,
-    onContextMenuOpening: 'apex-context-menu-opening' as EventName<
-      Events['apex-context-menu-opening']
-    >,
-    onRowsLoaded: 'apex-rows-loaded' as EventName<Events['apex-rows-loaded']>,
-    onRowsLoadFailed: 'apex-rows-load-failed' as EventName<Events['apex-rows-load-failed']>,
-    onServerRowsLoaded: 'apex-server-rows-loaded' as EventName<Events['apex-server-rows-loaded']>,
-    onServerRowsLoadFailed: 'apex-server-rows-load-failed' as EventName<
-      Events['apex-server-rows-load-failed']
-    >,
-  },
-});
+const columns: ColumnConfiguration<Sale>[] = [
+  { key: 'region' },
+  { key: 'product' },
+  { key: 'amount', type: 'number' },
+];
+
+export function Sales({ sales }: { sales: Sale[] }) {
+  const [grid, setGrid] = useState<ApexGridEnterpriseElement<Sale> | null>(null);
+  return (
+    <>
+      <SalesGrid
+        ref={setGrid}
+        data={sales}
+        columns={columns}
+        groupBy={['region']}
+        style={{ height: 480 }}
+        // e.detail is RangeChangedDetail: bounds, ranges and stats
+        onApexRangeChanged={(e) => console.log(e.detail.stats.sum)}
+      />
+      <ApexGridStatusBar grid={grid} />
+    </>
+  );
+}
 ```
 
-Every enterprise property is then a prop, set on the element as a property:
+The other companions bind the same way (`<ApexGridChart grid={grid} type="bar" />`,
+`<ApexGridSetFilter grid={grid} column="region" />`). Their `grid` prop accepts
+any `ApexGridEnterpriseElement<T>`, and `null` before the grid mounts.
 
-```tsx
-<EnterpriseGrid
-  data={employees}
-  columns={[{ key: 'name' }, { key: 'department' }]}
-  groupBy={['department']}
-  style={{ height: 480 }}
-  onRangeChanged={(e) => console.log(e.detail)}
-/>
+Set the license once at startup on the element class, which
+`apex-grid-enterprise` exports under the same name as this entry's component
+(see its README):
+
+```ts
+import { ApexGridEnterprise } from 'apex-grid-enterprise';
+
+ApexGridEnterprise.setLicense(key);
 ```
 
-Set the license once at startup with `ApexGridEnterprise.setLicense(key)` (see
-the `apex-grid-enterprise` README). Keep the wrapper in a client component; on
-the server, importing `apex-grid-enterprise/define` evaluates without a DOM, and
-the grid renders on the client after hydration.
+To opt into only some feature modules, wrap the element yourself with
+`@lit/react` instead: call `ApexGridEnterprise.use(...)` with the modules you
+need, register the elements you use, and pass the element class to
+`createComponent`. This entry always turns every module on.
 
 ## Using with Ignite UI
 
@@ -222,9 +248,10 @@ and the root-default note are in the `apex-grid` README (Customize the look).
 
 ## Next.js / server-side rendering
 
-The wrapper is a **client component** and the package's entry points are marked
-`'use client'`. The grid renders on the client after hydration; there is no
-server-rendered grid markup in this release (no declarative shadow DOM).
+The wrapper is a **client component** and the package's entry points (the root
+and `react-apex-grid/enterprise`) are marked `'use client'`. The grid renders
+on the client after hydration; there is no server-rendered grid markup in this
+release (no declarative shadow DOM).
 
 - **App Router.** Import the grid inside a client component (a file with
   `'use client'` at the top). Importing it in a Server Component is a no-op on

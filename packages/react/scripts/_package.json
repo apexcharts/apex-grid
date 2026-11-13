@@ -20,9 +20,13 @@
     ".": {
       "types": "./index.d.ts",
       "default": "./index.js"
+    },
+    "./enterprise": {
+      "types": "./enterprise/index.d.ts",
+      "default": "./enterprise/index.js"
     }
   },
-  "sideEffects": ["./generated/*.js"],
+  "sideEffects": ["./generated/*.js", "./generated/enterprise/*.js"],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/apexcharts/apex-grid.git",
@@ -37,8 +41,14 @@
   },
   "peerDependencies": {
     "apex-grid": "^3.5.0 || ^4.0.0 || ^5.0.0",
+    "apex-grid-enterprise": ">=0.10.0 <1.0.0",
     "react": ">=18",
     "react-dom": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "apex-grid-enterprise": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@lit/react": "^1.0.8"
