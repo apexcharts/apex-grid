@@ -32,8 +32,9 @@ const GENERATED = path.join(SRC, 'generated');
  * The elements we wrap and, where one exists, the exported event-map type used to
  * type each `on<Event>` handler to its real detail. Elements without a map fall
  * back to a plain `EventName` (a generic `(e: Event) => void` handler). The class
- * name, event list and attribute-only props come from the manifest, not this
- * table. `deprecated` becomes an `@deprecated` tag on the exported component.
+ * name, event list, settable properties and attribute-only props come from the
+ * manifest, not this table. `deprecated` becomes an `@deprecated` tag on the
+ * exported component.
  *
  * Only elements that work on their own belong here. `<apex-grid-toolbar>` and
  * `<apex-grid-paginator>` read their state from the grid that hosts them, and
@@ -165,7 +166,25 @@ const resolved = ELEMENTS.map((entry) => {
     .filter((a) => a.name && !a.fieldName)
     .map((a) => ({ name: a.name, description: a.description ?? '' }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  return { ...entry, className: decl.name, events, attributeProps };
+  // Properties a prop may set: public instance fields with a setter. React
+  // assigns every prop to the element, so a getter-only member throws during
+  // commit and a method prop replaces the method on the instance; neither
+  // belongs in the prop type.
+  const settableProps = [
+    ...new Set(
+      (decl.members ?? [])
+        .filter(
+          (m) =>
+            m.kind === 'field' &&
+            (m.privacy ?? 'public') === 'public' &&
+            !m.static &&
+            m.readonly !== true &&
+            !m.name.startsWith('#')
+        )
+        .map((m) => m.name)
+    ),
+  ].sort();
+  return { ...entry, className: decl.name, events, settableProps, attributeProps };
 });
 const hash = inputHashOf(resolved);
 
@@ -230,6 +249,17 @@ function emitElement(el) {
   const deprecated = el.deprecated ? ['', ...wrap(`@deprecated ${el.deprecated}`, 77)] : [];
   const doc = jsdoc([...summary, ...deprecated]);
 
+  // The prop type keeps only settable properties: every other member the
+  // element adds over HTMLElement (getters, methods, framework internals) is
+  // omitted. Types only, so the runtime component is unchanged.
+  const settableType = `${el.className}SettableProp`;
+  const settableDecl = [
+    `/** Properties of \`<${el.tag}>\` a prop can set: public fields that are not read-only. */`,
+    el.settableProps.length
+      ? `export type ${settableType} =\n${el.settableProps.map((p) => `  | '${p}'`).join('\n')};`
+      : `export type ${settableType} = never;`,
+    '',
+  ];
   // Attribute-only props widen the component's prop type; React passes them
   // through as attributes, so the runtime component is unchanged.
   const attrsType = `${el.className}AttributeProps`;
@@ -246,29 +276,22 @@ function emitElement(el) {
         '',
       ]
     : [];
-  const component = hasAttrs
-    ? [
-        `const ${el.className}Component = createComponent({`,
-        '  react: React,',
-        `  tagName: '${el.tag}',`,
-        `  elementClass: ${elementRef},`,
-        `  events: ${eventsConst},`,
-        '});',
-        '',
-        doc,
-        `export const ${el.className} = ${el.className}Component as React.ForwardRefExoticComponent<`,
-        `  React.ComponentProps<typeof ${el.className}Component> & ${attrsType}`,
-        '>;',
-      ]
-    : [
-        doc,
-        `export const ${el.className} = createComponent({`,
-        '  react: React,',
-        `  tagName: '${el.tag}',`,
-        `  elementClass: ${elementRef},`,
-        `  events: ${eventsConst},`,
-        '});',
-      ];
+  const component = [
+    `const ${el.className}Component = createComponent({`,
+    '  react: React,',
+    `  tagName: '${el.tag}',`,
+    `  elementClass: ${elementRef},`,
+    `  events: ${eventsConst},`,
+    '});',
+    '',
+    doc,
+    `export const ${el.className} = ${el.className}Component as React.ForwardRefExoticComponent<`,
+    '  Omit<',
+    `    React.ComponentProps<typeof ${el.className}Component>,`,
+    `    Exclude<keyof InstanceType<typeof ${elementRef}>, keyof HTMLElement | ${settableType}>`,
+    `  >${hasAttrs ? ` & ${attrsType}` : ''}`,
+    '>;',
+  ];
   return [
     `'use client';`,
     banner(hash),
@@ -284,6 +307,7 @@ function emitElement(el) {
     `  ${elementRef}.register();`,
     '}',
     '',
+    ...settableDecl,
     ...attrsDecl,
     ...component,
     '',

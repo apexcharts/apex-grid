@@ -3,7 +3,12 @@ import type { ApexGridEventMap, ColumnConfiguration, SortExpression } from 'apex
 import type { ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { ApexGridEventProps, apexGridEvents } from '../src/events.js';
-import { ApexGrid, type ApexGridProps, createApexGrid } from '../src/index.js';
+import {
+  ApexGrid,
+  type ApexGridElement,
+  type ApexGridProps,
+  createApexGrid,
+} from '../src/index.js';
 
 interface User {
   id: number;
@@ -60,6 +65,94 @@ export function typedPropsCompile(users: User[]): ReactNode {
       {/* @ts-expect-error a column key must be a key of User */}
       <UserGrid columns={[{ key: 'email' }]} />
       <ApexGrid theme="dark" />
+    </>
+  );
+}
+
+/**
+ * Compile-only: every settable property and attribute is a prop, while
+ * getter-only members and methods are not. React assigns each prop to the
+ * element, so a getter-only prop throws during commit and a method prop
+ * replaces the method on the instance.
+ */
+export function settablePropsCompile(users: User[]): ReactNode {
+  const columns: ColumnConfiguration<User>[] = [{ key: 'id' }];
+  // A method's own value, so each method case fails only for being a method.
+  const grid = document.createElement('apex-grid') as unknown as ApexGridElement<User>;
+  return (
+    <>
+      <UserGrid
+        data={users}
+        columns={columns}
+        pagination={{ pageSize: 10 }}
+        rowRecycling={false}
+        exportFilename="users"
+        localeText={{}}
+        theme="dark"
+        rowId={(row) => row.id}
+        page={2}
+        quickFilter="a"
+        sortExpressions={[]}
+        selectedRows={users}
+        className="grid"
+        style={{ height: 300 }}
+        key="k"
+      />
+      <ApexGrid data={[]} pagination={{ pageSize: 10 }} rowRecycling exportFilename="x" />
+      {/* Getter-only members. */}
+      {/* @ts-expect-error hasColumnGroups is getter-only */}
+      <UserGrid hasColumnGroups={false} />
+      {/* @ts-expect-error columnGroupDepth is getter-only */}
+      <UserGrid columnGroupDepth={1} />
+      {/* @ts-expect-error rows is getter-only */}
+      <UserGrid rows={[]} />
+      {/* @ts-expect-error dataView is getter-only */}
+      <UserGrid dataView={users} />
+      {/* @ts-expect-error displayColumns is getter-only */}
+      <UserGrid displayColumns={columns} />
+      {/* @ts-expect-error totalItems is getter-only */}
+      <UserGrid totalItems={500} />
+      {/* @ts-expect-error pageItems is getter-only */}
+      <UserGrid pageItems={users} />
+      {/* @ts-expect-error pageCount is getter-only */}
+      <UserGrid pageCount={4} />
+      {/* @ts-expect-error editingCell is getter-only */}
+      <UserGrid editingCell={{ rowIndex: 0, columnKey: 'id' }} />
+      {/* @ts-expect-error editingRow is getter-only */}
+      <UserGrid editingRow={0} />
+      {/* @ts-expect-error canUndo is getter-only */}
+      <UserGrid canUndo />
+      {/* @ts-expect-error canRedo is getter-only */}
+      <UserGrid canRedo />
+      {/* @ts-expect-error pinnedRows is getter-only */}
+      <UserGrid pinnedRows={{ top: [], bottom: [] }} />
+      {/* @ts-expect-error exportFormats is getter-only */}
+      <UserGrid exportFormats={[]} />
+      {/* @ts-expect-error toolbarActions is getter-only */}
+      <UserGrid toolbarActions={[]} />
+      {/* @ts-expect-error totalItems is getter-only on the base component too */}
+      <ApexGrid totalItems={500} />
+      {/* @ts-expect-error canUndo is getter-only on the base component too */}
+      <ApexGrid canUndo />
+      {/* Methods. */}
+      {/* @ts-expect-error sort is a method */}
+      <UserGrid sort={grid.sort} />
+      {/* @ts-expect-error filter is a method */}
+      <UserGrid filter={grid.filter} />
+      {/* @ts-expect-error getState is a method */}
+      <UserGrid getState={grid.getState} />
+      {/* @ts-expect-error undo is a method */}
+      <UserGrid undo={grid.undo} />
+      {/* @ts-expect-error exportToCSV is a method */}
+      <UserGrid exportToCSV={grid.exportToCSV} />
+      {/* @ts-expect-error localize is a method */}
+      <UserGrid localize={grid.localize} />
+      {/* @ts-expect-error requestUpdate is an inherited element method */}
+      <UserGrid requestUpdate={grid.requestUpdate} />
+      {/* @ts-expect-error sort is a method on the base component too */}
+      <ApexGrid sort={grid.sort} />
+      {/* @ts-expect-error gotoPage is a method on the base component too */}
+      <ApexGrid gotoPage={grid.gotoPage} />
     </>
   );
 }

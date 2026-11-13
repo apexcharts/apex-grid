@@ -75,6 +75,37 @@ import { ApexGrid } from 'react-apex-grid';
 The grid renders its own toolbar and paginator; configure them through its
 props (`showQuickFilter`, `showExport`, `pagination`).
 
+### Props
+
+Both components accept the grid's settable properties (`data`, `columns`,
+`pagination`, `rowRecycling`, `localeText` and the rest), the `theme`
+attribute, every `on<Event>` handler, and standard HTML props such as `style`
+and `className`. Read-only members (`totalItems`, `pageCount`, `canUndo`...) and
+methods (`sort`, `getState`...) are not props, since React would assign them to
+the element; read or call them through a `ref`:
+
+```tsx
+import { useRef } from 'react';
+import type { ApexGridElement } from 'react-apex-grid';
+
+export function SortableUsers({ users }: { users: User[] }) {
+  const ref = useRef<ApexGridElement<User>>(null);
+  return (
+    <>
+      <button onClick={() => ref.current?.sort({ key: 'name', direction: 'ascending' })}>
+        Sort by name
+      </button>
+      <UserGrid
+        ref={ref}
+        data={users}
+        style={{ height: 480 }}
+        onSorted={() => console.log(ref.current?.totalItems)}
+      />
+    </>
+  );
+}
+```
+
 Column, event, and configuration types all come from `apex-grid` directly:
 
 ```ts
