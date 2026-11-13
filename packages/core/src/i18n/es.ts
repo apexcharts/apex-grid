@@ -95,6 +95,10 @@ export const esLocale: GridLocaleText = {
   'cell.chartPointsOne': '1 valor',
   'cell.chartSeries': '{name}: {label}',
   'cell.chartSeriesUnnamed': 'Serie {index}',
+  'cell.sparkline': '{count} valores, de {first} a {last}, {trend}',
+  'cell.sparklineUp': 'sube un {percent} %',
+  'cell.sparklineDown': 'baja un {percent} %',
+  'cell.sparklineFlat': 'sin cambios',
 
   // Editores
   'editor.rating': 'Calificación',

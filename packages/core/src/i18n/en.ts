@@ -90,6 +90,12 @@ export const EN_LOCALE = {
   'cell.chartPointsOne': '1 value',
   'cell.chartSeries': '{name}: {label}',
   'cell.chartSeriesUnnamed': 'Series {index}',
+  // A sparkline's name; `{trend}` is one of the three below. A rise or fall
+  // from zero has no percent change and reads `cell.chart` instead.
+  'cell.sparkline': '{count} values, {first} to {last}, {trend}',
+  'cell.sparklineUp': 'up {percent}%',
+  'cell.sparklineDown': 'down {percent}%',
+  'cell.sparklineFlat': 'unchanged',
 
   // Editors
   'editor.rating': 'Rating',

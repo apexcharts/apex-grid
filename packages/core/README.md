@@ -458,6 +458,16 @@ the host becomes its description. The references are resolved when the grid
 renders, so if you add the referenced element later (a heading shown
 conditionally), set the attribute again afterwards to pick it up.
 
+A `type: 'sparkline'` or `type: 'chart'` cell is an image named from its
+data: "5 values, 12 to 23, up 92%" for a sparkline (the visible delta is
+part of that name, so it is hidden rather than read twice), "5 values, 12 to
+23" for a chart. Replace the name per column with `sparkline.label` (a string,
+or a function of the value and record) or `chart.label` (a function):
+
+```ts
+{ key: 'trend', type: 'sparkline', sparkline: { label: (value, row) => `${row.account} weekly revenue` } }
+```
+
 > Changed in 4.0.0: the role and the row and column counts used to be on the
 > host. Query `grid.shadowRoot.querySelector('[part~="table"]')` instead.
 
@@ -696,11 +706,18 @@ grid.localeText = { 'pagination.summary': '{total}件中 {start}～{end}件' };
 
 Besides the labels you see, the keys cover screen-reader text (`announce.*`,
 `header.*`, `cell.rating` "{value} of {max}", `cell.true` / `cell.false` for a
-boolean cell, `cell.chart` "{count} values, {first} to {last}" and
-`cell.chartOne`, `cell.chartPoints`, `cell.chartPointsOne`, `cell.chartSeries`,
-`cell.chartSeriesUnnamed` for a chart cell), the filter panel's chips (`filter.and` / `filter.or`, and the
-`filter.operator.*` labels on a chip with no value), the CSV export menu item
-(`toolbar.exportCsv`), and the default validator messages (`validation.*`).
+boolean cell, and the chart and sparkline names below), the filter panel's
+chips (`filter.and` / `filter.or`, and the `filter.operator.*` labels on a chip
+with no value), the CSV export menu item (`toolbar.exportCsv`), and the default
+validator messages (`validation.*`).
+
+A chart cell reads `cell.chart` "{count} values, {first} to {last}",
+`cell.chartOne`, `cell.chartPoints`, `cell.chartPointsOne`, `cell.chartSeries`
+and `cell.chartSeriesUnnamed`. A sparkline cell reads `cell.sparkline`
+"{count} values, {first} to {last}, {trend}", the trend being
+`cell.sparklineUp` "up {percent}%", `cell.sparklineDown` or
+`cell.sparklineFlat`. An override of `cell.chart` or `cell.sparkline` can also
+use `{min}` and `{max}`, the smallest and largest value.
 
 #### Input methods (IME)
 

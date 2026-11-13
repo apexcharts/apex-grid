@@ -606,8 +606,54 @@ const progressType: ColumnTypeRenderer<object> = {
   },
 };
 
+/** The column fields a sparkline cell reads, free of the column's key type. */
+interface SparklineColumn {
+  locale?: string;
+  showDelta?: boolean;
+  sparkline?: { label?: string | ((value: unknown, data: object) => string) };
+}
+
+/**
+ * The default accessible name of a sparkline cell:
+ * `'{count} values, {first} to {last}, {trend}'` in English, the trend being
+ * `'up {percent}%'`, `'down {percent}%'` or `'unchanged'`. The percent is the
+ * delta label's, unsigned. A rise or fall from zero has no percent change, so
+ * it reads the chart cell's `'{count} values, {first} to {last}'`. Numbers are
+ * formatted for the column's locale. `{min}` and `{max}` are unused by the
+ * defaults but passed, as `chartLabel` does, for a `localeText` override.
+ */
+function sparklineLabel(
+  ctx: ColumnTypeCellContext<object>,
+  series: number[],
+  delta: number | null,
+  locale: string | undefined
+): string {
+  const format = chartNumberFormatter(locale);
+  const first = series[0];
+  const last = series[series.length - 1];
+  const params = {
+    count: format.format(series.length),
+    first: format.format(first),
+    last: format.format(last),
+    min: format.format(Math.min(...series)),
+    max: format.format(Math.max(...series)),
+  };
+  if (last === first) {
+    return localizeCell(ctx, 'cell.sparkline', {
+      ...params,
+      trend: localizeCell(ctx, 'cell.sparklineFlat'),
+    });
+  }
+  if (delta === null) return localizeCell(ctx, 'cell.chart', params);
+  const trend = localizeCell(ctx, last > first ? 'cell.sparklineUp' : 'cell.sparklineDown', {
+    percent: format.format(Math.abs(delta)),
+  });
+  return localizeCell(ctx, 'cell.sparkline', { ...params, trend });
+}
+
 const sparklineType: ColumnTypeRenderer<object> = {
   display(ctx) {
+    const column = ctx.column as SparklineColumn;
     const series = Array.isArray(ctx.value)
       ? (ctx.value.filter((v) => typeof v === 'number' && Number.isFinite(v)) as number[])
       : [];
@@ -634,9 +680,16 @@ const sparklineType: ColumnTypeRenderer<object> = {
     // A percent change from zero is undefined, so no label then. toFixed
     // rounds a half away from zero, so a rise and a fall of the same size
     // get the same label; `|| 0` turns the '-0' of a tiny decline into 0.
-    const delta = +(((last - first) / Math.abs(first)) * 100).toFixed(0) || 0;
-    const showDelta = first !== 0 && (ctx.column as { showDelta?: boolean }).showDelta !== false;
+    const delta = first === 0 ? null : +(((last - first) / Math.abs(first)) * 100).toFixed(0) || 0;
+    // A label that is '' (or a callback returning '') gets the default, so
+    // the role="img" graphic always has a name.
+    const custom = column.sparkline?.label;
+    const label =
+      (typeof custom === 'function' ? custom(ctx.value, ctx.data) : custom) ||
+      sparklineLabel(ctx, series, delta, column.locale);
 
+    // The name carries the delta, so the visible label is hidden from
+    // assistive technology rather than read a second time.
     return html`<span part="spark-cell">
       <svg
         part="sparkline sparkline--${trend}"
@@ -644,13 +697,14 @@ const sparklineType: ColumnTypeRenderer<object> = {
         width=${width}
         height=${height}
         preserveAspectRatio="none"
-        aria-hidden="true"
+        role="img"
+        aria-label=${label}
       >
         ${svg`<path part="spark-area" d=${area} /><path part="spark-line" d=${line} />`}
       </svg>
       ${
-        showDelta
-          ? html`<span part="spark-delta spark-delta--${trend}"
+        delta !== null && column.showDelta !== false
+          ? html`<span part="spark-delta spark-delta--${trend}" aria-hidden="true"
             >${delta > 0 ? '+' : ''}${delta}%</span
           >`
           : nothing

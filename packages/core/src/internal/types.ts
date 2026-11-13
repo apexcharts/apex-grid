@@ -87,7 +87,8 @@ export type PropertyType<T, K extends Keys<T> = Keys<T>> =
  * - `'progress'` renders a number (0..`max`, default `max` 100) as a health
  *   bar; the fill color tiers at ≥80 / ≥65 / below.
  * - `'sparkline'` renders a `number[]` as an inline trend chart with an
- *   optional delta label ({@link BaseColumnConfiguration.showDelta}).
+ *   optional delta label ({@link BaseColumnConfiguration.showDelta}) and an
+ *   accessible name ({@link BaseColumnConfiguration.sparkline}).
  * - `'chart'` renders a `number[]`, or an array of `{ data }` series, as an
  *   ApexCharts chart in the cell, configured with
  *   {@link BaseColumnConfiguration.chart}. Needs ApexCharts 8.4.1 or later,
@@ -169,6 +170,33 @@ export interface ColumnChartConfiguration<T extends object, K extends Keys<T> = 
    * to the default.
    */
   label?: (value: BasePropertyType<T, K>, data: T) => string;
+}
+
+/**
+ * Configures `type: 'sparkline'` columns. Every field is optional.
+ */
+export interface ColumnSparklineConfiguration<T extends object, K extends Keys<T> = Keys<T>> {
+  /**
+   * The accessible name of each cell's sparkline: a string for every row, or
+   * a function of the cell's value and record. Defaults to the
+   * `cell.sparkline` locale string,
+   * `'{count} values, {first} to {last}, {trend}'` in English, where the trend
+   * is `'up {percent}%'`, `'down {percent}%'` or `'unchanged'`
+   * (`'cell.sparklineUp'`, `'cell.sparklineDown'`, `'cell.sparklineFlat'`)
+   * and the percent is the delta label's. A rise or fall from zero has no
+   * percent change and reads `'cell.chart'` instead. Numbers are formatted for
+   * the column's {@link BaseColumnConfiguration.locale}. A `localeText`
+   * override of `'cell.sparkline'` or `'cell.chart'` can also use `{min}` and
+   * `{max}`, the smallest and largest value. An empty string falls back to
+   * the default.
+   *
+   * @remarks
+   * The graphic is `role="img"` with this name. The name carries the change,
+   * so the visible delta label is hidden from assistive technology rather
+   * than read twice. Fewer than two numbers draw nothing and have no name,
+   * the same as an empty cell.
+   */
+  label?: string | ((value: BasePropertyType<T, K>, data: T) => string);
 }
 
 /** Visual variant for a `type: 'badge'` pill. */
@@ -472,6 +500,11 @@ export interface BaseColumnConfiguration<T extends object, K extends Keys<T> = K
    * Defaults to `true`. Has no effect on columns with another `type`.
    */
   showDelta?: boolean;
+  /**
+   * Configures `type: 'sparkline'` columns: the accessible name. Has no
+   * effect on columns with another `type`.
+   */
+  sparkline?: ColumnSparklineConfiguration<T, K>;
   /**
    * Configures `type: 'chart'` columns: chart type, size, ApexCharts options
    * and the accessible name. Has no effect on columns with another `type`.

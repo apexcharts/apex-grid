@@ -92,6 +92,7 @@ export type {
   ColumnGroupConfiguration,
   ColumnSelectOption,
   ColumnSortConfiguration,
+  ColumnSparklineConfiguration,
   DataPipelineConfiguration,
   DataPipelineHook,
   DataPipelineParams,
