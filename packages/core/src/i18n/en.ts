@@ -41,8 +41,6 @@ export const EN_LOCALE = {
   'filter.operator.false': 'False',
 
   // Filtering: UI
-  /** @deprecated Unused, kept for typed localeText objects, removed in apex-grid 5.0. */
-  'filter.filter': 'Filter',
   'filter.reset': 'Reset',
   'filter.close': 'Close',
   'filter.removeFilter': 'Remove filter',
@@ -196,8 +194,6 @@ export const EN_LOCALE = {
   // Enterprise: charts
   'chart.title': 'Chart',
   'chart.close': 'Close',
-  /** @deprecated Unused, kept for typed localeText objects, removed in apex-grid 5.0. */
-  'chart.placeholder': 'Select cells, or group/pivot the grid, to chart it.',
   'chart.chartRange': 'Chart range',
   'chart.chartView': 'Chart this view',
   'chart.selectionHint': 'Chart the selection (Alt+F1)',
@@ -304,8 +300,6 @@ export const EN_LOCALE = {
   'ai.applied': 'Applied',
   'ai.noChanges': 'No changes were applied.',
   'ai.warnings': 'Notes',
-  /** @deprecated Unused, kept for typed localeText objects, removed in apex-grid 5.0. */
-  'ai.answer': 'Answer',
   'ai.error': 'Something went wrong.',
   'ai.close': 'Close',
   'ai.preview': 'Preview',
@@ -333,16 +327,6 @@ export const EN_LOCALE = {
   'formula.parse.invalidRef': 'invalid cell reference "{ref}"',
   'formula.parse.invalidRow': 'invalid row number in "{ref}" (rows are 1-based)',
   'formula.parse.position': '{message} (position {position})',
-  /** @deprecated Unused, kept for typed localeText objects, removed in apex-grid 5.0. */
-  'formula.error.ref': 'Invalid cell reference',
-  /** @deprecated Unused, kept for typed localeText objects, removed in apex-grid 5.0. */
-  'formula.error.name': 'Unknown function',
-  /** @deprecated Unused, kept for typed localeText objects, removed in apex-grid 5.0. */
-  'formula.error.div0': 'Division by zero',
-  /** @deprecated Unused, kept for typed localeText objects, removed in apex-grid 5.0. */
-  'formula.error.value': 'Invalid value',
-  /** @deprecated Unused, kept for typed localeText objects, removed in apex-grid 5.0. */
-  'formula.error.cycle': 'Circular reference',
 } as const;
 
 /**
@@ -359,7 +343,7 @@ export type GridLocaleKey = keyof typeof EN_LOCALE;
  * Any key you leave out falls back to {@link EN_LOCALE}, so partial maps and
  * incomplete community translations are both valid.
  *
- * Mapped over {@link EN_LOCALE} itself, so each key keeps its JSDoc: an
- * editor marks a deprecated key in completions and where a map is read.
+ * Mapped over {@link EN_LOCALE} itself, so any JSDoc a key carries there
+ * (an `@deprecated` tag, for one) shows in editor completions for a map.
  */
 export type GridLocaleText = { -readonly [K in keyof typeof EN_LOCALE]?: string };

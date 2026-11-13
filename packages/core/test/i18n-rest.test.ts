@@ -28,18 +28,6 @@ const ENGLISH: Partial<Record<GridLocaleKey, string>> = {
   'formula.parse.position': '{message} (position {position})',
 };
 
-/** Keys nothing renders, kept so typed localeText objects still compile. */
-const KEPT_UNUSED: GridLocaleKey[] = [
-  'filter.filter',
-  'chart.placeholder',
-  'ai.answer',
-  'formula.error.ref',
-  'formula.error.name',
-  'formula.error.div0',
-  'formula.error.value',
-  'formula.error.cycle',
-];
-
 const tokens = (text: string) => (text.match(/\{\w+\}/g) ?? []).sort();
 
 describe('i18n: chart, series and formula parse keys', () => {
@@ -54,13 +42,6 @@ describe('i18n: chart, series and formula parse keys', () => {
       const spanish = esLocale[key];
       expect(spanish, key).to.be.a('string').and.not.equal(EN_LOCALE[key]);
       expect(tokens(spanish!), key).to.deep.equal(tokens(EN_LOCALE[key]));
-    }
-  });
-
-  it('keeps the unused keys in both dictionaries', () => {
-    for (const key of KEPT_UNUSED) {
-      expect(EN_LOCALE[key], key).to.be.a('string');
-      expect(esLocale[key], key).to.be.a('string');
     }
   });
 

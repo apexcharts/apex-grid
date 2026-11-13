@@ -46,7 +46,6 @@ export const esLocale: GridLocaleText = {
   'filter.operator.false': 'Falso',
 
   // Filtrado: interfaz
-  'filter.filter': 'Filtrar',
   'filter.reset': 'Restablecer',
   'filter.close': 'Cerrar',
   'filter.removeFilter': 'Quitar filtro',
@@ -201,7 +200,6 @@ export const esLocale: GridLocaleText = {
   // Enterprise: gráficos
   'chart.title': 'Gráfico',
   'chart.close': 'Cerrar',
-  'chart.placeholder': 'Seleccione celdas, o agrupe/pivote la tabla, para graficarla.',
   'chart.chartRange': 'Graficar rango',
   'chart.chartView': 'Graficar esta vista',
   'chart.selectionHint': 'Graficar la selección (Alt+F1)',
@@ -308,7 +306,6 @@ export const esLocale: GridLocaleText = {
   'ai.applied': 'Aplicado',
   'ai.noChanges': 'No se aplicaron cambios.',
   'ai.warnings': 'Notas',
-  'ai.answer': 'Respuesta',
   'ai.error': 'Algo salió mal.',
   'ai.close': 'Cerrar',
   'ai.preview': 'Vista previa',
@@ -336,9 +333,4 @@ export const esLocale: GridLocaleText = {
   'formula.parse.invalidRef': 'referencia de celda no válida "{ref}"',
   'formula.parse.invalidRow': 'número de fila no válido en "{ref}" (las filas empiezan en 1)',
   'formula.parse.position': '{message} (posición {position})',
-  'formula.error.ref': 'Referencia de celda no válida',
-  'formula.error.name': 'Función desconocida',
-  'formula.error.div0': 'División por cero',
-  'formula.error.value': 'Valor no válido',
-  'formula.error.cycle': 'Referencia circular',
 };
