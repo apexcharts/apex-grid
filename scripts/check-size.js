@@ -43,9 +43,14 @@ import { build } from 'esbuild';
  * Core define (lit bundled) was re-baselined at 87859 bytes (2026-11-12) for
  * the `type: 'chart'` column: 1970 bytes bundled (85889 to 87859) and 1938
  * external (69594 to 71532). The bundled row had 611 bytes left.
+ *
+ * Core define (lit external) was re-baselined at 72213 bytes (2026-11-13)
+ * for GitHub #39 and #40: rendering a recycled row before it moves, with
+ * its focus handling (about 460 bytes), and the sparkline's accessible name
+ * (about 240 bytes). 5.0.0 had left it 468 bytes of headroom.
  */
 const BUDGETS = {
-  'core define (lit external)': 72_000,
+  'core define (lit external)': 74_500,
   'core define (lit bundled)': 90_500,
   'enterprise define entry': 146_000,
   'enterprise lazy chunks': 20_000,
