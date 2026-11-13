@@ -1,5 +1,5 @@
 // GENERATED FROM custom-elements.json - do not edit by hand.
-// Manifest input hash: 8fcdbabe359a
+// Manifest input hash: 3c881a4c3d5f
 // Regenerate with `npm run generate`.
 
 import type { EventName } from '@lit/react';
@@ -70,11 +70,3 @@ export type ApexGridEventProps = {
   onTreeRowExpanded: 'treeRowExpanded';
   onTreeRowExpanding: 'treeRowExpanding';
 };
-
-/** `on<Event>` handler props for `<apex-grid-toolbar>`. */
-export const apexGridToolbarEvents = {
-  onApexQuickFilter: 'apex-quick-filter' as EventName,
-} as const;
-
-/** `on<Event>` handler props for `<apex-grid-paginator>`. */
-export const apexGridPaginatorEvents = {} as const;

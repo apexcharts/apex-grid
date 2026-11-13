@@ -1,6 +1,6 @@
 'use client';
 // GENERATED FROM custom-elements.json - do not edit by hand.
-// Manifest input hash: 8fcdbabe359a
+// Manifest input hash: 3c881a4c3d5f
 // Regenerate with `npm run generate`.
 
 import * as React from 'react';
@@ -14,6 +14,42 @@ import { apexGridEvents } from '../events.js';
 if (typeof window !== 'undefined') {
   ApexGridElement.register();
 }
+
+/** Properties of `<apex-grid>` a prop can set: public fields that are not read-only. */
+export type ApexGridSettableProp =
+  | 'autoGenerate'
+  | 'columnGroups'
+  | 'columnMenu'
+  | 'columnReordering'
+  | 'columnSeparator'
+  | 'columns'
+  | 'coordinateHints'
+  | 'data'
+  | 'dataPipelineConfiguration'
+  | 'designSystem'
+  | 'editing'
+  | 'expandedRows'
+  | 'expansion'
+  | 'exportFilename'
+  | 'filterExpressions'
+  | 'localeText'
+  | 'page'
+  | 'pageSize'
+  | 'pagination'
+  | 'quickFilter'
+  | 'rowId'
+  | 'rowPinning'
+  | 'rowRecycling'
+  | 'rowReordering'
+  | 'selectedRows'
+  | 'selection'
+  | 'showExport'
+  | 'showHeader'
+  | 'showQuickFilter'
+  | 'sortConfiguration'
+  | 'sortExpressions'
+  | 'tokens'
+  | 'tree';
 
 /** Attributes `<apex-grid>` documents without a property; React sets them as attributes. */
 export interface ApexGridAttributeProps {
@@ -39,5 +75,8 @@ const ApexGridComponent = createComponent({
  * `columns` as `object`; use `createApexGrid<T>()` for row-typed props and events.
  */
 export const ApexGrid = ApexGridComponent as React.ForwardRefExoticComponent<
-  React.ComponentProps<typeof ApexGridComponent> & ApexGridAttributeProps
+  Omit<
+    React.ComponentProps<typeof ApexGridComponent>,
+    Exclude<keyof InstanceType<typeof ApexGridElement>, keyof HTMLElement | ApexGridSettableProp>
+  > & ApexGridAttributeProps
 >;
