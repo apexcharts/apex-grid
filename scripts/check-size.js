@@ -48,11 +48,16 @@ import { build } from 'esbuild';
  * for GitHub #39 and #40: rendering a recycled row before it moves, with
  * its focus handling (about 460 bytes), and the sparkline's accessible name
  * (about 240 bytes). 5.0.0 had left it 468 bytes of headroom.
+ *
+ * Enterprise define entry was re-baselined at 146470 bytes (2026-11-14) for
+ * keyboard move and resize of the floating chart and Ask AI panels: the
+ * shared panel geometry controller, its two controls and their styles, about
+ * 1570 bytes. It had 1094 bytes of headroom.
  */
 const BUDGETS = {
   'core define (lit external)': 74_500,
   'core define (lit bundled)': 90_500,
-  'enterprise define entry': 146_000,
+  'enterprise define entry': 151_000,
   'enterprise lazy chunks': 20_000,
   'enterprise index entry': 170_500,
   'core ignite-ui add-on': 3_500,
