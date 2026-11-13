@@ -11,6 +11,7 @@ import {
   isPanelCycleKey,
   returnFocus,
 } from './features/focus-return.js';
+import { PanelGeometry } from './features/panel-geometry.js';
 import type { ApexGridEnterprise, ApexGridEnterpriseHost } from './grid-enterprise.js';
 
 export const AI_TAG = 'apex-grid-ai';
@@ -66,6 +67,8 @@ function appliedLabels(applied: readonly string[]): string {
  *
  * @csspart panel - The panel container.
  * @csspart header - Dialog header (drag handle + title + close).
+ * @csspart move-handle - Dialog header button that moves the panel with the arrow keys.
+ * @csspart resize-handle - Dialog corner grip that resizes the panel (arrow keys or drag).
  * @csspart back-to-grid - Dialog header button that moves focus to the grid.
  * @csspart close - Dialog close button.
  * @csspart body - The prompt + result body.
@@ -125,9 +128,50 @@ export class ApexGridAI extends LitElement {
     :host([mode='dialog']) [part='panel'] {
       position: fixed;
       inset: auto 24px 24px auto;
+      /* A column, so a panel the grip made shorter than its content scrolls the body. */
+      display: flex;
+      flex-direction: column;
       inline-size: 380px;
       max-inline-size: 92vw;
+      max-block-size: 92vh;
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+    }
+    :host([mode='dialog']) [part='body'] {
+      flex: 1 1 auto;
+      min-block-size: 0;
+      overflow: auto;
+    }
+    [part='move-handle'],
+    [part='resize-handle'] {
+      display: inline-grid;
+      place-items: center;
+      flex: none;
+      padding: 0;
+      border: none;
+      border-radius: 4px;
+      background: none;
+      color: var(--_ag-overlay-muted, #6b7280);
+      touch-action: none;
+    }
+    [part='move-handle'] {
+      inline-size: 24px;
+      block-size: 24px;
+      margin-inline-start: -6px;
+      cursor: move;
+    }
+    [part='resize-handle'] {
+      position: absolute;
+      inset-block-end: 2px;
+      inset-inline-end: 2px;
+      inline-size: 16px;
+      block-size: 16px;
+      cursor: nwse-resize;
+    }
+    [part='resize-handle']:dir(rtl) {
+      cursor: nesw-resize;
+    }
+    [part='resize-handle']:dir(rtl) svg {
+      transform: scaleX(-1);
     }
     [part='header'] {
       display: flex;
@@ -355,7 +399,13 @@ export class ApexGridAI extends LitElement {
   #controller: AbortController | null = null;
   /** The grid the in-flight turn was started for. */
   #turnGrid: ApexGridAI['grid'] = null;
-  #drag: { pointerId: number; offsetX: number; offsetY: number } | null = null;
+  /** Header drag, the Move panel control and the Resize panel grip of the dialog. */
+  #geometry = new PanelGeometry(this, {
+    panelBox: () => this.renderRoot?.querySelector<HTMLElement>('[part="panel"]') ?? null,
+    localeText: () => this.grid?.localeText,
+    announcer: () => this.grid ?? null,
+    floating: () => this.mode === 'dialog',
+  });
   /** What had focus before {@link show}, so a dialog close can put focus back. */
   #restoreFocus: FocusReturn | null = null;
 
@@ -399,6 +449,8 @@ export class ApexGridAI extends LitElement {
   /** Close the dialog panel and notify (so a launcher can remove it). */
   public close(): void {
     this.open = false;
+    // A move announced after the close would talk over the focus returning to the grid.
+    this.#geometry.cancel();
     this.#cancel();
     this.dispatchEvent(new CustomEvent('apex-ai-closed', { bubbles: true, composed: true }));
     const previous = this.#restoreFocus;
@@ -569,37 +621,6 @@ export class ApexGridAI extends LitElement {
     return source === 'rule' ? this.#t('ai.viaRule') : this.#t('ai.viaAI');
   }
 
-  // --- dialog drag ---------------------------------------------------------
-
-  #onHeaderPointerDown = (event: PointerEvent): void => {
-    if (this.mode !== 'dialog') return;
-    const panel = this.renderRoot.querySelector<HTMLElement>('[part="panel"]');
-    if (!panel) return;
-    const rect = panel.getBoundingClientRect();
-    this.#drag = {
-      pointerId: event.pointerId,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-    };
-    panel.style.left = `${rect.left}px`;
-    panel.style.top = `${rect.top}px`;
-    panel.style.right = 'auto';
-    panel.style.bottom = 'auto';
-    (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
-  };
-
-  #onHeaderPointerMove = (event: PointerEvent): void => {
-    if (!this.#drag || event.pointerId !== this.#drag.pointerId) return;
-    const panel = this.renderRoot.querySelector<HTMLElement>('[part="panel"]');
-    if (!panel) return;
-    panel.style.left = `${event.clientX - this.#drag.offsetX}px`;
-    panel.style.top = `${event.clientY - this.#drag.offsetY}px`;
-  };
-
-  #onHeaderPointerUp = (event: PointerEvent): void => {
-    if (this.#drag?.pointerId === event.pointerId) this.#drag = null;
-  };
-
   // --- render --------------------------------------------------------------
 
   /** The live status region: error, thinking, a preview, or the last result. */
@@ -733,12 +754,13 @@ export class ApexGridAI extends LitElement {
         dialog
           ? html`<div
               part="header"
-              @pointerdown=${this.#onHeaderPointerDown}
-              @pointermove=${this.#onHeaderPointerMove}
-              @pointerup=${this.#onHeaderPointerUp}
-              @pointercancel=${this.#onHeaderPointerUp}
-              @lostpointercapture=${this.#onHeaderPointerUp}
+              @pointerdown=${this.#geometry.onHeaderPointerDown}
+              @pointermove=${this.#geometry.onHeaderPointerMove}
+              @pointerup=${this.#geometry.onHeaderPointerUp}
+              @pointercancel=${this.#geometry.onHeaderPointerUp}
+              @lostpointercapture=${this.#geometry.onHeaderPointerUp}
             >
+              ${this.#geometry.renderMoveHandle()}
               <span>${this.#t('ai.title')}</span>
               ${
                 this.grid
@@ -812,6 +834,7 @@ export class ApexGridAI extends LitElement {
         <div role="status" aria-live="polite">${this.#renderStatus()}</div>
         ${this.#renderTranscript()}
       </div>
+      ${dialog ? this.#geometry.renderResizeHandle() : nothing}
     </div>`;
   }
 }

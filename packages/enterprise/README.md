@@ -514,6 +514,8 @@ non-modal: you can keep working in the grid, or in another panel, while one is o
 | **Shift+F6** | Moves the other way | Moves focus to the oldest open panel |
 | **Escape** | Closes the panel (or its open popover first) and returns focus to where it came from | |
 | **Tab** | Moves on in page order; it does not wrap inside the panel | |
+| **Arrow keys** | On **Move panel**: moves the panel 10px. On **Resize panel**: changes its width or height by 10px | |
+| **Shift+Arrow** | The same in 50px steps | |
 
 Each panel's header also has a **Back to grid** button that returns focus to the
 grid's active cell, for browsers that keep F6 for their own address bar. Screen
@@ -522,6 +524,18 @@ yourself in `mode="dialog"` returns to its bound grid on F6, but only panels the
 grid opened (the toolbar buttons, Alt+F1, the context menu) take part in F6 from
 the grid. The two strings are the `panel.backToGrid` and `panel.shortcutHint`
 locale keys.
+
+To move or resize a panel without a pointer, Tab to the **Move panel** button at
+the start of its header or the **Resize panel** grip in its bottom corner and use
+the arrow keys. Left and Right follow the screen, also in a right-to-left page,
+where the grip sits in the bottom-left corner and grows the panel leftward. The
+panel stays inside the viewport and never shrinks below 240 by 120px. Once the
+keys stop, the new position or size is announced through the grid. A pointer
+drag on the header still moves the panel, and dragging the grip resizes it (the
+grip replaces the chart panel's native resize corner). The controls are the
+`move-handle` and `resize-handle` parts, and their strings are the `panel.move`,
+`panel.moveHint`, `panel.moved`, `panel.resize`, `panel.resizeHint` and
+`panel.resized` locale keys. Inline panels have neither control.
 
 ### Data mapping
 

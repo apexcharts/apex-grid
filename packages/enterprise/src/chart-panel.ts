@@ -38,6 +38,7 @@ import {
   returnFocus,
 } from './features/focus-return.js';
 import { indexToColumnLetter } from './features/formula/refs.js';
+import { PanelGeometry } from './features/panel-geometry.js';
 import { RANGE_CHANGED_EVENT } from './features/range-selection.js';
 import { type ApexGridEnterpriseHost, VIEW_CHANGED_EVENT } from './grid-enterprise.js';
 
@@ -266,6 +267,8 @@ const forecastPeriods = (value: unknown): number =>
  *
  * @csspart panel - The panel container.
  * @csspart header - Dialog header (drag handle + title + close).
+ * @csspart move-handle - Dialog header button that moves the panel with the arrow keys.
+ * @csspart resize-handle - Dialog corner grip that resizes the panel (arrow keys or drag).
  * @csspart back-to-grid - Dialog header button that moves focus to the grid.
  * @csspart toolbar - The type gallery / theme switcher row.
  * @csspart type-button - A chart-type button in the gallery.
@@ -437,7 +440,13 @@ export class ApexGridChart extends LitElement {
   /** The text the rename input opened with, so committing it unchanged keeps the auto-title. */
   #renameSeed = '';
   #rafHandle = 0;
-  #drag: { pointerId: number; offsetX: number; offsetY: number } | null = null;
+  /** Header drag, the Move panel control and the Resize panel grip of the dialog. */
+  #geometry = new PanelGeometry(this, {
+    panelBox: () => this.renderRoot.querySelector<HTMLElement>('[part="panel"]'),
+    localeText: () => this.grid?.localeText,
+    announcer: () => this.grid,
+    floating: () => this.mode === 'dialog',
+  });
   /** What had focus before {@link show}, so a dialog close can put focus back. */
   #restoreFocus: FocusReturn | null = null;
 
@@ -518,6 +527,8 @@ export class ApexGridChart extends LitElement {
   /** Close the dialog panel and notify (e.g. so a launcher can remove it). */
   public close(): void {
     this.open = false;
+    // A move announced after the close would talk over the focus returning to the grid.
+    this.#geometry.cancel();
     this.dispatchEvent(new CustomEvent('apex-chart-closed', { bubbles: true, composed: true }));
     const previous = this.#restoreFocus;
     this.#restoreFocus = null;
@@ -1450,37 +1461,6 @@ export class ApexGridChart extends LitElement {
     );
   }
 
-  // --- dialog drag ---------------------------------------------------------
-
-  #onHeaderPointerDown = (event: PointerEvent): void => {
-    if (this.mode !== 'dialog') return;
-    const panel = this.renderRoot.querySelector<HTMLElement>('[part="panel"]');
-    if (!panel) return;
-    const rect = panel.getBoundingClientRect();
-    this.#drag = {
-      pointerId: event.pointerId,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-    };
-    panel.style.left = `${rect.left}px`;
-    panel.style.top = `${rect.top}px`;
-    panel.style.right = 'auto';
-    panel.style.bottom = 'auto';
-    (event.target as HTMLElement).setPointerCapture?.(event.pointerId);
-  };
-
-  #onHeaderPointerMove = (event: PointerEvent): void => {
-    if (!this.#drag || event.pointerId !== this.#drag.pointerId) return;
-    const panel = this.renderRoot.querySelector<HTMLElement>('[part="panel"]');
-    if (!panel) return;
-    panel.style.left = `${event.clientX - this.#drag.offsetX}px`;
-    panel.style.top = `${event.clientY - this.#drag.offsetY}px`;
-  };
-
-  #onHeaderPointerUp = (event: PointerEvent): void => {
-    if (this.#drag?.pointerId === event.pointerId) this.#drag = null;
-  };
-
   // --- render --------------------------------------------------------------
 
   #renderStyle() {
@@ -1517,11 +1497,45 @@ export class ApexGridChart extends LitElement {
         max-inline-size: 92vw;
         max-block-size: 92vh;
         box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
-        resize: both;
         /* Clip, don't scroll: ApexCharts can render a hair larger than its box
            (esp. pie/donut), which under overflow:auto produced spurious H+V
-           scrollbars. The resize handle still works with overflow:hidden. */
+           scrollbars. The resize-handle grip replaces the native resize corner:
+           it takes a pointer drag the same way and the arrow keys too, and two
+           handles in one corner would fight. */
         overflow: hidden;
+      }
+      apex-grid-chart [part='move-handle'],
+      apex-grid-chart [part='resize-handle'] {
+        display: inline-grid;
+        place-items: center;
+        flex: none;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: none;
+        color: var(--_ag-text-muted, #6b7280);
+        touch-action: none;
+      }
+      apex-grid-chart [part='move-handle'] {
+        inline-size: 24px;
+        block-size: 24px;
+        margin-inline-start: -6px;
+        cursor: move;
+      }
+      apex-grid-chart [part='resize-handle'] {
+        position: absolute;
+        inset-block-end: 2px;
+        inset-inline-end: 2px;
+        z-index: 1;
+        inline-size: 16px;
+        block-size: 16px;
+        cursor: nwse-resize;
+      }
+      apex-grid-chart [part='resize-handle']:dir(rtl) {
+        cursor: nesw-resize;
+      }
+      apex-grid-chart [part='resize-handle']:dir(rtl) svg {
+        transform: scaleX(-1);
       }
       /* Give the panel a definite height only while a chart is showing, so the
          canvas can fill it — the chart tracks the panel on resize instead of
@@ -2303,12 +2317,13 @@ export class ApexGridChart extends LitElement {
           dialog
             ? html`<div
                 part="header"
-                @pointerdown=${this.#onHeaderPointerDown}
-                @pointermove=${this.#onHeaderPointerMove}
-                @pointerup=${this.#onHeaderPointerUp}
-                @pointercancel=${this.#onHeaderPointerUp}
-                @lostpointercapture=${this.#onHeaderPointerUp}
+                @pointerdown=${this.#geometry.onHeaderPointerDown}
+                @pointermove=${this.#geometry.onHeaderPointerMove}
+                @pointerup=${this.#geometry.onHeaderPointerUp}
+                @pointercancel=${this.#geometry.onHeaderPointerUp}
+                @lostpointercapture=${this.#geometry.onHeaderPointerUp}
               >
+                ${this.#geometry.renderMoveHandle()}
                 ${
                   this.headingEditing
                     ? html`<input
@@ -2587,6 +2602,7 @@ export class ApexGridChart extends LitElement {
           </ul>
         </div>
         <div part="canvas" ?hidden=${empty}></div>
+        ${dialog ? this.#geometry.renderResizeHandle() : nothing}
       </div>`;
   }
 }
