@@ -768,6 +768,36 @@ On by default. A scroll, sort or filter re-binds the rendered body rows to the r
 - Wrap a template that has to keep element state in `keyed(ctx.data, ...)` from `lit/directives/keyed.js`. The state then never shows on the wrong record, but it is rebuilt every time the row shows another record, including after a sort or `moveRow`.
 - Code that holds `grid.rows` elements across a scroll or a sort should read each element's `data` again rather than assume it still shows the same record.
 
+A scroll step moves the rows that left the view to its other end, and moving a row disconnects and reconnects every custom element in it. A moved row already shows its new record when it reconnects, so `connectedCallback` reads the right data. Two more rules keep a custom element in a cell template (a chart, a map, any widget built on connect) correct and cheap:
+
+- Defer tear-down: in `disconnectedCallback`, check `isConnected` a microtask later and tear down only if the element is still off the page. A move reconnects it within the same task.
+- React to the data property (a setter, or a Lit reactive property) rather than reading it once on connect. A sort, a filter that keeps the rendered range, and a long jump (a scrollbar drag, setting `scrollTop`, a page change) re-bind rows where they stand, without disconnecting them, so connect never runs for the new record.
+
+```ts
+// `Widget` and `createWidget` stand for whatever the cell draws with.
+class SparkCell extends HTMLElement {
+  #record?: Row;
+  #widget?: Widget;
+  set record(record: Row) {
+    this.#record = record;
+    this.#widget?.update(record); // a re-bind, in place or ahead of a move
+  }
+  connectedCallback() {
+    // A move reconnects an element that already has its widget.
+    this.#widget ??= createWidget(this, this.#record);
+  }
+  disconnectedCallback() {
+    queueMicrotask(() => {
+      if (this.isConnected) return; // moved, not removed
+      this.#widget?.destroy();
+      this.#widget = undefined;
+    });
+  }
+}
+```
+
+Built-in `type: 'chart'` cells already work this way.
+
 Set `rowRecycling` to `false` (or the `row-recycling="false"` attribute) to restore record-keyed rows, where each row element stays with its record. Do that for templates that must keep element state across a sort or a move, such as some third-party widgets.
 
 Detail templates are different: their content follows its record into whichever row shows it, and keeps its DOM state (typed text, a nested grid's sort) across a scroll within the rendered rows, a sort or a `moveRow`, so it needs neither `keyed()` nor the opt-out. It is rebuilt when the record leaves the rendered rows or is collapsed, as before. `ctx.parent` in a detail context is the grid itself. A grid created inside a `detailTemplate` has its own `rowRecycling` setting, so set it there too when you opt out.
