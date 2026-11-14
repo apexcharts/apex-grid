@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - New entry `react-apex-grid/enterprise`: `ApexGridEnterprise`, a row-typed
   `createApexGridEnterprise<T>()`, and `ApexGridToolPanel`,

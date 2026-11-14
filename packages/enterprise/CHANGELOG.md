@@ -4,7 +4,11 @@ All notable changes to the `apex-grid-enterprise` (pro) package are documented
 here. This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.11.0] - 2026-11-14
+
+Keyboard move and resize for the floating chart and Ask AI panels, panels
+sized in px, and a Custom Elements Manifest. Requires apex-grid 5.1.0 or
+later (`^5.1.0`), which adds the panel locale keys.
 
 ### Added
 - The package ships a Custom Elements Manifest, `custom-elements.json` (also
@@ -43,9 +47,6 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   the usual 16px root nothing changes; on any other root (for example a
   reader who raised the browser's default font size) they keep their designed
   size.
-
-
-
 
 ## [0.10.0] - 2026-11-13
 

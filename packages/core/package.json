@@ -1,6 +1,6 @@
 {
   "name": "apex-grid",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "description": "Web component data grid following open-wc recommendations",
   "keywords": [
     "lit",

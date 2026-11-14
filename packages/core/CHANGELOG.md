@@ -4,7 +4,11 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [5.1.0] - 2026-11-14
+
+Accessible sparklines, a row recycling fix for cell elements that read
+their record on connect, and the locale keys the enterprise floating panels
+use for their keyboard controls.
 
 ### Added
 - Sparkline columns have an accessible name: the graphic is `role="img"` and
@@ -37,9 +41,6 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
   record of the row it was leaving. An edit kept open on a record scrolled
   away and back keeps its editor focus. The README's Row recycling section
   explains how to write a cell element that survives moves. (#39)
-
-
-
 
 ## [5.0.0] - 2026-11-13
 
