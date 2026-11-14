@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- New entry `react-apex-grid/enterprise`: `ApexGridEnterprise`, a row-typed
+  `createApexGridEnterprise<T>()`, and `ApexGridToolPanel`,
+  `ApexGridStatusBar`, `ApexGridSetFilter`, `ApexGridFilterBuilder`,
+  `ApexGridChart` and `ApexGridAI`, generated from the apex-grid-enterprise
+  manifest. Enterprise properties are props, every community and enterprise
+  event has a typed `on<Event>` handler (`onApexRangeChanged`,
+  `onApexViewChanged`...), and each companion's `grid` prop takes a typed
+  enterprise grid. Importing it turns on every enterprise feature module and
+  registers the elements in the browser only. It replaces the hand-written
+  `@lit/react` recipe the README used to show.
+- `apex-grid-enterprise` (`>=0.10.0 <1.0.0`) is a new optional peer
+  dependency, so a new enterprise minor does not need a new react-apex-grid.
+  The root entry does not import it, so community apps install nothing new.
+
 ## 0.2.0
 
 - Removed `ApexGridToolbar` and `ApexGridPaginator`. They rendered an empty

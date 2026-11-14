@@ -7,6 +7,16 @@ and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- The package ships a Custom Elements Manifest, `custom-elements.json` (also
+  the `customElements` field and the `apex-grid-enterprise/custom-elements.json`
+  export), describing `<apex-grid-enterprise>` with the props, attributes and
+  events it inherits from `<apex-grid>`, and the six companion elements. The
+  `apex-view-changed`, `apex-context-menu-opening`, `apex-range-changed` and
+  `apex-set-filter-changed` events are now documented with `@fires`.
+- `ApexGridEnterpriseEventMap` now lists the cancelable `groupExpanding` and
+  the follow-up `groupExpanded` (detail `{ key, expanded, meta }`), so
+  `addEventListener('groupExpanding', ...)` types its listener and the
+  manifest documents both events.
 - The floating chart and Ask AI panels can be moved and resized from the
   keyboard. Tab to the Move panel button in the header or the Resize panel
   grip in the bottom corner and use the arrow keys (10px steps, Shift for
