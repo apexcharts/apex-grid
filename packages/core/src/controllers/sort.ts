@@ -109,21 +109,58 @@ export class SortController<T extends object> implements ReactiveController {
       this.reset();
     }
 
+    await this.#changeWithRowFlip(() => this._sort(expression));
+    this.#announce(expression, column);
+    this.#emitSortedEvent(expression);
+  }
+
+  /**
+   * Runs `change`, a synchronous sort state change that requests the
+   * pipeline, then animates the rendered rows from where they stood to their
+   * new order. The one FLIP sequence for UI sorts and for the grid's
+   * `sort()` and `clearSort()`. Resolves once the rows have settled and the
+   * FLIP has started; motion is skipped under `prefers-reduced-motion` and
+   * for rows that did not move (see `playKeyedFlip`).
+   */
+  async #changeWithRowFlip(change: () => void): Promise<void> {
     // Capture visible-row rects keyed by data identity BEFORE the pipeline
     // runs. After the new render the virtualizer will have repositioned
     // rows; we use those captured rects as the "First" of a FLIP and
     // animate each row from its old viewport position back to identity.
     const beforeRects = this.#captureRowRects();
 
-    this._sort(expression);
+    change();
 
     // The rows must show the sorted data before the "Last" rects are
     // measured, otherwise the captured-before and measured-after rects match
     // and the animation no-ops.
     await settleRowsForFlip(this.host);
     this.#playRowFlip(beforeRects);
-    this.#announce(expression, column);
-    this.#emitSortedEvent(expression);
+  }
+
+  /**
+   * Whether the grid has rows on screen to animate from: connected and
+   * showing a row. False before the first render (no row exists yet) and on
+   * a disconnected grid (its rows keep their elements but are off screen), so
+   * a sort there applies directly instead of capturing rects and waiting on a
+   * render with nothing to animate from.
+   */
+  get #hasRenderedRows(): boolean {
+    return this.host.isConnected && this.host.rows.length > 0;
+  }
+
+  /**
+   * A programmatic sort change: applied synchronously, and with `animate` on
+   * a rendered grid the rows glide to their new order as on a header click.
+   * Unlike {@link sortFromUI} it fires no events and does not announce the
+   * sort (clearing a manual row order is still announced, by `_sort`).
+   */
+  #changeProgrammatically(change: () => void, animate: boolean): void {
+    if (animate && this.#hasRenderedRows) {
+      void this.#changeWithRowFlip(change);
+    } else {
+      change();
+    }
   }
 
   #announce(expression: SortExpression<T>, column: ColumnConfiguration<T>) {
@@ -213,16 +250,36 @@ export class SortController<T extends object> implements ReactiveController {
     this.host.requestUpdate(PIPELINE);
   }
 
-  public sort(expressions: SortExpression<T> | SortExpression<T>[]) {
-    this._sort(
-      asArray(expressions).map(
-        (expr) =>
-          ({
-            ...(this.state.get(expr.key) ?? this.#createDefaultExpression(expr.key)),
-            ...expr,
-          }) as SortExpression<T>
-      )
+  /**
+   * Applies `expressions` on top of the current sort, synchronously. With
+   * `animate` (the grid's `sort()`), a rendered grid's rows glide to their new
+   * order; without it (a restored or assigned sort) they do not. Fires no
+   * `sorting` or `sorted` event either way.
+   */
+  public sort(
+    expressions: SortExpression<T> | SortExpression<T>[],
+    { animate = false }: { animate?: boolean } = {}
+  ) {
+    const resolved = asArray(expressions).map(
+      (expr) =>
+        ({
+          ...(this.state.get(expr.key) ?? this.#createDefaultExpression(expr.key)),
+          ...expr,
+        }) as SortExpression<T>
     );
+    this.#changeProgrammatically(() => this._sort(resolved), animate);
+  }
+
+  /**
+   * Clears the sort of `key`, or the whole sort, and re-runs the pipeline.
+   * With `animate` (the grid's `clearSort()`), a rendered grid's rows glide
+   * back to their unsorted order, as on the header click that clears a sort.
+   */
+  public clear(key?: Keys<T>, { animate = false }: { animate?: boolean } = {}) {
+    this.#changeProgrammatically(() => {
+      this.reset(key);
+      this.host.requestUpdate(PIPELINE);
+    }, animate);
   }
 
   public hostConnected() {}

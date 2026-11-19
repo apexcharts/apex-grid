@@ -4,6 +4,16 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Changed
+- `grid.sort()` and `grid.clearSort()` on a rendered grid now animate the rows
+  to their new order the way a header click does, instead of jumping; a sort
+  assigned through `sortExpressions` or restored with `setState()` still
+  applies without motion, and the calls still fire no events. In
+  apex-grid-enterprise, the context menu's **Clear sort** item calls
+  `clearSort()`, so it now animates too.
+
 ## [5.1.0] - 2026-11-14
 
 Accessible sparklines, a row recycling fix for cell elements that read

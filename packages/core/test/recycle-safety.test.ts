@@ -717,6 +717,12 @@ describe('Recycle safety', () => {
 
       const row = bodyRows(grid).find((entry) => entry.data === moved)!;
       expect(row?.index, 'the record moved down').to.equal(14);
+      // The sort's row FLIP starts the row where it stood, in view: measure
+      // where it lands. A cancelled FLIP rejects `finished`, and still counts
+      // as done.
+      await Promise.all(
+        row.getAnimations().map((animation) => animation.finished.catch(() => undefined))
+      );
       const resumed = editorOf(cellOf(row, 'name'))!;
       expect(inView(grid, resumed), 'the resumed editor sits out of view').to.equal(false);
       expect(deepActive(), 'the resumed editor has focus').to.equal(resumed);

@@ -247,6 +247,8 @@ grid.clearSort();                                          // or grid.clearSort(
 
 When `multiple` is enabled, a plain header click sorts by that column alone; hold Ctrl/Cmd and click to append additional columns as lower-priority sort keys. Events: `sorting` (cancellable), `sorted`.
 
+Rows glide to their new order on a header click and on `grid.sort()` and `grid.clearSort()`; `grid.sortExpressions` reflects the new sort as soon as the call returns, and the programmatic calls fire no events. A sort assigned through `sortExpressions` or restored with `setState()` applies without the animation, and none plays under `prefers-reduced-motion`.
+
 Columns show a column menu (the three-dot / kebab button) in the header. Out of the box it offers **Sort Ascending**, **Sort Descending**, and **Autosize Column** (on sortable or resizable columns). A feature module can supply the menu instead through the `ColumnMenuProvider` seam: `apex-grid-enterprise` fills it with pin, hide, group, and chart actions on every column, shared with the right-click context menu. The button is always visible; set `columnMenu` to `false` to hide it entirely (a module's menu stays reachable by right-click).
 
 ### Filtering

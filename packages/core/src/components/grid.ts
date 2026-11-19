@@ -1689,7 +1689,9 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    *
    * @remarks
    * Replaces the current sort; `[]`, `null` or `undefined` clears it. Applied
-   * at the next update, against the columns as they are then.
+   * at the next update, against the columns as they are then, without the row
+   * animation of {@link ApexGrid.sort}: an assigned sort is a state to show,
+   * like a restored one.
    */
   public set sortExpressions(expressions: SortExpression<T>[] | null | undefined) {
     this.#pendingSort = [...(expressions ?? [])];
@@ -2123,7 +2125,8 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * Replace the sort with `entries`, dropping (and reporting) any that is not
    * an object, names an unknown column, or carries an unknown direction (an
    * omitted one takes the column default). The one path for the
-   * `sortExpressions` setter and the `setState` sort slice.
+   * `sortExpressions` setter and the `setState` sort slice. Both assign a
+   * whole sort, so the rows change without the animation `sort()` plays.
    */
   #replaceSort(entries: ReadonlyArray<unknown>, warn: (message: string) => void): void {
     this.stateController.sorting.reset();
@@ -2140,7 +2143,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
         warn(`sort: invalid direction "${String(direction)}"; dropped`);
       }
     }
-    if (valid.length) this.sort(valid);
+    if (valid.length) this.stateController.sorting.sort(valid);
     this.requestUpdate(PIPELINE);
   }
 
@@ -2374,6 +2377,18 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
   /**
    * Performs a sort operation in the grid based on the passed expression(s).
+   *
+   * @remarks
+   * Adds onto the current sort. {@link ApexGrid.sortExpressions} reflects it as
+   * soon as the call returns; the rows re-render at the next update. On a
+   * rendered grid the rows glide to their new order with the same animation a
+   * header click plays, skipped under `prefers-reduced-motion`. Unlike a
+   * header click it fires no `sorting` or `sorted` event and does not
+   * announce the sort (clearing a manual row order is still announced). A
+   * sort assigned through `sortExpressions` or `setState()` applies without
+   * the animation, and a `sort()` made while an assigned sort is still
+   * waiting for the next update adds to it and applies without the animation
+   * too.
    */
   public sort(expressions: SortExpression<T> | SortExpression<T>[]) {
     if (this.#pendingSort) {
@@ -2382,7 +2397,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
       this.requestUpdate(PIPELINE);
       return;
     }
-    this.stateController.sorting.sort(expressions);
+    this.stateController.sorting.sort(expressions, { animate: true });
   }
 
   /**
@@ -2472,6 +2487,10 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
    * state resolves against the transformed view. `rowOrder` is mutually exclusive
    * with an active `sort`: a snapshot carrying both keeps the sort and drops
    * `rowOrder`.
+   *
+   * The rows change without the animation {@link ApexGrid.sort} plays: a
+   * snapshot restores a whole view at once, so rows gliding from the old one
+   * would not stand for any single change.
    *
    * **Defensive by design.** `setState` is written into by persisted blobs and
    * LLM output, so it never throws on malformed input (unless
@@ -2714,6 +2733,15 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
 
   /**
    * Resets the current sort state of the control.
+   *
+   * @remarks
+   * Clears the sort of `key`, or the whole sort without one. On a rendered
+   * grid the rows glide back to their unsorted order, as on the header click
+   * that clears a sort; no `sorting` or `sorted` event fires. While a sort
+   * assigned through `sortExpressions` is still waiting for the next update,
+   * `clearSort(key)` changes the rows without the animation, since the
+   * assigned sort still applies; `clearSort()` drops that assignment and
+   * animates.
    */
   public clearSort(key?: Keys<T>) {
     if (this.#pendingSort && key !== undefined) {
@@ -2721,8 +2749,7 @@ export class ApexGrid<T extends object> extends EventEmitterBase<ApexGridEventMa
     } else {
       this.#pendingSort = undefined;
     }
-    this.stateController.sorting.reset(key);
-    this.requestUpdate(PIPELINE);
+    this.stateController.sorting.clear(key, { animate: !this.#pendingSort });
   }
 
   /**
