@@ -4,7 +4,9 @@ All notable changes to the `apex-grid` (community) package are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 and the format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [5.2.0] - 2026-11-19
+
+Rows glide when a sort comes from code, not only from a header click.
 
 ### Changed
 - `grid.sort()` and `grid.clearSort()` on a rendered grid now animate the rows
