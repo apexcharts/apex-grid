@@ -8,7 +8,8 @@ on:
 
 jobs:
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, where Playwright 1.60 cannot install Chromium.
+    runs-on: ubuntu-24.04
     # Run inside the SAME Playwright image used to generate the committed Linux
     # baselines (e2e/__screenshots__/chromium-linux). Font rendering is identical
     # to that image, so screenshots match deterministically — running on the bare
